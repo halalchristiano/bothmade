@@ -80,6 +80,36 @@ export function clientKey(request: NextRequest): string {
   return forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
 }
 
+/**
+ * Who mail comes from, and where studio mail lands.
+ *
+ * These were the same bare address everywhere, which meant every email the
+ * site sent arrived as "contact@…" with no name attached — the format most
+ * likely to look like spam and least likely to be recognised in an inbox.
+ *
+ *   MAIL_FROM       hello@bothmade.studio   (must be a domain verified in Resend)
+ *   MAIL_FROM_NAME  Bothmade                (what a client sees as the sender)
+ *   CONTACT_EMAIL   studio@bothmade.studio  (where enquiries land; can differ)
+ *
+ * Sending and receiving are separated deliberately: the address clients see
+ * should be a verified domain, while the inbox you actually read can be
+ * anywhere, including a personal address.
+ */
+const FALLBACK_ADDRESS = 'hello@bothmade.studio';
+
+export function mailFrom(): string {
+  const address = process.env.MAIL_FROM || process.env.CONTACT_EMAIL || FALLBACK_ADDRESS;
+
+  // An already-formatted "Name <address>" is passed through untouched.
+  if (address.includes('<')) return address;
+
+  return `${process.env.MAIL_FROM_NAME || 'Bothmade'} <${address}>`;
+}
+
+export function studioInbox(): string {
+  return process.env.CONTACT_EMAIL || process.env.MAIL_FROM || FALLBACK_ADDRESS;
+}
+
 /** The shared wrapper every outgoing email sits inside. */
 export function emailShell(inner: string): string {
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;">${inner}<hr style="border:none;border-top:1px solid #eee;margin:30px 0;"><p style="color:#999;font-size:12px;">© 2026 Bothmade</p></div>`;

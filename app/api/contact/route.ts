@@ -6,9 +6,9 @@ import {
   emailShell,
   escapeHtml,
   isValidEmail,
+  mailFrom,
+  studioInbox,
 } from '@/lib/server';
-
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
 
 const SERVICES = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
 
@@ -77,8 +77,8 @@ export async function POST(request: NextRequest) {
     // Notification to the studio. This one always matters most, so it is sent
     // first and its failure is what determines the response.
     const adminEmail = await getResend().emails.send({
-      from: CONTACT_EMAIL,
-      to: CONTACT_EMAIL,
+      from: mailFrom(),
+      to: studioInbox(),
       replyTo: cleanEmail,
       subject: `New enquiry — ${cleanName} (${cleanService})`,
       html: emailShell(
@@ -100,8 +100,9 @@ export async function POST(request: NextRequest) {
     // Acknowledgement to the sender. Best-effort: if it bounces, the enquiry
     // still reached the studio, so don't fail the request over it.
     const ackEmail = await getResend().emails.send({
-      from: CONTACT_EMAIL,
+      from: mailFrom(),
       to: cleanEmail,
+      replyTo: studioInbox(),
       subject: 'We received your message',
       html: emailShell(
         `<h2 style="color:#000;">Thanks for reaching out</h2>

@@ -9,6 +9,8 @@ import {
   escapeHtml,
   getResend,
   isValidEmail,
+  mailFrom,
+  studioInbox,
 } from '@/lib/server';
 
 /**
@@ -127,8 +129,8 @@ export async function POST(request: NextRequest) {
     const safeCompany = escapeHtml(client.company ?? '—');
 
     const adminEmail = await getResend().emails.send({
-      from: process.env.CONTACT_EMAIL || 'contact@bothmade.com',
-      to: process.env.CONTACT_EMAIL || 'contact@bothmade.com',
+      from: mailFrom(),
+      to: studioInbox(),
       replyTo: client.email,
       subject: `Onboarding complete — ${client.name} (${answered}/${total} answered)`,
       html: emailShell(
@@ -149,8 +151,9 @@ export async function POST(request: NextRequest) {
     // Their own copy. Best-effort — the studio already has the answers.
     if (isValidEmail(client.email)) {
       const ack = await getResend().emails.send({
-        from: process.env.CONTACT_EMAIL || 'contact@bothmade.com',
+        from: mailFrom(),
         to: client.email,
+        replyTo: studioInbox(),
         subject: 'Your onboarding answers — a copy for your records',
         html: emailShell(
           `<h2 style="color:#000;">Thanks, ${safeName} — got everything</h2>

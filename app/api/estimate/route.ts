@@ -27,9 +27,9 @@ import {
   emailShell,
   escapeHtml,
   isValidEmail,
+  mailFrom,
+  studioInbox,
 } from '@/lib/server';
-
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
 
 const LIMITS = {
   name: 100,
@@ -179,8 +179,8 @@ export async function POST(request: NextRequest) {
       .join('');
 
     const adminEmail = await getResend().emails.send({
-      from: CONTACT_EMAIL,
-      to: CONTACT_EMAIL,
+      from: mailFrom(),
+      to: studioInbox(),
       replyTo: cleanEmail,
       subject: `New brief — ${cleanName}, ${project?.name} (${formatMoney(est.total)})`,
       html: emailShell(
@@ -210,8 +210,9 @@ export async function POST(request: NextRequest) {
     // Their copy of the estimate. Best-effort: if it bounces, the brief still
     // reached the studio, so don't fail the request over it.
     const ackEmail = await getResend().emails.send({
-      from: CONTACT_EMAIL,
+      from: mailFrom(),
       to: cleanEmail,
+      replyTo: studioInbox(),
       subject: `Your Bothmade estimate — ${formatMoney(est.total)}`,
       html: emailShell(
         `<h2 style="color:#000;">Here's your estimate</h2>

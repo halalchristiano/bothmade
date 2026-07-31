@@ -11,11 +11,35 @@ the site is deployable after the first section.
       Environment Variables to the real domain (e.g. `https://bothmade.com`).
       Until this is set, canonical URLs, Open Graph tags, sitemap, robots,
       and JSON-LD all publish localhost links.
-- [ ] **Set `RESEND_API_KEY`** (from resend.com → API Keys) and
-      **`CONTACT_EMAIL`** in the same place. The contact form validates and
-      rate-limits today but cannot deliver mail without the key.
-- [ ] **Verify the sending domain in Resend** (SPF + DKIM records) so
-      enquiry emails don't land in spam.
+- [ ] **Set `RESEND_API_KEY`** (from resend.com → API Keys). Every form on
+      the site validates and rate-limits today but cannot deliver mail
+      without it.
+- [ ] **Verify `bothmade.studio` in Resend** (add its SPF + DKIM records at
+      your registrar) so mail doesn't land in spam. Do this before sending
+      anything to a real client — an unverified domain is the single biggest
+      cause of "they never got the email".
+- [ ] **Set the mail addresses.** Sending and receiving are separate on
+      purpose: the address clients see should be on the verified domain,
+      while the inbox you actually read can be anywhere.
+
+      MAIL_FROM       hello@bothmade.studio    what clients see (verified domain)
+      MAIL_FROM_NAME  Bothmade                 the sender name in their inbox
+      CONTACT_EMAIL   you@wherever.com         where enquiries and briefs land
+
+      Every client-facing email sets `replyTo` to `CONTACT_EMAIL`, so a
+      client hitting reply always reaches you even if `MAIL_FROM` is a
+      send-only address.
+
+**The eight emails the site sends**, all branded and all confirmed working
+end to end:
+
+| Trigger | To the client | To you |
+| --- | --- | --- |
+| Contact form | "We received your message" | Enquiry + message |
+| `/start` brief | Their estimate, itemised | Brief + total |
+| Portal invite | Their private link + scope | — |
+| Onboarding submitted | Copy of every answer | All answers, grouped |
+| Deposit paid | Receipt, balance, what happens next | 💰 Deposit paid |
 - [ ] **Test the form once on production** — submit it yourself, confirm both
       the studio notification and the acknowledgement arrive.
 
@@ -32,6 +56,14 @@ the site is deployable after the first section.
       take deposits by card. Optional: without it the portal tells the client
       an invoice is coming instead of showing a broken button, so the page is
       safe to hand out before Stripe is live.
+- [ ] **Add the Stripe webhook.** In Stripe → Developers → Webhooks, add an
+      endpoint at `https://bothmade.studio/api/portal/stripe-webhook`
+      subscribed to `checkout.session.completed`, then put its signing
+      secret in **`STRIPE_WEBHOOK_SECRET`**. Without this a client's card is
+      charged and they get Stripe's bare card receipt with no word from you —
+      the confirmation email that says "your slot is booked, here's the
+      balance" is sent from this endpoint. Signature and replay window are
+      verified; a forged or stale call is rejected.
 - [ ] **Invite a client.** One command, and the only manual step in the
       whole flow — a link is minted when a human decides someone is a
       client, not when a form is submitted:

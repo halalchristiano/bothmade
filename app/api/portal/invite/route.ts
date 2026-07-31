@@ -29,6 +29,8 @@ import {
   getResend,
   isAdmin,
   isValidEmail,
+  mailFrom,
+  studioInbox,
 } from '@/lib/server';
 
 /**
@@ -163,8 +165,9 @@ export async function POST(request: NextRequest) {
     }
 
     const sent = await getResend().emails.send({
-      from: process.env.CONTACT_EMAIL || 'contact@bothmade.com',
+      from: mailFrom(),
       to: email,
+      replyTo: studioInbox(),
       subject: 'Your Bothmade project — everything in one place',
       html: emailShell(
         `<h2 style="color:#000;">Welcome aboard, ${escapeHtml(name)}</h2>
