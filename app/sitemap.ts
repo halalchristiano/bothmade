@@ -8,6 +8,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/web', priority: 0.9 },
     { path: '/ios', priority: 0.9 },
     { path: '/visionpro', priority: 0.9 },
+    // Published prices are the page people search for and link to.
+    { path: '/start', priority: 0.9 },
     { path: '/work', priority: 0.7 },
   ];
 

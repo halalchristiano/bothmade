@@ -21,6 +21,17 @@ the site is deployable after the first section.
 
 ## Required before running ads
 
+- [ ] **Sign off the published prices.** `/start` quotes real numbers from
+      `lib/pricing.ts` — bases from $4,500 (website) to $15,500 (the
+      flagship), add-ons from $350, and two stated multipliers (client type,
+      timeline). They were set for a studio with excellent work and no public
+      track record yet: high enough to signal quality, low enough that a
+      founder who has never heard of you will still finish the form. They are
+      a starting position, not a verdict — price a couple of real enquiries by
+      hand first, see where you would have quoted differently, then edit the
+      numbers in that one file. Everything on the page and in the emails
+      follows from it.
+
 - [ ] **Replace the sample case studies.** Everything in
       `lib/case-studies.ts` under the `SAMPLE CONTENT` banner is invented
       demo copy (Ridgeline / Cadence / Massing). Each is `status:

@@ -10,6 +10,7 @@ const LINKS = [
   { label: 'Web', href: '/web' },
   { label: 'iOS', href: '/ios' },
   { label: 'Vision Pro', href: '/visionpro' },
+  { label: 'Pricing', href: '/start' },
   { label: 'Contact', href: '/#contact' },
 ];
 

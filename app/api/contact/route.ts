@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import {
+  clientKey,
+  getResend,
+  createRateLimiter,
+  emailShell,
+  escapeHtml,
+  isValidEmail,
+} from '@/lib/server';
 
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
 
@@ -14,55 +19,7 @@ const LIMITS = {
   message: 4000,
 } as const;
 
-/** Anything user-supplied is escaped before it reaches an HTML email body. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function isValidEmail(value: string): boolean {
-  // Deliberately conservative: no display names, no comments, no newlines.
-  return /^[^\s@<>"']+@[^\s@<>"'.]+\.[^\s@<>"']{2,}$/.test(value);
-}
-
-/**
- * Per-instance sliding window. Serverless means this resets on cold start and
- * isn't shared across instances — it blunts casual abuse, not a determined
- * attacker. Move to Upstash/Redis if this endpoint ever gets targeted.
- */
-const RATE_LIMIT = { max: 3, windowMs: 10 * 60 * 1000 };
-const hits = new Map<string, number[]>();
-
-function isRateLimited(key: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < RATE_LIMIT.windowMs);
-
-  if (recent.length >= RATE_LIMIT.max) {
-    hits.set(key, recent);
-    return true;
-  }
-
-  recent.push(now);
-  hits.set(key, recent);
-
-  // Opportunistic cleanup so the map can't grow without bound.
-  if (hits.size > 5000) {
-    for (const [k, times] of hits) {
-      if (times.every((t) => now - t >= RATE_LIMIT.windowMs)) hits.delete(k);
-    }
-  }
-
-  return false;
-}
-
-function clientKey(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  return forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
-}
+const isRateLimited = createRateLimiter({ max: 3, windowMs: 10 * 60 * 1000 });
 
 export async function POST(request: NextRequest) {
   try {
@@ -117,17 +74,14 @@ export async function POST(request: NextRequest) {
       service: escapeHtml(cleanService),
     };
 
-    const shell = (inner: string) =>
-      `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;">${inner}<hr style="border:none;border-top:1px solid #eee;margin:30px 0;"><p style="color:#999;font-size:12px;">© 2026 Bothmade</p></div>`;
-
     // Notification to the studio. This one always matters most, so it is sent
     // first and its failure is what determines the response.
-    const adminEmail = await resend.emails.send({
+    const adminEmail = await getResend().emails.send({
       from: CONTACT_EMAIL,
       to: CONTACT_EMAIL,
       replyTo: cleanEmail,
       subject: `New enquiry — ${cleanName} (${cleanService})`,
-      html: shell(
+      html: emailShell(
         `<h2 style="color:#000;">New contact form submission</h2>
          <p><strong>Name:</strong> ${safe.name}</p>
          <p><strong>Email:</strong> ${safe.email}</p>
@@ -145,11 +99,11 @@ export async function POST(request: NextRequest) {
 
     // Acknowledgement to the sender. Best-effort: if it bounces, the enquiry
     // still reached the studio, so don't fail the request over it.
-    const ackEmail = await resend.emails.send({
+    const ackEmail = await getResend().emails.send({
       from: CONTACT_EMAIL,
       to: cleanEmail,
       subject: 'We received your message',
-      html: shell(
+      html: emailShell(
         `<h2 style="color:#000;">Thanks for reaching out</h2>
          <p style="color:#666;line-height:1.6;">
            Hi ${safe.name},<br/><br/>

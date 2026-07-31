@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { useState, FormEvent } from 'react';
 import { Intro } from '@/components/Intro';
 import { PillCTA, SectionTag, ScrubText } from '@/components/ui';
@@ -257,7 +258,7 @@ export default function Home() {
                 One product, designed once, alive on every screen — no second agency, no
                 handoff tax, no drift between your web and your app.
               </p>
-              <PillCTA href="/#contact">Ask about the full build</PillCTA>
+              <PillCTA href="/start">Price the full build</PillCTA>
             </div>
           </motion.div>
         </div>
@@ -280,6 +281,20 @@ export default function Home() {
           >
             Let's build something great.
           </h2>
+
+          {/* Two doors, on purpose: some people want to ask one question, and
+              some want the number before they'll write a word. */}
+          <p className="-mt-12 mb-16 text-base text-black/50">
+            Want the number first?{' '}
+            <Link
+              href="/start"
+              className="font-medium text-black underline decoration-black/30 underline-offset-4 transition hover:decoration-black"
+            >
+              Build an estimate in two minutes
+            </Link>{' '}
+            — published prices, every add-on labelled.
+          </p>
+
           <ContactForm />
         </div>
       </section>
