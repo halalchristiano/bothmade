@@ -7,7 +7,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: '/api/',
+      // Client portal links are credentials. The pages already send
+      // noindex — this stops a crawler requesting them at all.
+      disallow: ['/api/', '/client/'],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
   };

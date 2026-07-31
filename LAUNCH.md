@@ -19,6 +19,42 @@ the site is deployable after the first section.
 - [ ] **Test the form once on production** — submit it yourself, confirm both
       the studio notification and the acknowledgement arrive.
 
+## Required before onboarding a client through the portal
+
+- [ ] **Set `PORTAL_SECRET`** (32+ random characters) and **`ADMIN_SECRET`**
+      (24+). Generate both with `openssl rand -base64 48`. Without
+      `PORTAL_SECRET` every client link refuses to open; without
+      `ADMIN_SECRET` the invite endpoint returns 404 to everyone, including
+      you. Never reuse or publish either — `PORTAL_SECRET` is what stops
+      someone editing their own price, and rotating it invalidates every
+      live client link at once.
+- [ ] **Set `STRIPE_SECRET_KEY`** (and `STRIPE_CURRENCY`, default `usd`) to
+      take deposits by card. Optional: without it the portal tells the client
+      an invoice is coming instead of showing a broken button, so the page is
+      safe to hand out before Stripe is live.
+- [ ] **Invite a client.** One command, and the only manual step in the
+      whole flow — a link is minted when a human decides someone is a
+      client, not when a form is submitted:
+
+      curl -X POST https://bothmade.studio/api/portal/invite \
+        -H "x-admin-secret: $ADMIN_SECRET" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Ada","email":"ada@example.com","company":"Ridgeline",
+             "project":"both","client":"funded","addOns":{"cms":1,"pages":4},
+             "timeline":"standard","care":"growth","send":true}'
+
+      It returns the link, the total, and the deposit. `"send":true` emails
+      it to the client; omit it to check the link yourself first. Deposit
+      defaults to 50% under $15k and 40% above — override with
+      `"depositPercent": 30`. Advance the build with `"phase"` (one of
+      onboarding, deposit, discovery, design, build, review, launch, live),
+      which mints a fresh link — send it, or the client keeps seeing the old
+      phase.
+- [ ] **Send yourself an invite first** and walk the whole thing: open the
+      link, read the scope, pay the deposit with a Stripe test card, submit
+      the onboarding form. You want to have been your own first client before
+      a real one arrives.
+
 ## Required before running ads
 
 - [ ] **Sign off the published prices.** `/start` quotes real numbers from

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { Resend } from 'resend';
 
@@ -82,6 +83,21 @@ export function clientKey(request: NextRequest): string {
 /** The shared wrapper every outgoing email sits inside. */
 export function emailShell(inner: string): string {
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;">${inner}<hr style="border:none;border-top:1px solid #eee;margin:30px 0;"><p style="color:#999;font-size:12px;">© 2026 Bothmade</p></div>`;
+}
+
+/**
+ * Guards the studio-only endpoints. Compared in constant time because a
+ * timing oracle on an admin secret is a real, if unglamorous, way in.
+ */
+export function isAdmin(request: NextRequest): boolean {
+  const expected = process.env.ADMIN_SECRET;
+  if (!expected || expected.length < 24) return false;
+
+  const provided = request.headers.get('x-admin-secret') ?? '';
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** Trim, cap, and guarantee a string back — the shape every text field needs. */
