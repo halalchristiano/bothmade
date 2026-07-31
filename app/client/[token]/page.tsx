@@ -4,7 +4,8 @@ import { Nav } from '@/components/Nav';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ClientPortal } from '@/components/portal/ClientPortal';
 import { readToken } from '@/lib/portal';
-import { verifyPaidSession } from '@/lib/stripe';
+import { stripeConfigured, verifyPaidSession } from '@/lib/stripe';
+import { bankDetails } from '@/lib/bank';
 
 /**
  * A client's private project page.
@@ -51,6 +52,8 @@ export default async function ClientPortalPage({
         token={token}
         paid={paid}
         cancelled={query.cancelled === '1'}
+        bank={bankDetails()}
+        cardEnabled={stripeConfigured()}
       />
     </main>
   );

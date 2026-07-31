@@ -9,8 +9,10 @@ import {
   getCarePlan,
   getProject,
   getTimeline,
+  VAT_NOTE,
 } from '@/lib/pricing';
 import { PHASES, phaseIndex, type PortalClient } from '@/lib/portal';
+import { paymentReference, type BankDetails } from '@/lib/bank';
 import { sectionsFor, formStats } from '@/lib/onboarding';
 import { OnboardingForm } from '@/components/portal/OnboardingForm';
 
@@ -29,12 +31,19 @@ export function ClientPortal({
   token,
   paid,
   cancelled,
+  bank,
+  cardEnabled,
 }: {
   client: PortalClient;
   token: string;
   /** Verified server-side against Stripe — never inferred from the URL. */
   paid: boolean;
   cancelled: boolean;
+  /** Null until the studio has configured them; the panel adapts. */
+  bank: BankDetails | null;
+  /** False when Stripe isn't set up — the card option is hidden entirely
+      rather than shown and then failing on click. */
+  cardEnabled: boolean;
 }) {
   const est = estimate(client.selection);
   const project = getProject(client.selection.project);
@@ -86,8 +95,8 @@ export function ClientPortal({
       {cancelled && !paid && (
         <div className="mt-14 rounded-2xl border border-white/15 bg-white/[0.03] px-6 py-5">
           <p className="text-sm leading-relaxed text-white/50">
-            Payment cancelled — nothing was charged. The button below is still here whenever
-            you&apos;re ready, and you can always ask us for a bank transfer instead.
+            Card payment cancelled — nothing was charged. The bank transfer details below
+            work whenever you&apos;re ready.
           </p>
         </div>
       )}
@@ -144,6 +153,8 @@ export function ClientPortal({
             </div>
           )}
 
+          <p className="mt-6 text-xs leading-relaxed text-white/30">{VAT_NOTE}</p>
+
           {est.monthly && (
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-4">
               <p className="text-sm text-white/60">
@@ -173,6 +184,9 @@ export function ClientPortal({
           balance={balance}
           percent={client.depositPercent}
           paid={paid}
+          bank={bank}
+          reference={paymentReference(client.name, client.iat)}
+          cardEnabled={cardEnabled}
         />
       </Panel>
 
@@ -304,6 +318,9 @@ function DepositPanel({
   balance,
   percent,
   paid,
+  bank,
+  reference,
+  cardEnabled,
 }: {
   token: string;
   total: number;
@@ -311,6 +328,9 @@ function DepositPanel({
   balance: number;
   percent: number;
   paid: boolean;
+  bank: BankDetails | null;
+  reference: string;
+  cardEnabled: boolean;
 }) {
   const [status, setStatus] = useState<'idle' | 'starting' | 'unavailable'>('idle');
   const [error, setError] = useState('');
@@ -357,36 +377,91 @@ function DepositPanel({
       </div>
 
       {!paid && (
-        <div className="mt-8 border-t border-white/10 pt-8">
-          {status === 'unavailable' ? (
-            <p className="text-sm leading-relaxed text-white/55">
-              Card payment isn&apos;t switched on yet — we&apos;ll send you an invoice with bank
-              details instead. Nothing for you to do here; it&apos;ll be in your inbox shortly.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="max-w-sm text-xs leading-relaxed text-white/35">
-                Paid securely through Stripe. We never see or store your card details. Prefer a
-                bank transfer? Just reply to any email and we&apos;ll invoice you instead.
+        <div className="mt-8 space-y-8 border-t border-white/10 pt-8">
+          {/* Bank transfer leads. On a five-figure deposit it is what a
+              finance department expects, and it costs neither side a fee. */}
+          {bank ? (
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/35">
+                Pay by bank transfer
+              </p>
+              <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/50">
+                No fees either side, and it usually lands the same day. Please use the
+                reference below — it is how we match your payment to this project
+                without having to ask you.
               </p>
 
-              <button
-                type="button"
-                onClick={pay}
-                disabled={status === 'starting'}
-                aria-busy={status === 'starting'}
-                className="w-full shrink-0 rounded-full bg-white px-9 py-4 text-sm font-medium text-black transition-all duration-300 hover:bg-white/85 disabled:cursor-not-allowed disabled:bg-white/20 disabled:text-white/40 sm:w-auto"
-              >
-                {status === 'starting' ? 'Opening Stripe…' : `Pay ${formatMoney(deposit)} deposit`}
-              </button>
+              <dl className="mt-6 grid gap-x-10 gap-y-4 sm:grid-cols-2">
+                <BankRow label="Account name" value={bank.accountName} />
+                <BankRow label="Reference" value={reference} highlight />
+                <BankRow label="Sort code" value={bank.sortCode} />
+                <BankRow label="Account number" value={bank.accountNumber} />
+                {bank.iban && <BankRow label="IBAN (from abroad)" value={bank.iban} />}
+                {bank.bic && <BankRow label="BIC / SWIFT" value={bank.bic} />}
+              </dl>
+
+              <p className="mt-6 text-xs leading-relaxed text-white/30">
+                Send {formatMoney(deposit)}. Tell us once it is away and we will confirm
+                the moment it lands — you will get a written receipt either way.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm leading-relaxed text-white/55">
+              We will send you an invoice with bank details shortly. Nothing for you to do
+              on this page.
+            </p>
+          )}
+
+          {/* Card is the fallback, and only appears if Stripe is switched on. */}
+          {cardEnabled && status !== 'unavailable' && (
+            <div className="border-t border-white/10 pt-8">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="max-w-sm text-xs leading-relaxed text-white/35">
+                  Prefer to pay by card? Handled by Stripe — we never see or store your card
+                  details. Your bank may apply a limit on an amount this size.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={pay}
+                  disabled={status === 'starting'}
+                  aria-busy={status === 'starting'}
+                  className="w-full shrink-0 rounded-full border border-white/20 px-9 py-4 text-sm font-medium text-white/80 transition-all duration-300 hover:border-white/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+                >
+                  {status === 'starting' ? 'Opening Stripe…' : `Pay ${formatMoney(deposit)} by card`}
+                </button>
+              </div>
             </div>
           )}
 
           <div role="status" aria-live="polite" aria-atomic="true">
-            {error && <p className="mt-5 text-sm text-red-300">{error}</p>}
+            {error && <p className="text-sm text-red-300">{error}</p>}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function BankRow({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/35">{label}</dt>
+      <dd
+        className={`mt-1.5 font-mono text-base tabular-nums ${
+          highlight ? 'text-sky-300' : 'text-white/85'
+        }`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

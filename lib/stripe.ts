@@ -46,7 +46,7 @@ export async function createDepositSession(
     customer_email: client.email,
     client_reference_id: `${client.email}:${client.iat}`,
     'line_items[0][quantity]': '1',
-    'line_items[0][price_data][currency]': (process.env.STRIPE_CURRENCY || 'usd').toLowerCase(),
+    'line_items[0][price_data][currency]': (process.env.STRIPE_CURRENCY || 'gbp').toLowerCase(),
     'line_items[0][price_data][unit_amount]': String(deposit * 100),
     'line_items[0][price_data][product_data][name]':
       `${project?.name ?? 'Project'} — ${client.depositPercent}% deposit`,

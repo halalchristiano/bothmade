@@ -115,7 +115,7 @@ export const PROJECTS: Project[] = [
     id: 'site',
     name: 'Website',
     blurb: 'Marketing site, SaaS front end, or storefront.',
-    base: 4500,
+    base: 3500,
     includes: [
       'Up to 5 pages, designed from scratch',
       'Responsive down to the smallest phone',
@@ -139,7 +139,7 @@ export const PROJECTS: Project[] = [
     id: 'mac',
     name: 'macOS app',
     blurb: 'Desktop software that respects the platform.',
-    base: 11000,
+    base: 10500,
     includes: [
       'Up to 6 core screens, native SwiftUI/AppKit',
       'Menu-bar utility or full window app',
@@ -151,7 +151,7 @@ export const PROJECTS: Project[] = [
     id: 'vision',
     name: 'Vision Pro app',
     blurb: 'Spatial computing, on the platform almost nobody has shipped on.',
-    base: 14000,
+    base: 13500,
     includes: [
       'Up to 4 spatial scenes, native visionOS',
       'RealityKit scene and materials setup',
@@ -163,8 +163,8 @@ export const PROJECTS: Project[] = [
     id: 'both',
     name: 'Website + iOS app + one backend',
     blurb: 'The flagship. One product, alive on every screen.',
-    base: 15500,
-    badge: 'Saves $1,000 against booking the two separately',
+    base: 14500,
+    badge: 'Saves £1,000 against booking the two separately',
     includes: [
       'Everything in the Website build',
       'Everything in the iOS & iPad build',
@@ -225,51 +225,51 @@ export const ADD_ON_GROUPS: AddOnGroup[] = [
         id: 'pages',
         name: 'Extra pages',
         desc: 'Beyond the five in the base build.',
-        price: 350,
+        price: 300,
         unit: { label: 'page', plural: 'pages', max: 20 },
       },
       {
         id: 'cms',
         name: 'Edit your own content',
         desc: 'A CMS, so copy and images change without booking us.',
-        price: 1500,
+        price: 1200,
       },
       {
         id: 'blog',
         name: 'Blog or journal',
         desc: 'Article templates, categories, RSS, share cards.',
-        price: 700,
+        price: 600,
       },
       {
         id: 'ecommerce',
         name: 'Store & checkout',
         desc: 'Products, cart, payment, inventory, shipping rules.',
-        price: 3200,
+        price: 2600,
       },
       {
         id: 'booking',
         name: 'Booking & scheduling',
         desc: 'Availability, calendar sync, confirmations, reminders.',
-        price: 1600,
+        price: 1300,
       },
       {
         id: 'i18n',
         name: 'Extra languages',
         desc: 'Full translation plumbing, per language beyond English.',
-        price: 900,
+        price: 750,
         unit: { label: 'language', plural: 'languages', max: 6 },
       },
       {
         id: 'motion',
         name: 'Motion & interaction pass',
         desc: 'Scroll choreography and micro-interactions, like this site has.',
-        price: 1500,
+        price: 1200,
       },
       {
         id: 'illustration',
         name: 'Custom illustration or 3D',
         desc: 'Original artwork instead of stock. Priced for a small set.',
-        price: 1800,
+        price: 1500,
       },
     ],
   },
@@ -283,59 +283,59 @@ export const ADD_ON_GROUPS: AddOnGroup[] = [
         id: 'screens',
         name: 'Extra screens',
         desc: 'Beyond the core screens in the base build.',
-        price: 900,
+        price: 750,
         unit: { label: 'screen', plural: 'screens', max: 20 },
       },
       {
         id: 'push',
         name: 'Push notifications',
         desc: 'Delivery infrastructure, permissions, deep links into the app.',
-        price: 900,
+        price: 750,
       },
       {
         id: 'iap',
         name: 'In-app purchases & subscriptions',
         desc: 'StoreKit, receipts, restore, free trials, paywall.',
-        price: 1800,
+        price: 1500,
       },
       {
         id: 'offline',
         name: 'Offline mode & sync',
         desc: 'Works on a plane, reconciles cleanly when the signal returns.',
-        price: 2200,
+        price: 1800,
       },
       {
         id: 'widgets',
         name: 'Widgets & Live Activities',
         desc: 'Home Screen, Lock Screen, Dynamic Island.',
-        price: 1200,
+        price: 1000,
         only: ['ios', 'both'],
       },
       {
         id: 'ipad',
         name: 'iPad-optimised layouts',
         desc: 'A real iPad app, not a stretched phone screen.',
-        price: 1600,
+        price: 1300,
         only: ['ios', 'both'],
       },
       {
         id: 'watch',
         name: 'Apple Watch companion',
         desc: 'A paired watchOS app with its own complications.',
-        price: 3500,
+        price: 2800,
         only: ['ios', 'both'],
       },
       {
         id: 'devicekit',
         name: 'Device capabilities',
         desc: 'Camera, maps, location, health, files — wired in properly.',
-        price: 1400,
+        price: 1150,
       },
       {
         id: 'realtime',
         name: 'Real-time or multiplayer',
         desc: 'Live presence, shared state, conflict resolution.',
-        price: 3800,
+        price: 3000,
       },
     ],
   },
@@ -349,13 +349,13 @@ export const ADD_ON_GROUPS: AddOnGroup[] = [
         id: 'accounts',
         name: 'User accounts & sign-in',
         desc: 'Sign-up, sessions, password reset, Sign in with Apple.',
-        price: 2400,
+        price: 1950,
       },
       {
         id: 'backend',
         name: 'Custom backend & database',
         desc: 'Your own API and data model, not a rented no-code box.',
-        price: 3500,
+        price: 2800,
         // The flagship build already includes one shared backend.
         only: ['site', 'ios', 'mac', 'vision'],
       },
@@ -363,26 +363,26 @@ export const ADD_ON_GROUPS: AddOnGroup[] = [
         id: 'payments',
         name: 'Payments & subscriptions',
         desc: 'Stripe, plans, invoices, failed-payment recovery.',
-        price: 1900,
+        price: 1550,
       },
       {
         id: 'admin',
         name: 'Admin dashboard for your team',
         desc: 'The internal tool you will need by month two.',
-        price: 2800,
+        price: 2250,
       },
       {
         id: 'integrations',
         name: 'Third-party integrations',
         desc: 'Whatever you already run on — CRM, Slack, ERP, logistics.',
-        price: 900,
+        price: 750,
         unit: { label: 'integration', plural: 'integrations', max: 8 },
       },
       {
         id: 'ai',
         name: 'AI features',
         desc: 'Search, chat, or generation wired to a real model — not a demo.',
-        price: 2600,
+        price: 2100,
       },
     ],
   },
@@ -396,37 +396,37 @@ export const ADD_ON_GROUPS: AddOnGroup[] = [
         id: 'copy',
         name: 'Copywriting',
         desc: 'We write it. Most projects stall here otherwise.',
-        price: 1200,
+        price: 1000,
       },
       {
         id: 'brand',
         name: 'Logo & brand basics',
         desc: 'Mark, type, colour, and a one-page guide to using them.',
-        price: 2200,
+        price: 1800,
       },
       {
         id: 'seo',
         name: 'SEO & analytics setup',
         desc: 'Structured data, sitemaps, and numbers you can act on.',
-        price: 800,
+        price: 650,
       },
       {
         id: 'email',
         name: 'Email automation',
         desc: 'Welcome, receipts, win-backs — designed and wired up.',
-        price: 700,
+        price: 600,
       },
       {
         id: 'a11y',
         name: 'Accessibility audit',
         desc: 'WCAG 2.2 AA pass with a written report and the fixes made.',
-        price: 1400,
+        price: 1150,
       },
       {
         id: 'migration',
         name: 'Migrate what you have',
         desc: 'Content, users, orders, and redirects off the old thing.',
-        price: 1100,
+        price: 900,
       },
     ],
   },
@@ -441,25 +441,25 @@ export const ADD_ON_GROUPS: AddOnGroup[] = [
         id: 'sso',
         name: 'SSO / SAML',
         desc: 'Okta, Entra, Google Workspace. Provisioning included.',
-        price: 3200,
+        price: 2600,
       },
       {
         id: 'security',
         name: 'Security review & pen-test support',
         desc: 'We answer your security team, and fix what they find.',
-        price: 2600,
+        price: 2100,
       },
       {
         id: 'compliance',
         name: 'Compliance documentation',
         desc: 'Evidence and controls for a SOC 2 or HIPAA process.',
-        price: 2900,
+        price: 2350,
       },
       {
         id: 'procurement',
         name: 'Custom contract & procurement',
         desc: 'Your paper, your vendor forms, your legal cycle.',
-        price: 1200,
+        price: 1000,
       },
     ],
   },
@@ -497,21 +497,41 @@ export const CARE_PLANS: CarePlan[] = [
     id: 'essential',
     name: 'Essential',
     blurb: 'Hosting, monitoring, security updates, and small fixes.',
-    monthly: 450,
+    monthly: 350,
   },
   {
     id: 'growth',
     name: 'Growth',
     blurb: 'Essential, plus a monthly iteration cycle and an analytics review.',
-    monthly: 1200,
+    monthly: 950,
   },
   {
     id: 'partner',
     name: 'Partner',
     blurb: 'An embedded team. Priority roadmap, weekly shipping, a direct line.',
-    monthly: 2800,
+    monthly: 2250,
   },
 ];
+
+/* ------------------------------------------------------------------ *
+ * VAT
+ * ------------------------------------------------------------------ */
+
+/**
+ * UK VAT registration is compulsory above £90,000 of taxable turnover in any
+ * rolling 12 months. Below it, registering is optional — and for a studio
+ * starting out it is usually worth staying out, because a client who cannot
+ * reclaim VAT is simply paying 20% more.
+ *
+ * FLIP THIS the moment you register. Quoting a price that turns out to have
+ * 20% on top is the fastest way to lose the trust the published pricing was
+ * built to earn.
+ */
+export const VAT_REGISTERED = false;
+
+export const VAT_NOTE = VAT_REGISTERED
+  ? 'All prices exclude VAT, charged at 20%.'
+  : "These are the final figures — we're not VAT registered, so there's nothing to add on top.";
 
 /* ------------------------------------------------------------------ *
  * Lookups
@@ -716,10 +736,10 @@ export function estimate(selection: Selection): Estimate {
  * Formatting
  * ------------------------------------------------------------------ */
 
-/** `$4,500`. Whole dollars — cents on an estimate are a false precision. */
+/** `£3,500`. Whole pounds — pennies on an estimate are a false precision. */
 export function formatMoney(amount: number): string {
   const sign = amount < 0 ? '−' : '';
-  return `${sign}$${Math.abs(Math.round(amount)).toLocaleString('en-US')}`;
+  return `${sign}£${Math.abs(Math.round(amount)).toLocaleString('en-GB')}`;
 }
 
 /** `+$1,200` / `−$450`, for anything that joins a running total. */

@@ -14,6 +14,7 @@ import {
   percentLabel,
   pruneAddOns,
   visibleGroups,
+  VAT_NOTE,
   type AddOn,
   type CarePlanId,
   type ClientTypeId,
@@ -674,7 +675,7 @@ export function Estimator() {
           </div>
 
           <p className="mt-10 text-xs leading-relaxed text-white/30">
-            This is an estimate, not an invoice or a binding quote. It is built from
+            {VAT_NOTE} This is an estimate, not an invoice or a binding quote. It is built from
             published rates so you know the shape of the number before you talk to
             anyone. Final scope — and the final figure — get confirmed on a call, and
             it can move in either direction.
