@@ -1,0 +1,155 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User accounts (Bothmade team members)
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String     // bcrypted
+  name      String?
+  role      String     @default("admin") // "admin", "manager", "support"
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  clientMessages ProjectMessage[] @relation("SentByUser")
+  adminUpdates   ProjectUpdate[]  @relation("CreatedByAdmin")
+
+  @@map("users")
+}
+
+// Clients who have signed up via Stripe
+model Client {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String   // bcrypted - auto-generated on first signup
+  company     String
+  phone       String?
+  contactName String?
+
+  // Stripe integration
+  stripeCustomerId String?
+  subscription     String?  // "starter", "pro", "enterprise"
+  subscriptionTier Int      @default(1) // 1 = Starter ($2500), 2 = Pro ($5000), 3 = Enterprise (custom)
+
+  // Status
+  onboardingComplete Boolean  @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  projects         Project[]
+  messages         ProjectMessage[] @relation("SentByClient")
+  emailPreferences EmailPreferences?
+
+  @@map("clients")
+}
+
+// Projects (deliverables for clients)
+model Project {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  status      String   @default("discovery") // "discovery", "design", "build", "launch", "complete"
+  statusStage Int      @default(0) // 0-4 corresponding to status above
+
+  // Project details
+  baseService String   // "website", "web-app", "ios-app", "macos-app", "visionos", "multi"
+  addOns      String   @default("") // comma-separated: "seo", "analytics", "maintenance", "hosting"
+
+  // Timeline & pricing
+  timeline    String?  // "4 weeks", "8 weeks", "12 weeks", etc.
+  basePrice   Int      // in cents
+  totalPrice  Int      // in cents (including add-ons)
+
+  // Deliverables
+  deliverables String? // JSON array of milestone/deliverable objects
+
+  // Stripe checkout session that created this project (idempotency + audit)
+  stripeSessionId String? @unique
+
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  messages ProjectMessage[]
+  updates  ProjectUpdate[]
+
+  @@map("projects")
+}
+
+// Messages between client and team in project thread
+model ProjectMessage {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Message content
+  content   String
+  isFromAdmin Boolean @default(false) // true if from User (admin), false if from Client
+
+  // Sender info
+  userId    String?
+  user      User?    @relation("SentByUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  clientId  String?
+  client    Client?  @relation("SentByClient", fields: [clientId], references: [id], onDelete: SetNull)
+
+  // File attachments (URLs)
+  attachments String @default("") // JSON array of { name, url }
+
+  createdAt DateTime @default(now())
+
+  @@map("project_messages")
+}
+
+// Project status updates (visible to client in dashboard)
+model ProjectUpdate {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String
+  statusStage String  // "discovery", "design", "build", "launch"
+
+  // Who created this update (null for system-generated updates, e.g. post-checkout)
+  userId      String?
+  user        User?   @relation("CreatedByAdmin", fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+
+  @@map("project_updates")
+}
+
+// Email notification preferences
+model EmailPreferences {
+  id        String   @id @default(cuid())
+  clientId  String   @unique
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  notificationsEnabled Boolean @default(true)
+  digestFrequency      String  @default("daily") // "immediate", "daily", "weekly"
+  statusUpdates        Boolean @default(true)
+  messages             Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("email_preferences")
+}

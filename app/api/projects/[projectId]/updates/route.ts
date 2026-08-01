@@ -1,0 +1,165 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getCurrentSession } from '@/lib/auth';
+import { sendStatusUpdateEmail } from '@/lib/email';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  try {
+    const session = await getCurrentSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const { projectId } = await params;
+
+    // Verify project exists
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      return NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check authorization
+    if (session.type === 'client' && project.clientId !== session.clientId) {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
+    const updates = await prisma.projectUpdate.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    return NextResponse.json(
+      { success: true, updates },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Get updates error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  try {
+    const session = await getCurrentSession();
+
+    if (!session || session.type !== 'user') {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const { projectId } = await params;
+    const { title, description, statusStage } = await request.json();
+
+    if (!title || !description || !statusStage) {
+      return NextResponse.json(
+        { error: 'Title, description, and statusStage are required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify project exists
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: { client: true },
+    });
+
+    if (!project) {
+      return NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 }
+      );
+    }
+
+    // Create update
+    const update = await prisma.projectUpdate.create({
+      data: {
+        projectId,
+        title,
+        description,
+        statusStage,
+        userId: session.userId,
+      },
+      include: {
+        user: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // Update project status if statusStage provided
+    if (statusStage) {
+      const stageMap: Record<string, string> = {
+        discovery: 'discovery',
+        design: 'design',
+        build: 'build',
+        launch: 'launch',
+      };
+
+      if (stageMap[statusStage]) {
+        await prisma.project.update({
+          where: { id: projectId },
+          data: {
+            status: stageMap[statusStage],
+            statusStage: Object.keys(stageMap).indexOf(statusStage),
+          },
+        });
+      }
+    }
+
+    // Send notification email to client
+    const prefs = await prisma.emailPreferences.findUnique({
+      where: { clientId: project.clientId },
+    });
+
+    if (prefs?.notificationsEnabled && prefs?.statusUpdates) {
+      await sendStatusUpdateEmail(
+        project.client.email,
+        project.client.company,
+        project.name,
+        title,
+        description,
+        projectId
+      );
+    }
+
+    return NextResponse.json(
+      { success: true, update },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Create update error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
