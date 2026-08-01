@@ -205,6 +205,21 @@ model Lead {
   qualMotivation String? // why are they considering this now?
   qualifiedAt    DateTime? // set automatically once all 5 fields are filled
 
+  // The proposal Evan prepared, persisted so the public sign-and-pay page
+  // can reconstruct the exact same pricing/contract without re-entering it.
+  proposalBaseService  String?
+  proposalAddOns       String  @default("") // comma-separated
+  proposalClientType   String?
+  proposalTimeline     String?
+  proposalTotalPrice   Int? // cents, overrides the computed total if set
+  proposalDepositOnly  Boolean @default(false)
+
+  // Clickwrap agreement captured at the moment the client agrees to the
+  // contract on the sign-and-pay page, right before checkout.
+  agreementSignedAt DateTime?
+  agreementIp       String?
+  agreementHash     String? // sha256 of the exact contract text shown at signing
+
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 

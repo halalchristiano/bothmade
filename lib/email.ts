@@ -255,6 +255,40 @@ export async function sendPaymentLinkEmail(
 }
 
 /**
+ * Send the combined sign-and-pay link — review the proposal, agree to the
+ * contract, and pay, all in one page, instead of a separate PDF + payment
+ * link the client has to piece together themselves.
+ */
+export async function sendSignAndPayEmail(
+  toEmail: string,
+  contactName: string | null,
+  company: string,
+  signUrl: string,
+  amountLabel: string,
+  isDeposit: boolean
+): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${contactName || 'there'},</p>
+    <p>Here's everything to get ${company}'s project moving — the agreement to review and a secure place to pay ${
+      isDeposit ? `your deposit of <strong style="color:#fff;">${amountLabel}</strong>` : `<strong style="color:#fff;">${amountLabel}</strong>`
+    }, all on one page.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
+  `;
+
+  return sendEmail({
+    to: toEmail,
+    subject: `Review & confirm your Bothmade project — ${company}`,
+    html: renderShell({
+      eyebrow: 'Ready to start',
+      title: `${company} — Review & Pay`,
+      bodyHtml,
+      ctaLabel: 'Review & Pay',
+      ctaUrl: signUrl,
+    }),
+  });
+}
+
+/**
  * Send a password reset link — used by the "Forgot password?" flow for both
  * admin/team accounts and clients.
  */

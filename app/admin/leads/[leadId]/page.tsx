@@ -63,6 +63,8 @@ interface LeadDetail {
   mockupRequestedAt: string | null;
   mockupUrl: string | null;
   mockupDeliveredAt: string | null;
+  agreementSignedAt: string | null;
+  agreementIp: string | null;
   qualNeed: string | null;
   qualAuthority: string | null;
   qualBudget: string | null;
@@ -406,17 +408,17 @@ export default function LeadDetailPage() {
     setProposalError('');
     setCreatingLink(true);
     try {
-      const response = await fetch(`/api/admin/leads/${leadId}/payment-link`, {
+      const response = await fetch(`/api/admin/leads/${leadId}/proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...proposalSelection, depositOnly }),
       });
       const data = await response.json();
       if (data.success) {
-        setPaymentLinkUrl(data.url);
+        setPaymentLinkUrl(data.signUrl);
         load();
       } else {
-        setProposalError(data.error || 'Failed to create payment link');
+        setProposalError(data.error || 'Failed to prepare sign-and-pay link');
       }
     } finally {
       setCreatingLink(false);
@@ -428,14 +430,14 @@ export default function LeadDetailPage() {
     setLinkEmailStatus('');
     setEmailingLink(true);
     try {
-      const response = await fetch(`/api/admin/leads/${leadId}/payment-link`, {
+      const response = await fetch(`/api/admin/leads/${leadId}/proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...proposalSelection, depositOnly, sendEmail: true }),
       });
       const data = await response.json();
       if (data.success) {
-        setPaymentLinkUrl(data.url);
+        setPaymentLinkUrl(data.signUrl);
         if (!data.hasEmail) {
           setLinkEmailStatus('Link created, but this lead has no email on file — add one to send it directly.');
         } else if (data.emailSent) {
@@ -445,7 +447,7 @@ export default function LeadDetailPage() {
         }
         load();
       } else {
-        setProposalError(data.error || 'Failed to create payment link');
+        setProposalError(data.error || 'Failed to prepare sign-and-pay link');
       }
     } finally {
       setEmailingLink(false);
@@ -1154,7 +1156,7 @@ export default function LeadDetailPage() {
                 disabled={emailingLink || creatingLink}
                 className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
               >
-                {emailingLink ? 'Sending...' : `Email Payment Link${depositOnly ? ' (Deposit)' : ''}`}
+                {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
               </button>
               <button
                 onClick={handleCreatePaymentLink}
@@ -1192,11 +1194,18 @@ export default function LeadDetailPage() {
               </select>
             </div>
 
+            {lead.agreementSignedAt && (
+              <p className="text-xs text-emerald-300">
+                ✓ Agreed online {new Date(lead.agreementSignedAt).toLocaleString()}
+                {lead.agreementIp ? ` from ${lead.agreementIp}` : ''}
+              </p>
+            )}
+
             {linkEmailStatus && <p className="text-xs text-white/50">{linkEmailStatus}</p>}
 
             {paymentLinkUrl && (
               <div className="rounded-lg bg-white/5 border border-white/10 p-3">
-                <p className="text-xs text-white/50 mb-2">Payment link:</p>
+                <p className="text-xs text-white/50 mb-2">Sign &amp; pay link — one page: review, agree, pay:</p>
                 <div className="flex gap-2">
                   <input readOnly value={paymentLinkUrl} className="w-full px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-white/70" />
                   <button
@@ -1210,8 +1219,9 @@ export default function LeadDetailPage() {
             )}
 
             <p className="text-xs text-white/30">
-              For e-signature: download the contract, upload to Google Drive, then use your
-              Workspace Business Standard plan's "Request eSignature" on the PDF.
+              The link above handles agreement + payment in one step. Need a more formal signature
+              for a specific deal instead? Download the contract PDF and use your Google Workspace
+              "Request eSignature" on it manually.
             </p>
           </div>
         </div>
