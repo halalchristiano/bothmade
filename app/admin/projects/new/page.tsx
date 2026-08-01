@@ -4,11 +4,14 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
+  ADD_ON_REQUIRES,
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  dependentsOf,
+  expandAddOnDependencies,
   formatCents,
   isAddOnKey,
   isBaseService,
@@ -76,7 +79,13 @@ function NewProjectForm() {
   );
 
   const toggleAddOn = (key: AddOnKey) => {
-    setAddOns((prev) => (prev.includes(key) ? prev.filter((a) => a !== key) : [...prev, key]));
+    setAddOns((prev) => {
+      if (prev.includes(key)) {
+        const toRemove = new Set([key, ...dependentsOf(key, prev)]);
+        return prev.filter((a) => !toRemove.has(a));
+      }
+      return expandAddOnDependencies([...prev, key]);
+    });
   };
 
   const handleSubmit = async () => {

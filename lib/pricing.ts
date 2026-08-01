@@ -266,6 +266,61 @@ export const ADD_ONS: Record<
   },
 };
 
+/**
+ * Some add-ons don't function on their own — e-commerce needs somewhere to
+ * store orders, bookings need somewhere to store availability, etc. This maps
+ * each such add-on to what it silently depends on, so the UI can auto-select
+ * the dependency and explain why, instead of letting someone buy a feature
+ * that can't actually be built without also buying its foundation.
+ */
+export const ADD_ON_REQUIRES: Partial<Record<AddOnKey, AddOnKey[]>> = {
+  ecommerce: ['custom-backend'],
+  booking: ['custom-backend'],
+  subscriptions: ['custom-backend', 'user-accounts'],
+  'push-notifications': ['custom-backend'],
+  'admin-dashboard': ['custom-backend'],
+};
+
+/**
+ * Given the add-ons someone has checked, returns the full set including
+ * anything those add-ons silently require (transitively). Pure and
+ * order-independent — safe to call on every render.
+ */
+export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
+  const result = new Set<AddOnKey>(selected);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const key of Array.from(result)) {
+      const requires = ADD_ON_REQUIRES[key];
+      if (!requires) continue;
+      for (const req of requires) {
+        if (!result.has(req)) {
+          result.add(req);
+          grew = true;
+        }
+      }
+    }
+  }
+  return Array.from(result);
+}
+
+/**
+ * Every add-on that depends (directly or transitively) on `key` — used so
+ * unchecking a foundation like "Custom Backend" also clears whatever was
+ * silently relying on it, rather than leaving the selection inconsistent.
+ */
+export function dependentsOf(key: AddOnKey, selected: AddOnKey[]): AddOnKey[] {
+  const dependents: AddOnKey[] = [];
+  for (const candidate of selected) {
+    const closure = expandAddOnDependencies([candidate]);
+    if (closure.includes(key) && candidate !== key) {
+      dependents.push(candidate);
+    }
+  }
+  return dependents;
+}
+
 export const CLIENT_TYPES: Record<
   ClientType,
   { label: string; description: string; multiplier: number }

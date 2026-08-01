@@ -14,11 +14,14 @@ import {
   type PainPointKey,
 } from '@/lib/leads';
 import {
+  ADD_ON_REQUIRES,
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  dependentsOf,
+  expandAddOnDependencies,
   formatCents,
   type AddOnKey,
   type BaseService,
@@ -95,7 +98,13 @@ export default function LeadDetailPage() {
   });
 
   const toggleProposalAddOn = (key: AddOnKey) => {
-    setProposalAddOns((prev) => (prev.includes(key) ? prev.filter((a) => a !== key) : [...prev, key]));
+    setProposalAddOns((prev) => {
+      if (prev.includes(key)) {
+        const toRemove = new Set([key, ...dependentsOf(key, prev)]);
+        return prev.filter((a) => !toRemove.has(a));
+      }
+      return expandAddOnDependencies([...prev, key]);
+    });
   };
 
   const inputClass =

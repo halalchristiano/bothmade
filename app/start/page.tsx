@@ -6,11 +6,14 @@ import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
 import {
   ADD_ON_CATEGORIES,
+  ADD_ON_REQUIRES,
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  dependentsOf,
+  expandAddOnDependencies,
   formatCents,
   type AddOnCategory,
   type AddOnKey,
@@ -51,9 +54,17 @@ export default function StartPage() {
   );
 
   const toggleAddOn = (key: AddOnKey) => {
-    setAddOns((prev) =>
-      prev.includes(key) ? prev.filter((a) => a !== key) : [...prev, key]
-    );
+    setAddOns((prev) => {
+      if (prev.includes(key)) {
+        // Unchecking a foundation (e.g. Custom Backend) also clears anything
+        // that was silently relying on it — otherwise the selection would
+        // claim to include e.g. E-commerce with no backend to run it on.
+        const toRemove = new Set([key, ...dependentsOf(key, prev)]);
+        return prev.filter((a) => !toRemove.has(a));
+      }
+      // Checking something pulls in whatever it depends on automatically.
+      return expandAddOnDependencies([...prev, key]);
+    });
   };
 
   const handleCheckout = async () => {
@@ -180,14 +191,19 @@ export default function StartPage() {
                   <div className="grid md:grid-cols-2 gap-4">
                     {keys.map((key) => {
                       const addOn = ADD_ONS[key];
+                      const isChecked = addOns.includes(key);
+                      const requires = ADD_ON_REQUIRES[key];
+                      const requiredBy = isChecked
+                        ? dependentsOf(key, addOns).map((k) => ADD_ONS[k].label)
+                        : [];
                       return (
                         <label
                           key={key}
-                          className={`${cardClass(addOns.includes(key))} flex items-start gap-3 cursor-pointer`}
+                          className={`${cardClass(isChecked)} flex items-start gap-3 cursor-pointer`}
                         >
                           <input
                             type="checkbox"
-                            checked={addOns.includes(key)}
+                            checked={isChecked}
                             onChange={() => toggleAddOn(key)}
                             className="mt-1"
                           />
@@ -195,6 +211,17 @@ export default function StartPage() {
                             <h4 className="font-semibold mb-1">{addOn.label}</h4>
                             <p className="text-sm mb-2 text-white/50">{addOn.description}</p>
                             <p className="text-sm font-medium">+{formatCents(addOn.price)}</p>
+                            {isChecked && requires && (
+                              <p className="text-xs text-sky-300 mt-2 pt-2 border-t border-white/10">
+                                Needs {requires.map((r) => ADD_ONS[r].label).join(' + ')} to actually work —
+                                added automatically.
+                              </p>
+                            )}
+                            {isChecked && requiredBy.length > 0 && (
+                              <p className="text-xs text-white/40 mt-2 pt-2 border-t border-white/10">
+                                Included because you selected {requiredBy.join(', ')}.
+                              </p>
+                            )}
                           </div>
                         </label>
                       );
