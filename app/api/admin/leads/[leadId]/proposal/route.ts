@@ -10,6 +10,7 @@ import {
   isBaseService,
   isClientType,
   isTimelineKey,
+  minAllowedPrice,
   type AddOnKey,
 } from '@/lib/pricing';
 import { sendSignAndPayEmail } from '@/lib/email';
@@ -52,6 +53,23 @@ export async function POST(
     }
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
+
+    if (
+      typeof totalPriceOverride === 'number' &&
+      totalPriceOverride > 0 &&
+      session.role === 'sales' &&
+      Math.round(totalPriceOverride) < minAllowedPrice(breakdown.totalPrice)
+    ) {
+      return NextResponse.json(
+        {
+          error: `That's below what you're authorized to quote for this scope. Minimum is ${formatCents(
+            minAllowedPrice(breakdown.totalPrice)
+          )} (calculated: ${formatCents(breakdown.totalPrice)}). Ask Kiana if this deal needs a deeper discount.`,
+        },
+        { status: 403 }
+      );
+    }
+
     const totalPrice =
       typeof totalPriceOverride === 'number' && totalPriceOverride > 0
         ? Math.round(totalPriceOverride)

@@ -457,6 +457,18 @@ export function calculatePrice(selection: PricingSelection): PricingBreakdown {
 /** Standard deposit percentage quoted in the contract template. */
 export const DEPOSIT_PERCENT = 50;
 
+/**
+ * How far below the calculated price a manual override is allowed to go —
+ * "may discount, may not gut the price." Applied wherever a totalPriceOverride
+ * is accepted (manual project creation, sign-and-pay proposals), so a rushed
+ * quote can't accidentally undercut the business by half.
+ */
+export const MAX_DISCOUNT_PERCENT = 15;
+
+export function minAllowedPrice(calculatedTotal: number): number {
+  return Math.round(calculatedTotal * (1 - MAX_DISCOUNT_PERCENT / 100));
+}
+
 export function depositAmount(totalPrice: number): number {
   return Math.round((totalPrice * DEPOSIT_PERCENT) / 100);
 }

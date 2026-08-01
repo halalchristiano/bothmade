@@ -17,6 +17,7 @@ import {
   isBaseService,
   isClientType,
   isTimelineKey,
+  minAllowedPrice,
   type AddOnKey,
   type BaseService,
   type ClientType,
@@ -46,6 +47,16 @@ function NewProjectForm() {
   const [timeline, setTimeline] = useState<TimelineKey>('standard');
   const [priceOverride, setPriceOverride] = useState('');
   const [convertedFromLeadId, setConvertedFromLeadId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.type === 'user') setRole(data.user?.role || null);
+      })
+      .catch(() => {});
+  }, []);
 
   // Pre-fill from a converted lead, e.g. /admin/projects/new?company=...&baseService=...
   useEffect(() => {
@@ -258,6 +269,11 @@ function NewProjectForm() {
               placeholder={String(breakdown.totalPrice / 100)}
               className={inputClass}
             />
+            {role === 'sales' && (
+              <p className="text-xs text-white/30 mt-1.5">
+                You can discount down to {formatCents(minAllowedPrice(breakdown.totalPrice))} without approval. Lower needs Kiana.
+              </p>
+            )}
           </div>
         </div>
 

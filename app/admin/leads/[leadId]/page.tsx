@@ -690,7 +690,7 @@ export default function LeadDetailPage() {
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-xl font-bold mb-4">Log Activity</h2>
 
-            <div className="flex gap-2 mb-3">
+            <div className="flex flex-wrap gap-2 mb-3">
               {LEAD_ACTIVITY_TYPES.map((t) => (
                 <button
                   key={t}
