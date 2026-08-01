@@ -30,6 +30,78 @@ const ADD_ONS_BY_CATEGORY = Object.entries(ADD_ONS).reduce(
   {} as Record<AddOnCategory, AddOnKey[]>
 );
 
+const FAQ_ITEMS: Array<{ q: string; a: string }> = [
+  {
+    q: "What's the actual difference between a Website and a Web App?",
+    a: 'A Website is something people visit — no login, no account, just pages to read and a way to contact you (portfolios, restaurants, landing pages, marketing sites). A Web App is something people log into and use — their own account, their own data, real functionality like a dashboard or booking system. The simple test: if anyone ever needs to create an account or log in, you need a Web App, not a Website. Picking the wrong one usually means re-scoping later, so when in doubt, tell us what the end user actually does with it and we\'ll confirm the right fit before you pay anything.',
+  },
+  {
+    q: "I'm not sure which add-ons I actually need — what happens if I guess wrong?",
+    a: "Nothing locks in until Discovery. Add-ons on this form set your initial price so there are no surprises, but once we kick off we'll walk through your actual requirements in detail, and anything you add or remove becomes a Change Order — scoped and quoted separately, never silently absorbed or silently charged. If you're unsure, it's completely fine to under-select here and adjust after our first call.",
+  },
+  {
+    q: 'Why did checking one add-on automatically check another one?',
+    a: 'Some features literally can\'t function without another one underneath them — e-commerce needs somewhere to store orders, for example, so it requires a Custom Backend. When that happens we auto-select the dependency and label it "added automatically" so you\'re never quoted for something that wouldn\'t actually work as built.',
+  },
+  {
+    q: 'Do I have to pay the full amount upfront?',
+    a: "No. Standard terms are a 50% deposit to begin Discovery, with the remaining balance due once Build is complete and before Launch. For larger engagements we can also split the balance into milestone payments — ask during Discovery if you'd prefer that structure.",
+  },
+  {
+    q: 'What if I just want to talk it through before paying anything?',
+    a: 'Use the "Not ready to pay — just send us your picks" option below the checkout button. It sends your exact configuration to our team with zero payment and zero commitment, and we\'ll follow up to talk through scope, answer questions, or adjust the plan before anything is charged.',
+  },
+  {
+    q: 'What happens right after I pay the deposit?',
+    a: "You'll get a login to your own client dashboard within one business day, along with a welcome email. From there we kick off Discovery — a short requirements process to confirm exactly what's being built — before moving into Design, then Build, then Launch. You can message us and track progress the whole way through your dashboard.",
+  },
+  {
+    q: 'Is this a one-time price, or a subscription?',
+    a: 'The base service and add-ons above are a one-time project fee. The exception is anything under "Ongoing Care" (Maintenance Plan, Growth Plan, Managed Hosting, Onboarding & Support Retainer) — those are month-to-month, billed after the first month (which is included in your total), and cancellable any time with 30 days notice.',
+  },
+  {
+    q: 'What if my timeline runs long, or I want a refund?',
+    a: "Every project includes a written agreement covering exactly this — what counts as a delay, what doesn't, and when a refund actually applies (for example, if we go quiet on your project for an extended period without explanation). A missed estimate alone isn't grounds for a refund, since most schedule shifts come from feedback cycles, not idle time on our end — but you're never left holding the bag if we drop the ball. You'll get the full agreement to review before paying anything beyond the deposit.",
+  },
+  {
+    q: 'Do I own the final code and designs?',
+    a: "Yes — full ownership transfers to you once the project is paid in full. Before final payment, the work stays the Agency's property (standard practice), but you can review everything via staging links throughout the build. The only exception is our own general-purpose tools/frameworks used to build it (not specific to your project), which we retain rights to but license to you as part of the delivered product.",
+  },
+  {
+    q: 'Why do enterprise/larger organizations cost more for the same service?',
+    a: "The Client Type adjustment isn't about the feature list changing — it reflects the real coordination overhead larger organizations typically need: more stakeholder review cycles, more formal sign-off chains, more documentation of decisions. If that overhead doesn't apply to you, pick the tier that actually matches how your organization operates.",
+  },
+];
+
+function FaqAccordion() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  return (
+    <div className="space-y-3">
+      {FAQ_ITEMS.map((item, i) => {
+        const open = openIndex === i;
+        return (
+          <div
+            key={i}
+            className={`rounded-xl border transition-colors ${
+              open ? 'border-sky-400/30 bg-white/[0.04]' : 'border-white/10 bg-white/[0.02]'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setOpenIndex(open ? null : i)}
+              className="w-full text-left px-5 py-4 flex justify-between items-center gap-4"
+            >
+              <span className="font-medium">{item.q}</span>
+              <span className={`text-white/40 shrink-0 transition-transform ${open ? 'rotate-45' : ''}`}>+</span>
+            </button>
+            {open && <p className="px-5 pb-4 text-sm text-white/55 leading-relaxed">{item.a}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function StartPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -156,7 +228,25 @@ export default function StartPage() {
 
         {/* Step 1: Base service */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6">1. What are we building?</h2>
+          <h2 className="text-2xl font-bold mb-3">1. What are we building?</h2>
+
+          <div className="rounded-xl border border-sky-400/20 bg-sky-400/[0.04] p-5 mb-6">
+            <p className="text-sm font-semibold text-sky-300 mb-2">Website vs. Web App — what's the actual difference?</p>
+            <div className="grid sm:grid-cols-2 gap-4 text-sm text-white/60">
+              <div>
+                <p className="font-medium text-white/80 mb-1">Website</p>
+                <p>People <em>visit</em> it. No login, no account, nothing to "use" — just read, look, and get in touch. Think: a restaurant's site, a portfolio, a landing page.</p>
+              </div>
+              <div>
+                <p className="font-medium text-white/80 mb-1">Web App</p>
+                <p>People <em>log into</em> it and use it. Their own account, their own data, real functionality — a dashboard, a booking system, a tool that does something.</p>
+              </div>
+            </div>
+            <p className="text-xs text-white/40 mt-3">
+              Simple test: will anyone need to create an account or log in? If yes, it's a Web App, not a Website — pick accordingly, since it changes what gets built underneath.
+            </p>
+          </div>
+
           <div className="grid md:grid-cols-3 gap-4">
             {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
               ([key, service]) => (
@@ -167,7 +257,8 @@ export default function StartPage() {
                   className={cardClass(baseService === key)}
                 >
                   <h3 className="font-semibold mb-1">{service.label}</h3>
-                  <p className="text-sm mb-3 text-white/50">{service.description}</p>
+                  <p className="text-sm mb-2 text-white/50">{service.description}</p>
+                  <p className="text-xs text-white/35 mb-3">{service.bestFor}</p>
                   <p className="text-sm font-medium">{formatCents(service.price)}</p>
                 </button>
               )
@@ -305,6 +396,15 @@ export default function StartPage() {
             <span className="text-xl font-bold">Total</span>
             <span className="text-3xl font-bold">{formatCents(breakdown.totalPrice)}</span>
           </div>
+        </section>
+
+        {/* FAQ */}
+        <section className="mb-12">
+          <h2 className="text-2xl font-bold mb-2">Frequently Asked Questions</h2>
+          <p className="text-white/40 text-sm mb-6">
+            The questions we get most about this form, pricing, and how the project actually runs.
+          </p>
+          <FaqAccordion />
         </section>
 
         {/* Contact form */}

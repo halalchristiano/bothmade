@@ -56,36 +56,42 @@ export type TimelineKey = 'flexible' | 'standard' | 'rush';
 
 export const BASE_SERVICES: Record<
   BaseService,
-  { label: string; description: string; price: number }
+  { label: string; description: string; bestFor: string; price: number }
 > = {
   website: {
     label: 'Website',
-    description: 'Marketing site or storefront, custom-designed and built.',
+    description: 'A site people visit to read, look, and get in touch — no accounts, no logging in, nothing to "use."',
+    bestFor: 'Marketing sites, portfolios, restaurants, landing pages, storefronts. If a visitor never needs to log in, this is you.',
     price: 300000,
   },
   'web-app': {
     label: 'Web App',
-    description: 'A full web application with accounts, data, and logic.',
+    description: 'A tool people log into and actually use — their own account, their own data, real functionality that does something.',
+    bestFor: 'Dashboards, booking systems, internal tools, anything with user accounts, saved data, or logic beyond "here\'s some information."',
     price: 800000,
   },
   'ios-app': {
     label: 'iOS App',
-    description: 'A native iPhone and iPad app.',
+    description: 'A native iPhone and iPad app, downloaded from the App Store.',
+    bestFor: 'Anything that needs to live on someone\'s home screen, use the camera/notifications/offline storage, or just feel native on iPhone.',
     price: 1000000,
   },
   'macos-app': {
     label: 'macOS App',
-    description: 'A native Mac app.',
+    description: 'A native Mac app, distributed outside or through the Mac App Store.',
+    bestFor: 'Desktop tools that need deep OS integration — menu bar apps, file system access, background processes.',
     price: 1000000,
   },
   visionos: {
     label: 'Vision Pro App',
-    description: 'A native visionOS spatial computing app.',
+    description: 'A native visionOS spatial computing app for Apple Vision Pro.',
+    bestFor: 'Spatial/3D experiences that only make sense in a headset — not a port of an existing app.',
     price: 1500000,
   },
   multi: {
     label: 'Multi-Platform',
-    description: 'Two or more of the above, built together as one system.',
+    description: 'Two or more of the above, built together as one system with shared design and backend.',
+    bestFor: 'You need, say, a web app AND an iOS app that share the same accounts and data.',
     price: 2000000,
   },
 };
