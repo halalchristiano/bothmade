@@ -123,7 +123,25 @@ export default function AdminSettingsPage() {
               </p>
             </div>
 
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error && (
+              <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2.5">
+                <p className="text-xs text-red-300">{error}</p>
+                <p className="text-xs text-white/40 mt-2">
+                  On a bothmade.studio Google Workspace account? An admin has to turn on app passwords for the
+                  organization first —{' '}
+                  <a
+                    href="https://admin.google.com/ac/security/lsa"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sky-300 hover:underline inline-flex items-center gap-1"
+                  >
+                    open that setting in the Admin Console <ExternalLink size={10} />
+                  </a>
+                  , enable "Allow users to manage their access to less secure apps" and app passwords for this user
+                  (2-Step Verification must be on first), then try connecting again.
+                </p>
+              </div>
+            )}
 
             <button
               onClick={handleConnect}
