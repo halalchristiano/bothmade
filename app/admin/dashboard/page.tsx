@@ -24,6 +24,7 @@ import {
   MessageCircle,
   Megaphone,
   ArrowRight,
+  Palette,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { Card, CardHeader, StatCard, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
@@ -62,6 +63,7 @@ interface OpsStats {
   overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
   projectsAwaitingReply: Array<{ id: string; name: string; company: string }>;
   awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
+  pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
   revenueThisMonth: number;
   revenueLastMonth: number;
   revenueHistory: Array<{ label: string; value: number }>;
@@ -367,7 +369,76 @@ function BroadcastComposer() {
   );
 }
 
+function MockupRequestRow({
+  request,
+  onDelivered,
+}: {
+  request: { id: string; company: string; mockupRequestedAt: string | null };
+  onDelivered: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!url.trim()) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/admin/leads/${request.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mockupUrl: url.trim() }),
+      });
+      setUrl('');
+      setOpen(false);
+      onDelivered();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/10 px-3 py-2.5">
+      <div className="flex justify-between items-center gap-2">
+        <Link href={`/admin/leads/${request.id}`} className="text-sm font-medium hover:underline">
+          {request.company}
+        </Link>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-white/30 whitespace-nowrap">
+            {request.mockupRequestedAt ? new Date(request.mockupRequestedAt).toLocaleDateString() : ''}
+          </span>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="text-xs px-2.5 py-1 rounded-lg border border-white/20 hover:bg-white/5 transition-colors whitespace-nowrap"
+          >
+            {open ? 'Cancel' : 'Add Link'}
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="flex gap-2 mt-2">
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Paste mockup link..."
+            autoFocus
+            className="flex-1 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+          />
+          <button
+            onClick={handleSave}
+            disabled={saving || !url.trim()}
+            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+          >
+            {saving ? 'Saving...' : 'Deliver'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
+  const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
   const revenueTrend =
     stats.revenueLastMonth > 0
       ? Math.round(((stats.revenueThisMonth - stats.revenueLastMonth) / stats.revenueLastMonth) * 100)
@@ -383,6 +454,21 @@ function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
         </div>
         <BroadcastComposer />
       </div>
+
+      {pendingMockups.length > 0 && (
+        <Card className="p-6 mb-6" glow="amber">
+          <CardHeader icon={Palette} tone="amber" title="Mockup Requests" subtitle="Evan's waiting on these" />
+          <div className="space-y-2">
+            {pendingMockups.map((r) => (
+              <MockupRequestRow
+                key={r.id}
+                request={r}
+                onDelivered={() => setPendingMockups((prev) => prev.filter((p) => p.id !== r.id))}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard icon={FolderKanban} label="Active Projects" value={String(stats.activeProjectCount)} tone="sky" />

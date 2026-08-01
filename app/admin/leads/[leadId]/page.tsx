@@ -57,6 +57,10 @@ interface LeadDetail {
   contractStatus: 'not_sent' | 'sent' | 'signed';
   lostReason: string | null;
   nextFollowUpAt: string | null;
+  mockupRequested: boolean;
+  mockupRequestedAt: string | null;
+  mockupUrl: string | null;
+  mockupDeliveredAt: string | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -197,6 +201,40 @@ export default function LeadDetailPage() {
       body: JSON.stringify({ status }),
     });
     load();
+  };
+
+  const [requestingMockup, setRequestingMockup] = useState(false);
+  const [mockupLinkDraft, setMockupLinkDraft] = useState('');
+  const [deliveringMockup, setDeliveringMockup] = useState(false);
+
+  const handleRequestMockup = async () => {
+    setRequestingMockup(true);
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mockupRequested: true }),
+      });
+      load();
+    } finally {
+      setRequestingMockup(false);
+    }
+  };
+
+  const handleDeliverMockup = async () => {
+    if (!mockupLinkDraft.trim()) return;
+    setDeliveringMockup(true);
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mockupUrl: mockupLinkDraft.trim() }),
+      });
+      setMockupLinkDraft('');
+      load();
+    } finally {
+      setDeliveringMockup(false);
+    }
   };
 
   const handleConfirmLost = async (reason: string) => {
@@ -660,6 +698,69 @@ export default function LeadDetailPage() {
             >
               {loggingActivity ? 'Saving...' : 'Log Activity'}
             </button>
+          </div>
+
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+            <h2 className="text-lg font-bold mb-1">Mockup</h2>
+            {lead.mockupUrl ? (
+              <>
+                <p className="text-xs text-emerald-300 mb-3">
+                  Delivered {lead.mockupDeliveredAt ? new Date(lead.mockupDeliveredAt).toLocaleDateString() : ''} — ready to send to the client.
+                </p>
+                <div className="flex gap-2 mb-2">
+                  <input readOnly value={lead.mockupUrl} className={`${inputClass} text-sm`} />
+                  <a
+                    href={lead.mockupUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
+                  >
+                    Open
+                  </a>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(lead.mockupUrl!)}
+                    className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="text-xs text-white/30">Now's the time to call, email, or follow up with this in hand.</p>
+              </>
+            ) : lead.mockupRequested ? (
+              <>
+                <p className="text-xs text-amber-300 mb-3">
+                  Requested {lead.mockupRequestedAt ? new Date(lead.mockupRequestedAt).toLocaleDateString() : ''} — waiting on the team.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={mockupLinkDraft}
+                    onChange={(e) => setMockupLinkDraft(e.target.value)}
+                    placeholder="Paste the finished mockup link here once it's ready..."
+                    className={`${inputClass} text-sm`}
+                  />
+                  <button
+                    onClick={handleDeliverMockup}
+                    disabled={deliveringMockup || !mockupLinkDraft.trim()}
+                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-colors whitespace-nowrap"
+                  >
+                    {deliveringMockup ? 'Saving...' : 'Mark Delivered'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-white/40 mb-3">
+                  Need a visual to show this lead? Request one and it'll flag the team until it's ready.
+                </p>
+                <button
+                  onClick={handleRequestMockup}
+                  disabled={requestingMockup}
+                  className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 disabled:opacity-50 transition-colors"
+                >
+                  {requestingMockup ? 'Requesting...' : '🎨 Request Mockup'}
+                </button>
+              </>
+            )}
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">

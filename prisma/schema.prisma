@@ -183,6 +183,11 @@ model Lead {
   nextFollowUpAt DateTime? // self-set reminder date for the next touch
   contractStatus String    @default("not_sent") // "not_sent", "sent", "signed"
 
+  mockupRequested   Boolean   @default(false) // Evan asking Kiana to put together a mockup for this lead
+  mockupRequestedAt DateTime?
+  mockupUrl         String?   // link to the finished mockup, once delivered
+  mockupDeliveredAt DateTime?
+
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 

@@ -81,6 +81,13 @@ export async function GET() {
       select: { id: true, company: true, updatedAt: true },
     });
 
+    const pendingMockups = await prisma.lead.findMany({
+      where: { mockupRequested: true, mockupUrl: null },
+      orderBy: { mockupRequestedAt: 'asc' },
+      take: 10,
+      select: { id: true, company: true, mockupRequestedAt: true },
+    });
+
     const atRiskProjects = activeProjects
       .filter((p) => p.updatedAt < staleThreshold)
       .map((p) => ({
@@ -129,6 +136,7 @@ export async function GET() {
           overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
+          pendingMockups: pendingMockups.map((l) => ({ id: l.id, company: l.company, mockupRequestedAt: l.mockupRequestedAt })),
           revenueThisMonth,
           revenueLastMonth,
           revenueHistory,

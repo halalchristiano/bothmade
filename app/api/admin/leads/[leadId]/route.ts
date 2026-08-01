@@ -64,6 +64,8 @@ export async function PATCH(
       lostReason,
       nextFollowUpAt,
       contractStatus,
+      mockupRequested,
+      mockupUrl,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -71,6 +73,11 @@ export async function PATCH(
     }
     if (contractStatus !== undefined && !['not_sent', 'sent', 'signed'].includes(contractStatus)) {
       return NextResponse.json({ error: 'Invalid contract status' }, { status: 400 });
+    }
+
+    const existing = await prisma.lead.findUnique({ where: { id: leadId } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
     const lead = await prisma.lead.update({
@@ -89,8 +96,39 @@ export async function PATCH(
         lostReason: lostReason !== undefined ? lostReason : undefined,
         nextFollowUpAt: nextFollowUpAt !== undefined ? (nextFollowUpAt ? new Date(nextFollowUpAt) : null) : undefined,
         contractStatus: contractStatus !== undefined ? contractStatus : undefined,
+        mockupRequested: mockupRequested !== undefined ? mockupRequested : undefined,
+        mockupRequestedAt: mockupRequested === true && !existing.mockupRequested ? new Date() : undefined,
+        mockupUrl: mockupUrl !== undefined ? mockupUrl : undefined,
+        mockupDeliveredAt: mockupUrl !== undefined && mockupUrl ? new Date() : undefined,
       },
     });
+
+    // Notify the rest of the team when a mockup is requested or delivered —
+    // this is the actual handoff moment ("I need a mockup" / "here's the link").
+    if (mockupRequested === true && !existing.mockupRequested) {
+      await prisma.teamMessage.create({
+        data: {
+          content: `🎨 Mockup requested for ${lead.company}`,
+          fromUserId: session.userId,
+          relatedLeadId: leadId,
+          urgent: true,
+        },
+      });
+    }
+    if (mockupUrl !== undefined && mockupUrl && !existing.mockupUrl) {
+      await prisma.teamMessage.updateMany({
+        where: { relatedLeadId: leadId, urgent: true, resolved: false },
+        data: { resolved: true },
+      });
+      await prisma.teamMessage.create({
+        data: {
+          content: `✅ Mockup ready for ${lead.company}: ${mockupUrl}`,
+          fromUserId: session.userId,
+          relatedLeadId: leadId,
+          urgent: false,
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, lead }, { status: 200 });
   } catch (error) {
