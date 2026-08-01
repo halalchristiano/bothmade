@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2 } from 'lucide-react';
-import { Card, PageIn } from '@/components/admin/ui';
+import { Card, PageIn, PageTitle } from '@/components/admin/ui';
 
 interface ClientRow {
   id: string;
@@ -81,12 +81,7 @@ export default function AdminClientsPage() {
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-400/25 to-purple-500/10 text-purple-300 ring-1 ring-purple-400/20">
-            <Building2 size={17} />
-          </span>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Clients</h1>
-        </div>
+        <PageTitle icon={Building2} title="Clients" tone="purple" />
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <input
             type="text"

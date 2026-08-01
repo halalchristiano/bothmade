@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FolderKanban, Plus } from 'lucide-react';
-import { Card, PageIn } from '@/components/admin/ui';
+import { Card, PageIn, PageTitle } from '@/components/admin/ui';
 
 interface ProjectRow {
   id: string;
@@ -65,12 +65,7 @@ export default function AdminProjectsPage() {
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400/25 to-sky-500/10 text-sky-300 ring-1 ring-sky-400/20">
-            <FolderKanban size={17} />
-          </span>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Projects</h1>
-        </div>
+        <PageTitle icon={FolderKanban} title="Projects" />
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}

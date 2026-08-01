@@ -7,7 +7,8 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus, CheckCircle2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
-import { PageIn } from '@/components/admin/ui';
+import { PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
+import { KanbanSquare } from 'lucide-react';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
@@ -122,10 +123,19 @@ export default function PipelinePage() {
 
   return (
     <PageIn className="px-4 md:px-8 py-6 md:py-10">
+      <div className="mb-5">
+        <ViewTabs
+          tabs={[
+            { href: '/admin/leads', label: 'List', active: false },
+            { href: '/admin/pipeline', label: 'Board', active: true },
+          ]}
+        />
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-1">Pipeline</h1>
-          <p className="text-white/40">Every lead, by stage. Use the arrows to move a deal forward or back.</p>
+          <PageTitle icon={KanbanSquare} title="Pipeline" />
+          <p className="text-white/40 mt-1">Every lead, by stage. Use the arrows to move a deal forward or back.</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}

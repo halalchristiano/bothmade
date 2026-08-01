@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DollarSign, TrendingUp, Percent, Target, BarChart3, Users } from 'lucide-react';
 import { formatCents } from '@/lib/pricing';
-import { Card, CardHeader, StatCard, PageIn, MiniBarChart } from '@/components/admin/ui';
+import { Card, CardHeader, StatRow, PageIn, PageTitle, MiniBarChart } from '@/components/admin/ui';
 
 interface Analytics {
   revenueByMonth: Record<string, number>;
@@ -60,18 +60,19 @@ export default function AdminAnalyticsPage() {
 
   return (
     <PageIn className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex items-center gap-3 mb-8">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400/25 to-sky-500/10 text-sky-300 ring-1 ring-sky-400/20">
-          <BarChart3 size={17} />
-        </span>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Analytics</h1>
+      <div className="mb-8">
+        <PageTitle icon={BarChart3} title="Analytics" />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard icon={DollarSign} label="Revenue (6mo)" value={formatCents(data.totalRevenue)} tone="emerald" accent />
-        <StatCard icon={TrendingUp} label="Pipeline Value" value={formatCents(data.pipelineValue)} tone="sky" />
-        <StatCard icon={Percent} label="Conversion Rate" value={`${data.conversionRate.toFixed(0)}%`} tone="purple" />
-        <StatCard icon={Target} label="Avg. Deal Size" value={formatCents(data.avgDealSize)} tone="amber" />
+      <div className="mb-6">
+        <StatRow
+          items={[
+            { icon: DollarSign, label: 'Revenue (6mo)', value: formatCents(data.totalRevenue), tone: 'emerald', accent: true },
+            { icon: TrendingUp, label: 'Pipeline Value', value: formatCents(data.pipelineValue), tone: 'sky' },
+            { icon: Percent, label: 'Conversion Rate', value: `${data.conversionRate.toFixed(0)}%`, tone: 'purple' },
+            { icon: Target, label: 'Avg. Deal Size', value: formatCents(data.avgDealSize), tone: 'amber' },
+          ]}
+        />
       </div>
 
       <div className="grid md:grid-cols-2 gap-5">

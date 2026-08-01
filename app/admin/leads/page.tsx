@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
-import { Card, PageIn } from '@/components/admin/ui';
+import { Card, PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
@@ -173,13 +173,17 @@ export default function AdminLeadsPage() {
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="mb-5">
+        <ViewTabs
+          tabs={[
+            { href: '/admin/leads', label: 'List', active: true },
+            { href: '/admin/pipeline', label: 'Board', active: false },
+          ]}
+        />
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400/25 to-sky-500/10 text-sky-300 ring-1 ring-sky-400/20">
-            <Users size={17} />
-          </span>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Leads</h1>
-        </div>
+        <PageTitle icon={Users} title="Leads" />
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}

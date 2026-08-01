@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
-import { Card, CardHeader, StatCard, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
+import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 
@@ -133,7 +133,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
         tone="amber"
         title="Do This Next"
         subtitle="Every lead here needs a touch, ranked by urgency"
-        action={actions.length > 0 ? <Badge tone={actions.length > 5 ? 'red' : 'amber'}>{actions.length}</Badge> : undefined}
+        action={actions.length > 0 ? <Badge solid tone={actions.length > 5 ? 'red' : 'amber'}>{actions.length}</Badge> : undefined}
       />
       {actions.length === 0 ? (
         <EmptyState icon={Flame} text="Nothing urgent — you're caught up." />
@@ -242,11 +242,15 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
         <p className="text-white/40">Here's where your pipeline stands.</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard icon={TrendingUp} label="Pipeline Value" value={formatCents(stats.totalPipelineValue)} tone="sky" />
-        <StatCard icon={Target} label="Weighted Forecast" value={formatCents(stats.weightedForecast)} tone="purple" accent />
-        <StatCard icon={Trophy} label="Won This Week" value={formatCents(stats.thisWeek.revenue)} tone="emerald" />
-        <StatCard icon={Percent} label="Conversion Rate" value={`${Math.round(stats.conversionRate * 100)}%`} tone="amber" />
+      <div className="mb-6">
+        <StatRow
+          items={[
+            { icon: TrendingUp, label: 'Pipeline Value', value: formatCents(stats.totalPipelineValue), tone: 'sky' },
+            { icon: Target, label: 'Weighted Forecast', value: formatCents(stats.weightedForecast), tone: 'purple', accent: true },
+            { icon: Trophy, label: 'Won This Week', value: formatCents(stats.thisWeek.revenue), tone: 'emerald' },
+            { icon: Percent, label: 'Conversion Rate', value: `${Math.round(stats.conversionRate * 100)}%`, tone: 'amber' },
+          ]}
+        />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
@@ -580,19 +584,23 @@ function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard icon={FolderKanban} label="Active Projects" value={String(stats.activeProjectCount)} tone="sky" />
-        <StatCard
-          icon={DollarSign}
-          label="Revenue This Month"
-          value={formatCents(stats.revenueThisMonth)}
-          tone="emerald"
-          accent
-          trend={revenueTrend !== undefined ? { value: revenueTrend } : undefined}
-          note={`Your cut (${Math.round(COMMISSION_RATE * 100)}%): ${formatCents(Math.round(stats.revenueThisMonth * COMMISSION_RATE))}`}
+      <div className="mb-6">
+        <StatRow
+          items={[
+            { icon: FolderKanban, label: 'Active Projects', value: String(stats.activeProjectCount), tone: 'sky' },
+            {
+              icon: DollarSign,
+              label: 'Revenue This Month',
+              value: formatCents(stats.revenueThisMonth),
+              tone: 'emerald',
+              accent: true,
+              trend: revenueTrend !== undefined ? { value: revenueTrend } : undefined,
+              note: `Your cut (${Math.round(COMMISSION_RATE * 100)}%): ${formatCents(Math.round(stats.revenueThisMonth * COMMISSION_RATE))}`,
+            },
+            { icon: UserPlus, label: 'New Clients This Week', value: String(stats.newClientsThisWeek), tone: 'purple' },
+            { icon: FileSignature, label: 'Awaiting Signature', value: String(stats.awaitingSignature.length), tone: 'amber' },
+          ]}
         />
-        <StatCard icon={UserPlus} label="New Clients This Week" value={String(stats.newClientsThisWeek)} tone="purple" />
-        <StatCard icon={FileSignature} label="Awaiting Signature" value={String(stats.awaitingSignature.length)} tone="amber" />
       </div>
 
       <Card className="p-6 mb-5">

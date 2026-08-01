@@ -295,7 +295,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{userName || 'Team'}</p>
-              <p className="text-[11px] font-mono uppercase tracking-wide text-white/35">{userRole}</p>
+              <p className="text-xs text-white/35 capitalize">{userRole}</p>
             </div>
             <NotificationBell />
           </div>
