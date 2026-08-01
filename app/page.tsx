@@ -9,6 +9,7 @@ import { SplitHero } from '@/components/SplitHero';
 import { ServiceList } from '@/components/ServiceList';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ProcessTimeline } from '@/components/ProcessTimeline';
+import { WhyUs } from '@/components/WhyUs';
 import { Footer } from '@/components/Footer';
 
 function ContactForm() {
@@ -265,6 +266,9 @@ export default function Home() {
 
       {/* Process — a pipeline that draws itself as you scroll */}
       <ProcessTimeline />
+
+      {/* Why bothmade — honest boutique-studio positioning, no invented stats */}
+      <WhyUs />
 
       {/* Contact — inverted entirely. White field, dark text, form takes
           center stage. Sharp edges, generous space, no softness. */}
