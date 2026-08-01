@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { FolderKanban, Plus } from 'lucide-react';
+import { Card, PageIn } from '@/components/admin/ui';
 
 interface ProjectRow {
   id: string;
@@ -10,10 +12,28 @@ interface ProjectRow {
   status: string;
   timeline: string | null;
   createdAt: string;
+  updatedAt: string;
   client: { company: string; email: string };
 }
 
 const STATUSES = ['all', 'discovery', 'design', 'build', 'launch', 'complete'];
+const AT_RISK_DAYS = 7;
+
+function isAtRisk(project: ProjectRow): boolean {
+  if (project.status === 'complete') return false;
+  const days = (Date.now() - new Date(project.updatedAt).getTime()) / (24 * 60 * 60 * 1000);
+  return days >= AT_RISK_DAYS;
+}
+
+function AtRiskBadge({ project }: { project: ProjectRow }) {
+  if (!isAtRisk(project)) return null;
+  const days = Math.floor((Date.now() - new Date(project.updatedAt).getTime()) / (24 * 60 * 60 * 1000));
+  return (
+    <span className="text-xs px-2 py-1 rounded-full bg-red-400/20 text-red-300 whitespace-nowrap">
+      ⚠ {days}d quiet
+    </span>
+  );
+}
 
 export default function AdminProjectsPage() {
   const router = useRouter();
@@ -43,14 +63,19 @@ export default function AdminProjectsPage() {
   }, [router, statusFilter]);
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Projects</h1>
+    <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400/25 to-sky-500/10 text-sky-300 ring-1 ring-sky-400/20">
+            <FolderKanban size={17} />
+          </span>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Projects</h1>
+        </div>
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent capitalize transition-colors"
+            className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent capitalize transition-all"
           >
             {STATUSES.map((s) => (
               <option key={s} value={s} className="capitalize bg-[#05030a]">
@@ -60,9 +85,10 @@ export default function AdminProjectsPage() {
           </select>
           <Link
             href="/admin/projects/new"
-            className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
           >
-            + New Project
+            <Plus size={16} />
+            New Project
           </Link>
         </div>
       </div>
@@ -71,54 +97,88 @@ export default function AdminProjectsPage() {
         <div className="flex items-center justify-center h-64">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
         </div>
+      ) : projects.length === 0 ? (
+        <Card className="p-12 text-center text-white/40">
+          No projects found.
+        </Card>
       ) : (
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="border-b border-white/10">
-              <tr>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Project</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Client</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Status</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Timeline</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Created</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((project) => (
-                <tr key={project.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                  <td className="px-6 py-4 font-medium">{project.name}</td>
-                  <td className="px-6 py-4 text-white/50">{project.client.company}</td>
-                  <td className="px-6 py-4">
-                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize">
+        <>
+          {/* Mobile: card list */}
+          <div className="md:hidden space-y-3">
+            {projects.map((project) => (
+              <Link
+                key={project.id}
+                href={`/admin/projects/${project.id}`}
+                className={`block rounded-xl border bg-white/[0.04] backdrop-blur-xl p-4 transition-colors ${
+                  isAtRisk(project) ? 'border-red-400/30' : 'border-white/[0.08] hover:border-white/20'
+                }`}
+              >
+                <div className="flex justify-between items-start mb-1 gap-2">
+                  <p className="font-semibold">{project.name}</p>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize whitespace-nowrap">
                       {project.status}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 text-white/50">{project.timeline || '—'}</td>
-                  <td className="px-6 py-4 text-white/50">
-                    {new Date(project.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <Link
-                      href={`/admin/projects/${project.id}`}
-                      className="text-sky-300 font-semibold hover:underline"
-                    >
-                      Manage
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {projects.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-white/40">
-                    No projects found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    <AtRiskBadge project={project} />
+                  </div>
+                </div>
+                <p className="text-sm text-white/50 mb-2">{project.client.company}</p>
+                <div className="flex justify-between text-xs text-white/40">
+                  <span>{project.timeline || '—'}</span>
+                  <span>{new Date(project.createdAt).toLocaleDateString()}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <Card className="hidden md:block overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="border-b border-white/10">
+                  <tr>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Project</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Client</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Status</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Health</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Timeline</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Created</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((project) => (
+                    <tr key={project.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                      <td className="px-6 py-4 font-medium">{project.name}</td>
+                      <td className="px-6 py-4 text-white/50">{project.client.company}</td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize">
+                          {project.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {isAtRisk(project) ? <AtRiskBadge project={project} /> : <span className="text-xs text-emerald-300/70">On track</span>}
+                      </td>
+                      <td className="px-6 py-4 text-white/50">{project.timeline || '—'}</td>
+                      <td className="px-6 py-4 text-white/50">
+                        {new Date(project.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4">
+                        <Link
+                          href={`/admin/projects/${project.id}`}
+                          className="text-sky-300 font-semibold hover:underline"
+                        >
+                          Manage
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
       )}
-    </div>
+    </PageIn>
   );
 }

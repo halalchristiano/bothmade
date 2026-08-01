@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -11,6 +12,19 @@ const LINKS = [
 export function ClientHeader() {
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    if (pathname === '/client/settings') return;
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.type === 'client' && data.client?.mustChangePassword) {
+          router.push('/client/settings?force=1');
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });

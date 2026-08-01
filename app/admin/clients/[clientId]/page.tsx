@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare } from 'lucide-react';
+import { Card, CardHeader, PageIn, EmptyState, Badge } from '@/components/admin/ui';
 
 interface ClientDetail {
   id: string;
@@ -38,7 +40,7 @@ export default function AdminClientDetailPage() {
   const [message, setMessage] = useState('');
 
   const inputClass =
-    'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
+    'w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all';
 
   const loadClient = async () => {
     try {
@@ -103,27 +105,27 @@ export default function AdminClientDetailPage() {
 
   if (loading || !client) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+      <div className="flex items-center justify-center h-screen">
         <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <Link href="/admin/clients" className="text-white/50 hover:text-white text-sm transition-colors">
-          ← Back to Clients
-        </Link>
-      </div>
+    <PageIn className="max-w-5xl mx-auto px-4 md:px-8 py-6 md:py-10 space-y-5">
+      <Link href="/admin/clients" className="inline-flex items-center gap-1.5 text-white/50 hover:text-white text-sm transition-colors">
+        <ArrowLeft size={14} />
+        Back to Clients
+      </Link>
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+      <Card className="p-6 md:p-8">
         <div className="flex justify-between items-start mb-6">
-          <h1 className="text-3xl font-bold">{client.company}</h1>
+          <CardHeader icon={Building2} tone="purple" title={client.company} subtitle="Client" />
           <button
             onClick={() => setEditing(!editing)}
-            className="px-4 py-2 rounded-lg border border-white/15 font-medium hover:bg-white/5 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 font-medium text-sm hover:bg-white/5 transition-colors"
           >
+            <Pencil size={14} />
             {editing ? 'Cancel' : 'Edit'}
           </button>
         </div>
@@ -145,7 +147,7 @@ export default function AdminClientDetailPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
@@ -170,51 +172,46 @@ export default function AdminClientDetailPage() {
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
-        <h2 className="text-xl font-bold mb-4">Projects</h2>
+      <Card className="p-6 md:p-8">
+        <CardHeader icon={FolderKanban} tone="sky" title="Projects" />
         {client.projects.length === 0 ? (
-          <p className="text-white/40 text-sm">No projects yet.</p>
+          <EmptyState icon={FolderKanban} text="No projects yet." />
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {client.projects.map((project) => (
               <Link
                 key={project.id}
                 href={`/admin/projects/${project.id}`}
-                className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
+                className="flex justify-between items-center p-4 rounded-xl border border-white/10 hover:border-white/25 hover:bg-white/[0.03] transition-colors"
               >
                 <span className="font-medium">{project.name}</span>
-                <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize">
-                  {project.status}
-                </span>
+                <Badge tone="neutral">{project.status}</Badge>
               </Link>
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
-        <h2 className="text-xl font-bold mb-4">Message All Projects</h2>
-        <p className="text-sm text-white/40 mb-4">
-          Sends the same message to every project thread for this client.
-        </p>
+      <Card className="p-6 md:p-8">
+        <CardHeader icon={MessageSquare} tone="emerald" title="Message All Projects" subtitle="Sends to every project thread for this client" />
         <textarea
           value={broadcastContent}
           onChange={(e) => setBroadcastContent(e.target.value)}
           rows={3}
-          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent resize-none mb-4 transition-colors"
+          className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent resize-none mb-4 transition-all"
           placeholder="Type a message to send to all their projects..."
         />
         {message && <p className="text-emerald-300 text-sm mb-4">{message}</p>}
         <button
           onClick={handleBroadcast}
           disabled={broadcasting || !broadcastContent.trim()}
-          className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+          className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
           {broadcasting ? 'Sending...' : 'Send to All Projects'}
         </button>
-      </div>
-    </div>
+      </Card>
+    </PageIn>
   );
 }

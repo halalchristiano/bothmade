@@ -60,10 +60,17 @@ export async function PATCH(
       estimatedValue,
       painPoints,
       notes,
+      hotLead,
+      lostReason,
+      nextFollowUpAt,
+      contractStatus,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
+    if (contractStatus !== undefined && !['not_sent', 'sent', 'signed'].includes(contractStatus)) {
+      return NextResponse.json({ error: 'Invalid contract status' }, { status: 400 });
     }
 
     const lead = await prisma.lead.update({
@@ -78,6 +85,10 @@ export async function PATCH(
         estimatedValue: estimatedValue !== undefined ? estimatedValue : undefined,
         painPoints: Array.isArray(painPoints) ? painPoints.join(',') : undefined,
         notes: notes !== undefined ? notes : undefined,
+        hotLead: hotLead !== undefined ? hotLead : undefined,
+        lostReason: lostReason !== undefined ? lostReason : undefined,
+        nextFollowUpAt: nextFollowUpAt !== undefined ? (nextFollowUpAt ? new Date(nextFollowUpAt) : null) : undefined,
+        contractStatus: contractStatus !== undefined ? contractStatus : undefined,
       },
     });
 

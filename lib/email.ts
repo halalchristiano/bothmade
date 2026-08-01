@@ -35,6 +35,80 @@ export async function sendEmail(data: EmailData): Promise<boolean> {
 }
 
 /**
+ * Shared branded shell for every transactional email — dark gradient header,
+ * glass-style content card, gradient CTA button, matching the app's visual
+ * language instead of the generic black-header boilerplate.
+ */
+function renderShell(opts: {
+  eyebrow?: string;
+  title: string;
+  bodyHtml: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  footerNote?: string;
+}): string {
+  const { eyebrow, title, bodyHtml, ctaLabel, ctaUrl, footerNote } = opts;
+  return `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+  </head>
+  <body style="margin:0; padding:0; background:#05030a; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#05030a; padding:40px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" style="max-width:560px;" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding-bottom:28px; text-align:center;">
+                <span style="font-size:22px; font-weight:800; letter-spacing:-0.02em;">
+                  <span style="-webkit-text-stroke:1px #ffffff; color:transparent;">both</span><span style="background:linear-gradient(90deg,#38bdf8,#a855f7); -webkit-background-clip:text; background-clip:text; color:#38bdf8;">made</span>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:20px; overflow:hidden;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="background:linear-gradient(120deg, rgba(56,189,248,0.18), rgba(168,85,247,0.18)); padding:32px 32px 24px 32px; border-bottom:1px solid rgba(255,255,255,0.08);">
+                      ${eyebrow ? `<p style="margin:0 0 8px 0; font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#7dd3fc;">${eyebrow}</p>` : ''}
+                      <h1 style="margin:0; font-size:22px; line-height:1.3; color:#ffffff; font-weight:700;">${title}</h1>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:28px 32px 32px 32px; color:rgba(255,255,255,0.75); font-size:15px; line-height:1.65;">
+                      ${bodyHtml}
+                      ${
+                        ctaLabel && ctaUrl
+                          ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px;"><tr><td style="border-radius:10px; background:linear-gradient(90deg,#38bdf8,#a855f7);">
+                              <a href="${ctaUrl}" style="display:inline-block; padding:13px 28px; font-size:14px; font-weight:700; color:#05030a; text-decoration:none;">${ctaLabel}</a>
+                            </td></tr></table>`
+                          : ''
+                      }
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 12px 0 12px; text-align:center;">
+                <p style="margin:0; font-size:12px; color:rgba(255,255,255,0.3);">
+                  ${footerNote || 'Bothmade — bothmade.studio'}
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+  `;
+}
+
+/**
  * Send welcome email to new client
  */
 export async function sendWelcomeEmail(
@@ -47,74 +121,33 @@ export async function sendWelcomeEmail(
 ): Promise<boolean> {
   const loginUrl = `${SITE_URL}/client/login`;
   const projectDetails = [
-    serviceType ? `<li><strong>Service:</strong> ${serviceType}</li>` : '',
-    timeline ? `<li><strong>Timeline:</strong> ${timeline}</li>` : '',
+    serviceType ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Service:</strong> ${serviceType}</li>` : '',
+    timeline ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Timeline:</strong> ${timeline}</li>` : '',
   ]
     .filter(Boolean)
     .join('');
 
-  const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Welcome to Bothmade</title>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #333; }
-      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-      .header { background: #000; color: #fff; padding: 40px 20px; text-align: center; border-radius: 8px 8px 0 0; }
-      .content { background: #f9f9f9; padding: 40px 20px; border-radius: 0 0 8px 8px; }
-      .button { display: inline-block; background: #000; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-      .credentials { background: #fff; border: 1px solid #ddd; padding: 20px; border-radius: 4px; margin: 20px 0; font-family: monospace; }
-      .footer { text-align: center; font-size: 12px; color: #999; margin-top: 20px; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1 style="margin: 0;">Welcome to Bothmade</h1>
-      </div>
-      <div class="content">
-        <p>Hi ${clientName},</p>
-        <p>Your project <strong>${projectName}</strong> has been created and is ready to begin. We're excited to work with you!</p>
-
-        ${projectDetails ? `<h3>Project Details</h3><ul>${projectDetails}</ul>` : ''}
-
-        <h3>Your Login Credentials</h3>
-        <div class="credentials">
-          <p><strong>Email:</strong> ${clientEmail}</p>
-          <p><strong>Temporary Password:</strong> ${password}</p>
-        </div>
-
-        <p><strong>Please change your password after your first login.</strong></p>
-
-        <p>
-          <a href="${loginUrl}" class="button">Access Your Project Dashboard</a>
-        </p>
-
-        <h3>What's Next?</h3>
-        <ul>
-          <li>Log in to your dashboard to view your project timeline and deliverables</li>
-          <li>Message the team directly in your project thread</li>
-          <li>Manage your email notification preferences anytime</li>
-        </ul>
-
-        <p>If you have any questions, don't hesitate to reach out. We're here to help!</p>
-
-        <p>Best regards,<br><strong>The Bothmade Team</strong></p>
-      </div>
-      <div class="footer">
-        <p>&copy; 2026 Bothmade. All rights reserved.</p>
-      </div>
+  const bodyHtml = `
+    <p>Hi ${clientName},</p>
+    <p>Your project <strong style="color:#fff;">${projectName}</strong> has been created and we're ready to get started.</p>
+    ${projectDetails ? `<ul style="padding-left:18px; margin:16px 0;">${projectDetails}</ul>` : ''}
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0; font-family:monospace; font-size:14px;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Email:</span> <span style="color:#fff;">${clientEmail}</span></p>
+      <p style="margin:0;"><span style="color:rgba(255,255,255,0.4);">Temporary password:</span> <span style="color:#fff;">${password}</span></p>
     </div>
-  </body>
-</html>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">You'll be asked to set your own password the first time you log in.</p>
   `;
 
   return sendEmail({
     to: clientEmail,
-    subject: `Welcome to Bothmade – Your Project is Ready`,
-    html,
+    subject: `Welcome to Bothmade — your project is ready`,
+    html: renderShell({
+      eyebrow: 'Project created',
+      title: 'Welcome to Bothmade',
+      bodyHtml,
+      ctaLabel: 'Access your dashboard',
+      ctaUrl: loginUrl,
+    }),
   });
 }
 
@@ -131,57 +164,25 @@ export async function sendStatusUpdateEmail(
 ): Promise<boolean> {
   const dashboardUrl = `${SITE_URL}/client/${projectId}`;
 
-  const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Project Update – ${projectName}</title>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #333; }
-      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-      .header { background: #000; color: #fff; padding: 20px; border-radius: 8px 8px 0 0; }
-      .content { background: #f9f9f9; padding: 40px 20px; border-radius: 0 0 8px 8px; }
-      .update-box { background: #fff; border-left: 4px solid #000; padding: 20px; margin: 20px 0; }
-      .button { display: inline-block; background: #000; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-      .footer { text-align: center; font-size: 12px; color: #999; margin-top: 20px; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h2 style="margin: 0;">${projectName}</h2>
-        <p style="margin: 8px 0 0 0; opacity: 0.9;">Project Update</p>
-      </div>
-      <div class="content">
-        <p>Hi ${clientName},</p>
-        <p>We have a new update on your project!</p>
-
-        <div class="update-box">
-          <h3 style="margin-top: 0;">${updateTitle}</h3>
-          <p>${updateDescription}</p>
-        </div>
-
-        <p>
-          <a href="${dashboardUrl}" class="button">View in Dashboard</a>
-        </p>
-
-        <p>You can also reply directly in your project thread or adjust your notification preferences anytime.</p>
-
-        <p>Best regards,<br><strong>The Bothmade Team</strong></p>
-      </div>
-      <div class="footer">
-        <p>&copy; 2026 Bothmade. All rights reserved.</p>
-      </div>
+  const bodyHtml = `
+    <p>Hi ${clientName},</p>
+    <p>There's a new update on <strong style="color:#fff;">${projectName}</strong>.</p>
+    <div style="background:rgba(255,255,255,0.05); border-left:3px solid #38bdf8; border-radius:8px; padding:16px 18px; margin:20px 0;">
+      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${updateTitle}</p>
+      <p style="margin:0; color:rgba(255,255,255,0.7);">${updateDescription}</p>
     </div>
-  </body>
-</html>
   `;
 
   return sendEmail({
     to: clientEmail,
     subject: `${projectName}: ${updateTitle}`,
-    html,
+    html: renderShell({
+      eyebrow: 'Project update',
+      title: projectName,
+      bodyHtml,
+      ctaLabel: 'View in dashboard',
+      ctaUrl: dashboardUrl,
+    }),
   });
 }
 
@@ -197,55 +198,83 @@ export async function sendMessageNotificationEmail(
 ): Promise<boolean> {
   const dashboardUrl = `${SITE_URL}/client/${projectId}`;
 
-  const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>New Message – ${projectName}</title>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #333; }
-      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-      .header { background: #000; color: #fff; padding: 20px; border-radius: 8px 8px 0 0; }
-      .content { background: #f9f9f9; padding: 40px 20px; border-radius: 0 0 8px 8px; }
-      .message-box { background: #fff; border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 4px; }
-      .button { display: inline-block; background: #000; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-      .footer { text-align: center; font-size: 12px; color: #999; margin-top: 20px; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h2 style="margin: 0;">${projectName}</h2>
-        <p style="margin: 8px 0 0 0; opacity: 0.9;">New Message from the Team</p>
-      </div>
-      <div class="content">
-        <p>Hi ${clientName},</p>
-        <p>You have a new message from the Bothmade team on your project.</p>
-
-        <div class="message-box">
-          <p>${messagePreview}</p>
-        </div>
-
-        <p>
-          <a href="${dashboardUrl}" class="button">View Full Conversation</a>
-        </p>
-
-        <p>You can manage your notification preferences in your dashboard anytime.</p>
-
-        <p>Best regards,<br><strong>The Bothmade Team</strong></p>
-      </div>
-      <div class="footer">
-        <p>&copy; 2026 Bothmade. All rights reserved.</p>
-      </div>
+  const bodyHtml = `
+    <p>Hi ${clientName},</p>
+    <p>You have a new message from the Bothmade team on <strong style="color:#fff;">${projectName}</strong>.</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:16px 18px; margin:20px 0; color:rgba(255,255,255,0.75);">
+      ${messagePreview}
     </div>
-  </body>
-</html>
   `;
 
   return sendEmail({
     to: clientEmail,
     subject: `New message on ${projectName}`,
-    html,
+    html: renderShell({
+      eyebrow: 'New message',
+      title: projectName,
+      bodyHtml,
+      ctaLabel: 'View full conversation',
+      ctaUrl: dashboardUrl,
+    }),
   });
 }
+
+/**
+ * Send a payment link directly to a lead/client — used from the admin
+ * "Onboard This Customer" panel's "Email Payment Link" action.
+ */
+export async function sendPaymentLinkEmail(
+  toEmail: string,
+  contactName: string | null,
+  company: string,
+  paymentUrl: string,
+  amountLabel: string,
+  isDeposit: boolean
+): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${contactName || 'there'},</p>
+    <p>Thanks for choosing Bothmade for ${company}'s project. ${
+      isDeposit
+        ? `Here's a secure link to pay your deposit of <strong style="color:#fff;">${amountLabel}</strong> and get started.`
+        : `Here's a secure link to complete your payment of <strong style="color:#fff;">${amountLabel}</strong>.`
+    }</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">This link is hosted securely by Stripe — we never see or store your card details.</p>
+  `;
+
+  return sendEmail({
+    to: toEmail,
+    subject: `Your Bothmade payment link${isDeposit ? ' — deposit to get started' : ''}`,
+    html: renderShell({
+      eyebrow: isDeposit ? 'Deposit due' : 'Payment due',
+      title: `${company} — Payment Link`,
+      bodyHtml,
+      ctaLabel: 'Pay securely',
+      ctaUrl: paymentUrl,
+    }),
+  });
+}
+
+/**
+ * Send a password reset link — used by the "Forgot password?" flow for both
+ * admin/team accounts and clients.
+ */
+export async function sendPasswordResetEmail(toEmail: string, resetUrl: string): Promise<boolean> {
+  const bodyHtml = `
+    <p>We got a request to reset the password on this account. Click below to choose a new one.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">This link expires in 24 hours. If you didn't request this, you can safely ignore this email — your password won't change.</p>
+  `;
+
+  return sendEmail({
+    to: toEmail,
+    subject: 'Reset your Bothmade password',
+    html: renderShell({
+      eyebrow: 'Security',
+      title: 'Reset your password',
+      bodyHtml,
+      ctaLabel: 'Reset Password',
+      ctaUrl: resetUrl,
+    }),
+  });
+}
+
+export { renderShell };

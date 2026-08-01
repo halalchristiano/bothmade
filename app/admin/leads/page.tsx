@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { UserPlus, Users, Flame } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
+import { Card, PageIn } from '@/components/admin/ui';
 
 interface LeadRow {
   id: string;
@@ -14,6 +15,7 @@ interface LeadRow {
   status: LeadStatus;
   estimatedValue: number | null;
   updatedAt: string;
+  hotLead: boolean;
   assignedTo: { name: string | null } | null;
   activities: Array<{ createdAt: string }>;
 }
@@ -90,14 +92,19 @@ export default function AdminLeadsPage() {
     'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Leads</h1>
+    <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400/25 to-sky-500/10 text-sky-300 ring-1 ring-sky-400/20">
+            <Users size={17} />
+          </span>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Leads</h1>
+        </div>
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as LeadStatus | 'all')}
-            className={`${inputClass} w-48`}
+            className={`${inputClass} flex-1 sm:flex-none sm:w-48`}
           >
             <option value="all" className="bg-[#05030a]">All Statuses</option>
             {LEAD_STATUSES.map((s) => (
@@ -108,15 +115,16 @@ export default function AdminLeadsPage() {
           </select>
           <button
             onClick={() => setShowNew(!showNew)}
-            className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
           >
-            + New Lead
+            <UserPlus size={16} />
+            New Lead
           </button>
         </div>
       </div>
 
       {showNew && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 mb-8">
+        <Card className="p-6 mb-8">
           <h2 className="text-lg font-bold mb-4">New Lead</h2>
           <div className="grid md:grid-cols-2 gap-4 mb-4">
             <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company *" className={inputClass} />
@@ -132,62 +140,95 @@ export default function AdminLeadsPage() {
           >
             {creating ? 'Creating...' : 'Create Lead'}
           </button>
-        </div>
+        </Card>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
         </div>
+      ) : leads.length === 0 ? (
+        <Card className="p-12 text-center text-white/40">
+          No leads yet.
+        </Card>
       ) : (
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="border-b border-white/10">
-              <tr>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Company</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Contact</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Status</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Est. Value</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Assigned</th>
-                <th className="px-6 py-3 text-sm font-semibold text-white/40">Last Activity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leads.map((lead) => (
-                <tr
-                  key={lead.id}
-                  onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                  className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer"
-                >
-                  <td className="px-6 py-4 font-medium">{lead.company}</td>
-                  <td className="px-6 py-4 text-white/50">{lead.contactName || lead.email || '—'}</td>
-                  <td className="px-6 py-4">
-                    <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLORS[lead.status]}`}>
-                      {LEAD_STATUS_LABELS[lead.status]}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-white/50">
-                    {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
-                  </td>
-                  <td className="px-6 py-4 text-white/50">{lead.assignedTo?.name || '—'}</td>
-                  <td className="px-6 py-4 text-white/50">
-                    {lead.activities[0]
-                      ? new Date(lead.activities[0].createdAt).toLocaleDateString()
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
-              {leads.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-white/40">
-                    No leads yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Mobile: card list */}
+          <div className="md:hidden space-y-3">
+            {leads.map((lead) => (
+              <button
+                key={lead.id}
+                onClick={() => router.push(`/admin/leads/${lead.id}`)}
+                className="w-full text-left rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-4 hover:border-white/20 transition-colors"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    {lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                    {lead.company}
+                  </p>
+                  <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${STATUS_COLORS[lead.status]}`}>
+                    {LEAD_STATUS_LABELS[lead.status]}
+                  </span>
+                </div>
+                <p className="text-sm text-white/50 mb-2">{lead.contactName || lead.email || '—'}</p>
+                <div className="flex justify-between text-xs text-white/40">
+                  <span>{lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}</span>
+                  <span>{lead.assignedTo?.name || 'Unassigned'}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <Card className="hidden md:block overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="border-b border-white/10">
+                  <tr>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Company</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Contact</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Status</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Est. Value</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Assigned</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Last Activity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leads.map((lead) => (
+                    <tr
+                      key={lead.id}
+                      onClick={() => router.push(`/admin/leads/${lead.id}`)}
+                      className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer"
+                    >
+                      <td className="px-6 py-4 font-medium">
+                        <span className="flex items-center gap-1.5">
+                          {lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                          {lead.company}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-white/50">{lead.contactName || lead.email || '—'}</td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLORS[lead.status]}`}>
+                          {LEAD_STATUS_LABELS[lead.status]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-white/50">
+                        {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
+                      </td>
+                      <td className="px-6 py-4 text-white/50">{lead.assignedTo?.name || '—'}</td>
+                      <td className="px-6 py-4 text-white/50">
+                        {lead.activities[0]
+                          ? new Date(lead.activities[0].createdAt).toLocaleDateString()
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
       )}
-    </div>
+    </PageIn>
   );
 }

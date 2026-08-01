@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
-import { sendEmail } from '@/lib/email';
+import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
 
 // In production, use a real database table for reset tokens
@@ -59,52 +59,7 @@ export async function POST(request: NextRequest) {
     // Send reset email
     const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password?token=${token}`;
 
-    const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Reset Your Password</title>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #333; }
-      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-      .header { background: #000; color: #fff; padding: 40px 20px; text-align: center; border-radius: 8px 8px 0 0; }
-      .content { background: #f9f9f9; padding: 40px 20px; border-radius: 0 0 8px 8px; }
-      .button { display: inline-block; background: #000; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-      .footer { text-align: center; font-size: 12px; color: #999; margin-top: 20px; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1 style="margin: 0;">Reset Your Password</h1>
-      </div>
-      <div class="content">
-        <p>We received a request to reset your password. Click the link below to create a new password.</p>
-
-        <p>
-          <a href="${resetUrl}" class="button">Reset Password</a>
-        </p>
-
-        <p>This link will expire in 24 hours.</p>
-
-        <p>If you didn't request this, you can safely ignore this email.</p>
-
-        <p>Best regards,<br><strong>The Bothmade Team</strong></p>
-      </div>
-      <div class="footer">
-        <p>&copy; 2026 Bothmade. All rights reserved.</p>
-      </div>
-    </div>
-  </body>
-</html>
-    `;
-
-    await sendEmail({
-      to: email,
-      subject: 'Reset Your Bothmade Password',
-      html,
-    });
+    await sendPasswordResetEmail(email, resetUrl);
 
     return NextResponse.json(
       { success: true, message: 'If email exists, reset link will be sent' },

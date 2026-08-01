@@ -13,8 +13,9 @@ import {
   type LeadActivityType,
   type PainPointKey,
 } from '@/lib/leads';
+import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import {
-  ADD_ON_REQUIRES,
+  ADD_ON_CATEGORIES,
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
@@ -24,6 +25,7 @@ import {
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
+  type AddOnCategory,
   type AddOnKey,
   type BaseService,
   type ClientType,
@@ -50,6 +52,10 @@ interface LeadDetail {
   estimatedValue: number | null;
   painPoints: string;
   notes: string | null;
+  hotLead: boolean;
+  contractStatus: 'not_sent' | 'sent' | 'signed';
+  lostReason: string | null;
+  nextFollowUpAt: string | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -88,6 +94,8 @@ export default function LeadDetailPage() {
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
+  const [emailingLink, setEmailingLink] = useState(false);
+  const [linkEmailStatus, setLinkEmailStatus] = useState('');
   const [downloadingContract, setDownloadingContract] = useState(false);
   const [proposalError, setProposalError] = useState('');
   const [convertingToProject, setConvertingToProject] = useState(false);
@@ -176,12 +184,74 @@ export default function LeadDetailPage() {
   };
 
   const handleStatusChange = async (status: LeadStatus) => {
+    let lostReason: string | undefined;
+    if (status === 'lost') {
+      lostReason = window.prompt('What was the reason this deal was lost? (helps spot patterns later)') || undefined;
+    }
     await fetch(`/api/admin/leads/${leadId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...(lostReason ? { lostReason } : {}) }),
     });
     load();
+  };
+
+  const handleToggleHot = async () => {
+    if (!lead) return;
+    await fetch(`/api/admin/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hotLead: !lead.hotLead }),
+    });
+    load();
+  };
+
+  const handleSetContractStatus = async (contractStatus: LeadDetail['contractStatus']) => {
+    await fetch(`/api/admin/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contractStatus }),
+    });
+    load();
+  };
+
+  const handleSetFollowUp = async (dateStr: string) => {
+    await fetch(`/api/admin/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nextFollowUpAt: dateStr || null }),
+    });
+    load();
+  };
+
+  const [loopMessage, setLoopMessage] = useState('');
+  const [loopUrgent, setLoopUrgent] = useState(false);
+  const [loopSending, setLoopSending] = useState(false);
+  const [loopStatus, setLoopStatus] = useState('');
+
+  const handleLoopIn = async () => {
+    if (!loopMessage.trim()) return;
+    setLoopSending(true);
+    setLoopStatus('');
+    try {
+      const response = await fetch('/api/admin/team-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: `Re: ${lead?.company} — ${loopMessage.trim()}`,
+          relatedLeadId: leadId,
+          urgent: loopUrgent,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setLoopMessage('');
+        setLoopUrgent(false);
+        setLoopStatus('Sent to the team chat.');
+      }
+    } finally {
+      setLoopSending(false);
+    }
   };
 
   const handleLogActivity = async () => {
@@ -243,6 +313,35 @@ export default function LeadDetailPage() {
     }
   };
 
+  const handleEmailPaymentLink = async () => {
+    setProposalError('');
+    setLinkEmailStatus('');
+    setEmailingLink(true);
+    try {
+      const response = await fetch(`/api/admin/leads/${leadId}/payment-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...proposalSelection, depositOnly, sendEmail: true }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPaymentLinkUrl(data.url);
+        if (!data.hasEmail) {
+          setLinkEmailStatus('Link created, but this lead has no email on file — add one to send it directly.');
+        } else if (data.emailSent) {
+          setLinkEmailStatus(`Sent to ${lead?.email}.`);
+        } else {
+          setLinkEmailStatus('Link created, but the email failed to send — copy it manually below.');
+        }
+        load();
+      } else {
+        setProposalError(data.error || 'Failed to create payment link');
+      }
+    } finally {
+      setEmailingLink(false);
+    }
+  };
+
   const handleDownloadContract = async () => {
     setProposalError('');
     setDownloadingContract(true);
@@ -295,7 +394,7 @@ export default function LeadDetailPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <Link href="/admin/leads" className="text-white/50 hover:text-white text-sm transition-colors">
         ← Back to Leads
       </Link>
@@ -303,9 +402,18 @@ export default function LeadDetailPage() {
       <div className="grid lg:grid-cols-3 gap-6 mt-4">
         {/* LEFT: Lead info */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <div className="flex justify-between items-start mb-4">
-              <h1 className="text-2xl font-bold">{lead.company}</h1>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleToggleHot}
+                  title={lead.hotLead ? 'Unmark as hot' : 'Mark as hot lead'}
+                  className={`text-lg leading-none transition-colors ${lead.hotLead ? 'text-amber-400' : 'text-white/20 hover:text-white/50'}`}
+                >
+                  ★
+                </button>
+                <h1 className="text-2xl font-bold">{lead.company}</h1>
+              </div>
               <button
                 onClick={() => setEditing(!editing)}
                 className="text-xs px-3 py-1 rounded-lg border border-white/15 hover:bg-white/5 transition-colors"
@@ -313,6 +421,23 @@ export default function LeadDetailPage() {
                 {editing ? 'Cancel' : 'Edit'}
               </button>
             </div>
+
+            <div className="mb-4">
+              <label className="block text-xs text-white/40 mb-1">Next Follow-Up</label>
+              <input
+                type="date"
+                defaultValue={lead.nextFollowUpAt ? lead.nextFollowUpAt.slice(0, 10) : ''}
+                onChange={(e) => handleSetFollowUp(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            {lead.lostReason && (
+              <div className="mb-4 rounded-lg bg-red-400/10 border border-red-400/20 p-3">
+                <p className="text-xs text-red-300/70 mb-0.5">Lost reason</p>
+                <p className="text-sm text-red-200">{lead.lostReason}</p>
+              </div>
+            )}
 
             <div className="mb-4">
               <label className="block text-xs text-white/40 mb-1">Status</label>
@@ -422,7 +547,7 @@ export default function LeadDetailPage() {
 
         {/* RIGHT: Activity timeline + logger */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-xl font-bold mb-4">Log Activity</h2>
 
             <div className="flex gap-2 mb-3">
@@ -440,6 +565,37 @@ export default function LeadDetailPage() {
                 </button>
               ))}
             </div>
+
+            {(activityType === 'email' || activityType === 'note' || activityType === 'call') && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const tmpl = SALES_TEMPLATES.find((t) => t.label === e.target.value);
+                  if (tmpl) {
+                    setActivityContent(tmpl.body);
+                    if (activityType === 'email' && tmpl.subject) setEmailSubject(tmpl.subject);
+                  }
+                }}
+                className={`${inputClass} mb-3 text-sm`}
+              >
+                <option value="" className="bg-[#05030a]">Insert a template...</option>
+                <optgroup label="Follow-up" className="bg-[#05030a]">
+                  {SALES_TEMPLATES.filter((t) => t.category === 'follow-up').map((t) => (
+                    <option key={t.label} value={t.label} className="bg-[#05030a]">{t.label}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Objection handling" className="bg-[#05030a]">
+                  {SALES_TEMPLATES.filter((t) => t.category === 'objection').map((t) => (
+                    <option key={t.label} value={t.label} className="bg-[#05030a]">{t.label}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Closing" className="bg-[#05030a]">
+                  {SALES_TEMPLATES.filter((t) => t.category === 'closing').map((t) => (
+                    <option key={t.label} value={t.label} className="bg-[#05030a]">{t.label}</option>
+                  ))}
+                </optgroup>
+              </select>
+            )}
 
             {activityType === 'email' && (
               <input
@@ -493,7 +649,34 @@ export default function LeadDetailPage() {
             </button>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+            <h2 className="text-lg font-bold mb-1">Loop In The Team</h2>
+            <p className="text-xs text-white/40 mb-3">
+              Ping the team chat about this lead — for questions, a heads-up, or asking for a second opinion.
+            </p>
+            <div className="flex gap-2 mb-2">
+              <input
+                value={loopMessage}
+                onChange={(e) => setLoopMessage(e.target.value)}
+                placeholder="e.g. Can you double check this pricing before I send it?"
+                className={`${inputClass} text-sm`}
+              />
+              <button
+                onClick={handleLoopIn}
+                disabled={loopSending || !loopMessage.trim()}
+                className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {loopSending ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-white/40 cursor-pointer">
+              <input type="checkbox" checked={loopUrgent} onChange={(e) => setLoopUrgent(e.target.checked)} />
+              🚩 Flag as needing a response (shows in their notifications until resolved)
+            </label>
+            {loopStatus && <p className="text-xs text-emerald-300 mt-2">{loopStatus}</p>}
+          </div>
+
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-xl font-bold mb-4">Timeline</h2>
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
               {lead.activities.length === 0 && (
@@ -529,139 +712,237 @@ export default function LeadDetailPage() {
       </div>
 
       {/* Proposal builder — configure exactly what they want, then send a payment link or a contract */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 mt-6">
-        <h2 className="text-xl font-bold mb-1">Onboard This Customer</h2>
-        <p className="text-sm text-white/40 mb-6">
-          Configure exactly what they want, then generate a payment link to send them or a contract
-          to sign — no need to send them back to the pricing page.
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-xl p-6 md:p-8 mt-6 shadow-[0_0_60px_-15px_rgba(56,189,248,0.15)]">
+        <div className="flex items-center gap-3 mb-1">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-bold">
+            ✦
+          </span>
+          <h2 className="text-xl font-bold">Onboard This Customer</h2>
+        </div>
+        <p className="text-sm text-white/40 mb-8 ml-11">
+          Configure exactly what they want, then send a payment link or generate a contract — no need to send them back to the pricing page.
         </p>
 
-        <div className="grid md:grid-cols-3 gap-3 mb-4">
-          {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
-            ([key, service]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setProposalService(key)}
-                className={`text-left rounded-lg p-3 border transition-colors ${
-                  proposalService === key
-                    ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
-                    : 'border-white/10 hover:border-white/25'
-                }`}
-              >
-                <p className="font-medium text-sm">{service.label}</p>
-                <p className="text-xs text-white/40">{formatCents(service.price)}</p>
-              </button>
-            )
-          )}
-        </div>
+        <div className="grid lg:grid-cols-[1fr_320px] gap-8">
+          {/* Left: configuration steps */}
+          <div className="space-y-8">
+            <div>
+              <StepLabel n={1} label="Base Service" />
+              <div className="grid sm:grid-cols-3 gap-3">
+                {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
+                  ([key, service]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setProposalService(key)}
+                      className={`text-left rounded-xl p-4 border transition-all ${
+                        proposalService === key
+                          ? 'bg-gradient-to-br from-sky-400/20 to-purple-500/20 border-sky-400/50 shadow-[0_0_0_1px_rgba(56,189,248,0.3)]'
+                          : 'border-white/10 hover:border-white/25 hover:bg-white/[0.03]'
+                      }`}
+                    >
+                      <p className="font-semibold text-sm">{service.label}</p>
+                      <p className="text-xs text-white/40 mt-0.5">{formatCents(service.price)}</p>
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
 
-        <div className="grid md:grid-cols-3 gap-3 mb-4 max-h-64 overflow-y-auto pr-1">
-          {(Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).map(([key, addOn]) => (
-            <label
-              key={key}
-              className={`flex items-center gap-2 rounded-lg p-3 border cursor-pointer transition-colors ${
-                proposalAddOns.includes(key)
-                  ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
-                  : 'border-white/10 hover:border-white/25'
-              }`}
-            >
-              <input type="checkbox" checked={proposalAddOns.includes(key)} onChange={() => toggleProposalAddOn(key)} />
-              <span className="text-sm">{addOn.label}</span>
-              <span className="text-xs text-white/40 ml-auto">+{formatCents(addOn.price)}</span>
-            </label>
-          ))}
-        </div>
+            <div>
+              <StepLabel n={2} label="Add-Ons" hint={`${proposalAddOns.length} selected`} />
+              <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
+                {(Object.entries(ADD_ON_CATEGORIES) as [AddOnCategory, (typeof ADD_ON_CATEGORIES)[AddOnCategory]][]).map(
+                  ([catKey, cat]) => {
+                    const entries = (Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).filter(
+                      ([, a]) => a.category === catKey
+                    );
+                    return (
+                      <div key={catKey}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/35 mb-2">
+                          {cat.label}
+                        </p>
+                        <div className="grid sm:grid-cols-2 gap-2">
+                          {entries.map(([key, addOn]) => (
+                            <label
+                              key={key}
+                              className={`flex items-start gap-2 rounded-lg p-3 border cursor-pointer transition-colors ${
+                                proposalAddOns.includes(key)
+                                  ? 'bg-gradient-to-r from-sky-400/15 to-purple-500/15 border-sky-400/40'
+                                  : 'border-white/10 hover:border-white/25'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={proposalAddOns.includes(key)}
+                                onChange={() => toggleProposalAddOn(key)}
+                              />
+                              <span className="flex-1">
+                                <span className="text-sm block">{addOn.label}</span>
+                                <span className="text-xs text-white/35">{addOn.description}</span>
+                              </span>
+                              <span className="text-xs text-white/40 whitespace-nowrap">+{formatCents(addOn.price)}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            </div>
 
-        <div className="grid md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-white/70">Client Type</label>
-            <select
-              value={proposalClientType}
-              onChange={(e) => setProposalClientType(e.target.value as ClientType)}
-              className={inputClass}
-            >
-              {(Object.entries(CLIENT_TYPES) as [ClientType, (typeof CLIENT_TYPES)[ClientType]][]).map(
-                ([key, type]) => (
-                  <option key={key} value={key} className="bg-[#05030a]">
-                    {type.label}
-                  </option>
-                )
-              )}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-white/70">Timeline</label>
-            <select
-              value={proposalTimeline}
-              onChange={(e) => setProposalTimeline(e.target.value as TimelineKey)}
-              className={inputClass}
-            >
-              {(Object.entries(TIMELINES) as [TimelineKey, (typeof TIMELINES)[TimelineKey]][]).map(([key, tl]) => (
-                <option key={key} value={key} className="bg-[#05030a]">
-                  {tl.label} ({tl.weeks})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="flex justify-between items-center rounded-lg bg-white/5 p-4 mb-2">
-          <span className="font-semibold">Total</span>
-          <span className="text-2xl font-bold">{formatCents(proposalBreakdown.totalPrice)}</span>
-        </div>
-
-        <label className="flex items-center gap-2 text-sm text-white/60 mb-4 cursor-pointer">
-          <input type="checkbox" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
-          Charge 50% deposit only ({formatCents(depositAmount(proposalBreakdown.totalPrice))}) — collect the rest later
-        </label>
-
-        {proposalError && <p className="text-red-400 text-sm mb-3">{proposalError}</p>}
-
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={handleCreatePaymentLink}
-            disabled={creatingLink}
-            className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-          >
-            {creatingLink ? 'Creating...' : `Create Payment Link${depositOnly ? ' (Deposit)' : ''}`}
-          </button>
-          <button
-            onClick={handleDownloadContract}
-            disabled={downloadingContract}
-            className="rounded-lg border border-white/20 px-5 py-2.5 font-semibold disabled:opacity-50 hover:bg-white/5 transition-colors"
-          >
-            {downloadingContract ? 'Generating...' : 'Download Contract PDF'}
-          </button>
-          <button
-            onClick={handleConvertToProject}
-            disabled={convertingToProject}
-            className="rounded-lg border border-emerald-400/30 px-5 py-2.5 font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-400/10 transition-colors"
-          >
-            Convert to Project (skip payment)
-          </button>
-        </div>
-
-        {paymentLinkUrl && (
-          <div className="mt-4 rounded-lg bg-white/5 border border-white/10 p-4">
-            <p className="text-sm text-white/50 mb-2">Send this link to the customer:</p>
-            <div className="flex gap-2">
-              <input readOnly value={paymentLinkUrl} className={`${inputClass} text-sm`} />
-              <button
-                onClick={() => navigator.clipboard.writeText(paymentLinkUrl)}
-                className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
-              >
-                Copy
-              </button>
+            <div>
+              <StepLabel n={3} label="Client Details" />
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium mb-2 text-white/50">Client Type</label>
+                  <select
+                    value={proposalClientType}
+                    onChange={(e) => setProposalClientType(e.target.value as ClientType)}
+                    className={inputClass}
+                  >
+                    {(Object.entries(CLIENT_TYPES) as [ClientType, (typeof CLIENT_TYPES)[ClientType]][]).map(
+                      ([key, type]) => (
+                        <option key={key} value={key} className="bg-[#05030a]">
+                          {type.label}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-2 text-white/50">Timeline</label>
+                  <select
+                    value={proposalTimeline}
+                    onChange={(e) => setProposalTimeline(e.target.value as TimelineKey)}
+                    className={inputClass}
+                  >
+                    {(Object.entries(TIMELINES) as [TimelineKey, (typeof TIMELINES)[TimelineKey]][]).map(([key, tl]) => (
+                      <option key={key} value={key} className="bg-[#05030a]">
+                        {tl.label} ({tl.weeks})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
-        )}
 
-        <p className="text-xs text-white/30 mt-4">
-          For e-signature: download the contract, then upload it to Google Drive and use your
-          Workspace Business Standard plan's built-in "Request eSignature" on the PDF.
-        </p>
+          {/* Right: sticky summary + actions */}
+          <div className="lg:sticky lg:top-6 lg:self-start space-y-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+              <p className="text-xs text-white/40 mb-3">Summary</p>
+              <div className="space-y-1.5 text-sm mb-4">
+                <div className="flex justify-between text-white/60">
+                  <span>Base</span>
+                  <span>{formatCents(proposalBreakdown.basePrice)}</span>
+                </div>
+                {proposalBreakdown.addOnsPrice > 0 && (
+                  <div className="flex justify-between text-white/60">
+                    <span>Add-ons ({proposalAddOns.length})</span>
+                    <span>{formatCents(proposalBreakdown.addOnsPrice)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-between items-baseline border-t border-white/10 pt-3">
+                <span className="font-semibold text-sm">Total</span>
+                <span className="text-2xl font-bold bg-gradient-to-r from-sky-300 to-purple-300 bg-clip-text text-transparent">
+                  {formatCents(proposalBreakdown.totalPrice)}
+                </span>
+              </div>
+
+              <label className="flex items-start gap-2 text-xs text-white/55 mt-4 cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
+                <span>
+                  Charge 50% deposit only ({formatCents(depositAmount(proposalBreakdown.totalPrice))}) — collect the rest later
+                </span>
+              </label>
+            </div>
+
+            {proposalError && <p className="text-red-400 text-sm">{proposalError}</p>}
+
+            <div className="space-y-2">
+              <button
+                onClick={handleEmailPaymentLink}
+                disabled={emailingLink || creatingLink}
+                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {emailingLink ? 'Sending...' : `Email Payment Link${depositOnly ? ' (Deposit)' : ''}`}
+              </button>
+              <button
+                onClick={handleCreatePaymentLink}
+                disabled={creatingLink || emailingLink}
+                className="w-full rounded-lg border border-white/20 px-5 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+              >
+                {creatingLink ? 'Creating...' : 'Just Generate the Link'}
+              </button>
+              <button
+                onClick={handleDownloadContract}
+                disabled={downloadingContract}
+                className="w-full rounded-lg border border-white/20 px-5 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+              >
+                {downloadingContract ? 'Generating...' : 'Download Contract PDF'}
+              </button>
+              <button
+                onClick={handleConvertToProject}
+                disabled={convertingToProject}
+                className="w-full rounded-lg border border-emerald-400/30 px-5 py-2.5 text-sm font-medium text-emerald-300 disabled:opacity-50 hover:bg-emerald-400/10 transition-colors"
+              >
+                Convert to Project (skip payment)
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/10 px-3 py-2">
+              <span className="text-xs text-white/50">Contract status</span>
+              <select
+                value={lead.contractStatus}
+                onChange={(e) => handleSetContractStatus(e.target.value as LeadDetail['contractStatus'])}
+                className="text-xs bg-transparent border-none focus:outline-none text-right font-medium cursor-pointer"
+              >
+                <option value="not_sent" className="bg-[#05030a]">Not sent</option>
+                <option value="sent" className="bg-[#05030a]">Sent — awaiting signature</option>
+                <option value="signed" className="bg-[#05030a]">Signed</option>
+              </select>
+            </div>
+
+            {linkEmailStatus && <p className="text-xs text-white/50">{linkEmailStatus}</p>}
+
+            {paymentLinkUrl && (
+              <div className="rounded-lg bg-white/5 border border-white/10 p-3">
+                <p className="text-xs text-white/50 mb-2">Payment link:</p>
+                <div className="flex gap-2">
+                  <input readOnly value={paymentLinkUrl} className="w-full px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-white/70" />
+                  <button
+                    onClick={() => navigator.clipboard.writeText(paymentLinkUrl)}
+                    className="px-3 py-1.5 rounded-md border border-white/20 text-xs hover:bg-white/5 transition-colors whitespace-nowrap"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-white/30">
+              For e-signature: download the contract, upload to Google Drive, then use your
+              Workspace Business Standard plan's "Request eSignature" on the PDF.
+            </p>
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function StepLabel({ n, label, hint }: { n: number; label: string; hint?: string }) {
+  return (
+    <div className="flex items-center gap-2.5 mb-3">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white/70">
+        {n}
+      </span>
+      <h3 className="font-semibold text-sm">{label}</h3>
+      {hint && <span className="text-xs text-white/35">{hint}</span>}
     </div>
   );
 }

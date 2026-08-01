@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, createToken } from '@/lib/auth';
 
-const ADMIN_ROLES = ['admin', 'manager'];
-
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json();
@@ -15,9 +13,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Every row in the User table is a Bothmade team member — any role
+    // (owner, sales, admin, manager, support, ...) is valid staff access.
     const user = await prisma.user.findUnique({ where: { email } });
 
-    if (!user || !ADMIN_ROLES.includes(user.role)) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }

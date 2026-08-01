@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { ClientHeader } from '@/components/portal/ClientHeader';
 
 interface Preferences {
@@ -29,8 +30,19 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 }
 
 export default function ClientSettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClientSettingsInner />
+    </Suspense>
+  );
+}
+
+function ClientSettingsInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const forced = searchParams.get('force') === '1';
   const [loading, setLoading] = useState(true);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -58,6 +70,9 @@ export default function ClientSettingsPage() {
         const data = await response.json();
         if (data.success && data.preferences) {
           setPreferences(data.preferences);
+        }
+        if (data.success && data.client?.mustChangePassword) {
+          setMustChangePassword(true);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -112,6 +127,11 @@ export default function ClientSettingsPage() {
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        if (mustChangePassword || forced) {
+          setMustChangePassword(false);
+          router.push('/client/projects');
+          return;
+        }
         setMessage('Password updated successfully');
       } else {
         setPasswordError(data.error || 'Failed to update password');
@@ -141,6 +161,15 @@ export default function ClientSettingsPage() {
       <div className="max-w-3xl mx-auto px-6 py-12 space-y-6">
         <h1 className="text-3xl font-bold mb-2">Settings</h1>
 
+        {(forced || mustChangePassword) && (
+          <div className="rounded-2xl border border-sky-400/30 bg-gradient-to-r from-sky-400/10 to-purple-500/10 p-5">
+            <p className="font-semibold mb-1">Set your own password to continue</p>
+            <p className="text-sm text-white/60">
+              You're logged in with a temporary password from your welcome email. Choose a new one below before accessing your dashboard.
+            </p>
+          </div>
+        )}
+
         {message && (
           <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-300 text-sm">
             {message}
@@ -152,7 +181,11 @@ export default function ClientSettingsPage() {
           </div>
         )}
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+        <div
+          className={`rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 ${
+            forced || mustChangePassword ? 'opacity-40 pointer-events-none' : ''
+          }`}
+        >
           <h2 className="text-xl font-bold mb-6">Email Preferences</h2>
 
           <div className="space-y-6">

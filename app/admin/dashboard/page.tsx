@@ -3,45 +3,555 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  TrendingUp,
+  Target,
+  Trophy,
+  Percent,
+  Flame,
+  Clock,
+  AlertTriangle,
+  XCircle,
+  Radio,
+  Building2,
+  DollarSign,
+  FolderKanban,
+  UserPlus,
+  Inbox,
+  Wallet,
+  Activity,
+  FileSignature,
+  MessageCircle,
+  Megaphone,
+  ArrowRight,
+} from 'lucide-react';
+import { TasksWidget } from '@/components/admin/TasksWidget';
+import { Card, CardHeader, StatCard, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
+import { formatCents } from '@/lib/pricing';
 
-interface Stats {
-  totalClients: number;
-  totalProjects: number;
-  activeProjects: number;
-  byStatus: Record<string, number>;
-  recentActivity: Array<{
+interface SalesStats {
+  pipeline: Array<{ status: string; count: number; value: number }>;
+  weightedForecast: number;
+  totalPipelineValue: number;
+  thisWeek: { newLeads: number; activityLogged: number; won: number; revenue: number };
+  conversionRate: number;
+  avgDealSize: number;
+  lostReasonCounts: Record<string, number>;
+  hotLeads: Array<{ id: string; company: string; estimatedValue: number | null }>;
+  followUpsToday: Array<{ id: string; company: string }>;
+  followUpsOverdue: Array<{ id: string; company: string; nextFollowUpAt: string }>;
+  staleLeads: Array<{ id: string; company: string; updatedAt: string }>;
+  sourcePerformance: Array<{ source: string; total: number; won: number }>;
+  clientTypeBreakdown: Record<string, number>;
+  wonDeals: Array<{ id: string; company: string; value: number; wonAt: string }>;
+  totalWonValue: number;
+}
+
+interface OpsStats {
+  newHandoffs: Array<{
     id: string;
     name: string;
     company: string;
-    status: string;
-    updatedAt: string;
+    contactName: string | null;
+    createdAt: string;
+    onboardingTotal: number;
+    onboardingAnswered: number;
+  }>;
+  newClientsThisWeek: number;
+  atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
+  overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
+  projectsAwaitingReply: Array<{ id: string; name: string; company: string }>;
+  awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
+  revenueThisMonth: number;
+  revenueLastMonth: number;
+  revenueHistory: Array<{ label: string; value: number }>;
+  activeProjectCount: number;
+  activityFeed: Array<{
+    type: 'message' | 'payment' | 'proposal';
+    id: string;
+    projectId: string | null;
+    leadId?: string;
+    label: string;
+    preview: string;
+    createdAt: string;
   }>;
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  discovery: 'Discovery',
-  design: 'Design',
-  build: 'Build',
-  launch: 'Launch',
-  complete: 'Complete',
+  new: 'New',
+  contacted: 'Contacted',
+  qualified: 'Qualified',
+  proposal: 'Proposal Sent',
 };
+
+const CLIENT_TIER_LABELS: Record<string, string> = {
+  'startup-tier': 'Startup-tier',
+  'smb-tier': 'SMB-tier',
+  'enterprise-tier': 'Enterprise-tier',
+  unscoped: 'Unscoped',
+};
+
+function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
+  const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
+
+  return (
+    <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="mb-8">
+        <p className="text-sm text-sky-300/70 font-medium mb-1">Sales</p>
+        <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
+        <p className="text-white/40">Here's where your pipeline stands.</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard icon={TrendingUp} label="Pipeline Value" value={formatCents(stats.totalPipelineValue)} tone="sky" />
+        <StatCard icon={Target} label="Weighted Forecast" value={formatCents(stats.weightedForecast)} tone="purple" accent />
+        <StatCard icon={Trophy} label="Won This Week" value={formatCents(stats.thisWeek.revenue)} tone="emerald" />
+        <StatCard icon={Percent} label="Conversion Rate" value={`${Math.round(stats.conversionRate * 100)}%`} tone="amber" />
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+        <Card className="lg:col-span-2 p-6">
+          <CardHeader icon={FolderKanban} tone="sky" title="Pipeline by Stage" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {stats.pipeline.map((p) => (
+              <Link
+                key={p.status}
+                href={`/admin/pipeline`}
+                className="group rounded-xl border border-white/10 hover:border-sky-400/40 hover:bg-white/[0.03] p-4 transition-all"
+              >
+                <p className="text-xs text-white/40 mb-1">{STATUS_LABELS[p.status]}</p>
+                <p className="text-2xl font-bold mb-2">{p.count}</p>
+                <div className="w-full bg-white/10 rounded-full h-1.5 mb-1.5 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-sky-400 to-purple-500 h-1.5 rounded-full transition-all"
+                    style={{ width: `${(p.value / maxPipelineValue) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-white/50">{formatCents(p.value)}</p>
+              </Link>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 mt-6 pt-5 border-t border-white/[0.07] text-sm">
+            <div>
+              <p className="text-white/40 text-xs mb-1">Avg Deal Size</p>
+              <p className="font-semibold">{formatCents(stats.avgDealSize)}</p>
+            </div>
+            <div>
+              <p className="text-white/40 text-xs mb-1">New Leads This Week</p>
+              <p className="font-semibold">{stats.thisWeek.newLeads}</p>
+            </div>
+            <div>
+              <p className="text-white/40 text-xs mb-1">Activity Logged</p>
+              <p className="font-semibold">{stats.thisWeek.activityLogged}</p>
+            </div>
+          </div>
+        </Card>
+
+        <TasksWidget />
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+        <Card className="p-6">
+          <CardHeader icon={Clock} tone="sky" title="Follow Up Today" subtitle={`${stats.followUpsOverdue.length} overdue`} />
+          {[...stats.followUpsOverdue, ...stats.followUpsToday].length === 0 ? (
+            <EmptyState icon={Clock} text="Nothing due — you're caught up." />
+          ) : (
+            <div className="space-y-0.5">
+              {stats.followUpsOverdue.map((l) => (
+                <ListRow key={l.id} href={`/admin/leads/${l.id}`} title={l.company} trailing={<Badge tone="red">overdue</Badge>} />
+              ))}
+              {stats.followUpsToday.map((l) => (
+                <ListRow key={l.id} href={`/admin/leads/${l.id}`} title={l.company} trailing={<Badge tone="sky">today</Badge>} />
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6" glow="amber">
+          <CardHeader icon={Flame} tone="amber" title="Hot Leads" />
+          {stats.hotLeads.length === 0 ? (
+            <EmptyState icon={Flame} text="Flag a lead as hot from its detail page." />
+          ) : (
+            <div className="space-y-0.5">
+              {stats.hotLeads.map((l) => (
+                <ListRow
+                  key={l.id}
+                  href={`/admin/leads/${l.id}`}
+                  title={l.company}
+                  trailing={<span className="text-white/40 text-xs">{l.estimatedValue ? formatCents(l.estimatedValue) : '—'}</span>}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6">
+          <CardHeader icon={AlertTriangle} tone="red" title="Going Stale" subtitle="5+ days idle" />
+          {stats.staleLeads.length === 0 ? (
+            <EmptyState icon={AlertTriangle} text="Nothing's been idle 5+ days." />
+          ) : (
+            <div className="space-y-0.5">
+              {stats.staleLeads.map((l) => (
+                <ListRow
+                  key={l.id}
+                  href={`/admin/leads/${l.id}`}
+                  title={l.company}
+                  trailing={<span className="text-white/40 text-xs">{new Date(l.updatedAt).toLocaleDateString()}</span>}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-5 mb-5">
+        <Card className="p-6">
+          <CardHeader icon={XCircle} tone="red" title="Lost Reasons" />
+          {Object.keys(stats.lostReasonCounts).length === 0 ? (
+            <EmptyState icon={XCircle} text="No lost deals recorded yet." />
+          ) : (
+            <div className="space-y-2">
+              {Object.entries(stats.lostReasonCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([reason, count]) => (
+                  <div key={reason} className="flex justify-between text-sm px-1">
+                    <span className="text-white/70">{reason}</span>
+                    <span className="text-white/40">{count}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6">
+          <CardHeader icon={Radio} tone="purple" title="Source Performance" />
+          <div className="space-y-2">
+            {stats.sourcePerformance.map((s) => (
+              <div key={s.source} className="flex justify-between text-sm px-1">
+                <span className="text-white/70">{s.source}</span>
+                <span className="text-white/40">
+                  {s.won}/{s.total} won
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-5 mb-8">
+        <Card className="p-6">
+          <CardHeader icon={Building2} tone="sky" title="Pipeline by Client Tier" />
+          {Object.keys(stats.clientTypeBreakdown).length === 0 ? (
+            <EmptyState icon={Building2} text="No active leads yet." />
+          ) : (
+            <div className="space-y-2">
+              {Object.entries(stats.clientTypeBreakdown).map(([tier, count]) => (
+                <div key={tier} className="flex justify-between text-sm px-1">
+                  <span className="text-white/70">{CLIENT_TIER_LABELS[tier] || tier}</span>
+                  <span className="text-white/40">{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6" glow="emerald">
+          <CardHeader
+            icon={DollarSign}
+            tone="emerald"
+            title="Won Deals"
+            action={<span className="text-sm text-emerald-300 font-semibold">{formatCents(stats.totalWonValue)}</span>}
+          />
+          {stats.wonDeals.length === 0 ? (
+            <EmptyState icon={DollarSign} text="No deals closed yet." />
+          ) : (
+            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+              {stats.wonDeals.map((d) => (
+                <ListRow
+                  key={d.id}
+                  href={`/admin/leads/${d.id}`}
+                  title={d.company}
+                  trailing={
+                    <span className="text-white/40 text-xs whitespace-nowrap">
+                      {formatCents(d.value)} · {new Date(d.wonAt).toLocaleDateString()}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <Link
+          href="/admin/pipeline"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+        >
+          View Pipeline <ArrowRight size={16} />
+        </Link>
+        <Link
+          href="/admin/team-chat"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
+        >
+          Team Chat
+        </Link>
+      </div>
+    </PageIn>
+  );
+}
+
+function BroadcastComposer() {
+  const [open, setOpen] = useState(false);
+  const [content, setContent] = useState('');
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState('');
+
+  const handleSend = async () => {
+    if (!content.trim()) return;
+    setSending(true);
+    setStatus('');
+    try {
+      const response = await fetch('/api/admin/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, segment: 'active' }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStatus(`Sent to ${data.projectsNotified} project${data.projectsNotified === 1 ? '' : 's'} (${data.emailsSent} email${data.emailsSent === 1 ? '' : 's'} sent).`);
+        setContent('');
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
+      >
+        <Megaphone size={16} />
+        Broadcast to Clients
+      </button>
+    );
+  }
+
+  return (
+    <Card className="p-6 mb-6">
+      <div className="flex justify-between items-center mb-3">
+        <CardHeader icon={Megaphone} tone="purple" title="Broadcast to All Active Clients" />
+        <button onClick={() => setOpen(false)} className="text-white/40 hover:text-white text-sm -mt-4">
+          Cancel
+        </button>
+      </div>
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="e.g. We'll be closed for the holiday on Dec 25 — replies may be a day slower than usual."
+        rows={3}
+        className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 resize-none focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all mb-3"
+      />
+      {status && <p className="text-sm text-emerald-300 mb-3">{status}</p>}
+      <button
+        onClick={handleSend}
+        disabled={sending || !content.trim()}
+        className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+      >
+        {sending ? 'Sending...' : 'Send to All Active Clients'}
+      </button>
+    </Card>
+  );
+}
+
+function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
+  const revenueTrend =
+    stats.revenueLastMonth > 0
+      ? Math.round(((stats.revenueThisMonth - stats.revenueLastMonth) / stats.revenueLastMonth) * 100)
+      : undefined;
+
+  return (
+    <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+        <div>
+          <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
+          <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
+          <p className="text-white/40">Here's what needs you today.</p>
+        </div>
+        <BroadcastComposer />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard icon={FolderKanban} label="Active Projects" value={String(stats.activeProjectCount)} tone="sky" />
+        <StatCard icon={DollarSign} label="Revenue This Month" value={formatCents(stats.revenueThisMonth)} tone="emerald" accent trend={revenueTrend !== undefined ? { value: revenueTrend } : undefined} />
+        <StatCard icon={UserPlus} label="New Clients This Week" value={String(stats.newClientsThisWeek)} tone="purple" />
+        <StatCard icon={FileSignature} label="Awaiting Signature" value={String(stats.awaitingSignature.length)} tone="amber" />
+      </div>
+
+      <Card className="p-6 mb-5">
+        <CardHeader icon={TrendingUp} tone="emerald" title="Revenue — Last 6 Months" />
+        <MiniBarChart data={stats.revenueHistory} formatValue={(v) => formatCents(v)} />
+      </Card>
+
+      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+        <Card className="p-6" glow="emerald">
+          <CardHeader icon={Inbox} tone="emerald" title="New Handoffs" subtitle="Give them a first touch" />
+          {stats.newHandoffs.length === 0 ? (
+            <EmptyState icon={Inbox} text="Nothing new this week." />
+          ) : (
+            <div className="space-y-0.5">
+              {stats.newHandoffs.map((p) => (
+                <ListRow
+                  key={p.id}
+                  href={`/admin/projects/${p.id}`}
+                  title={p.company}
+                  subtitle={p.name}
+                  trailing={
+                    p.onboardingTotal > 0 ? (
+                      <Badge tone={p.onboardingAnswered === p.onboardingTotal ? 'emerald' : 'amber'}>
+                        Onboarding {p.onboardingAnswered}/{p.onboardingTotal}
+                      </Badge>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6" glow="red">
+          <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
+          {stats.atRiskProjects.length === 0 ? (
+            <EmptyState icon={AlertTriangle} text="Everything's current." />
+          ) : (
+            <div className="space-y-0.5">
+              {stats.atRiskProjects.map((p) => (
+                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6">
+          <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
+          {stats.overdueBalances.length === 0 ? (
+            <EmptyState icon={Wallet} text="Nothing outstanding." />
+          ) : (
+            <div className="space-y-0.5">
+              {stats.overdueBalances.map((p) => (
+                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="amber">{formatCents(p.balanceDue)}</Badge>} />
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+        <Card className="lg:col-span-2 p-6">
+          <CardHeader icon={Activity} tone="sky" title="Activity Feed" />
+          {stats.activityFeed.length === 0 ? (
+            <EmptyState icon={Activity} text="Nothing new." />
+          ) : (
+            <div className="space-y-1 max-h-96 overflow-y-auto">
+              {stats.activityFeed.map((a) => (
+                <Link
+                  key={`${a.type}-${a.id}`}
+                  href={a.projectId ? `/admin/projects/${a.projectId}` : a.leadId ? `/admin/leads/${a.leadId}` : '#'}
+                  className="block px-3 py-2.5 rounded-xl hover:bg-white/[0.05] border-l-2 border-sky-400/40 transition-colors"
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <p className="text-sm font-medium">{a.label}</p>
+                    <span className="text-[10px] text-white/30 whitespace-nowrap">
+                      {new Date(a.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/40 mt-0.5">{a.preview}</p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <TasksWidget />
+      </div>
+
+      {stats.projectsAwaitingReply.length > 0 && (
+        <Card className="p-6 mb-5" glow="sky">
+          <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last" />
+          <div className="grid sm:grid-cols-2 gap-1">
+            {stats.projectsAwaitingReply.map((p) => (
+              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} subtitle={p.name} />
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {stats.awaitingSignature.length > 0 && (
+        <Card className="p-6 mb-8" glow="purple">
+          <CardHeader icon={FileSignature} tone="purple" title="Contracts Awaiting Signature" />
+          <div className="grid sm:grid-cols-2 gap-1">
+            {stats.awaitingSignature.map((l) => (
+              <ListRow
+                key={l.id}
+                href={`/admin/leads/${l.id}`}
+                title={l.company}
+                trailing={<span className="text-white/40 text-xs">{new Date(l.updatedAt).toLocaleDateString()}</span>}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        <Link
+          href="/admin/clients"
+          className="px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+        >
+          View Clients
+        </Link>
+        <Link href="/admin/projects" className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors">
+          View Projects
+        </Link>
+        <Link href="/admin/team-chat" className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors">
+          Team Chat
+        </Link>
+      </div>
+    </PageIn>
+  );
+}
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
+  const [opsStats, setOpsStats] = useState<OpsStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const response = await fetch('/api/admin/stats');
-        if (response.status === 401) {
+        const meResponse = await fetch('/api/auth/me');
+        if (meResponse.status === 401) {
           router.push('/admin/login');
           return;
         }
-        const data = await response.json();
-        if (data.success) {
-          setStats(data.stats);
+        const me = await meResponse.json();
+        const userRole = me.user?.role || 'admin';
+        setRole(userRole);
+        setName(me.user?.name || '');
+
+        if (userRole === 'sales') {
+          const res = await fetch('/api/admin/sales-stats');
+          const data = await res.json();
+          if (data.success) setSalesStats(data.stats);
+        } else {
+          const res = await fetch('/api/admin/ops-stats');
+          const data = await res.json();
+          if (data.success) setOpsStats(data.stats);
         }
       } finally {
         setLoading(false);
@@ -50,102 +560,21 @@ export default function AdminDashboardPage() {
     load();
   }, [router]);
 
-  if (loading || !stats) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+      <div className="flex items-center justify-center h-[calc(100vh-56px)] lg:h-screen">
         <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-7xl mx-auto px-6 py-10">
-      <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
+  if (role === 'sales' && salesStats) {
+    return <SalesDashboard stats={salesStats} name={name} />;
+  }
 
-      <div className="grid md:grid-cols-3 gap-6 mb-8">
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
-          <p className="text-sm text-white/40 mb-2">Total Clients</p>
-          <p className="text-4xl font-bold">{stats.totalClients}</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
-          <p className="text-sm text-white/40 mb-2">Total Projects</p>
-          <p className="text-4xl font-bold">{stats.totalProjects}</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
-          <p className="text-sm text-white/40 mb-2">Active Projects</p>
-          <p className="text-4xl font-bold">{stats.activeProjects}</p>
-        </div>
-      </div>
+  if (opsStats) {
+    return <OpsDashboard stats={opsStats} name={name} />;
+  }
 
-      <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
-          <h2 className="text-xl font-bold mb-4">Projects by Status</h2>
-          <div className="space-y-3">
-            {Object.entries(STATUS_LABELS).map(([key, label]) => {
-              const count = stats.byStatus[key] || 0;
-              const pct = stats.totalProjects
-                ? (count / stats.totalProjects) * 100
-                : 0;
-              return (
-                <div key={key}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>{label}</span>
-                    <span className="text-white/40">{count}</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-sky-400 to-purple-500 h-2 rounded-full transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
-          <h2 className="text-xl font-bold mb-4">Recent Activity</h2>
-          {stats.recentActivity.length === 0 ? (
-            <p className="text-white/40 text-sm">No projects yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {stats.recentActivity.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/admin/projects/${p.id}`}
-                  className="block p-3 rounded-lg hover:bg-white/5 transition-colors"
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium">{p.name}</p>
-                      <p className="text-sm text-white/40">{p.company}</p>
-                    </div>
-                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize">
-                      {p.status}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-4">
-        <Link
-          href="/admin/clients"
-          className="px-5 py-3 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
-        >
-          View Clients
-        </Link>
-        <Link
-          href="/admin/projects"
-          className="px-5 py-3 rounded-lg border border-white/15 font-semibold hover:bg-white/5 transition-colors"
-        >
-          View Projects
-        </Link>
-      </div>
-    </div>
-  );
+  return null;
 }

@@ -123,6 +123,36 @@ export default function AdminProjectDetailPage() {
   const [balanceLinkUrl, setBalanceLinkUrl] = useState('');
   const [balanceError, setBalanceError] = useState('');
 
+  const [flagMessage, setFlagMessage] = useState('');
+  const [flagUrgent, setFlagUrgent] = useState(false);
+  const [flagSending, setFlagSending] = useState(false);
+  const [flagStatus, setFlagStatus] = useState('');
+
+  const handleFlagForTeam = async () => {
+    if (!flagMessage.trim()) return;
+    setFlagSending(true);
+    setFlagStatus('');
+    try {
+      const response = await fetch('/api/admin/team-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: `Re: ${project?.name} — ${flagMessage.trim()}`,
+          relatedProjectId: projectId,
+          urgent: flagUrgent,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setFlagMessage('');
+        setFlagUrgent(false);
+        setFlagStatus('Sent to the team chat.');
+      }
+    } finally {
+      setFlagSending(false);
+    }
+  };
+
   const loadNotes = async () => {
     const response = await fetch(`/api/admin/projects/${projectId}/notes`);
     const data = await response.json();
@@ -338,7 +368,7 @@ export default function AdminProjectDetailPage() {
     'w-full px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
 
   return (
-    <div className="max-w-[1400px] mx-auto px-6 py-8">
+    <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 md:py-8">
       <div className="mb-6">
         <Link href="/admin/projects" className="text-white/50 hover:text-white text-sm transition-colors">
           ← Back to Projects
@@ -348,7 +378,7 @@ export default function AdminProjectDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
         {/* LEFT: Project Info */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h1 className="text-2xl font-bold mb-1">{project.name}</h1>
             <Link
               href={`/admin/clients/${project.client.id}`}
@@ -459,7 +489,7 @@ export default function AdminProjectDetailPage() {
 
         {/* CENTER: Messages & Updates */}
         <div className="lg:col-span-5 space-y-6">
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-xl font-bold mb-4">Activity</h2>
             <div className="space-y-4 max-h-[500px] overflow-y-auto mb-6">
               {thread.length === 0 && <p className="text-white/40 text-sm">No activity yet.</p>}
@@ -583,11 +613,39 @@ export default function AdminProjectDetailPage() {
               {noteSaving ? 'Saving...' : 'Add Internal Note'}
             </button>
           </div>
+
+          {/* Flag a question for the rest of the team */}
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+            <h2 className="text-lg font-bold mb-1">Flag For The Team</h2>
+            <p className="text-xs text-white/40 mb-3">
+              Ping the team chat about this project — shows in their notifications until resolved.
+            </p>
+            <div className="flex gap-2 mb-2">
+              <input
+                value={flagMessage}
+                onChange={(e) => setFlagMessage(e.target.value)}
+                placeholder="e.g. Client wants to add e-commerce — can you re-quote?"
+                className={`${inputClass} text-sm`}
+              />
+              <button
+                onClick={handleFlagForTeam}
+                disabled={flagSending || !flagMessage.trim()}
+                className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {flagSending ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-white/40 cursor-pointer">
+              <input type="checkbox" checked={flagUrgent} onChange={(e) => setFlagUrgent(e.target.checked)} />
+              🚩 Flag as needing a response
+            </label>
+            {flagStatus && <p className="text-xs text-emerald-300 mt-2">{flagStatus}</p>}
+          </div>
         </div>
 
         {/* RIGHT: Deliverables */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-lg font-bold mb-4">Deliverables</h2>
 
             <div className="space-y-3 mb-6">
@@ -664,7 +722,7 @@ export default function AdminProjectDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-lg font-bold mb-1">Onboarding Form</h2>
             <p className="text-xs text-white/40 mb-4">
               Custom questions for this client to answer from their dashboard.

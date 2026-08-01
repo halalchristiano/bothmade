@@ -45,7 +45,7 @@ export default function ClientLoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        router.push('/client/projects');
+        router.push(data.client?.mustChangePassword ? '/client/settings?force=1' : '/client/projects');
       } else {
         setError(data.error || 'Login failed');
       }

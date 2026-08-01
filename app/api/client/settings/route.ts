@@ -29,6 +29,7 @@ export async function GET() {
           company: client.company,
           contactName: client.contactName,
           phone: client.phone,
+          mustChangePassword: client.mustChangePassword,
         },
         preferences: client.emailPreferences,
       },
@@ -95,7 +96,7 @@ export async function PATCH(request: NextRequest) {
       const hashedPassword = await hashPassword(newPassword);
       await prisma.client.update({
         where: { id: session.clientId },
-        data: { password: hashedPassword },
+        data: { password: hashedPassword, mustChangePassword: false },
       });
     }
 

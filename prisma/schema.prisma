@@ -17,7 +17,7 @@ model User {
   email     String     @unique
   password  String     // bcrypted
   name      String?
-  role      String     @default("admin") // "admin", "manager", "support"
+  role      String     @default("admin") // "owner" (Kiana — PM/ops), "sales" (Evan — CRM/closing), "admin" (generic)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -27,6 +27,10 @@ model User {
   assignedLeads   Lead[]           @relation("AssignedLeads")
   leadActivities  LeadActivity[]   @relation("LeadActivityAuthor")
   teamNotes       TeamNote[]       @relation("TeamNoteAuthor")
+  tasks           Task[]           @relation("TaskAssignee")
+  createdTasks    Task[]           @relation("TaskCreator")
+  sentTeamMessages     TeamMessage[] @relation("TeamMessageSender")
+  receivedTeamMessages TeamMessage[] @relation("TeamMessageRecipient")
 
   @@map("users")
 }
@@ -47,6 +51,7 @@ model Client {
 
   // Status
   onboardingComplete Boolean  @default(false)
+  mustChangePassword Boolean  @default(true) // forces a password reset on first login after being auto-generated
   lastLoginAt        DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -173,6 +178,11 @@ model Lead {
   painPoints     String   @default("") // comma-separated tags, e.g. "no-mobile-app,slow-site"
   notes          String? // freeform quick notes, separate from the activity timeline
 
+  hotLead        Boolean   @default(false) // flagged by sales as a priority deal
+  lostReason     String?   // freeform reason captured when status is set to "lost"
+  nextFollowUpAt DateTime? // self-set reminder date for the next touch
+  contractStatus String    @default("not_sent") // "not_sent", "sent", "signed"
+
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 
@@ -252,6 +262,54 @@ model Payment {
   createdAt DateTime @default(now())
 
   @@map("payments")
+}
+
+// A personal to-do — assignable to any team member, optionally linked to a
+// lead or project so it shows up in context, but also usable standalone.
+model Task {
+  id      String  @id @default(cuid())
+  title   String
+  done    Boolean @default(false)
+  dueAt   DateTime?
+
+  assignedToId String
+  assignedTo   User   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User?   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  relatedLeadId    String?
+  relatedProjectId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tasks")
+}
+
+// Direct internal messaging between team members (Kiana <-> Evan), separate
+// from lead-specific activity notes — a private "loop me in" channel not
+// tied to any one deal, optionally referencing a lead or project for context.
+model TeamMessage {
+  id      String @id @default(cuid())
+  content String
+
+  fromUserId String
+  fromUser   User   @relation("TeamMessageSender", fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  toUserId String? // null = visible to all team members (broadcast)
+  toUser   User?   @relation("TeamMessageRecipient", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  relatedLeadId    String?
+  relatedProjectId String?
+
+  urgent   Boolean   @default(false) // a flagged question needing action, not just a casual chat message
+  resolved Boolean   @default(false)
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("team_messages")
 }
 
 // The client's answer to one onboarding question

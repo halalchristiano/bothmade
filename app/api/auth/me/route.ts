@@ -30,6 +30,7 @@ export async function GET() {
             company: client.company,
             contactName: client.contactName,
             phone: client.phone,
+            mustChangePassword: client.mustChangePassword,
           },
         },
         { status: 200 }

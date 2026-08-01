@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { sendPaymentLinkEmail } from '@/lib/email';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -30,7 +31,14 @@ export async function POST(
     }
 
     const { leadId } = await params;
-    const { baseService, addOns = [], clientType, timeline, depositOnly = false } = await request.json();
+    const {
+      baseService,
+      addOns = [],
+      clientType,
+      timeline,
+      depositOnly = false,
+      sendEmail = false,
+    } = await request.json();
 
     if (!isBaseService(baseService) || !isClientType(clientType) || !isTimelineKey(timeline)) {
       return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
@@ -97,7 +105,33 @@ export async function POST(
       await prisma.lead.update({ where: { id: leadId }, data: { status: 'proposal' } });
     }
 
-    return NextResponse.json({ success: true, url: paymentLink.url }, { status: 201 });
+    let emailSent = false;
+    if (sendEmail && lead.email) {
+      emailSent = await sendPaymentLinkEmail(
+        lead.email,
+        lead.contactName,
+        lead.company,
+        paymentLink.url,
+        `$${(chargeAmount / 100).toLocaleString()}`,
+        depositOnly
+      );
+      if (emailSent) {
+        await prisma.leadActivity.create({
+          data: {
+            leadId,
+            type: 'email',
+            content: `Payment link emailed to ${lead.email} (${depositOnly ? 'deposit' : 'full amount'} — $${(chargeAmount / 100).toLocaleString()})`,
+            url: paymentLink.url,
+            createdById: session.userId,
+          },
+        });
+      }
+    }
+
+    return NextResponse.json(
+      { success: true, url: paymentLink.url, emailSent, hasEmail: Boolean(lead.email) },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Create payment link error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

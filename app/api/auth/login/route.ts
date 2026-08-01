@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
             id: client.id,
             email: client.email,
             company: client.company,
+            mustChangePassword: client.mustChangePassword,
           },
         },
         { status: 200 }

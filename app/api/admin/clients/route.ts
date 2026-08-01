@@ -21,19 +21,45 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Filter sensitive data
-    const safeClients = clients.map((client) => ({
-      id: client.id,
-      email: client.email,
-      company: client.company,
-      phone: client.phone,
-      contactName: client.contactName,
-      subscription: client.subscription,
-      subscriptionTier: client.subscriptionTier,
-      onboardingComplete: client.onboardingComplete,
-      createdAt: client.createdAt,
-      projects: client.projects,
-    }));
+    // Health signal: days since the most recent activity (message or project
+    // update) across any of the client's projects — lets Kiana spot clients
+    // who've gone quiet at a glance.
+    const safeClients = await Promise.all(
+      clients.map(async (client) => {
+        const projectIds = client.projects.map((p) => p.id);
+        let lastActivityAt: Date | null = null;
+        if (projectIds.length > 0) {
+          const [lastMessage, lastUpdate] = await Promise.all([
+            prisma.projectMessage.findFirst({
+              where: { projectId: { in: projectIds } },
+              orderBy: { createdAt: 'desc' },
+              select: { createdAt: true },
+            }),
+            prisma.projectUpdate.findFirst({
+              where: { projectId: { in: projectIds } },
+              orderBy: { createdAt: 'desc' },
+              select: { createdAt: true },
+            }),
+          ]);
+          const candidates = [lastMessage?.createdAt, lastUpdate?.createdAt].filter(Boolean) as Date[];
+          lastActivityAt = candidates.length > 0 ? new Date(Math.max(...candidates.map((d) => d.getTime()))) : null;
+        }
+
+        return {
+          id: client.id,
+          email: client.email,
+          company: client.company,
+          phone: client.phone,
+          contactName: client.contactName,
+          subscription: client.subscription,
+          subscriptionTier: client.subscriptionTier,
+          onboardingComplete: client.onboardingComplete,
+          createdAt: client.createdAt,
+          projects: client.projects,
+          lastActivityAt,
+        };
+      })
+    );
 
     return NextResponse.json(
       { success: true, clients: safeClients },

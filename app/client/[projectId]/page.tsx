@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
 import { ClientHeader } from '@/components/portal/ClientHeader';
+import { GridBackdrop } from '@/components/ui';
 
 interface Project {
   id: string;
@@ -184,36 +185,46 @@ export default function ClientDashboard() {
   const progressPct = ((Math.min(project.statusStage + 1, 5)) / 5) * 100;
 
   return (
-    <main className="min-h-screen bg-[#05030a] text-white">
-      <ClientHeader />
+    <main className="relative min-h-screen bg-[#05030a] text-white overflow-hidden">
+      <GridBackdrop className="opacity-40" />
+      <div
+        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-96 w-[40rem] rounded-full blur-[140px] opacity-20"
+        style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.5), transparent 70%)' }}
+      />
 
-      {/* Project header */}
-      <div className="border-b border-white/10">
+      <div className="relative">
+        <ClientHeader />
+
+        {/* Project header */}
+        <div className="border-b border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent">
+          <div className="max-w-6xl mx-auto px-6 py-10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-sky-300/80 mb-2">
+              {project.client.company}
+            </p>
+            <h1 className="text-3xl md:text-4xl font-bold">{project.name}</h1>
+            <p className="text-white/40 text-sm mt-1">
+              Created {new Date(project.createdAt).toLocaleDateString()}
+            </p>
+          </div>
+        </div>
+
         <div className="max-w-6xl mx-auto px-6 py-8">
-          <h1 className="text-3xl font-bold">{project.name}</h1>
-          <p className="text-white/50 text-sm mt-1">
-            {project.client.company} • Created {new Date(project.createdAt).toLocaleDateString()}
-          </p>
-        </div>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* Tabs */}
-        <div className="flex gap-2 mb-8 border-b border-white/10">
-          {(['overview', 'timeline', 'messages', 'onboarding'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-3 font-medium border-b-2 transition-colors ${
-                activeTab === tab
-                  ? 'border-sky-400 text-white'
-                  : 'border-transparent text-white/40 hover:text-white'
-              }`}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-        </div>
+          {/* Tabs */}
+          <div className="flex gap-1 mb-8 p-1 rounded-full border border-white/10 bg-white/5 w-fit">
+            {(['overview', 'timeline', 'messages', 'onboarding'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  activeTab === tab
+                    ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black'
+                    : 'text-white/50 hover:text-white'
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
 
         {/* Overview Tab */}
         {activeTab === 'overview' && (
@@ -517,6 +528,7 @@ export default function ClientDashboard() {
             )}
           </div>
         )}
+        </div>
       </div>
     </main>
   );
