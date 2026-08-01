@@ -14,6 +14,7 @@ import {
   type PainPointKey,
 } from '@/lib/leads';
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
+import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import {
   ADD_ON_CATEGORIES,
   ADD_ONS,
@@ -183,15 +184,27 @@ export default function LeadDetailPage() {
     }
   };
 
+  const [pendingLostStatus, setPendingLostStatus] = useState(false);
+
   const handleStatusChange = async (status: LeadStatus) => {
-    let lostReason: string | undefined;
     if (status === 'lost') {
-      lostReason = window.prompt('What was the reason this deal was lost? (helps spot patterns later)') || undefined;
+      setPendingLostStatus(true);
+      return;
     }
     await fetch(`/api/admin/leads/${leadId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, ...(lostReason ? { lostReason } : {}) }),
+      body: JSON.stringify({ status }),
+    });
+    load();
+  };
+
+  const handleConfirmLost = async (reason: string) => {
+    setPendingLostStatus(false);
+    await fetch(`/api/admin/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'lost', lostReason: reason }),
     });
     load();
   };
@@ -931,6 +944,14 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      {pendingLostStatus && lead && (
+        <LostReasonModal
+          companyName={lead.company}
+          onCancel={() => setPendingLostStatus(false)}
+          onConfirm={handleConfirmLost}
+        />
+      )}
     </div>
   );
 }

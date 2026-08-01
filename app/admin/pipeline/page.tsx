@@ -4,15 +4,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Flame, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { PageIn } from '@/components/admin/ui';
+import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
+import { LostReasonModal } from '@/components/admin/LostReasonModal';
 
 interface LeadCard {
   id: string;
   company: string;
   contactName: string | null;
+  email: string | null;
+  phone: string | null;
   status: LeadStatus;
   estimatedValue: number | null;
   hotLead: boolean;
@@ -36,6 +40,8 @@ export default function PipelinePage() {
   const [leads, setLeads] = useState<LeadCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [pendingLostMove, setPendingLostMove] = useState<LeadCard | null>(null);
 
   const load = async () => {
     try {
@@ -71,28 +77,31 @@ export default function PipelinePage() {
     return grouped;
   }, [leads]);
 
-  const handleMove = async (lead: LeadCard, direction: 1 | -1) => {
+  const applyStatusChange = async (leadId: string, status: LeadStatus, lostReason?: string) => {
+    setMovingId(leadId);
+    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status } : l)));
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, ...(lostReason ? { lostReason } : {}) }),
+      });
+    } finally {
+      setMovingId(null);
+    }
+  };
+
+  const handleMove = (lead: LeadCard, direction: 1 | -1) => {
     const idx = COLUMN_STATUSES.indexOf(lead.status);
     const nextIdx = idx + direction;
     if (nextIdx < 0 || nextIdx >= COLUMN_STATUSES.length) return;
     const nextStatus = COLUMN_STATUSES[nextIdx];
 
-    let lostReason: string | undefined;
     if (nextStatus === 'lost') {
-      lostReason = window.prompt('Reason this deal was lost? (optional)') || undefined;
+      setPendingLostMove(lead);
+      return;
     }
-
-    setMovingId(lead.id);
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status: nextStatus } : l)));
-    try {
-      await fetch(`/api/admin/leads/${lead.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus, ...(lostReason ? { lostReason } : {}) }),
-      });
-    } finally {
-      setMovingId(null);
-    }
+    applyStatusChange(lead.id, nextStatus);
   };
 
   if (loading) {
@@ -105,9 +114,18 @@ export default function PipelinePage() {
 
   return (
     <PageIn className="px-4 md:px-8 py-6 md:py-10">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight mb-1">Pipeline</h1>
-        <p className="text-white/40">Every lead, by stage. Use the arrows to move a deal forward or back.</p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight mb-1">Pipeline</h1>
+          <p className="text-white/40">Every lead, by stage. Use the arrows to move a deal forward or back.</p>
+        </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+        >
+          <UserPlus size={16} />
+          Add Companies
+        </button>
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-4">
@@ -144,22 +162,36 @@ export default function PipelinePage() {
                         {lead.assignedTo?.name ? ` · ${lead.assignedTo.name}` : ''}
                       </p>
                       <div className="flex justify-between items-center">
-                        <button
-                          onClick={() => handleMove(lead, -1)}
-                          disabled={COLUMN_STATUSES.indexOf(status) === 0}
-                          className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                          aria-label="Move back"
-                        >
-                          <ArrowLeft size={13} />
-                        </button>
-                        <button
-                          onClick={() => handleMove(lead, 1)}
-                          disabled={COLUMN_STATUSES.indexOf(status) === COLUMN_STATUSES.length - 1}
-                          className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                          aria-label="Move forward"
-                        >
-                          <ArrowRight size={13} />
-                        </button>
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => handleMove(lead, -1)}
+                            disabled={COLUMN_STATUSES.indexOf(status) === 0}
+                            className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Move back"
+                          >
+                            <ArrowLeft size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleMove(lead, 1)}
+                            disabled={COLUMN_STATUSES.indexOf(status) === COLUMN_STATUSES.length - 1}
+                            className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Move forward"
+                          >
+                            <ArrowRight size={13} />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          {lead.phone && (
+                            <a href={`tel:${lead.phone}`} title="Call" className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
+                              <Phone size={12} />
+                            </a>
+                          )}
+                          {lead.email && (
+                            <a href={`mailto:${lead.email}`} title="Email" className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
+                              <Mail size={12} />
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </motion.div>
                   ))}
@@ -172,6 +204,28 @@ export default function PipelinePage() {
           );
         })}
       </div>
+
+      {showAdd && (
+        <QuickAddLeadModal
+          onClose={() => setShowAdd(false)}
+          onCreated={(leadId) => {
+            setShowAdd(false);
+            if (leadId) router.push(`/admin/leads/${leadId}`);
+            else load();
+          }}
+        />
+      )}
+
+      {pendingLostMove && (
+        <LostReasonModal
+          companyName={pendingLostMove.company}
+          onCancel={() => setPendingLostMove(null)}
+          onConfirm={(reason) => {
+            applyStatusChange(pendingLostMove.id, 'lost', reason);
+            setPendingLostMove(null);
+          }}
+        />
+      )}
     </PageIn>
   );
 }

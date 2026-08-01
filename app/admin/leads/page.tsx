@@ -1,17 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn } from '@/components/admin/ui';
+import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
+import { LostReasonModal } from '@/components/admin/LostReasonModal';
 
 interface LeadRow {
   id: string;
   company: string;
   contactName: string | null;
   email: string | null;
+  phone: string | null;
   status: LeadStatus;
   estimatedValue: number | null;
   updatedAt: string;
@@ -29,25 +32,80 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
   lost: 'bg-red-400/20 text-red-300',
 };
 
+function StatusSelect({
+  lead,
+  onChange,
+}: {
+  lead: LeadRow;
+  onChange: (lead: LeadRow, status: LeadStatus) => void;
+}) {
+  return (
+    <select
+      value={lead.status}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(lead, e.target.value as LeadStatus)}
+      className={`text-xs px-2 py-1 rounded-full border-none cursor-pointer ${STATUS_COLORS[lead.status]}`}
+    >
+      {LEAD_STATUSES.map((s) => (
+        <option key={s} value={s} className="bg-[#05030a] text-white">
+          {LEAD_STATUS_LABELS[s]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function QuickActions({ lead }: { lead: LeadRow }) {
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {lead.phone && (
+        <a
+          href={`tel:${lead.phone}`}
+          title={`Call ${lead.phone}`}
+          className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
+        >
+          <Phone size={14} />
+        </a>
+      )}
+      {lead.email && (
+        <a
+          href={`mailto:${lead.email}`}
+          title={`Email ${lead.email}`}
+          className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
+        >
+          <Mail size={14} />
+        </a>
+      )}
+    </div>
+  );
+}
+
+const FILTERS = ['all', 'needs-contact', ...LEAD_STATUSES] as const;
+type Filter = (typeof FILTERS)[number];
+
+const FILTER_LABELS: Record<Filter, string> = {
+  all: 'All Statuses',
+  'needs-contact': 'Needs Contact',
+  new: LEAD_STATUS_LABELS.new,
+  contacted: LEAD_STATUS_LABELS.contacted,
+  qualified: LEAD_STATUS_LABELS.qualified,
+  proposal: LEAD_STATUS_LABELS.proposal,
+  won: LEAD_STATUS_LABELS.won,
+  lost: LEAD_STATUS_LABELS.lost,
+};
+
 export default function AdminLeadsPage() {
   const router = useRouter();
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all');
-
-  const [showNew, setShowNew] = useState(false);
-  const [company, setCompany] = useState('');
-  const [contactName, setContactName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [source, setSource] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<Filter>('all');
+  const [showAdd, setShowAdd] = useState(false);
+  const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const query = statusFilter !== 'all' ? `?status=${statusFilter}` : '';
-      const response = await fetch(`/api/admin/leads${query}`);
+      const response = await fetch('/api/admin/leads');
       if (response.status === 401) {
         router.push('/admin/login');
         return;
@@ -62,30 +120,44 @@ export default function AdminLeadsPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, []);
 
-  const handleCreate = async () => {
-    if (!company.trim()) return;
-    setCreating(true);
-    try {
-      const response = await fetch('/api/admin/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company, contactName, email, phone, source }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setShowNew(false);
-        setCompany('');
-        setContactName('');
-        setEmail('');
-        setPhone('');
-        setSource('');
-        router.push(`/admin/leads/${data.lead.id}`);
-      }
-    } finally {
-      setCreating(false);
+  const filtered = useMemo(() => {
+    if (statusFilter === 'all') return leads;
+    if (statusFilter === 'needs-contact') {
+      return leads.filter((l) => l.status === 'new' && l.activities.length === 0);
     }
+    return leads.filter((l) => l.status === statusFilter);
+  }, [leads, statusFilter]);
+
+  const needsContactCount = useMemo(
+    () => leads.filter((l) => l.status === 'new' && l.activities.length === 0).length,
+    [leads]
+  );
+
+  const handleStatusChange = async (lead: LeadRow, status: LeadStatus) => {
+    if (status === 'lost') {
+      setLostTarget(lead);
+      return;
+    }
+    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status } : l)));
+    await fetch(`/api/admin/leads/${lead.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+  };
+
+  const handleConfirmLost = async (reason: string) => {
+    if (!lostTarget) return;
+    const id = lostTarget.id;
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: 'lost' } : l)));
+    setLostTarget(null);
+    await fetch(`/api/admin/leads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'lost', lostReason: reason }),
+    });
   };
 
   const inputClass =
@@ -103,79 +175,69 @@ export default function AdminLeadsPage() {
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as LeadStatus | 'all')}
-            className={`${inputClass} flex-1 sm:flex-none sm:w-48`}
+            onChange={(e) => setStatusFilter(e.target.value as Filter)}
+            className={`${inputClass} flex-1 sm:flex-none sm:w-52`}
           >
-            <option value="all" className="bg-[#05030a]">All Statuses</option>
-            {LEAD_STATUSES.map((s) => (
-              <option key={s} value={s} className="bg-[#05030a]">
-                {LEAD_STATUS_LABELS[s]}
+            {FILTERS.map((f) => (
+              <option key={f} value={f} className="bg-[#05030a]">
+                {FILTER_LABELS[f]}
+                {f === 'needs-contact' && needsContactCount > 0 ? ` (${needsContactCount})` : ''}
               </option>
             ))}
           </select>
           <button
-            onClick={() => setShowNew(!showNew)}
+            onClick={() => setShowAdd(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
           >
             <UserPlus size={16} />
-            New Lead
+            Add Companies
           </button>
         </div>
       </div>
 
-      {showNew && (
-        <Card className="p-6 mb-8">
-          <h2 className="text-lg font-bold mb-4">New Lead</h2>
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company *" className={inputClass} />
-            <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className={inputClass} />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className={inputClass} />
-            <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source (referral, cold outreach, inbound...)" className={`${inputClass} md:col-span-2`} />
-          </div>
-          <button
-            onClick={handleCreate}
-            disabled={creating || !company.trim()}
-            className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-          >
-            {creating ? 'Creating...' : 'Create Lead'}
-          </button>
-        </Card>
+      {needsContactCount > 0 && statusFilter !== 'needs-contact' && (
+        <button
+          onClick={() => setStatusFilter('needs-contact')}
+          className="w-full text-left flex items-center gap-3 rounded-xl border border-amber-400/20 bg-amber-400/5 hover:bg-amber-400/10 px-5 py-3 mb-6 transition-colors"
+        >
+          <Sparkles size={16} className="text-amber-300 shrink-0" />
+          <span className="text-sm">
+            <strong className="text-amber-300">{needsContactCount}</strong> compan{needsContactCount === 1 ? 'y' : 'ies'} added but never contacted yet.
+          </span>
+        </button>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
         </div>
-      ) : leads.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <Card className="p-12 text-center text-white/40">
-          No leads yet.
+          {statusFilter === 'needs-contact' ? "You're all caught up — nothing waiting on a first touch." : 'No leads yet.'}
         </Card>
       ) : (
         <>
           {/* Mobile: card list */}
           <div className="md:hidden space-y-3">
-            {leads.map((lead) => (
-              <button
+            {filtered.map((lead) => (
+              <div
                 key={lead.id}
                 onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                className="w-full text-left rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-4 hover:border-white/20 transition-colors"
+                className="rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-4 hover:border-white/20 transition-colors cursor-pointer"
               >
-                <div className="flex justify-between items-start mb-2">
+                <div className="flex justify-between items-start mb-2 gap-2">
                   <p className="font-semibold flex items-center gap-1.5">
                     {lead.hotLead && <Flame size={13} className="text-amber-400" />}
                     {lead.company}
                   </p>
-                  <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${STATUS_COLORS[lead.status]}`}>
-                    {LEAD_STATUS_LABELS[lead.status]}
-                  </span>
+                  <StatusSelect lead={lead} onChange={handleStatusChange} />
                 </div>
                 <p className="text-sm text-white/50 mb-2">{lead.contactName || lead.email || '—'}</p>
-                <div className="flex justify-between text-xs text-white/40">
+                <div className="flex justify-between items-center text-xs text-white/40">
                   <span>{lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}</span>
-                  <span>{lead.assignedTo?.name || 'Unassigned'}</span>
+                  <QuickActions lead={lead} />
                 </div>
-              </button>
+              </div>
             ))}
           </div>
 
@@ -191,10 +253,11 @@ export default function AdminLeadsPage() {
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Est. Value</th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Assigned</th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Last Activity</th>
+                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Quick Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {leads.map((lead) => (
+                  {filtered.map((lead) => (
                     <tr
                       key={lead.id}
                       onClick={() => router.push(`/admin/leads/${lead.id}`)}
@@ -208,9 +271,7 @@ export default function AdminLeadsPage() {
                       </td>
                       <td className="px-6 py-4 text-white/50">{lead.contactName || lead.email || '—'}</td>
                       <td className="px-6 py-4">
-                        <span className={`text-xs px-2 py-1 rounded-full ${STATUS_COLORS[lead.status]}`}>
-                          {LEAD_STATUS_LABELS[lead.status]}
-                        </span>
+                        <StatusSelect lead={lead} onChange={handleStatusChange} />
                       </td>
                       <td className="px-6 py-4 text-white/50">
                         {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
@@ -221,6 +282,9 @@ export default function AdminLeadsPage() {
                           ? new Date(lead.activities[0].createdAt).toLocaleDateString()
                           : '—'}
                       </td>
+                      <td className="px-6 py-4">
+                        <QuickActions lead={lead} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -228,6 +292,28 @@ export default function AdminLeadsPage() {
             </div>
           </Card>
         </>
+      )}
+
+      {showAdd && (
+        <QuickAddLeadModal
+          onClose={() => setShowAdd(false)}
+          onCreated={(leadId) => {
+            setShowAdd(false);
+            if (leadId) {
+              router.push(`/admin/leads/${leadId}`);
+            } else {
+              load();
+            }
+          }}
+        />
+      )}
+
+      {lostTarget && (
+        <LostReasonModal
+          companyName={lostTarget.company}
+          onCancel={() => setLostTarget(null)}
+          onConfirm={handleConfirmLost}
+        />
       )}
     </PageIn>
   );

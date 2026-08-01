@@ -65,6 +65,15 @@ export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
   proposal: 'Proposal',
 };
 
+export const LOST_REASON_PRESETS = [
+  'Went with a competitor',
+  'Too expensive',
+  'Bad timing / no budget right now',
+  'Went quiet — stopped responding',
+  'Decided not to move forward with a project at all',
+  'Timeline too long',
+] as const;
+
 export function isPainPointKey(value: string): value is PainPointKey {
   return value in PAIN_POINTS;
 }

@@ -40,11 +40,19 @@ export async function POST(request: NextRequest) {
       return unauthorizedResponse();
     }
 
-    const { company, contactName, email, phone, source, estimatedValue, painPoints, notes } =
+    const { company, contactName, email, phone, source, estimatedValue, painPoints, notes, status } =
       await request.json();
 
     if (!company) {
       return NextResponse.json({ error: 'Company is required' }, { status: 400 });
+    }
+
+    let lostReason: string | undefined;
+    if (status !== undefined && !isLeadStatus(status)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
+    if (status === 'lost' && typeof notes === 'string' && notes.trim()) {
+      lostReason = notes.trim();
     }
 
     const lead = await prisma.lead.create({
@@ -57,6 +65,8 @@ export async function POST(request: NextRequest) {
         estimatedValue: typeof estimatedValue === 'number' ? estimatedValue : null,
         painPoints: Array.isArray(painPoints) ? painPoints.join(',') : '',
         notes: notes || null,
+        status: status || undefined,
+        lostReason,
         assignedToId: session.userId,
       },
     });
