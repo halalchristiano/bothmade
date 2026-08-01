@@ -83,6 +83,7 @@ async function handleCheckoutSessionCompleted(
     timeline: rawTimeline,
     basePrice: rawBasePrice,
     totalPrice: rawTotalPrice,
+    leadId,
   } = metadata;
 
   const baseService: BaseService =
@@ -149,8 +150,28 @@ async function handleCheckoutSessionCompleted(
       basePrice,
       totalPrice,
       stripeSessionId: session.id,
+      convertedFromLeadId: leadId || null,
     },
   });
+
+  // This checkout was closed from a lead's payment link (rather than the
+  // public /start form) — this is the moment the deal is actually won, so
+  // mark it in the CRM automatically instead of leaving it stuck until
+  // someone remembers to update it by hand.
+  if (leadId) {
+    const lead = await prisma.lead.update({ where: { id: leadId }, data: { status: 'won' } }).catch(() => null);
+    const notifier = lead?.assignedToId || (await prisma.user.findFirst({ select: { id: true } }))?.id;
+    if (lead && notifier) {
+      await prisma.teamMessage.create({
+        data: {
+          content: `🎉 ${company} paid and their project is live — deposit/payment cleared via payment link.`,
+          fromUserId: notifier,
+          relatedLeadId: leadId,
+          relatedProjectId: project.id,
+        },
+      });
+    }
+  }
 
   await prisma.projectUpdate.create({
     data: {
