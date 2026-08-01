@@ -250,24 +250,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const visibleNavItems = NAV_ITEMS.filter((item) => userRole !== 'sales' || item.salesVisible);
 
   return (
-    <div className="min-h-screen bg-[#05030a] text-white">
-      {/* Ambient background glow, matches the client portal's visual language */}
-      <div
-        className="pointer-events-none fixed -top-40 left-1/3 h-96 w-96 rounded-full blur-[140px] opacity-[0.07]"
-        style={{ background: 'radial-gradient(circle, rgba(56,189,248,1), transparent 70%)' }}
-      />
-      <div
-        className="pointer-events-none fixed top-1/2 right-0 h-96 w-96 rounded-full blur-[140px] opacity-[0.06]"
-        style={{ background: 'radial-gradient(circle, rgba(168,85,247,1), transparent 70%)' }}
-      />
-
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-white/[0.07] bg-black/40 backdrop-blur-xl z-40">
-        <Link href="/admin/dashboard" className="flex items-center gap-2.5 px-6 h-16 shrink-0">
+    <div className="min-h-screen bg-[#050505] text-white">
+      {/* Desktop sidebar — flat, sharp, no blur/gradient chrome */}
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-white/10 bg-black z-40">
+        <Link href="/admin/dashboard" className="flex items-center gap-2.5 px-6 h-16 shrink-0 border-b border-white/10">
           <Logo />
         </Link>
 
-        <div className="px-4 mb-3">
+        <div className="px-4 mt-4 mb-3">
           <SearchBox />
         </div>
 
@@ -280,16 +270,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Link
                 key={item.href}
                 href={item.href}
-                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`relative flex items-center gap-3 pl-3 pr-3 py-2.5 border-l-2 text-sm font-medium transition-all ${
                   active
-                    ? 'bg-gradient-to-r from-sky-400/15 to-purple-500/10 text-white ring-1 ring-sky-400/20'
-                    : 'text-white/45 hover:text-white hover:bg-white/[0.04]'
+                    ? 'border-l-sky-400 text-white bg-white/[0.04]'
+                    : 'border-l-transparent text-white/45 hover:text-white hover:bg-white/[0.03]'
                 }`}
               >
                 <Icon size={17} strokeWidth={2} className={active ? 'text-sky-300' : ''} />
                 {item.label}
                 {isChat && unreadCount > 0 && (
-                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-[10px] font-bold text-black px-1.5">
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded bg-sky-400 text-[10px] font-bold text-black px-1.5">
                     {unreadCount}
                   </span>
                 )}
@@ -298,20 +288,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        <div className="p-3 border-t border-white/[0.07]">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-xl">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-purple-500 text-black text-xs font-bold shrink-0">
+        <div className="p-3 border-t border-white/10">
+          <div className="flex items-center gap-3 px-2 py-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-sky-400/40 text-sky-300 text-xs font-bold shrink-0">
               {initials}
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{userName || 'Team'}</p>
-              <p className="text-[11px] text-white/35 capitalize">{userRole}</p>
+              <p className="text-[11px] font-mono uppercase tracking-wide text-white/35">{userRole}</p>
             </div>
             <NotificationBell />
           </div>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-2 py-2 mt-1 rounded-xl text-sm text-white/40 hover:text-white hover:bg-white/[0.04] transition-colors"
+            className="w-full flex items-center gap-2 px-2 py-2 mt-1 rounded-md text-sm text-white/40 hover:text-white hover:bg-white/[0.04] transition-colors"
           >
             <LogOut size={15} />
             Logout
@@ -320,7 +310,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Mobile top bar */}
-      <header className="lg:hidden sticky top-0 z-50 border-b border-white/[0.07] bg-black/70 backdrop-blur-xl">
+      <header className="lg:hidden sticky top-0 z-50 border-b border-white/10 bg-black">
         <div className="px-4 h-14 flex items-center justify-between">
           <Link href="/admin/dashboard">
             <Logo compact />
@@ -329,7 +319,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <NotificationBell />
             <button
               onClick={() => setMobileOpen((v) => !v)}
-              className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/5 transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-md hover:bg-white/5 transition-colors"
               aria-label="Menu"
             >
               {mobileOpen ? <X size={19} /> : <Menu size={19} />}
@@ -344,7 +334,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="overflow-hidden border-t border-white/[0.07]"
+              className="overflow-hidden border-t border-white/10"
             >
               <div className="px-4 py-4 space-y-4">
                 <SearchBox onNavigate={() => setMobileOpen(false)} />
@@ -357,14 +347,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       <Link
                         key={item.href}
                         href={item.href}
-                        className={`relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors ${
-                          active ? 'bg-gradient-to-r from-sky-400/15 to-purple-500/10 text-white' : 'text-white/50 hover:bg-white/[0.04] hover:text-white'
+                        className={`relative flex items-center gap-3 pl-3 pr-3 py-3 border-l-2 text-sm font-medium transition-colors ${
+                          active ? 'border-l-sky-400 text-white bg-white/[0.04]' : 'border-l-transparent text-white/50 hover:bg-white/[0.03] hover:text-white'
                         }`}
                       >
                         <Icon size={17} className={active ? 'text-sky-300' : ''} />
                         {item.label}
                         {isChat && unreadCount > 0 && (
-                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-[10px] font-bold text-black px-1.5">
+                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded bg-sky-400 text-[10px] font-bold text-black px-1.5">
                             {unreadCount}
                           </span>
                         )}
@@ -372,9 +362,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     );
                   })}
                 </nav>
-                <div className="flex items-center justify-between pt-3 border-t border-white/[0.07]">
+                <div className="flex items-center justify-between pt-3 border-t border-white/10">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-purple-500 text-black text-[11px] font-bold">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-md border border-sky-400/40 text-sky-300 text-[11px] font-bold">
                       {initials}
                     </span>
                     <span className="text-sm text-white/60">{userName}</span>
