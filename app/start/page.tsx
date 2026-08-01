@@ -5,17 +5,27 @@ import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
 import {
+  ADD_ON_CATEGORIES,
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
   formatCents,
+  type AddOnCategory,
   type AddOnKey,
   type BaseService,
   type ClientType,
   type TimelineKey,
 } from '@/lib/pricing';
+
+const ADD_ONS_BY_CATEGORY = Object.entries(ADD_ONS).reduce(
+  (acc, [key, addOn]) => {
+    (acc[addOn.category] ??= []).push(key as AddOnKey);
+    return acc;
+  },
+  {} as Record<AddOnCategory, AddOnKey[]>
+);
 
 export default function StartPage() {
   const [loading, setLoading] = useState(false);
@@ -156,23 +166,41 @@ export default function StartPage() {
 
         {/* Step 2: Add-ons */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6">2. Add-ons</h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            {(Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).map(
-              ([key, addOn]) => (
-                <label key={key} className={`${cardClass(addOns.includes(key))} flex items-start gap-3 cursor-pointer`}>
-                  <input
-                    type="checkbox"
-                    checked={addOns.includes(key)}
-                    onChange={() => toggleAddOn(key)}
-                    className="mt-1"
-                  />
-                  <div>
-                    <h3 className="font-semibold mb-1">{addOn.label}</h3>
-                    <p className="text-sm mb-2 text-white/50">{addOn.description}</p>
-                    <p className="text-sm font-medium">+{formatCents(addOn.price)}</p>
+          <h2 className="text-2xl font-bold mb-2">2. Add-ons</h2>
+          <p className="text-white/40 text-sm mb-6">
+            Pick as many as you need — every price shown is exactly what it adds, nothing hidden.
+          </p>
+          <div className="space-y-8">
+            {(Object.entries(ADD_ONS_BY_CATEGORY) as [AddOnCategory, AddOnKey[]][]).map(
+              ([category, keys]) => (
+                <div key={category}>
+                  <h3 className="text-sm font-mono uppercase tracking-[0.2em] text-white/40 mb-3">
+                    {ADD_ON_CATEGORIES[category].label}
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {keys.map((key) => {
+                      const addOn = ADD_ONS[key];
+                      return (
+                        <label
+                          key={key}
+                          className={`${cardClass(addOns.includes(key))} flex items-start gap-3 cursor-pointer`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={addOns.includes(key)}
+                            onChange={() => toggleAddOn(key)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <h4 className="font-semibold mb-1">{addOn.label}</h4>
+                            <p className="text-sm mb-2 text-white/50">{addOn.description}</p>
+                            <p className="text-sm font-medium">+{formatCents(addOn.price)}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
-                </label>
+                </div>
               )
             )}
           </div>

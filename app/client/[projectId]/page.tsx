@@ -45,13 +45,55 @@ export default function ClientDashboard() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages' | 'onboarding'>('overview');
   const [messageContent, setMessageContent] = useState('');
+
+  const [questions, setQuestions] = useState<
+    Array<{ id: string; question: string; type: string; options: string; response: { answer: string } | null }>
+  >([]);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
 
   useEffect(() => {
     loadProject();
+    loadOnboarding();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  const loadOnboarding = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/onboarding`);
+      const data = await response.json();
+      if (data.success) {
+        setQuestions(data.questions);
+        const initial: Record<string, string> = {};
+        for (const q of data.questions) {
+          initial[q.id] = q.response?.answer || '';
+        }
+        setAnswers(initial);
+      }
+    } catch (err) {
+      console.error('Failed to load onboarding form:', err);
+    }
+  };
+
+  const handleAnswerChange = (questionId: string, value: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  };
+
+  const handleSubmitAnswer = async (questionId: string) => {
+    setSavingAnswerId(questionId);
+    try {
+      await fetch(`/api/projects/${projectId}/onboarding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId, answer: answers[questionId] || '' }),
+      });
+      loadOnboarding();
+    } finally {
+      setSavingAnswerId(null);
+    }
+  };
 
   const loadProject = async () => {
     try {
@@ -138,7 +180,7 @@ export default function ClientDashboard() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Tabs */}
         <div className="flex gap-2 mb-8 border-b border-white/10">
-          {(['overview', 'timeline', 'messages'] as const).map((tab) => (
+          {(['overview', 'timeline', 'messages', 'onboarding'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -352,6 +394,68 @@ export default function ClientDashboard() {
                 Send Message
               </button>
             </form>
+          </div>
+        )}
+
+        {/* Onboarding Tab */}
+        {activeTab === 'onboarding' && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+            <h2 className="text-xl font-bold mb-2">Onboarding</h2>
+            <p className="text-white/50 text-sm mb-6">
+              A few questions from the team to help kick your project off right.
+            </p>
+
+            {questions.length === 0 ? (
+              <p className="text-white/50">Nothing to fill out yet — check back soon.</p>
+            ) : (
+              <div className="space-y-6">
+                {questions.map((q) => {
+                  const options = q.options.split(',').map((o) => o.trim()).filter(Boolean);
+                  return (
+                    <div key={q.id}>
+                      <label className="block text-sm font-medium mb-2 text-white/80">
+                        {q.question}
+                        {q.response && <span className="ml-2 text-xs text-emerald-300">Answered</span>}
+                      </label>
+                      {q.type === 'textarea' ? (
+                        <textarea
+                          value={answers[q.id] || ''}
+                          onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                          rows={3}
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent resize-none transition-colors"
+                        />
+                      ) : q.type === 'select' ? (
+                        <select
+                          value={answers[q.id] || ''}
+                          onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors"
+                        >
+                          <option value="" className="bg-[#05030a]">Select...</option>
+                          {options.map((opt) => (
+                            <option key={opt} value={opt} className="bg-[#05030a]">
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={answers[q.id] || ''}
+                          onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors"
+                        />
+                      )}
+                      <button
+                        onClick={() => handleSubmitAnswer(q.id)}
+                        disabled={savingAnswerId === q.id}
+                        className="mt-2 text-sm rounded-lg border border-white/20 px-4 py-1.5 hover:bg-white/5 disabled:opacity-50 transition-colors"
+                      >
+                        {savingAnswerId === q.id ? 'Saving...' : 'Save Answer'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -9,7 +9,46 @@ export type BaseService =
   | 'visionos'
   | 'multi';
 
-export type AddOnKey = 'seo' | 'analytics' | 'maintenance' | 'hosting';
+export type AddOnKey =
+  // Content & growth
+  | 'seo'
+  | 'analytics'
+  | 'copywriting'
+  | 'cms'
+  | 'blog'
+  | 'multilingual'
+  // Commerce & bookings
+  | 'ecommerce'
+  | 'booking'
+  | 'subscriptions'
+  // Design & motion
+  | 'illustrations'
+  | 'animations'
+  | 'threed'
+  | 'brand-identity'
+  // Backend & integrations
+  | 'custom-backend'
+  | 'integrations'
+  | 'admin-dashboard'
+  | 'user-accounts'
+  | 'push-notifications'
+  | 'live-chat'
+  // Accessibility & compliance
+  | 'accessibility-audit'
+  | 'privacy-compliance'
+  // Ongoing care (recurring — first month included in price)
+  | 'maintenance'
+  | 'growth-plan'
+  | 'hosting'
+  | 'onboarding-retainer';
+
+export type AddOnCategory =
+  | 'content-growth'
+  | 'commerce-bookings'
+  | 'design-motion'
+  | 'backend-integrations'
+  | 'accessibility-compliance'
+  | 'ongoing-care';
 
 export type ClientType = 'startup' | 'smb' | 'enterprise';
 
@@ -51,26 +90,179 @@ export const BASE_SERVICES: Record<
   },
 };
 
-export const ADD_ONS: Record<AddOnKey, { label: string; description: string; price: number }> = {
+export const ADD_ON_CATEGORIES: Record<AddOnCategory, { label: string }> = {
+  'content-growth': { label: 'Content & Growth' },
+  'commerce-bookings': { label: 'Commerce & Bookings' },
+  'design-motion': { label: 'Design & Motion' },
+  'backend-integrations': { label: 'Backend & Integrations' },
+  'accessibility-compliance': { label: 'Accessibility & Compliance' },
+  'ongoing-care': { label: 'Ongoing Care (recurring)' },
+};
+
+export const ADD_ONS: Record<
+  AddOnKey,
+  { label: string; description: string; price: number; category: AddOnCategory }
+> = {
+  // Content & growth
   seo: {
     label: 'SEO Setup',
     description: 'Technical SEO, metadata, and search console setup.',
     price: 75000,
+    category: 'content-growth',
   },
   analytics: {
     label: 'Analytics',
     description: 'Event tracking and a reporting dashboard.',
     price: 50000,
+    category: 'content-growth',
   },
+  copywriting: {
+    label: 'Professional Copywriting',
+    description: 'Website and product copy written for you, not just placeholder text.',
+    price: 90000,
+    category: 'content-growth',
+  },
+  cms: {
+    label: 'Content Management System',
+    description: 'Edit pages, images, and copy yourself without touching code.',
+    price: 120000,
+    category: 'content-growth',
+  },
+  blog: {
+    label: 'Blog / Articles',
+    description: 'A blog section with categories, tags, and RSS.',
+    price: 60000,
+    category: 'content-growth',
+  },
+  multilingual: {
+    label: 'Multi-language Support',
+    description: 'Translated content and language switching for a second language.',
+    price: 80000,
+    category: 'content-growth',
+  },
+
+  // Commerce & bookings
+  ecommerce: {
+    label: 'E-commerce & Payments',
+    description: 'Product catalog, cart, and checkout — Stripe or your platform of choice.',
+    price: 250000,
+    category: 'commerce-bookings',
+  },
+  booking: {
+    label: 'Appointments & Booking',
+    description: 'Calendar scheduling so customers can book time with you directly.',
+    price: 150000,
+    category: 'commerce-bookings',
+  },
+  subscriptions: {
+    label: 'Subscriptions & Memberships',
+    description: 'Recurring billing, member accounts, and gated content.',
+    price: 220000,
+    category: 'commerce-bookings',
+  },
+
+  // Design & motion
+  illustrations: {
+    label: 'Custom Illustrations & Icons',
+    description: 'Original artwork and iconography instead of stock assets.',
+    price: 70000,
+    category: 'design-motion',
+  },
+  animations: {
+    label: 'High-End Animations',
+    description: 'Scroll-driven motion, micro-interactions, the details that make it feel alive.',
+    price: 140000,
+    category: 'design-motion',
+  },
+  threed: {
+    label: '3D / WebGL Visuals',
+    description: 'Interactive 3D scenes or product visualizations.',
+    price: 200000,
+    category: 'design-motion',
+  },
+  'brand-identity': {
+    label: 'Brand Identity',
+    description: 'Logo, color system, and typography — a full visual identity, not just a website.',
+    price: 180000,
+    category: 'design-motion',
+  },
+
+  // Backend & integrations
+  'custom-backend': {
+    label: 'Custom Backend / API',
+    description: 'A purpose-built backend for logic that off-the-shelf tools can\'t handle.',
+    price: 300000,
+    category: 'backend-integrations',
+  },
+  integrations: {
+    label: 'Third-Party Integrations',
+    description: 'Connect to your CRM, Slack, Zapier, or other tools you already run on.',
+    price: 100000,
+    category: 'backend-integrations',
+  },
+  'admin-dashboard': {
+    label: 'Admin Dashboard',
+    description: 'An internal tool for your team to manage data without touching the database.',
+    price: 220000,
+    category: 'backend-integrations',
+  },
+  'user-accounts': {
+    label: 'User Accounts & Auth',
+    description: 'Sign-up, login, and per-user data — the foundation for any logged-in product.',
+    price: 150000,
+    category: 'backend-integrations',
+  },
+  'push-notifications': {
+    label: 'Push Notifications',
+    description: 'Re-engage users with native push, web push, or both.',
+    price: 90000,
+    category: 'backend-integrations',
+  },
+  'live-chat': {
+    label: 'Live Chat Widget',
+    description: 'Real-time chat support built into your product.',
+    price: 70000,
+    category: 'backend-integrations',
+  },
+
+  // Accessibility & compliance
+  'accessibility-audit': {
+    label: 'Accessibility Audit (WCAG)',
+    description: 'A full accessibility pass so your product works for everyone.',
+    price: 60000,
+    category: 'accessibility-compliance',
+  },
+  'privacy-compliance': {
+    label: 'Privacy & Compliance Setup',
+    description: 'Cookie consent, privacy policy wiring, and GDPR/CCPA-friendly data handling.',
+    price: 50000,
+    category: 'accessibility-compliance',
+  },
+
+  // Ongoing care (recurring)
   maintenance: {
     label: 'Maintenance Plan',
     description: 'Ongoing updates and monitoring (first month included).',
     price: 30000,
+    category: 'ongoing-care',
+  },
+  'growth-plan': {
+    label: 'Growth Plan',
+    description: 'Maintenance plus a small batch of new features shipped every month (first month included).',
+    price: 60000,
+    category: 'ongoing-care',
   },
   hosting: {
     label: 'Managed Hosting',
     description: 'We host and manage infrastructure (first month included).',
     price: 20000,
+    category: 'ongoing-care',
+  },
+  'onboarding-retainer': {
+    label: 'Onboarding & Support Retainer',
+    description: 'A dedicated check-in cadence while your team gets up to speed (first month included).',
+    price: 40000,
+    category: 'ongoing-care',
   },
 };
 

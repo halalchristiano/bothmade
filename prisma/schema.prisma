@@ -22,8 +22,11 @@ model User {
   updatedAt DateTime   @updatedAt
 
   // Relations
-  clientMessages ProjectMessage[] @relation("SentByUser")
-  adminUpdates   ProjectUpdate[]  @relation("CreatedByAdmin")
+  clientMessages  ProjectMessage[] @relation("SentByUser")
+  adminUpdates    ProjectUpdate[]  @relation("CreatedByAdmin")
+  assignedLeads   Lead[]           @relation("AssignedLeads")
+  leadActivities  LeadActivity[]   @relation("LeadActivityAuthor")
+  teamNotes       TeamNote[]       @relation("TeamNoteAuthor")
 
   @@map("users")
 }
@@ -87,8 +90,10 @@ model Project {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  messages ProjectMessage[]
-  updates  ProjectUpdate[]
+  messages            ProjectMessage[]
+  updates             ProjectUpdate[]
+  teamNotes           TeamNote[]
+  onboardingQuestions OnboardingQuestion[]
 
   @@map("projects")
 }
@@ -152,4 +157,94 @@ model EmailPreferences {
   updatedAt DateTime @updatedAt
 
   @@map("email_preferences")
+}
+
+// Sales CRM: prospective clients Evan (or anyone on the team) is working
+model Lead {
+  id             String   @id @default(cuid())
+  company        String
+  contactName    String?
+  email          String?
+  phone          String?
+  status         String   @default("new") // "new", "contacted", "qualified", "proposal", "won", "lost"
+  source         String? // "referral", "cold-outreach", "inbound", etc.
+  estimatedValue Int? // cents
+  painPoints     String   @default("") // comma-separated tags, e.g. "no-mobile-app,slow-site"
+  notes          String? // freeform quick notes, separate from the activity timeline
+
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities LeadActivity[]
+
+  @@map("leads")
+}
+
+// Timeline of outreach on a lead: notes, logged emails, calls, Loom links
+model LeadActivity {
+  id     String @id @default(cuid())
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  type    String // "note", "email", "call", "loom"
+  content String
+  url     String? // Loom link, or reference URL
+
+  createdById String?
+  createdBy   User?   @relation("LeadActivityAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@map("lead_activities")
+}
+
+// Internal notes on a project — visible to the Bothmade team only, never the client
+model TeamNote {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  content String
+
+  authorId String?
+  author   User?   @relation("TeamNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@map("team_notes")
+}
+
+// Custom onboarding questions an admin defines per-project, for the client to fill out
+model OnboardingQuestion {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  question String
+  type     String @default("text") // "text", "textarea", "select"
+  options  String @default("") // comma-separated, only used when type = "select"
+  order    Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  response OnboardingResponse?
+
+  @@map("onboarding_questions")
+}
+
+// The client's answer to one onboarding question
+model OnboardingResponse {
+  id         String             @id @default(cuid())
+  questionId String             @unique
+  question   OnboardingQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  answer String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("onboarding_responses")
 }

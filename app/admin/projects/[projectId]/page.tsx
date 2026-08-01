@@ -99,6 +99,77 @@ export default function AdminProjectDetailPage() {
   const [deliverableSize, setDeliverableSize] = useState('');
   const [deliverableSaving, setDeliverableSaving] = useState(false);
 
+  const [notes, setNotes] = useState<Array<{ id: string; content: string; createdAt: string; author: { name: string } | null }>>([]);
+  const [noteContent, setNoteContent] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  const [questions, setQuestions] = useState<
+    Array<{ id: string; question: string; type: string; options: string; response: { answer: string } | null }>
+  >([]);
+  const [newQuestion, setNewQuestion] = useState('');
+  const [newQuestionType, setNewQuestionType] = useState('text');
+  const [newQuestionOptions, setNewQuestionOptions] = useState('');
+  const [questionSaving, setQuestionSaving] = useState(false);
+
+  const loadNotes = async () => {
+    const response = await fetch(`/api/admin/projects/${projectId}/notes`);
+    const data = await response.json();
+    if (data.success) setNotes(data.notes);
+  };
+
+  const loadQuestions = async () => {
+    const response = await fetch(`/api/admin/projects/${projectId}/onboarding`);
+    const data = await response.json();
+    if (data.success) setQuestions(data.questions);
+  };
+
+  const handleAddNote = async () => {
+    if (!noteContent.trim()) return;
+    setNoteSaving(true);
+    try {
+      const response = await fetch(`/api/admin/projects/${projectId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: noteContent }),
+      });
+      if (response.ok) {
+        setNoteContent('');
+        loadNotes();
+      }
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
+  const handleAddQuestion = async () => {
+    if (!newQuestion.trim()) return;
+    setQuestionSaving(true);
+    try {
+      const response = await fetch(`/api/admin/projects/${projectId}/onboarding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: newQuestion,
+          type: newQuestionType,
+          options: newQuestionOptions,
+          order: questions.length,
+        }),
+      });
+      if (response.ok) {
+        setNewQuestion('');
+        setNewQuestionOptions('');
+        loadQuestions();
+      }
+    } finally {
+      setQuestionSaving(false);
+    }
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    await fetch(`/api/admin/projects/${projectId}/onboarding/${questionId}`, { method: 'DELETE' });
+    loadQuestions();
+  };
+
   const loadProject = async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}`);
@@ -118,6 +189,8 @@ export default function AdminProjectDetailPage() {
 
   useEffect(() => {
     loadProject();
+    loadNotes();
+    loadQuestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -349,6 +422,41 @@ export default function AdminProjectDetailPage() {
               </button>
             </div>
           </div>
+
+          {/* Internal team notes — never shown to the client */}
+          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 backdrop-blur-xl p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-xl font-bold">Internal Notes</h2>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300">
+                Team only — never shown to client
+              </span>
+            </div>
+            <div className="space-y-3 max-h-64 overflow-y-auto my-4">
+              {notes.length === 0 && <p className="text-white/40 text-sm">No internal notes yet.</p>}
+              {notes.map((note) => (
+                <div key={note.id} className="p-3 rounded-lg bg-white/5">
+                  <p className="text-sm text-white/70 whitespace-pre-wrap">{note.content}</p>
+                  <p className="text-xs text-white/30 mt-1">
+                    {note.author?.name || 'Team'} · {new Date(note.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <textarea
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              rows={2}
+              placeholder="Note to the rest of the team — e.g. 'Evan: this client is price-sensitive, don't push the growth plan yet'"
+              className={`${inputClass} resize-none mb-3`}
+            />
+            <button
+              onClick={handleAddNote}
+              disabled={noteSaving || !noteContent.trim()}
+              className="rounded-lg border border-amber-400/40 px-5 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 hover:bg-amber-400/10 transition-colors"
+            >
+              {noteSaving ? 'Saving...' : 'Add Internal Note'}
+            </button>
+          </div>
         </div>
 
         {/* RIGHT: Deliverables */}
@@ -409,6 +517,68 @@ export default function AdminProjectDetailPage() {
                 className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
               >
                 {deliverableSaving ? 'Adding...' : 'Add File'}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+            <h2 className="text-lg font-bold mb-1">Onboarding Form</h2>
+            <p className="text-xs text-white/40 mb-4">
+              Custom questions for this client to answer from their dashboard.
+            </p>
+
+            <div className="space-y-3 mb-4">
+              {questions.length === 0 && <p className="text-white/40 text-sm">No questions yet.</p>}
+              {questions.map((q) => (
+                <div key={q.id} className="p-3 rounded-lg border border-white/10">
+                  <div className="flex justify-between items-start gap-2">
+                    <p className="text-sm font-medium">{q.question}</p>
+                    <button
+                      onClick={() => handleDeleteQuestion(q.id)}
+                      className="text-xs text-red-400 hover:underline shrink-0"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  {q.response ? (
+                    <p className="text-xs text-emerald-300 mt-1">Answered: {q.response.answer}</p>
+                  ) : (
+                    <p className="text-xs text-white/30 mt-1">Awaiting answer</p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-4 border-t border-white/10 space-y-2">
+              <input
+                value={newQuestion}
+                onChange={(e) => setNewQuestion(e.target.value)}
+                placeholder="Question text"
+                className={`${inputClass} text-sm`}
+              />
+              <select
+                value={newQuestionType}
+                onChange={(e) => setNewQuestionType(e.target.value)}
+                className={`${inputClass} text-sm`}
+              >
+                <option value="text" className="bg-[#05030a]">Short text</option>
+                <option value="textarea" className="bg-[#05030a]">Long text</option>
+                <option value="select" className="bg-[#05030a]">Multiple choice</option>
+              </select>
+              {newQuestionType === 'select' && (
+                <input
+                  value={newQuestionOptions}
+                  onChange={(e) => setNewQuestionOptions(e.target.value)}
+                  placeholder="Options, comma-separated"
+                  className={`${inputClass} text-sm`}
+                />
+              )}
+              <button
+                onClick={handleAddQuestion}
+                disabled={questionSaving || !newQuestion.trim()}
+                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {questionSaving ? 'Adding...' : 'Add Question'}
               </button>
             </div>
           </div>
