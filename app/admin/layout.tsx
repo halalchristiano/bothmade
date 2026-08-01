@@ -34,11 +34,7 @@ const NAV_ITEMS = [
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span className={`font-bold tracking-tight ${compact ? 'text-lg' : 'text-xl'}`}>
-      <span
-        aria-hidden="true"
-        className="text-transparent"
-        style={{ WebkitTextStroke: '1px rgba(125,211,252,0.9)' }}
-      >
+      <span aria-hidden="true" className="text-sky-300">
         both
       </span>
       <span aria-hidden="true">made</span>
