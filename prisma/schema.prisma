@@ -21,6 +21,13 @@ model User {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
+  // Gmail "send as" connection — lets client emails go out from the user's
+  // own Gmail address (and land in their real Sent folder) instead of a
+  // shared no-reply address. gmailAppPassword is encrypted at rest.
+  gmailAddress     String?
+  gmailAppPassword String?
+  gmailConnectedAt DateTime?
+
   // Relations
   clientMessages  ProjectMessage[] @relation("SentByUser")
   adminUpdates    ProjectUpdate[]  @relation("CreatedByAdmin")

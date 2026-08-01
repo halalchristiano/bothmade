@@ -15,6 +15,8 @@ import {
 } from '@/lib/leads';
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { EmailComposer } from '@/components/admin/EmailComposer';
+import { Mail } from 'lucide-react';
 import {
   ADD_ON_CATEGORIES,
   ADD_ONS,
@@ -82,6 +84,7 @@ export default function LeadDetailPage() {
   const leadId = params.leadId as string;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
+  const [composingEmail, setComposingEmail] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -513,7 +516,16 @@ export default function LeadDetailPage() {
         <Link href="/admin/leads" className="text-white/50 hover:text-white text-sm transition-colors">
           ← Back to Leads
         </Link>
-        {confirmingDeleteLead ? (
+        <div className="flex items-center gap-3">
+          {lead.email && (
+            <button
+              onClick={() => setComposingEmail(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-colors"
+            >
+              <Mail size={13} /> Compose email
+            </button>
+          )}
+          {confirmingDeleteLead ? (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-white/40">Delete {lead.company} permanently?</span>
             <button
@@ -538,7 +550,19 @@ export default function LeadDetailPage() {
             Delete lead
           </button>
         )}
+        </div>
       </div>
+
+      {composingEmail && lead.email && (
+        <EmailComposer
+          recipientEmail={lead.email}
+          recipientName={lead.contactName || undefined}
+          company={lead.company}
+          defaultLoomUrl={lead.mockupUrl}
+          leadId={leadId}
+          onClose={() => setComposingEmail(false)}
+        />
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6 mt-4">
         {/* LEFT: Lead info */}

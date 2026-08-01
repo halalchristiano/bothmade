@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
+import { Mail } from 'lucide-react';
+import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -94,6 +96,7 @@ export default function AdminProjectDetailPage() {
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [composingEmail, setComposingEmail] = useState(false);
 
   const [statusDraft, setStatusDraft] = useState('');
   const [statusDescription, setStatusDescription] = useState('');
@@ -387,11 +390,27 @@ export default function AdminProjectDetailPage() {
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 md:py-8">
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <Link href="/admin/projects" className="text-white/50 hover:text-white text-sm transition-colors">
           ← Back to Projects
         </Link>
+        <button
+          onClick={() => setComposingEmail(true)}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-colors"
+        >
+          <Mail size={13} /> Compose email
+        </button>
       </div>
+
+      {composingEmail && (
+        <EmailComposer
+          recipientEmail={project.client.email}
+          recipientName={project.client.contactName || undefined}
+          company={project.client.company}
+          projectId={projectId}
+          onClose={() => setComposingEmail(false)}
+        />
+      )}
 
       {project.sourcedLead && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-5 py-3">
