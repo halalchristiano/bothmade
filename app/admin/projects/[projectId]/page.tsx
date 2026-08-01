@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { upload } from '@vercel/blob/client';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -29,6 +30,9 @@ interface ProjectDetail {
   timeline: string | null;
   basePrice: number;
   totalPrice: number;
+  amountPaid: number;
+  balanceDue: number;
+  payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
   deliverables: Deliverable[];
   createdAt: string;
   client: { id: string; email: string; company: string; contactName?: string | null };
@@ -37,6 +41,7 @@ interface ProjectDetail {
     content: string;
     isFromAdmin: boolean;
     createdAt: string;
+    attachments?: string;
     user?: { name: string } | null;
     client?: { company: string } | null;
   }>;
@@ -98,6 +103,9 @@ export default function AdminProjectDetailPage() {
   const [deliverableUrl, setDeliverableUrl] = useState('');
   const [deliverableSize, setDeliverableSize] = useState('');
   const [deliverableSaving, setDeliverableSaving] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [notes, setNotes] = useState<Array<{ id: string; content: string; createdAt: string; author: { name: string } | null }>>([]);
   const [noteContent, setNoteContent] = useState('');
@@ -110,6 +118,10 @@ export default function AdminProjectDetailPage() {
   const [newQuestionType, setNewQuestionType] = useState('text');
   const [newQuestionOptions, setNewQuestionOptions] = useState('');
   const [questionSaving, setQuestionSaving] = useState(false);
+
+  const [collectingBalance, setCollectingBalance] = useState(false);
+  const [balanceLinkUrl, setBalanceLinkUrl] = useState('');
+  const [balanceError, setBalanceError] = useState('');
 
   const loadNotes = async () => {
     const response = await fetch(`/api/admin/projects/${projectId}/notes`);
@@ -168,6 +180,24 @@ export default function AdminProjectDetailPage() {
   const handleDeleteQuestion = async (questionId: string) => {
     await fetch(`/api/admin/projects/${projectId}/onboarding/${questionId}`, { method: 'DELETE' });
     loadQuestions();
+  };
+
+  const handleCollectBalance = async () => {
+    setBalanceError('');
+    setCollectingBalance(true);
+    try {
+      const response = await fetch(`/api/admin/projects/${projectId}/collect-balance`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (data.success) {
+        setBalanceLinkUrl(data.url);
+      } else {
+        setBalanceError(data.error || 'Failed to create balance payment link');
+      }
+    } finally {
+      setCollectingBalance(false);
+    }
   };
 
   const loadProject = async () => {
@@ -253,6 +283,36 @@ export default function AdminProjectDetailPage() {
     }
   };
 
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError('');
+    setUploadingFile(true);
+    try {
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: `/api/admin/projects/${projectId}/deliverables/upload`,
+      });
+
+      await fetch(`/api/admin/projects/${projectId}/deliverables`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, url: blob.url, size: formatBytes(file.size) }),
+      });
+      loadProject();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleDeleteDeliverable = async (id: string) => {
     await fetch(`/api/admin/projects/${projectId}/deliverables?id=${id}`, {
       method: 'DELETE',
@@ -316,6 +376,50 @@ export default function AdminProjectDetailPage() {
                 <p className="text-white/40 mb-1">Total Price</p>
                 <p className="font-medium">{formatCents(project.totalPrice)}</p>
               </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <p className="text-sm font-semibold mb-3">Payment Status</p>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-white/40">Paid</span>
+                <span className="text-emerald-300 font-medium">{formatCents(project.amountPaid)}</span>
+              </div>
+              <div className="flex justify-between text-sm mb-3">
+                <span className="text-white/40">Balance Due</span>
+                <span className={`font-medium ${project.balanceDue > 0 ? 'text-amber-300' : 'text-white/40'}`}>
+                  {formatCents(project.balanceDue)}
+                </span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-1.5 mb-4">
+                <div
+                  className="bg-gradient-to-r from-emerald-400 to-sky-400 h-1.5 rounded-full"
+                  style={{ width: `${Math.min(100, (project.amountPaid / project.totalPrice) * 100)}%` }}
+                />
+              </div>
+
+              {project.balanceDue > 0 && (
+                <>
+                  <button
+                    onClick={handleCollectBalance}
+                    disabled={collectingBalance}
+                    className="w-full rounded-lg border border-amber-400/40 text-amber-300 py-2 text-sm font-semibold hover:bg-amber-400/10 disabled:opacity-50 transition-colors"
+                  >
+                    {collectingBalance ? 'Creating...' : 'Collect Balance'}
+                  </button>
+                  {balanceError && <p className="text-red-400 text-xs mt-2">{balanceError}</p>}
+                  {balanceLinkUrl && (
+                    <div className="mt-3 flex gap-2">
+                      <input readOnly value={balanceLinkUrl} className="flex-1 min-w-0 px-2 py-1.5 rounded bg-white/5 border border-white/15 text-xs" />
+                      <button
+                        onClick={() => navigator.clipboard.writeText(balanceLinkUrl)}
+                        className="px-3 py-1.5 rounded border border-white/20 text-xs hover:bg-white/5 transition-colors whitespace-nowrap"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="mt-6 pt-6 border-t border-white/10">
@@ -391,6 +495,28 @@ export default function AdminProjectDetailPage() {
                       </p>
                     </div>
                     <p className="text-sm text-white/60">{m.content}</p>
+                    {m.attachments && m.attachments !== '[]' && (
+                      <div className="mt-2 space-y-1">
+                        {(() => {
+                          try {
+                            const files = JSON.parse(m.attachments) as Array<{ name: string; url: string }>;
+                            return files.map((f, i) => (
+                              <a
+                                key={i}
+                                href={f.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 text-xs text-sky-300 hover:underline"
+                              >
+                                📎 {f.name}
+                              </a>
+                            ));
+                          } catch {
+                            return null;
+                          }
+                        })()}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -492,7 +618,24 @@ export default function AdminProjectDetailPage() {
             </div>
 
             <div className="pt-4 border-t border-white/10 space-y-2">
-              <p className="text-sm font-semibold mb-1">Add File</p>
+              <p className="text-sm font-semibold mb-1">Upload File</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileUpload}
+                disabled={uploadingFile}
+                className="w-full text-xs text-white/60 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-gradient-to-r file:from-sky-400 file:to-purple-500 file:text-black file:font-semibold file:text-xs disabled:opacity-50"
+              />
+              {uploadingFile && <p className="text-xs text-sky-300">Uploading...</p>}
+              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+
+              <div className="flex items-center gap-2 py-2">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-xs text-white/30">or paste a link</span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <p className="text-sm font-semibold mb-1">Add Link</p>
               <input
                 value={deliverableName}
                 onChange={(e) => setDeliverableName(e.target.value)}
@@ -514,9 +657,9 @@ export default function AdminProjectDetailPage() {
               <button
                 onClick={handleAddDeliverable}
                 disabled={deliverableSaving || !deliverableName.trim() || !deliverableUrl.trim()}
-                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                className="w-full rounded-lg border border-white/20 py-2 text-sm font-semibold disabled:opacity-50 hover:bg-white/5 transition-colors"
               >
-                {deliverableSaving ? 'Adding...' : 'Add File'}
+                {deliverableSaving ? 'Adding...' : 'Add Link'}
               </button>
             </div>
           </div>

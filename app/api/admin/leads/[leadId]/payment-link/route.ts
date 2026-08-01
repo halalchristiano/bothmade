@@ -7,6 +7,7 @@ import {
   ADD_ONS,
   BASE_SERVICES,
   calculatePrice,
+  depositAmount,
   isAddOnKey,
   isBaseService,
   isClientType,
@@ -29,7 +30,7 @@ export async function POST(
     }
 
     const { leadId } = await params;
-    const { baseService, addOns = [], clientType, timeline } = await request.json();
+    const { baseService, addOns = [], clientType, timeline, depositOnly = false } = await request.json();
 
     if (!isBaseService(baseService) || !isClientType(clientType) || !isTimelineKey(timeline)) {
       return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
@@ -44,6 +45,7 @@ export async function POST(
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
     const addOnLabels = addOnKeys.map((k) => ADD_ONS[k].label);
     const serviceLabel = BASE_SERVICES[baseService].label;
+    const chargeAmount = depositOnly ? depositAmount(breakdown.totalPrice) : breakdown.totalPrice;
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
@@ -57,10 +59,10 @@ export async function POST(
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Bothmade ${serviceLabel} — ${lead.company}`,
+              name: `Bothmade ${serviceLabel} — ${lead.company}${depositOnly ? ' (Deposit)' : ''}`,
               description: addOnLabels.length > 0 ? addOnLabels.join(', ') : undefined,
             },
-            unit_amount: breakdown.totalPrice,
+            unit_amount: chargeAmount,
           },
           quantity: 1,
         },
@@ -77,6 +79,7 @@ export async function POST(
         timeline,
         basePrice: String(breakdown.basePrice),
         totalPrice: String(breakdown.totalPrice),
+        paymentType: depositOnly ? 'deposit' : 'full',
       },
     });
 
@@ -84,7 +87,7 @@ export async function POST(
       data: {
         leadId,
         type: 'proposal',
-        content: `Payment link created: ${serviceLabel}${addOnLabels.length ? ` + ${addOnLabels.join(', ')}` : ''} — $${(breakdown.totalPrice / 100).toLocaleString()}`,
+        content: `Payment link created (${depositOnly ? 'deposit' : 'full amount'}): ${serviceLabel}${addOnLabels.length ? ` + ${addOnLabels.join(', ')}` : ''} — $${(chargeAmount / 100).toLocaleString()}`,
         url: paymentLink.url,
         createdById: session.userId,
       },

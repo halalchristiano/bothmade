@@ -7,6 +7,8 @@ import {
   hashPassword,
 } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
+import { notifyAdminsPaymentReceived } from '@/lib/notify';
+import { formatCents } from '@/lib/pricing';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -56,7 +58,18 @@ async function handleCheckoutSessionCompleted(
 ) {
   const metadata = session.metadata as Record<string, string> | null;
 
-  if (!metadata || !metadata.clientEmail || !metadata.company) {
+  if (!metadata) {
+    throw new Error('Missing metadata in checkout session');
+  }
+
+  // A payment against a project that already exists (a deposit's balance,
+  // or a top-up) — no new client/project to create, just record the payment.
+  if (metadata.existingProjectId) {
+    await handleExistingProjectPayment(session, metadata);
+    return;
+  }
+
+  if (!metadata.clientEmail || !metadata.company) {
     throw new Error('Missing metadata in checkout session');
   }
 
@@ -149,6 +162,23 @@ async function handleCheckoutSessionCompleted(
     },
   });
 
+  const amountPaid = session.amount_total ?? totalPrice;
+  await prisma.payment.create({
+    data: {
+      projectId: project.id,
+      amount: amountPaid,
+      type: metadata.paymentType === 'deposit' ? 'deposit' : 'full',
+      stripeSessionId: session.id,
+    },
+  });
+
+  await notifyAdminsPaymentReceived({
+    projectId: project.id,
+    projectName,
+    clientCompany: company,
+    amountLabel: formatCents(amountPaid),
+  });
+
   await sendWelcomeEmail(
     email,
     contactName || company,
@@ -159,4 +189,56 @@ async function handleCheckoutSessionCompleted(
   );
 
   console.log(`Checkout completed: client=${client.id} project=${project.id}`);
+}
+
+async function handleExistingProjectPayment(
+  session: Stripe.Checkout.Session,
+  metadata: Record<string, string>
+) {
+  const projectId = metadata.existingProjectId;
+
+  // Idempotency: Stripe may redeliver the same event
+  const existing = await prisma.payment.findUnique({
+    where: { stripeSessionId: session.id },
+  });
+  if (existing) return;
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { client: true },
+  });
+  if (!project) {
+    throw new Error(`Payment webhook: project ${projectId} not found`);
+  }
+
+  const amountPaid = session.amount_total ?? 0;
+  const type = metadata.paymentType === 'deposit' ? 'deposit' : 'balance';
+
+  await prisma.payment.create({
+    data: {
+      projectId,
+      amount: amountPaid,
+      type,
+      stripeSessionId: session.id,
+    },
+  });
+
+  await prisma.projectUpdate.create({
+    data: {
+      projectId,
+      title: type === 'deposit' ? 'Deposit received' : 'Payment received',
+      description: `We've received your payment of ${formatCents(amountPaid)}. Thank you!`,
+      statusStage: project.status,
+      userId: null,
+    },
+  });
+
+  await notifyAdminsPaymentReceived({
+    projectId,
+    projectName: project.name,
+    clientCompany: project.client.company,
+    amountLabel: formatCents(amountPaid),
+  });
+
+  console.log(`Existing-project payment: project=${projectId} amount=${amountPaid}`);
 }

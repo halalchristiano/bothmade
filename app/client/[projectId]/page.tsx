@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { upload } from '@vercel/blob/client';
 import { ClientHeader } from '@/components/portal/ClientHeader';
 
 interface Project {
@@ -14,6 +15,8 @@ interface Project {
   baseService: string;
   addOns: string[];
   totalPrice: number;
+  amountPaid: number;
+  balanceDue: number;
   createdAt: string;
   updatedAt: string;
   messages: any[];
@@ -47,6 +50,9 @@ export default function ClientDashboard() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages' | 'onboarding'>('overview');
   const [messageContent, setMessageContent] = useState('');
+  const [fileToAttach, setFileToAttach] = useState<File | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [questions, setQuestions] = useState<
     Array<{ id: string; question: string; type: string; options: string; response: { answer: string } | null }>
@@ -117,21 +123,35 @@ export default function ClientDashboard() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageContent.trim()) return;
+    if (!messageContent.trim() && !fileToAttach) return;
 
+    setSendingMessage(true);
     try {
+      let attachments: Array<{ name: string; url: string }> = [];
+      if (fileToAttach) {
+        const blob = await upload(fileToAttach.name, fileToAttach, {
+          access: 'public',
+          handleUploadUrl: '/api/client/upload',
+        });
+        attachments = [{ name: fileToAttach.name, url: blob.url }];
+      }
+
       const response = await fetch(`/api/projects/${projectId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: messageContent }),
+        body: JSON.stringify({ content: messageContent || '(file attached)', attachments }),
       });
 
       if (response.ok) {
         setMessageContent('');
+        setFileToAttach(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
         loadProject();
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -259,6 +279,15 @@ export default function ClientDashboard() {
                   <p className="text-lg font-semibold">${(project.totalPrice / 100).toLocaleString()}</p>
                 </div>
 
+                {project.balanceDue > 0 && (
+                  <div>
+                    <h3 className="text-sm text-white/40 mb-1">Balance Due</h3>
+                    <p className="text-lg font-semibold text-amber-300">
+                      ${(project.balanceDue / 100).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+
                 {project.addOns.length > 0 && (
                   <div>
                     <h3 className="text-sm text-white/40 mb-1">Add-ons</h3>
@@ -371,6 +400,28 @@ export default function ClientDashboard() {
                       </p>
                     </div>
                     <p className="text-white/70 text-sm">{message.content}</p>
+                    {message.attachments && message.attachments !== '[]' && (
+                      <div className="mt-2 space-y-1">
+                        {(() => {
+                          try {
+                            const files = JSON.parse(message.attachments) as Array<{ name: string; url: string }>;
+                            return files.map((f, i) => (
+                              <a
+                                key={i}
+                                href={f.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 text-xs text-sky-300 hover:underline"
+                              >
+                                📎 {f.name}
+                              </a>
+                            ));
+                          } catch {
+                            return null;
+                          }
+                        })()}
+                      </div>
+                    )}
                   </div>
                 ))
               ) : (
@@ -378,7 +429,7 @@ export default function ClientDashboard() {
               )}
             </div>
 
-            <form onSubmit={handleSendMessage} className="space-y-4">
+            <form onSubmit={handleSendMessage} className="space-y-3">
               <textarea
                 value={messageContent}
                 onChange={(e) => setMessageContent(e.target.value)}
@@ -386,13 +437,21 @@ export default function ClientDashboard() {
                 className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent resize-none transition-colors"
                 rows={4}
               />
-              <button
-                type="submit"
-                disabled={!messageContent.trim()}
-                className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-6 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                Send Message
-              </button>
+              <div className="flex items-center gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={(e) => setFileToAttach(e.target.files?.[0] || null)}
+                  className="text-xs text-white/50 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:text-xs"
+                />
+                <button
+                  type="submit"
+                  disabled={sendingMessage || (!messageContent.trim() && !fileToAttach)}
+                  className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-6 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+                >
+                  {sendingMessage ? 'Sending...' : 'Send Message'}
+                </button>
+              </div>
             </form>
           </div>
         )}

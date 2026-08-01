@@ -39,6 +39,9 @@ export async function GET(
             },
           },
         },
+        payments: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -67,6 +70,8 @@ export async function GET(
             contactName: project.client.contactName,
           };
 
+    const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
+
     return NextResponse.json(
       {
         success: true,
@@ -81,6 +86,9 @@ export async function GET(
           timeline: project.timeline,
           basePrice: project.basePrice,
           totalPrice: project.totalPrice,
+          amountPaid,
+          balanceDue: project.totalPrice - amountPaid,
+          payments: project.payments,
           deliverables: project.deliverables
             ? JSON.parse(project.deliverables)
             : [],

@@ -94,6 +94,7 @@ model Project {
   updates             ProjectUpdate[]
   teamNotes           TeamNote[]
   onboardingQuestions OnboardingQuestion[]
+  payments            Payment[]
 
   @@map("projects")
 }
@@ -233,6 +234,24 @@ model OnboardingQuestion {
   response OnboardingResponse?
 
   @@map("onboarding_questions")
+}
+
+// A single Stripe payment against a project — a project's total price may be
+// collected as one full payment, or split into a deposit followed by a
+// balance payment. Amount paid so far = sum of these rows.
+model Payment {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  amount Int // cents
+  type   String // "deposit", "balance", "full"
+
+  stripeSessionId String? @unique
+
+  createdAt DateTime @default(now())
+
+  @@map("payments")
 }
 
 // The client's answer to one onboarding question

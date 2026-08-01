@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '/admin/leads', label: 'Leads' },
   { href: '/admin/clients', label: 'Clients' },
   { href: '/admin/projects', label: 'Projects' },
+  { href: '/admin/analytics', label: 'Analytics' },
 ];
 
 function Logo() {

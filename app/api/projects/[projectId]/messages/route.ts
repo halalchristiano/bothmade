@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { sendMessageNotificationEmail } from '@/lib/email';
+import { notifyAdminsNewClientMessage } from '@/lib/notify';
 
 export async function GET(
   request: NextRequest,
@@ -150,6 +151,19 @@ export async function POST(
           projectId
         );
       }
+    }
+
+    // Send notification email to the team if from client to admin
+    if (session.type === 'client' && project.client) {
+      const preview =
+        content.length > 100 ? content.substring(0, 100) + '...' : content;
+
+      await notifyAdminsNewClientMessage({
+        projectId,
+        projectName: project.name,
+        clientCompany: project.client.company,
+        preview,
+      });
     }
 
     return NextResponse.json(

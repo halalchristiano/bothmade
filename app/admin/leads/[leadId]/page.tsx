@@ -20,6 +20,7 @@ import {
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  depositAmount,
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
@@ -85,6 +86,7 @@ export default function LeadDetailPage() {
   const [proposalClientType, setProposalClientType] = useState<ClientType>('smb');
   const [proposalTimeline, setProposalTimeline] = useState<TimelineKey>('standard');
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
+  const [depositOnly, setDepositOnly] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
   const [downloadingContract, setDownloadingContract] = useState(false);
   const [proposalError, setProposalError] = useState('');
@@ -227,7 +229,7 @@ export default function LeadDetailPage() {
       const response = await fetch(`/api/admin/leads/${leadId}/payment-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(proposalSelection),
+        body: JSON.stringify({ ...proposalSelection, depositOnly }),
       });
       const data = await response.json();
       if (data.success) {
@@ -604,10 +606,15 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        <div className="flex justify-between items-center rounded-lg bg-white/5 p-4 mb-4">
+        <div className="flex justify-between items-center rounded-lg bg-white/5 p-4 mb-2">
           <span className="font-semibold">Total</span>
           <span className="text-2xl font-bold">{formatCents(proposalBreakdown.totalPrice)}</span>
         </div>
+
+        <label className="flex items-center gap-2 text-sm text-white/60 mb-4 cursor-pointer">
+          <input type="checkbox" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
+          Charge 50% deposit only ({formatCents(depositAmount(proposalBreakdown.totalPrice))}) — collect the rest later
+        </label>
 
         {proposalError && <p className="text-red-400 text-sm mb-3">{proposalError}</p>}
 
@@ -617,7 +624,7 @@ export default function LeadDetailPage() {
             disabled={creatingLink}
             className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
           >
-            {creatingLink ? 'Creating...' : 'Create Payment Link'}
+            {creatingLink ? 'Creating...' : `Create Payment Link${depositOnly ? ' (Deposit)' : ''}`}
           </button>
           <button
             onClick={handleDownloadContract}

@@ -421,6 +421,13 @@ export function calculatePrice(selection: PricingSelection): PricingBreakdown {
   };
 }
 
+/** Standard deposit percentage quoted in the contract template. */
+export const DEPOSIT_PERCENT = 50;
+
+export function depositAmount(totalPrice: number): number {
+  return Math.round((totalPrice * DEPOSIT_PERCENT) / 100);
+}
+
 export function formatCents(cents: number): string {
   return (cents / 100).toLocaleString('en-US', {
     style: 'currency',
