@@ -89,6 +89,7 @@ interface LeadDetail {
   qualifiedAt: string | null;
   coldEmailDraft: string | null;
   coldEmailSentAt: string | null;
+  personalizedObservation: string | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -615,6 +616,7 @@ export default function LeadDetailPage() {
           company={lead.company}
           defaultLoomUrl={lead.mockupUrl}
           defaultPainPoint={painPointSentence(lead.painPoints)}
+          defaultObservation={lead.personalizedObservation}
           leadId={leadId}
           onClose={() => setComposingEmail(false)}
         />

@@ -9,6 +9,7 @@ export interface BulkRecipient {
   company: string;
   contactName: string | null;
   email: string | null;
+  personalizedObservation?: string | null;
 }
 
 // Sales-facing templates make sense to blast to a list; ops templates
@@ -54,6 +55,26 @@ export function BulkEmailComposer({
   useEffect(() => {
     if (!previewFor && emailable.length > 0) setPreviewFor(emailable[0].id);
   }, [emailable, previewFor]);
+
+  // Seed the per-recipient "observation" field from research already stored
+  // on the lead, so it's never blank if that work has already been done —
+  // but never overwrite something the user already typed in this session.
+  useEffect(() => {
+    const observationField = personalizeFields.find((f) => f.key === 'observation');
+    if (!observationField) return;
+    setPerLead((p) => {
+      let changed = false;
+      const next = { ...p };
+      for (const r of emailable) {
+        if (r.personalizedObservation && !next[r.id]?.observation) {
+          next[r.id] = { ...(next[r.id] || {}), observation: r.personalizedObservation };
+          changed = true;
+        }
+      }
+      return changed ? next : p;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId, emailable]);
 
   const handleSend = async () => {
     setSending(true);

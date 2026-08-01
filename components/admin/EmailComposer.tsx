@@ -13,12 +13,41 @@ import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
  * preview renders the exact same HTML the send call would produce, so what
  * you see here is what the recipient actually gets — not an approximation.
  */
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+// Fields that are safe to auto-fill because they're derived from data we
+// already have on the lead/project, not guessed — the observation field is
+// the one thing that's never safe to invent, so it only fills in when a
+// real one-liner was researched and stored ahead of time.
+function defaultsForTemplate(
+  templateId: string,
+  ctx: { leadId?: string; projectId?: string; defaultObservation?: string | null }
+): Record<string, string> {
+  const d: Record<string, string> = {};
+  if ((templateId === 'proposal_followup' || templateId === 'contract_reminder') && ctx.leadId) {
+    d.signUrl = `${SITE_URL}/sign/${ctx.leadId}`;
+  }
+  if (
+    (templateId === 'project_status_update' || templateId === 'project_completed' || templateId === 'requirements_request') &&
+    ctx.projectId
+  ) {
+    const url = `${SITE_URL}/client/${ctx.projectId}`;
+    if (templateId === 'requirements_request') d.onboardingLink = url;
+    else d.dashboardUrl = url;
+  }
+  if ((templateId === 'cold_outreach' || templateId === 'cold_outreach_researched') && ctx.defaultObservation) {
+    d.observation = ctx.defaultObservation;
+  }
+  return d;
+}
+
 export function EmailComposer({
   recipientEmail,
   recipientName,
   company,
   defaultLoomUrl,
   defaultPainPoint,
+  defaultObservation,
   leadId,
   clientId,
   projectId,
@@ -30,18 +59,24 @@ export function EmailComposer({
   company?: string;
   defaultLoomUrl?: string | null;
   defaultPainPoint?: string | null;
+  defaultObservation?: string | null;
   leadId?: string;
   clientId?: string;
   projectId?: string;
   onClose: () => void;
   onSent?: () => void;
 }) {
-  const defaultFields: Record<string, string> = {};
-  if (defaultLoomUrl) defaultFields.loomUrl = defaultLoomUrl;
-  if (defaultPainPoint) defaultFields.painPoint = defaultPainPoint;
+  const staticDefaultFields: Record<string, string> = {};
+  if (defaultLoomUrl) staticDefaultFields.loomUrl = defaultLoomUrl;
+  if (defaultPainPoint) staticDefaultFields.painPoint = defaultPainPoint;
+
+  const buildDefaultFields = (id: string) => ({
+    ...staticDefaultFields,
+    ...defaultsForTemplate(id, { leadId, projectId, defaultObservation }),
+  });
 
   const [templateId, setTemplateId] = useState(EMAIL_TEMPLATES[0].id);
-  const [fields, setFields] = useState<Record<string, string>>(defaultFields);
+  const [fields, setFields] = useState<Record<string, string>>(() => buildDefaultFields(EMAIL_TEMPLATES[0].id));
   const [to, setTo] = useState(recipientEmail);
   const [toName, setToName] = useState(recipientName || '');
   const [sending, setSending] = useState(false);
@@ -142,7 +177,7 @@ export function EmailComposer({
                 value={templateId}
                 onChange={(e) => {
                   setTemplateId(e.target.value);
-                  setFields(defaultFields);
+                  setFields(buildDefaultFields(e.target.value));
                 }}
                 className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm mb-1 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
               >

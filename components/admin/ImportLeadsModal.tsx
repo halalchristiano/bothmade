@@ -27,6 +27,13 @@ const COLUMNS: Array<{ header: string; required: boolean; description: string; e
     example: 'Subject: Thoughts on Linpotia\\n\\nHi [First Name], ...',
   },
   {
+    header: 'personalizedObservation',
+    required: false,
+    description:
+      'A short one-liner (not the full email) — pre-fills the "personalized observation" field in the cold-outreach template',
+    example: 'Your Google reviews are exceptional, but barely visible on the homepage.',
+  },
+  {
     header: 'mockupURL',
     required: false,
     description: 'Link to the finished mockup — pre-fills the Loom/mockup link in the email composer',

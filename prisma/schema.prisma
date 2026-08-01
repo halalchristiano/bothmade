@@ -214,6 +214,12 @@ model Lead {
   coldEmailDraft String?
   coldEmailSentAt DateTime?
 
+  // A short one-liner (not the full draft above) usable as the "personalized
+  // observation" field the cold-outreach templates require — lets Compose
+  // Email pre-fill that field from research done at CSV-import time instead
+  // of starting blank every time.
+  personalizedObservation String?
+
   // BANT-style qualification — structured so "qualified" means something
   // consistent instead of a gut call. Each is a freeform answer summary,
   // not just a checkbox, since the real value is in what was actually said.

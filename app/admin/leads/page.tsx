@@ -25,6 +25,7 @@ interface LeadRow {
   qualifiedAt: string | null;
   coldEmailDraft: string | null;
   coldEmailSentAt: string | null;
+  personalizedObservation: string | null;
   assignedTo: { name: string | null } | null;
   activities: Array<{ createdAt: string }>;
 }
@@ -559,7 +560,13 @@ export default function AdminLeadsPage() {
 
       {showBulkEmail && (
         <BulkEmailComposer
-          recipients={selectedLeads.map((l) => ({ id: l.id, company: l.company, contactName: l.contactName, email: l.email }))}
+          recipients={selectedLeads.map((l) => ({
+            id: l.id,
+            company: l.company,
+            contactName: l.contactName,
+            email: l.email,
+            personalizedObservation: l.personalizedObservation,
+          }))}
           onClose={() => setShowBulkEmail(false)}
           onSent={() => {
             setSelected(new Set());
