@@ -118,12 +118,14 @@ function QuickActions({ lead, onLogged }: { lead: LeadRow; onLogged?: () => void
   );
 }
 
-const FILTERS = ['all', 'needs-contact', ...LEAD_STATUSES] as const;
+const FILTERS = ['all', 'needs-contact', 'cold-ready', 'needs-call', ...LEAD_STATUSES] as const;
 type Filter = (typeof FILTERS)[number];
 
 const FILTER_LABELS: Record<Filter, string> = {
   all: 'All Statuses',
   'needs-contact': 'Needs Contact',
+  'cold-ready': 'Cold Email Ready',
+  'needs-call': 'Needs a Call',
   ...LEAD_STATUS_LABELS,
 };
 
@@ -165,6 +167,12 @@ export default function AdminLeadsPage() {
     if (statusFilter === 'needs-contact') {
       return leads.filter((l) => l.status === 'new' && l.activities.length === 0);
     }
+    if (statusFilter === 'cold-ready') {
+      return leads.filter((l) => l.email && l.coldEmailDraft && !l.coldEmailSentAt);
+    }
+    if (statusFilter === 'needs-call') {
+      return leads.filter((l) => !l.email);
+    }
     return leads.filter((l) => l.status === statusFilter);
   }, [leads, statusFilter]);
 
@@ -172,6 +180,15 @@ export default function AdminLeadsPage() {
     () => leads.filter((l) => l.status === 'new' && l.activities.length === 0).length,
     [leads]
   );
+
+  // Global counts (not scoped to the current selection) — this is what
+  // powers the big "send them all" banner so Evan doesn't have to hunt for
+  // small icons or manually select anything for the common case.
+  const coldReadyLeads = useMemo(
+    () => leads.filter((l) => l.email && l.coldEmailDraft && !l.coldEmailSentAt),
+    [leads]
+  );
+  const needsCallLeads = useMemo(() => leads.filter((l) => !l.email && l.coldEmailDraft), [leads]);
 
   const handleStatusChange = async (lead: LeadRow, status: LeadStatus) => {
     if (status === 'lost') {
@@ -222,14 +239,17 @@ export default function AdminLeadsPage() {
   );
   const selectedNeedingCall = useMemo(() => selectedLeads.filter((l) => !l.email), [selectedLeads]);
 
-  const handleSendColdDrafts = async () => {
-    if (selectedReadyToSend.length === 0) return;
+  const handleSendColdDrafts = async (targets: LeadRow[]) => {
+    if (targets.length === 0) return;
+    if (!confirm(`Send ${targets.length} prepared cold email${targets.length === 1 ? '' : 's'} now? This goes out immediately.`)) {
+      return;
+    }
     setSendingColdDrafts(true);
     try {
       const res = await fetch('/api/admin/email/send-cold-drafts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadIds: selectedReadyToSend.map((l) => l.id) }),
+        body: JSON.stringify({ leadIds: targets.map((l) => l.id) }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -291,6 +311,52 @@ export default function AdminLeadsPage() {
         </div>
       </div>
 
+      {(coldReadyLeads.length > 0 || needsCallLeads.length > 0) && (
+        <Card className="p-5 mb-6" glow="emerald">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-emerald-400/15 flex items-center justify-center shrink-0">
+                <MailCheck size={20} className="text-emerald-400" />
+              </div>
+              <div>
+                <p className="font-semibold">
+                  {coldReadyLeads.length > 0
+                    ? `${coldReadyLeads.length} cold email${coldReadyLeads.length === 1 ? '' : 's'} ready to send`
+                    : 'No cold emails ready right now'}
+                </p>
+                <p className="text-sm text-white/50">
+                  Pre-written from your CSV import — no typing needed.
+                  {needsCallLeads.length > 0 && (
+                    <span className="text-amber-300"> {needsCallLeads.length} more have no email on file — call them instead.</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {needsCallLeads.length > 0 && (
+                <button
+                  onClick={() => setStatusFilter('needs-call')}
+                  className="inline-flex items-center gap-2 rounded-xl border border-amber-400/30 text-amber-300 px-4 py-2.5 text-sm font-semibold hover:bg-amber-400/10 transition-colors whitespace-nowrap"
+                >
+                  <PhoneCall size={15} />
+                  View {needsCallLeads.length} to call
+                </button>
+              )}
+              {coldReadyLeads.length > 0 && (
+                <button
+                  onClick={() => handleSendColdDrafts(coldReadyLeads)}
+                  disabled={sendingColdDrafts}
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
+                >
+                  <Send size={15} />
+                  {sendingColdDrafts ? 'Sending...' : `Send all ${coldReadyLeads.length} now`}
+                </button>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {selected.size > 0 && (
         <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 px-5 py-3 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -306,7 +372,7 @@ export default function AdminLeadsPage() {
               </button>
               {selectedReadyToSend.length > 0 && (
                 <button
-                  onClick={handleSendColdDrafts}
+                  onClick={() => handleSendColdDrafts(selectedReadyToSend)}
                   disabled={sendingColdDrafts}
                   className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
