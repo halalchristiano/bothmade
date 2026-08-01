@@ -72,6 +72,14 @@ export async function GET(
 
     const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
 
+    let sourcedLead: { id: string; company: string } | null = null;
+    if (session.type === 'user' && project.convertedFromLeadId) {
+      sourcedLead = await prisma.lead.findUnique({
+        where: { id: project.convertedFromLeadId },
+        select: { id: true, company: true },
+      });
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -97,6 +105,8 @@ export async function GET(
           client: clientData,
           messages: project.messages,
           updates: project.updates,
+          sourcedLead: session.type === 'user' ? sourcedLead : undefined,
+          handoffAcknowledgedAt: session.type === 'user' ? project.handoffAcknowledgedAt : undefined,
         },
       },
       { status: 200 }
@@ -152,8 +162,24 @@ export async function PUT(
         deliverables: body.deliverables
           ? JSON.stringify(body.deliverables)
           : undefined,
+        handoffAcknowledgedAt:
+          body.acknowledgeHandoff === true && !project.handoffAcknowledgedAt ? new Date() : undefined,
       },
     });
+
+    if (body.acknowledgeHandoff === true && !project.handoffAcknowledgedAt && project.convertedFromLeadId) {
+      const lead = await prisma.lead.findUnique({ where: { id: project.convertedFromLeadId } });
+      if (lead) {
+        await prisma.teamMessage.create({
+          data: {
+            content: `👍 Picked up the handoff for ${lead.company} — starting Discovery.`,
+            fromUserId: session.userId,
+            relatedLeadId: lead.id,
+            relatedProjectId: projectId,
+          },
+        });
+      }
+    }
 
     return NextResponse.json(
       { success: true, project: updatedProject },

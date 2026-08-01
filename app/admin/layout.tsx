@@ -20,13 +20,13 @@ import {
 } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare },
-  { href: '/admin/leads', label: 'Leads', icon: Users },
-  { href: '/admin/clients', label: 'Clients', icon: Building2 },
-  { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, salesVisible: true },
+  { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, salesVisible: true },
+  { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true },
+  { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false },
+  { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, salesVisible: true },
+  { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, salesVisible: true },
 ];
 
 function Logo({ compact = false }: { compact?: boolean }) {
@@ -247,6 +247,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     .slice(0, 2)
     .toUpperCase();
 
+  const visibleNavItems = NAV_ITEMS.filter((item) => userRole !== 'sales' || item.salesVisible);
+
   return (
     <div className="min-h-screen bg-[#05030a] text-white">
       {/* Ambient background glow, matches the client portal's visual language */}
@@ -270,7 +272,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const active = pathname.startsWith(item.href);
             const isChat = item.href === '/admin/team-chat';
             const Icon = item.icon;
@@ -347,7 +349,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <div className="px-4 py-4 space-y-4">
                 <SearchBox onNavigate={() => setMobileOpen(false)} />
                 <nav className="space-y-1">
-                  {NAV_ITEMS.map((item) => {
+                  {visibleNavItems.map((item) => {
                     const active = pathname.startsWith(item.href);
                     const isChat = item.href === '/admin/team-chat';
                     const Icon = item.icon;

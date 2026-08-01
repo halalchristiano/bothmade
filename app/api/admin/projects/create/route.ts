@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
       clientType,
       timeline,
       totalPriceOverride,
+      convertedFromLeadId,
     } = await request.json();
 
     if (!clientEmail || !company) {
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
         timeline: timelineLabel,
         basePrice: breakdown.basePrice,
         totalPrice,
+        convertedFromLeadId: convertedFromLeadId || null,
       },
     });
 
@@ -113,6 +115,15 @@ export async function POST(request: NextRequest) {
         userId: session.userId,
       },
     });
+
+    if (convertedFromLeadId) {
+      // Converting a lead into a paying project is the deal closing — reflect
+      // that in the CRM so it shows up correctly in the sales dashboard.
+      await prisma.lead.update({
+        where: { id: convertedFromLeadId },
+        data: { status: 'won' },
+      }).catch(() => {}); // lead may already be deleted/invalid — non-fatal
+    }
 
     if (generatedPassword) {
       await sendWelcomeEmail(

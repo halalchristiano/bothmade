@@ -130,6 +130,7 @@ export async function GET() {
             createdAt: p.createdAt,
             onboardingTotal: p.onboardingQuestions.length,
             onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
+            handoffAcknowledgedAt: p.handoffAcknowledgedAt,
           })),
           newClientsThisWeek,
           atRiskProjects: atRiskProjects.slice(0, 10),

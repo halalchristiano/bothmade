@@ -90,6 +90,12 @@ model Project {
   // Stripe checkout session that created this project (idempotency + audit)
   stripeSessionId String? @unique
 
+  // Sales handoff tracking — links back to the Lead this was converted from
+  // (when it came through the sales CRM rather than a direct client signup),
+  // and when ops acknowledged picking up a freshly-converted project.
+  convertedFromLeadId String?
+  handoffAcknowledgedAt DateTime?
+
   // Metadata
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

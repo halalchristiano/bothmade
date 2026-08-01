@@ -9,7 +9,6 @@ import {
   Trophy,
   Percent,
   Flame,
-  Clock,
   AlertTriangle,
   XCircle,
   Radio,
@@ -57,6 +56,7 @@ interface OpsStats {
     createdAt: string;
     onboardingTotal: number;
     onboardingAnswered: number;
+    handoffAcknowledgedAt: string | null;
   }>;
   newClientsThisWeek: number;
   atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
@@ -92,6 +92,139 @@ const CLIENT_TIER_LABELS: Record<string, string> = {
   'enterprise-tier': 'Enterprise-tier',
   unscoped: 'Unscoped',
 };
+
+type ActionTone = 'red' | 'sky' | 'amber';
+
+interface NextAction {
+  id: string;
+  company: string;
+  reason: string;
+  tone: ActionTone;
+  meta: string;
+}
+
+function NextActionsCard({ stats }: { stats: SalesStats }) {
+  const seen = new Set<string>();
+  const actions: NextAction[] = [];
+
+  for (const l of stats.followUpsOverdue) {
+    if (seen.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString() });
+  }
+  for (const l of stats.followUpsToday) {
+    if (seen.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '' });
+  }
+  for (const l of stats.hotLeads) {
+    if (seen.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '' });
+  }
+  for (const l of stats.staleLeads) {
+    if (seen.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString() });
+  }
+
+  return (
+    <Card className="p-6" glow={actions.length > 0 ? 'amber' : undefined}>
+      <CardHeader icon={Flame} tone="amber" title="Do This Next" subtitle="Every lead here needs a touch, ranked by urgency" />
+      {actions.length === 0 ? (
+        <EmptyState icon={Flame} text="Nothing urgent — you're caught up." />
+      ) : (
+        <div className="space-y-0.5">
+          {actions.map((a) => (
+            <ListRow
+              key={a.id}
+              href={`/admin/leads/${a.id}`}
+              title={a.company}
+              subtitle={a.reason}
+              trailing={
+                <div className="flex items-center gap-2">
+                  {a.meta && <span className="text-white/40 text-xs whitespace-nowrap">{a.meta}</span>}
+                  <Badge tone={a.tone}>{a.tone === 'red' ? 'urgent' : a.tone === 'sky' ? 'today' : 'hot'}</Badge>
+                </div>
+              }
+            />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function InsightsCard({ stats }: { stats: SalesStats }) {
+  const [tab, setTab] = useState<'lost' | 'source' | 'tier'>('lost');
+  const tabs: Array<{ key: 'lost' | 'source' | 'tier'; label: string }> = [
+    { key: 'lost', label: 'Lost Reasons' },
+    { key: 'source', label: 'Sources' },
+    { key: 'tier', label: 'Client Tier' },
+  ];
+
+  return (
+    <Card className="p-6">
+      <CardHeader icon={Radio} tone="purple" title="Insights" subtitle="Why deals win, lose, and where they come from" />
+      <div className="flex gap-1.5 mb-4">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+              tab === t.key ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'lost' &&
+        (Object.keys(stats.lostReasonCounts).length === 0 ? (
+          <EmptyState icon={XCircle} text="No lost deals recorded yet." />
+        ) : (
+          <div className="space-y-2">
+            {Object.entries(stats.lostReasonCounts)
+              .sort((a, b) => b[1] - a[1])
+              .map(([reason, count]) => (
+                <div key={reason} className="flex justify-between text-sm px-1">
+                  <span className="text-white/70">{reason}</span>
+                  <span className="text-white/40">{count}</span>
+                </div>
+              ))}
+          </div>
+        ))}
+
+      {tab === 'source' && (
+        <div className="space-y-2">
+          {stats.sourcePerformance.map((s) => (
+            <div key={s.source} className="flex justify-between text-sm px-1">
+              <span className="text-white/70">{s.source}</span>
+              <span className="text-white/40">
+                {s.won}/{s.total} won
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'tier' &&
+        (Object.keys(stats.clientTypeBreakdown).length === 0 ? (
+          <EmptyState icon={Building2} text="No active leads yet." />
+        ) : (
+          <div className="space-y-2">
+            {Object.entries(stats.clientTypeBreakdown).map(([tier, count]) => (
+              <div key={tier} className="flex justify-between text-sm px-1">
+                <span className="text-white/70">{CLIENT_TIER_LABELS[tier] || tier}</span>
+                <span className="text-white/40">{count}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+    </Card>
+  );
+}
 
 function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
   const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
@@ -153,122 +286,25 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
         <TasksWidget />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
-        <Card className="p-6">
-          <CardHeader icon={Clock} tone="sky" title="Follow Up Today" subtitle={`${stats.followUpsOverdue.length} overdue`} />
-          {[...stats.followUpsOverdue, ...stats.followUpsToday].length === 0 ? (
-            <EmptyState icon={Clock} text="Nothing due — you're caught up." />
-          ) : (
-            <div className="space-y-0.5">
-              {stats.followUpsOverdue.map((l) => (
-                <ListRow key={l.id} href={`/admin/leads/${l.id}`} title={l.company} trailing={<Badge tone="red">overdue</Badge>} />
-              ))}
-              {stats.followUpsToday.map((l) => (
-                <ListRow key={l.id} href={`/admin/leads/${l.id}`} title={l.company} trailing={<Badge tone="sky">today</Badge>} />
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card className="p-6" glow="amber">
-          <CardHeader icon={Flame} tone="amber" title="Hot Leads" />
-          {stats.hotLeads.length === 0 ? (
-            <EmptyState icon={Flame} text="Flag a lead as hot from its detail page." />
-          ) : (
-            <div className="space-y-0.5">
-              {stats.hotLeads.map((l) => (
-                <ListRow
-                  key={l.id}
-                  href={`/admin/leads/${l.id}`}
-                  title={l.company}
-                  trailing={<span className="text-white/40 text-xs">{l.estimatedValue ? formatCents(l.estimatedValue) : '—'}</span>}
-                />
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card className="p-6">
-          <CardHeader icon={AlertTriangle} tone="red" title="Going Stale" subtitle="5+ days idle" />
-          {stats.staleLeads.length === 0 ? (
-            <EmptyState icon={AlertTriangle} text="Nothing's been idle 5+ days." />
-          ) : (
-            <div className="space-y-0.5">
-              {stats.staleLeads.map((l) => (
-                <ListRow
-                  key={l.id}
-                  href={`/admin/leads/${l.id}`}
-                  title={l.company}
-                  trailing={<span className="text-white/40 text-xs">{new Date(l.updatedAt).toLocaleDateString()}</span>}
-                />
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-5 mb-5">
-        <Card className="p-6">
-          <CardHeader icon={XCircle} tone="red" title="Lost Reasons" />
-          {Object.keys(stats.lostReasonCounts).length === 0 ? (
-            <EmptyState icon={XCircle} text="No lost deals recorded yet." />
-          ) : (
-            <div className="space-y-2">
-              {Object.entries(stats.lostReasonCounts)
-                .sort((a, b) => b[1] - a[1])
-                .map(([reason, count]) => (
-                  <div key={reason} className="flex justify-between text-sm px-1">
-                    <span className="text-white/70">{reason}</span>
-                    <span className="text-white/40">{count}</span>
-                  </div>
-                ))}
-            </div>
-          )}
-        </Card>
-
-        <Card className="p-6">
-          <CardHeader icon={Radio} tone="purple" title="Source Performance" />
-          <div className="space-y-2">
-            {stats.sourcePerformance.map((s) => (
-              <div key={s.source} className="flex justify-between text-sm px-1">
-                <span className="text-white/70">{s.source}</span>
-                <span className="text-white/40">
-                  {s.won}/{s.total} won
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
+      <div className="mb-5">
+        <NextActionsCard stats={stats} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5 mb-8">
-        <Card className="p-6">
-          <CardHeader icon={Building2} tone="sky" title="Pipeline by Client Tier" />
-          {Object.keys(stats.clientTypeBreakdown).length === 0 ? (
-            <EmptyState icon={Building2} text="No active leads yet." />
-          ) : (
-            <div className="space-y-2">
-              {Object.entries(stats.clientTypeBreakdown).map(([tier, count]) => (
-                <div key={tier} className="flex justify-between text-sm px-1">
-                  <span className="text-white/70">{CLIENT_TIER_LABELS[tier] || tier}</span>
-                  <span className="text-white/40">{count}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+        <InsightsCard stats={stats} />
 
         <Card className="p-6" glow="emerald">
           <CardHeader
             icon={DollarSign}
             tone="emerald"
             title="Won Deals"
+            subtitle="Your commission log"
             action={<span className="text-sm text-emerald-300 font-semibold">{formatCents(stats.totalWonValue)}</span>}
           />
           {stats.wonDeals.length === 0 ? (
             <EmptyState icon={DollarSign} text="No deals closed yet." />
           ) : (
-            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+            <div className="space-y-0.5 max-h-64 overflow-y-auto">
               {stats.wonDeals.map((d) => (
                 <ListRow
                   key={d.id}
@@ -437,8 +473,62 @@ function MockupRequestRow({
   );
 }
 
+function HandoffRow({
+  handoff,
+  onAcknowledged,
+}: {
+  handoff: OpsStats['newHandoffs'][number];
+  onAcknowledged: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const handleAcknowledge = async () => {
+    setSaving(true);
+    try {
+      await fetch(`/api/projects/${handoff.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acknowledgeHandoff: true }),
+      });
+      onAcknowledged();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/10 px-3 py-2.5">
+      <div className="flex justify-between items-center gap-2">
+        <Link href={`/admin/projects/${handoff.id}`} className="text-sm font-medium hover:underline truncate">
+          {handoff.company}
+        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          {handoff.onboardingTotal > 0 && (
+            <Badge tone={handoff.onboardingAnswered === handoff.onboardingTotal ? 'emerald' : 'amber'}>
+              Onboarding {handoff.onboardingAnswered}/{handoff.onboardingTotal}
+            </Badge>
+          )}
+          {handoff.handoffAcknowledgedAt ? (
+            <Badge tone="emerald">Picked up</Badge>
+          ) : (
+            <button
+              onClick={handleAcknowledge}
+              disabled={saving}
+              className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+            >
+              {saving ? 'Saving...' : "I've got this"}
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-white/30 mt-1">{handoff.name}</p>
+    </div>
+  );
+}
+
 function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
   const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
+  const [newHandoffs, setNewHandoffs] = useState(stats.newHandoffs);
   const revenueTrend =
     stats.revenueLastMonth > 0
       ? Math.round(((stats.revenueThisMonth - stats.revenueLastMonth) / stats.revenueLastMonth) * 100)
@@ -485,22 +575,18 @@ function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
         <Card className="p-6" glow="emerald">
           <CardHeader icon={Inbox} tone="emerald" title="New Handoffs" subtitle="Give them a first touch" />
-          {stats.newHandoffs.length === 0 ? (
+          {newHandoffs.length === 0 ? (
             <EmptyState icon={Inbox} text="Nothing new this week." />
           ) : (
-            <div className="space-y-0.5">
-              {stats.newHandoffs.map((p) => (
-                <ListRow
+            <div className="space-y-2">
+              {newHandoffs.map((p) => (
+                <HandoffRow
                   key={p.id}
-                  href={`/admin/projects/${p.id}`}
-                  title={p.company}
-                  subtitle={p.name}
-                  trailing={
-                    p.onboardingTotal > 0 ? (
-                      <Badge tone={p.onboardingAnswered === p.onboardingTotal ? 'emerald' : 'amber'}>
-                        Onboarding {p.onboardingAnswered}/{p.onboardingTotal}
-                      </Badge>
-                    ) : undefined
+                  handoff={p}
+                  onAcknowledged={() =>
+                    setNewHandoffs((prev) =>
+                      prev.map((h) => (h.id === p.id ? { ...h, handoffAcknowledgedAt: new Date().toISOString() } : h))
+                    )
                   }
                 />
               ))}

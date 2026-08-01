@@ -53,6 +53,8 @@ interface ProjectDetail {
     createdAt: string;
     user?: { name: string } | null;
   }>;
+  sourcedLead?: { id: string; company: string } | null;
+  handoffAcknowledgedAt?: string | null;
 }
 
 const STATUSES = ['discovery', 'design', 'build', 'launch', 'complete'];
@@ -247,6 +249,21 @@ export default function AdminProjectDetailPage() {
     }
   };
 
+  const [acknowledgingHandoff, setAcknowledgingHandoff] = useState(false);
+  const handleAcknowledgeHandoff = async () => {
+    setAcknowledgingHandoff(true);
+    try {
+      await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acknowledgeHandoff: true }),
+      });
+      loadProject();
+    } finally {
+      setAcknowledgingHandoff(false);
+    }
+  };
+
   useEffect(() => {
     loadProject();
     loadNotes();
@@ -374,6 +391,30 @@ export default function AdminProjectDetailPage() {
           ← Back to Projects
         </Link>
       </div>
+
+      {project.sourcedLead && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-5 py-3">
+          <p className="text-sm text-emerald-200">
+            🤝 Sourced from the sales pipeline —{' '}
+            <Link href={`/admin/leads/${project.sourcedLead.id}`} className="font-semibold hover:underline">
+              view the original lead's sales history
+            </Link>
+          </p>
+          {!project.handoffAcknowledgedAt ? (
+            <button
+              onClick={handleAcknowledgeHandoff}
+              disabled={acknowledgingHandoff}
+              className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+            >
+              {acknowledgingHandoff ? 'Saving...' : "I've got this — Acknowledge"}
+            </button>
+          ) : (
+            <span className="text-xs text-white/40 whitespace-nowrap">
+              Acknowledged {new Date(project.handoffAcknowledgedAt).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
         {/* LEFT: Project Info */}

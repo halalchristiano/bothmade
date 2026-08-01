@@ -45,6 +45,7 @@ function NewProjectForm() {
   const [clientType, setClientType] = useState<ClientType>('smb');
   const [timeline, setTimeline] = useState<TimelineKey>('standard');
   const [priceOverride, setPriceOverride] = useState('');
+  const [convertedFromLeadId, setConvertedFromLeadId] = useState<string | null>(null);
 
   // Pre-fill from a converted lead, e.g. /admin/projects/new?company=...&baseService=...
   useEffect(() => {
@@ -56,6 +57,7 @@ function NewProjectForm() {
     const qAddOns = searchParams.get('addOns');
     const qClientType = searchParams.get('clientType');
     const qTimeline = searchParams.get('timeline');
+    const qLeadId = searchParams.get('leadId');
 
     if (qCompany) setCompany(qCompany);
     if (qContactName) setContactName(qContactName);
@@ -67,6 +69,7 @@ function NewProjectForm() {
     }
     if (qClientType && isClientType(qClientType)) setClientType(qClientType);
     if (qTimeline && isTimelineKey(qTimeline)) setTimeline(qTimeline);
+    if (qLeadId) setConvertedFromLeadId(qLeadId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -105,6 +108,7 @@ function NewProjectForm() {
           clientType,
           timeline,
           totalPriceOverride: priceOverride ? Number(priceOverride) * 100 : undefined,
+          convertedFromLeadId,
         }),
       });
 

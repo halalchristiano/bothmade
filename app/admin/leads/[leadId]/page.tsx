@@ -439,6 +439,7 @@ export default function LeadDetailPage() {
       addOns: proposalAddOns.join(','),
       clientType: proposalClientType,
       timeline: proposalTimeline,
+      leadId,
     });
     setConvertingToProject(true);
     router.push(`/admin/projects/new?${query.toString()}`);
