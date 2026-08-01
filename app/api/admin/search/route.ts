@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
             { email: { contains: q, mode: 'insensitive' } },
           ],
         },
+        orderBy: { updatedAt: 'desc' },
         take: 6,
       }),
       prisma.client.findMany({
@@ -32,11 +33,13 @@ export async function GET(request: NextRequest) {
             { email: { contains: q, mode: 'insensitive' } },
           ],
         },
+        orderBy: { updatedAt: 'desc' },
         take: 6,
       }),
       prisma.project.findMany({
         where: { name: { contains: q, mode: 'insensitive' } },
         include: { client: { select: { company: true } } },
+        orderBy: { updatedAt: 'desc' },
         take: 6,
       }),
       prisma.teamNote.findMany({
@@ -54,6 +57,7 @@ export async function GET(request: NextRequest) {
         title: l.company,
         subtitle: l.contactName || l.email || 'Lead',
         href: `/admin/leads/${l.id}`,
+        updatedAt: l.updatedAt,
       })),
       ...clients.map((c) => ({
         type: 'client' as const,
@@ -61,6 +65,7 @@ export async function GET(request: NextRequest) {
         title: c.company,
         subtitle: c.contactName || c.email,
         href: `/admin/clients/${c.id}`,
+        updatedAt: c.updatedAt,
       })),
       ...projects.map((p) => ({
         type: 'project' as const,
@@ -68,6 +73,7 @@ export async function GET(request: NextRequest) {
         title: p.name,
         subtitle: p.client.company,
         href: `/admin/projects/${p.id}`,
+        updatedAt: p.updatedAt,
       })),
       ...notes.map((n) => ({
         type: 'note' as const,
@@ -75,10 +81,19 @@ export async function GET(request: NextRequest) {
         title: `Note on ${n.project.name}`,
         subtitle: `${n.project.client.company} — ${n.content.slice(0, 60)}`,
         href: `/admin/projects/${n.project.id}`,
+        updatedAt: n.createdAt,
       })),
     ];
 
-    return NextResponse.json({ success: true, results }, { status: 200 });
+    // Recency-weighted: whatever you or Evan touched most recently surfaces
+    // first, rather than grouping by type — on a 2-person team you usually
+    // already know roughly what you're looking for, just not where it moved.
+    results.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    return NextResponse.json(
+      { success: true, results: results.map(({ updatedAt, ...r }) => r) },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Admin search error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

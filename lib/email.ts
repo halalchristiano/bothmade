@@ -277,4 +277,56 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string):
   });
 }
 
+/**
+ * Friday recap sent to every admin/team account — pipeline movement,
+ * revenue, and what's overdue, so neither of you needs to be staring at
+ * the dashboard all week to stay oriented.
+ */
+export async function sendWeeklyDigestEmail(
+  toEmails: string[],
+  stats: {
+    newLeadsThisWeek: number;
+    wonThisWeek: number;
+    wonValueThisWeek: number;
+    revenueThisMonth: number;
+    overdueFollowUps: number;
+    overdueBalances: number;
+    atRiskProjects: number;
+  }
+): Promise<boolean> {
+  if (toEmails.length === 0) return false;
+
+  const formatCents = (cents: number) => `$${(cents / 100).toLocaleString()}`;
+
+  const row = (label: string, value: string, warn = false) => `
+    <tr>
+      <td style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.55); font-size:14px;">${label}</td>
+      <td style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.08); text-align:right; font-weight:700; font-size:14px; color:${warn ? '#f87171' : '#ffffff'};">${value}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p style="margin-top:0;">Here's how the week shook out.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
+      ${row('New leads this week', String(stats.newLeadsThisWeek))}
+      ${row('Deals won this week', `${stats.wonThisWeek} (${formatCents(stats.wonValueThisWeek)})`)}
+      ${row('Revenue this month', formatCents(stats.revenueThisMonth))}
+      ${row('Overdue follow-ups', String(stats.overdueFollowUps), stats.overdueFollowUps > 0)}
+      ${row('Overdue balances', String(stats.overdueBalances), stats.overdueBalances > 0)}
+      ${row('At-risk projects (7+ days idle)', String(stats.atRiskProjects), stats.atRiskProjects > 0)}
+    </table>
+  `;
+
+  return sendEmail({
+    to: toEmails,
+    subject: 'Your week at Bothmade',
+    html: renderShell({
+      eyebrow: 'Weekly digest',
+      title: 'Your week at Bothmade',
+      bodyHtml,
+      ctaLabel: 'Open Dashboard',
+      ctaUrl: `${SITE_URL}/admin/dashboard`,
+    }),
+  });
+}
+
 export { renderShell };
