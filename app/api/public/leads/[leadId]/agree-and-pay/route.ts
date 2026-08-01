@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import Stripe from 'stripe';
+import { getStripe } from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import { buildContractSections } from '@/lib/contract-terms';
 import { isFurtherAlong } from '@/lib/leads';
@@ -20,9 +20,6 @@ import {
   type AddOnKey,
 } from '@/lib/pricing';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-08-27.basil',
-});
 
 /**
  * The client's single click after reading the proposal and ticking
@@ -120,7 +117,7 @@ export async function POST(
     });
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: 'payment',
       success_url: `${siteUrl}/checkout/success`,
       cancel_url: `${siteUrl}/sign/${leadId}`,

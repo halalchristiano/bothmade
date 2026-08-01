@@ -1,6 +1,20 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/**
+ * The mail client, built on first use rather than at import time.
+ *
+ * `new Resend(undefined)` throws, and a module-scope call takes the whole
+ * production build down during page-data collection — `next build` fails
+ * outright on any deploy where RESEND_API_KEY isn't present at build time.
+ * Constructing lazily means the build succeeds and a missing key surfaces as a
+ * handled error on the one request that actually needed to send something.
+ */
+let resendClient: Resend | null = null;
+
+function resendApi(): Resend {
+  resendClient ??= new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
+}
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
@@ -15,7 +29,7 @@ export interface EmailData {
  */
 export async function sendEmail(data: EmailData): Promise<boolean> {
   try {
-    const result = await resend.emails.send({
+    const result = await resendApi().emails.send({
       from: `Bothmade <${CONTACT_EMAIL}>`,
       to: data.to,
       subject: data.subject,

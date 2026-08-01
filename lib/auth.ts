@@ -1,9 +1,56 @@
+import { randomBytes, randomInt } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'your-session-secret';
+/**
+ * The signing key for every session on this site.
+ *
+ * This previously read `process.env.JWT_SECRET || 'your-secret-key'`. A
+ * fallback like that is not a default, it is a published password: the string
+ * is in the repository, so any deploy missing the environment variable would
+ * happily verify tokens that anyone could mint for themselves — including one
+ * claiming `role: 'admin'`. There is no configuration mistake that should be
+ * able to hand out staff sessions, so the fallback is gone.
+ *
+ * Resolved lazily rather than at module load. Throwing at import time takes
+ * the whole production build down during page-data collection, which is how a
+ * safety check turns into an outage.
+ */
+const MIN_SECRET_LENGTH = 32;
+
+let cachedSecret: string | null = null;
+
+function jwtSecret(): string {
+  if (cachedSecret) return cachedSecret;
+
+  const configured = process.env.JWT_SECRET;
+
+  if (configured && configured.length >= MIN_SECRET_LENGTH) {
+    cachedSecret = configured;
+    return cachedSecret;
+  }
+
+  // In production a weak or missing secret is fatal — fail closed, and say
+  // exactly what is wrong so it is fixed in minutes rather than guessed at.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `JWT_SECRET is ${configured ? `too short (${configured.length} chars)` : 'not set'}. ` +
+        `It must be at least ${MIN_SECRET_LENGTH} characters. ` +
+        `Generate one with: openssl rand -base64 48`
+    );
+  }
+
+  // Locally, generate a throwaway secret per process. Sessions won't survive
+  // a restart, which is a small price for never having a guessable key.
+  cachedSecret = randomBytes(48).toString('base64');
+  console.warn(
+    '[auth] JWT_SECRET not set — using a random per-process secret. ' +
+      'Sessions will not persist across restarts. Set JWT_SECRET to fix.'
+  );
+  return cachedSecret;
+}
+
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'auth_token';
 const AUTH_COOKIE_MAX_AGE = parseInt(
   process.env.AUTH_COOKIE_MAX_AGE || '604800'
@@ -44,19 +91,24 @@ export async function verifyPassword(
  * Create a JWT token for a user or client
  */
 export function createToken(payload: AuthPayload | ClientAuthPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, jwtSecret(), { expiresIn: '7d', algorithm: 'HS256' });
 }
 
 /**
- * Verify and decode a JWT token
+ * Verify and decode a JWT token.
+ *
+ * The algorithm is pinned. Without it a verifier accepts whatever the token's
+ * own header asks for, which is the basis of the classic algorithm-confusion
+ * attacks — a token claiming `alg: none`, or an RS256 token verified with the
+ * public key as an HMAC key. We issue HS256, so we accept only HS256.
  */
 export function verifyToken(
   token: string
 ): (AuthPayload | ClientAuthPayload) | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] });
     return decoded as AuthPayload | ClientAuthPayload;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -103,14 +155,25 @@ export async function getCurrentSession(): Promise<
 }
 
 /**
- * Generate a random password for new clients
+ * Generate a random password for new clients.
+ *
+ * Uses the crypto RNG, not `Math.random()`. `Math.random()` is a fast
+ * non-cryptographic generator whose internal state can be recovered from a
+ * handful of observed outputs — so a client who saw one generated password
+ * could predict the next ones. These passwords are emailed to real clients and
+ * protect real project data, so they need real randomness.
+ *
+ * `randomInt` is used rather than a modulo of random bytes because modulo
+ * introduces a slight bias toward the earlier characters of the alphabet;
+ * `randomInt` rejects and re-rolls to keep the distribution uniform.
  */
 export function generateRandomPassword(): string {
   const chars =
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+
   let password = '';
   for (let i = 0; i < 16; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+    password += chars.charAt(randomInt(chars.length));
   }
   return password;
 }

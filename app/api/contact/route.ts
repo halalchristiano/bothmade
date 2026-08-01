@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+/**
+ * The mail client, built on first use rather than at import time.
+ *
+ * `new Resend(undefined)` throws, and a module-scope call takes the whole
+ * production build down during page-data collection — `next build` fails
+ * outright on any deploy where RESEND_API_KEY isn't present at build time.
+ * Constructing lazily means the build succeeds and a missing key surfaces as a
+ * handled error on the one request that actually needed to send something.
+ */
+let resendClient: Resend | null = null;
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function resendApi(): Resend {
+  resendClient ??= new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
+}
+
 
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
 
@@ -122,7 +136,7 @@ export async function POST(request: NextRequest) {
 
     // Notification to the studio. This one always matters most, so it is sent
     // first and its failure is what determines the response.
-    const adminEmail = await resend.emails.send({
+    const adminEmail = await resendApi().emails.send({
       from: CONTACT_EMAIL,
       to: CONTACT_EMAIL,
       replyTo: cleanEmail,
@@ -145,7 +159,7 @@ export async function POST(request: NextRequest) {
 
     // Acknowledgement to the sender. Best-effort: if it bounces, the enquiry
     // still reached the studio, so don't fail the request over it.
-    const ackEmail = await resend.emails.send({
+    const ackEmail = await resendApi().emails.send({
       from: CONTACT_EMAIL,
       to: cleanEmail,
       subject: 'We received your message',

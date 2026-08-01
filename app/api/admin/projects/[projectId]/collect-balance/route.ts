@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
+import { getStripe } from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-08-27.basil',
-});
 
 export async function POST(
   request: NextRequest,
@@ -37,7 +34,7 @@ export async function POST(
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    const paymentLink = await stripe.paymentLinks.create({
+    const paymentLink = await getStripe().paymentLinks.create({
       after_completion: {
         type: 'redirect',
         redirect: { url: `${siteUrl}/checkout/success` },
