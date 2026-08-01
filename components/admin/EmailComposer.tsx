@@ -16,6 +16,7 @@ export function EmailComposer({
   recipientName,
   company,
   defaultLoomUrl,
+  defaultPainPoint,
   leadId,
   clientId,
   projectId,
@@ -26,16 +27,19 @@ export function EmailComposer({
   recipientName?: string;
   company?: string;
   defaultLoomUrl?: string | null;
+  defaultPainPoint?: string | null;
   leadId?: string;
   clientId?: string;
   projectId?: string;
   onClose: () => void;
   onSent?: () => void;
 }) {
+  const defaultFields: Record<string, string> = {};
+  if (defaultLoomUrl) defaultFields.loomUrl = defaultLoomUrl;
+  if (defaultPainPoint) defaultFields.painPoint = defaultPainPoint;
+
   const [templateId, setTemplateId] = useState(EMAIL_TEMPLATES[0].id);
-  const [fields, setFields] = useState<Record<string, string>>(
-    defaultLoomUrl ? { loomUrl: defaultLoomUrl } : {}
-  );
+  const [fields, setFields] = useState<Record<string, string>>(defaultFields);
   const [to, setTo] = useState(recipientEmail);
   const [toName, setToName] = useState(recipientName || '');
   const [sending, setSending] = useState(false);
@@ -101,7 +105,7 @@ export function EmailComposer({
               value={templateId}
               onChange={(e) => {
                 setTemplateId(e.target.value);
-                setFields(defaultLoomUrl ? { loomUrl: defaultLoomUrl } : {});
+                setFields(defaultFields);
               }}
               className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm mb-1 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
             >
@@ -154,6 +158,16 @@ export function EmailComposer({
                       placeholder={field.placeholder}
                       className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                     />
+                  )}
+                  {field.helpText && <p className="text-xs text-amber-200/70 mt-1.5">{field.helpText}</p>}
+                  {field.examples && field.examples.length > 0 && (
+                    <div className="mt-1.5 space-y-1">
+                      {field.examples.map((ex, i) => (
+                        <p key={i} className="text-xs text-white/30 italic">
+                          "{ex}"
+                        </p>
+                      ))}
+                    </div>
                   )}
                 </div>
               ))}

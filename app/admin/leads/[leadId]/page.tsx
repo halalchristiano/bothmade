@@ -9,6 +9,7 @@ import {
   LEAD_ACTIVITY_TYPES,
   LEAD_ACTIVITY_LABELS,
   PAIN_POINTS,
+  painPointSentence,
   type LeadStatus,
   type LeadActivityType,
   type PainPointKey,
@@ -559,6 +560,7 @@ export default function LeadDetailPage() {
           recipientName={lead.contactName || undefined}
           company={lead.company}
           defaultLoomUrl={lead.mockupUrl}
+          defaultPainPoint={painPointSentence(lead.painPoints)}
           leadId={leadId}
           onClose={() => setComposingEmail(false)}
         />

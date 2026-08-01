@@ -137,6 +137,23 @@ export function isPainPointKey(value: string): value is PainPointKey {
   return value in PAIN_POINTS;
 }
 
+// Turns a lead's comma-separated pain point keys into a natural-language
+// clause for the "specific problem to reference" field in cold outreach and
+// follow-up emails — e.g. "the site isn't mobile-friendly and loads slowly"
+// instead of a generic "noticed a couple of things".
+export function painPointSentence(painPoints: string): string | null {
+  const labels = painPoints
+    .split(',')
+    .map((p) => p.trim())
+    .filter(isPainPointKey)
+    .map((key) => PAIN_POINTS[key].toLowerCase());
+
+  if (labels.length === 0) return null;
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
+}
+
 export function isLeadStatus(value: string): value is LeadStatus {
   return (LEAD_STATUSES as readonly string[]).includes(value);
 }
