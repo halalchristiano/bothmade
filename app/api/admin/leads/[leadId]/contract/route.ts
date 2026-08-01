@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { buildContractSections } from '@/lib/contract-terms';
+import { isFurtherAlong } from '@/lib/leads';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -95,8 +96,11 @@ export async function POST(
       },
     });
 
-    if (lead.contractStatus === 'not_sent') {
-      await prisma.lead.update({ where: { id: leadId }, data: { contractStatus: 'sent' } });
+    const data: { contractStatus?: string; status?: string } = {};
+    if (lead.contractStatus === 'not_sent') data.contractStatus = 'sent';
+    if (isFurtherAlong(lead.status, 'contract_sent')) data.status = 'contract_sent';
+    if (Object.keys(data).length > 0) {
+      await prisma.lead.update({ where: { id: leadId }, data });
     }
 
     return new NextResponse(Buffer.from(pdfBytes), {

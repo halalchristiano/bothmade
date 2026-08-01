@@ -2,14 +2,26 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 
+// Rough probability-to-close per stage, used only for the weighted forecast.
 const STAGE_WEIGHT: Record<string, number> = {
-  new: 0.1,
-  contacted: 0.25,
-  qualified: 0.4,
-  proposal: 0.6,
+  new: 0.05,
+  researched: 0.08,
+  contacted: 0.12,
+  replied: 0.18,
+  qualified: 0.25,
+  discovery_scheduled: 0.32,
+  discovery_done: 0.4,
+  mockup_prep: 0.45,
+  presented: 0.55,
+  proposal_sent: 0.65,
+  verbal_yes: 0.8,
+  contract_sent: 0.85,
+  contract_signed: 0.92,
+  deposit_pending: 0.95,
 };
-const ACTIVE_STATUSES = ['new', 'contacted', 'qualified', 'proposal'];
+const ACTIVE_STATUSES: string[] = [...ACTIVE_LEAD_STATUSES];
 
 export async function GET() {
   try {

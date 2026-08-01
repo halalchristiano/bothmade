@@ -1,11 +1,25 @@
 // Shared vocabulary for the sales CRM — lead statuses and the checklist of
 // common business issues Evan tags when he sizes up a prospect.
 
+// The full sales-methodology pipeline: identify → research → outreach →
+// qualify → discovery → mockup → proposal → verbal yes → contract → deposit
+// → won. Order matters — it's the sequence pipeline board columns and the
+// move-forward/move-back buttons walk through.
 export const LEAD_STATUSES = [
   'new',
+  'researched',
   'contacted',
+  'replied',
   'qualified',
-  'proposal',
+  'discovery_scheduled',
+  'discovery_done',
+  'mockup_prep',
+  'presented',
+  'proposal_sent',
+  'verbal_yes',
+  'contract_sent',
+  'contract_signed',
+  'deposit_pending',
   'won',
   'lost',
 ] as const;
@@ -14,12 +28,57 @@ export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: 'New',
+  researched: 'Researched',
   contacted: 'Contacted',
+  replied: 'Replied',
   qualified: 'Qualified',
-  proposal: 'Proposal Sent',
+  discovery_scheduled: 'Discovery Booked',
+  discovery_done: 'Discovery Done',
+  mockup_prep: 'Mockup In Progress',
+  presented: 'Mockup Presented',
+  proposal_sent: 'Proposal Sent',
+  verbal_yes: 'Verbal Yes',
+  contract_sent: 'Contract Sent',
+  contract_signed: 'Contract Signed',
+  deposit_pending: 'Awaiting Deposit',
   won: 'Won',
   lost: 'Lost',
 };
+
+/** Short labels for tight spaces (pipeline board column headers). */
+export const LEAD_STATUS_SHORT_LABELS: Record<LeadStatus, string> = {
+  new: 'New',
+  researched: 'Researched',
+  contacted: 'Contacted',
+  replied: 'Replied',
+  qualified: 'Qualified',
+  discovery_scheduled: 'Discovery',
+  discovery_done: 'Discovery Done',
+  mockup_prep: 'Mockup',
+  presented: 'Presented',
+  proposal_sent: 'Proposal',
+  verbal_yes: 'Verbal Yes',
+  contract_sent: 'Contract Sent',
+  contract_signed: 'Signed',
+  deposit_pending: 'Deposit',
+  won: 'Won',
+  lost: 'Lost',
+};
+
+/** Non-terminal statuses, in pipeline order — used for board columns and move next/back. */
+export const ACTIVE_LEAD_STATUSES = LEAD_STATUSES.filter(
+  (s) => s !== 'won' && s !== 'lost'
+) as Exclude<LeadStatus, 'won' | 'lost'>[];
+
+/** Realistic starting points when quick-adding a lead — early-pipeline stages only.
+ * Deeper stages (discovery/mockup/proposal/contract) get set as things actually progress. */
+export const QUICK_ADD_STATUSES = [
+  'new',
+  'researched',
+  'contacted',
+  'replied',
+  'qualified',
+] as const satisfies readonly LeadStatus[];
 
 export type PainPointKey =
   | 'no-website'
@@ -80,6 +139,19 @@ export function isPainPointKey(value: string): value is PainPointKey {
 
 export function isLeadStatus(value: string): value is LeadStatus {
   return (LEAD_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * Whether `target` is further along the pipeline than `current` — used to
+ * auto-advance a lead's stage (e.g. generating a contract bumps it to
+ * "Contract Sent") without ever accidentally moving it backwards or past
+ * a terminal won/lost state.
+ */
+export function isFurtherAlong(current: string, target: LeadStatus): boolean {
+  if (current === 'won' || current === 'lost') return false;
+  const currentIdx = LEAD_STATUSES.indexOf(current as LeadStatus);
+  const targetIdx = LEAD_STATUSES.indexOf(target);
+  return targetIdx > currentIdx;
 }
 
 export function isLeadActivityType(value: string): value is LeadActivityType {

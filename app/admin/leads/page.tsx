@@ -26,9 +26,19 @@ interface LeadRow {
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: 'bg-white/10 text-white',
+  researched: 'bg-white/10 text-white/80',
   contacted: 'bg-sky-400/20 text-sky-300',
+  replied: 'bg-sky-400/25 text-sky-200',
   qualified: 'bg-purple-400/20 text-purple-300',
-  proposal: 'bg-amber-400/20 text-amber-300',
+  discovery_scheduled: 'bg-purple-400/25 text-purple-200',
+  discovery_done: 'bg-purple-400/30 text-purple-100',
+  mockup_prep: 'bg-pink-400/20 text-pink-300',
+  presented: 'bg-pink-400/25 text-pink-200',
+  proposal_sent: 'bg-amber-400/20 text-amber-300',
+  verbal_yes: 'bg-amber-400/30 text-amber-200',
+  contract_sent: 'bg-orange-400/20 text-orange-300',
+  contract_signed: 'bg-orange-400/30 text-orange-200',
+  deposit_pending: 'bg-teal-400/20 text-teal-300',
   won: 'bg-emerald-400/20 text-emerald-300',
   lost: 'bg-red-400/20 text-red-300',
 };
@@ -88,12 +98,7 @@ type Filter = (typeof FILTERS)[number];
 const FILTER_LABELS: Record<Filter, string> = {
   all: 'All Statuses',
   'needs-contact': 'Needs Contact',
-  new: LEAD_STATUS_LABELS.new,
-  contacted: LEAD_STATUS_LABELS.contacted,
-  qualified: LEAD_STATUS_LABELS.qualified,
-  proposal: LEAD_STATUS_LABELS.proposal,
-  won: LEAD_STATUS_LABELS.won,
-  lost: LEAD_STATUS_LABELS.lost,
+  ...LEAD_STATUS_LABELS,
 };
 
 export default function AdminLeadsPage() {

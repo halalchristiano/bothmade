@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
+import { QUICK_ADD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 
 /**
  * Adding a company isn't always "brand new lead" — Evan is often backfilling
@@ -128,7 +128,7 @@ export function QuickAddLeadModal({
               <label className="block text-xs text-white/40 mb-1.5">Starting status</label>
               <p className="text-xs text-white/30 mb-2">Already talked to them? Set the real status instead of starting at "New."</p>
               <div className="grid grid-cols-3 gap-1.5">
-                {LEAD_STATUSES.filter((s) => s !== 'won').map((s) => (
+                {QUICK_ADD_STATUSES.map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -169,7 +169,7 @@ export function QuickAddLeadModal({
             <div>
               <label className="block text-xs text-white/40 mb-1.5">All of these start as</label>
               <div className="grid grid-cols-3 gap-1.5">
-                {LEAD_STATUSES.filter((s) => s !== 'won').map((s) => (
+                {QUICK_ADD_STATUSES.map((s) => (
                   <button
                     key={s}
                     type="button"

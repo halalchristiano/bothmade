@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 
 export interface NotificationItem {
   id: string;
@@ -70,7 +71,7 @@ export async function GET() {
     // Follow-ups due/overdue — relevant to sales.
     const dueLeads = await prisma.lead.findMany({
       where: {
-        status: { in: ['new', 'contacted', 'qualified', 'proposal'] },
+        status: { in: [...ACTIVE_LEAD_STATUSES] },
         nextFollowUpAt: { lt: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000) },
         OR: [{ assignedToId: session.userId }, { assignedToId: null }],
       },

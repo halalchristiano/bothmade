@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { sendPaymentLinkEmail } from '@/lib/email';
+import { isFurtherAlong } from '@/lib/leads';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -101,8 +102,9 @@ export async function POST(
       },
     });
 
-    if (lead.status === 'new' || lead.status === 'contacted' || lead.status === 'qualified') {
-      await prisma.lead.update({ where: { id: leadId }, data: { status: 'proposal' } });
+    const targetStatus = depositOnly ? 'deposit_pending' : 'proposal_sent';
+    if (isFurtherAlong(lead.status, targetStatus)) {
+      await prisma.lead.update({ where: { id: leadId }, data: { status: targetStatus } });
     }
 
     let emailSent = false;

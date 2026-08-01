@@ -29,6 +29,7 @@ import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { Card, CardHeader, StatCard, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
+import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 
 interface SalesStats {
   pipeline: Array<{ status: string; count: number; value: number }>;
@@ -79,13 +80,6 @@ interface OpsStats {
     createdAt: string;
   }>;
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  qualified: 'Qualified',
-  proposal: 'Proposal Sent',
-};
 
 // Commission split: Evan 25% · Kiana 25% · company 30% · taxes 20%.
 const COMMISSION_RATE = 0.25;
@@ -257,25 +251,32 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
         <Card className="lg:col-span-2 p-6">
-          <CardHeader icon={FolderKanban} tone="sky" title="Pipeline by Stage" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {stats.pipeline.map((p) => (
-              <Link
-                key={p.status}
-                href={`/admin/pipeline`}
-                className="group rounded-xl border border-white/10 hover:border-sky-400/40 hover:bg-white/[0.03] p-4 transition-all"
-              >
-                <p className="text-xs text-white/40 mb-1">{STATUS_LABELS[p.status]}</p>
-                <p className="text-2xl font-bold mb-2">{p.count}</p>
-                <div className="w-full bg-white/10 rounded-full h-1.5 mb-1.5 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-sky-400 to-purple-500 h-1.5 rounded-full transition-all"
-                    style={{ width: `${(p.value / maxPipelineValue) * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-white/50">{formatCents(p.value)}</p>
-              </Link>
-            ))}
+          <CardHeader icon={FolderKanban} tone="sky" title="Pipeline by Stage" action={<Link href="/admin/pipeline" className="text-xs text-sky-300/70 hover:text-sky-300">Full board →</Link>} />
+          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {stats.pipeline
+              .filter((p) => p.count > 0)
+              .map((p) => (
+                <Link
+                  key={p.status}
+                  href="/admin/pipeline"
+                  className="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/[0.03] transition-colors"
+                >
+                  <span className="w-28 shrink-0 text-xs text-white/50 truncate">
+                    {LEAD_STATUS_SHORT_LABELS[p.status as keyof typeof LEAD_STATUS_SHORT_LABELS] || p.status}
+                  </span>
+                  <span className="w-6 shrink-0 text-sm font-semibold text-right">{p.count}</span>
+                  <div className="flex-1 bg-white/10 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-sky-400 to-purple-500 h-1.5 rounded-full transition-all"
+                      style={{ width: `${Math.max((p.value / maxPipelineValue) * 100, p.value > 0 ? 4 : 0)}%` }}
+                    />
+                  </div>
+                  <span className="w-20 shrink-0 text-xs text-white/40 text-right">{formatCents(p.value)}</span>
+                </Link>
+              ))}
+            {stats.pipeline.every((p) => p.count === 0) && (
+              <p className="text-sm text-white/30 py-4 text-center">Nothing in the pipeline yet.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-4 mt-6 pt-5 border-t border-white/[0.07] text-sm">

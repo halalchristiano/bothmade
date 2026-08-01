@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus } from 'lucide-react';
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
+import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { PageIn } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
@@ -25,13 +25,23 @@ interface LeadCard {
   assignedTo: { name: string | null } | null;
 }
 
-const COLUMN_STATUSES: LeadStatus[] = ['new', 'contacted', 'qualified', 'proposal', 'won', 'lost'];
+const COLUMN_STATUSES: LeadStatus[] = [...LEAD_STATUSES];
 
 const COLUMN_ACCENT: Record<LeadStatus, string> = {
   new: 'border-t-white/30',
+  researched: 'border-t-white/40',
   contacted: 'border-t-sky-400/60',
+  replied: 'border-t-sky-400/70',
   qualified: 'border-t-purple-400/60',
-  proposal: 'border-t-amber-400/60',
+  discovery_scheduled: 'border-t-purple-400/70',
+  discovery_done: 'border-t-purple-400/80',
+  mockup_prep: 'border-t-pink-400/60',
+  presented: 'border-t-pink-400/70',
+  proposal_sent: 'border-t-amber-400/60',
+  verbal_yes: 'border-t-amber-400/80',
+  contract_sent: 'border-t-orange-400/70',
+  contract_signed: 'border-t-orange-400/90',
+  deposit_pending: 'border-t-teal-400/70',
   won: 'border-t-emerald-400/60',
   lost: 'border-t-red-400/60',
 };
@@ -64,14 +74,10 @@ export default function PipelinePage() {
   }, []);
 
   const columns = useMemo(() => {
-    const grouped: Record<LeadStatus, LeadCard[]> = {
-      new: [],
-      contacted: [],
-      qualified: [],
-      proposal: [],
-      won: [],
-      lost: [],
-    };
+    const grouped = Object.fromEntries(LEAD_STATUSES.map((s) => [s, [] as LeadCard[]])) as Record<
+      LeadStatus,
+      LeadCard[]
+    >;
     for (const lead of leads) {
       grouped[lead.status]?.push(lead);
     }
@@ -134,10 +140,10 @@ export default function PipelinePage() {
           const columnLeads = columns[status];
           const totalValue = columnLeads.reduce((s, l) => s + (l.estimatedValue || 0), 0);
           return (
-            <div key={status} className="flex-shrink-0 w-72">
+            <div key={status} className="flex-shrink-0 w-64">
               <div className={`rounded-2xl border-t-2 ${COLUMN_ACCENT[status]} bg-white/[0.03] border border-white/[0.07] p-3 h-full`}>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <h2 className="text-sm font-semibold">{LEAD_STATUS_LABELS[status]}</h2>
+                  <h2 className="text-sm font-semibold">{LEAD_STATUS_SHORT_LABELS[status]}</h2>
                   <span className="text-xs text-white/40">{columnLeads.length}</span>
                 </div>
                 {totalValue > 0 && <p className="text-xs text-white/30 px-1 mb-3">{formatCents(totalValue)}</p>}

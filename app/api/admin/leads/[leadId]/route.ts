@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
-import { isLeadStatus } from '@/lib/leads';
+import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 
 export async function GET(
   request: NextRequest,
@@ -80,6 +80,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
+    // Signing the contract is a real pipeline milestone — auto-advance the
+    // main status to reflect it, unless the caller is already setting a
+    // (presumably more informed) status explicitly in the same request.
+    const autoStatus =
+      status === undefined && contractStatus === 'signed' && isFurtherAlong(existing.status, 'contract_signed')
+        ? 'contract_signed'
+        : undefined;
+
     const lead = await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -87,7 +95,7 @@ export async function PATCH(
         contactName: contactName !== undefined ? contactName : undefined,
         email: email !== undefined ? email : undefined,
         phone: phone !== undefined ? phone : undefined,
-        status: status !== undefined ? status : undefined,
+        status: status !== undefined ? status : autoStatus,
         source: source !== undefined ? source : undefined,
         estimatedValue: estimatedValue !== undefined ? estimatedValue : undefined,
         painPoints: Array.isArray(painPoints) ? painPoints.join(',') : undefined,
