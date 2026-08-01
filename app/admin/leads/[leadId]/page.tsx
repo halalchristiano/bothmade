@@ -17,7 +17,7 @@ import {
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
-import { Mail } from 'lucide-react';
+import { Mail, Phone, Send, CheckCircle2 } from 'lucide-react';
 import {
   ADD_ON_CATEGORIES,
   ADD_ONS,
@@ -75,6 +75,8 @@ interface LeadDetail {
   qualTiming: string | null;
   qualMotivation: string | null;
   qualifiedAt: string | null;
+  coldEmailDraft: string | null;
+  coldEmailSentAt: string | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -86,6 +88,8 @@ export default function LeadDetailPage() {
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
+  const [sendingColdDraft, setSendingColdDraft] = useState(false);
+  const [coldDraftSent, setColdDraftSent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -292,6 +296,24 @@ export default function LeadDetailPage() {
 
   const [confirmingDeleteLead, setConfirmingDeleteLead] = useState(false);
   const [deletingLead, setDeletingLead] = useState(false);
+
+  const handleSendColdDraft = async () => {
+    if (!lead || !confirm(`Send the prepared cold email to ${lead.company} now?`)) return;
+    setSendingColdDraft(true);
+    try {
+      const res = await fetch('/api/admin/email/send-cold-drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: [leadId] }),
+      });
+      if (res.ok) {
+        setColdDraftSent(true);
+        load();
+      }
+    } finally {
+      setSendingColdDraft(false);
+    }
+  };
 
   const handleDeleteLead = async () => {
     setDeletingLead(true);
@@ -518,14 +540,34 @@ export default function LeadDetailPage() {
           ← Back to Leads
         </Link>
         <div className="flex items-center gap-3">
-          {lead.email && (
-            <button
-              onClick={() => setComposingEmail(true)}
+          {lead.phone && (
+            <a
+              href={`tel:${lead.phone}`}
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-colors"
             >
-              <Mail size={13} /> Compose email
+              <Phone size={13} /> Call
+            </a>
+          )}
+          {lead.email && lead.coldEmailDraft && !lead.coldEmailSentAt && !coldDraftSent && (
+            <button
+              onClick={handleSendColdDraft}
+              disabled={sendingColdDraft}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+            >
+              <Send size={13} /> {sendingColdDraft ? 'Sending...' : 'Send cold email'}
             </button>
           )}
+          {(lead.coldEmailSentAt || coldDraftSent) && (
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white/40">
+              <CheckCircle2 size={13} /> Cold email sent
+            </span>
+          )}
+          <button
+            onClick={() => setComposingEmail(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-colors"
+          >
+            <Mail size={13} /> Compose email
+          </button>
           {confirmingDeleteLead ? (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-white/40">Delete {lead.company} permanently?</span>
@@ -554,9 +596,9 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {composingEmail && lead.email && (
+      {composingEmail && (
         <EmailComposer
-          recipientEmail={lead.email}
+          recipientEmail={lead.email || ''}
           recipientName={lead.contactName || undefined}
           company={lead.company}
           defaultLoomUrl={lead.mockupUrl}
