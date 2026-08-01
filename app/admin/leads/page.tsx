@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2 } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
+import { ImportLeadsModal } from '@/components/admin/ImportLeadsModal';
+import { BulkEmailComposer } from '@/components/admin/BulkEmailComposer';
 
 interface LeadRow {
   id: string;
@@ -108,6 +110,9 @@ export default function AdminLeadsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<Filter>('all');
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [showBulkEmail, setShowBulkEmail] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
 
   const load = async () => {
@@ -168,6 +173,25 @@ export default function AdminLeadsPage() {
     });
   };
 
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelected((prev) => {
+      const allVisible = filtered.every((l) => prev.has(l.id));
+      if (allVisible) return new Set();
+      return new Set(filtered.map((l) => l.id));
+    });
+  };
+
+  const selectedLeads = useMemo(() => leads.filter((l) => selected.has(l.id)), [leads, selected]);
+
   const inputClass =
     'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
 
@@ -198,6 +222,13 @@ export default function AdminLeadsPage() {
             ))}
           </select>
           <button
+            onClick={() => setShowImport(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 font-semibold hover:bg-white/5 transition-colors whitespace-nowrap"
+          >
+            <Upload size={16} />
+            Import CSV
+          </button>
+          <button
             onClick={() => setShowAdd(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
           >
@@ -206,6 +237,26 @@ export default function AdminLeadsPage() {
           </button>
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-sky-400/5 px-5 py-3 mb-6">
+          <span className="text-sm">
+            <strong className="text-sky-300">{selected.size}</strong> selected
+          </span>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelected(new Set())} className="text-xs text-white/40 hover:text-white transition-colors">
+              Clear
+            </button>
+            <button
+              onClick={() => setShowBulkEmail(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+            >
+              <Send size={14} />
+              Send cold email
+            </button>
+          </div>
+        </div>
+      )}
 
       {needsContactCount > 0 && statusFilter !== 'needs-contact' && (
         <button
@@ -238,7 +289,14 @@ export default function AdminLeadsPage() {
                 className="rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-4 hover:border-white/20 transition-colors cursor-pointer"
               >
                 <div className="flex justify-between items-start mb-2 gap-2">
-                  <p className="font-semibold flex items-center gap-1.5">
+                  <p className="font-semibold flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(lead.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleSelected(lead.id)}
+                      className="accent-sky-400"
+                    />
                     {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}
                     {lead.company}
                   </p>
@@ -259,6 +317,14 @@ export default function AdminLeadsPage() {
               <table className="w-full text-left">
                 <thead className="border-b border-white/10">
                   <tr>
+                    <th className="px-6 py-3">
+                      <input
+                        type="checkbox"
+                        checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))}
+                        onChange={toggleSelectAllVisible}
+                        className="accent-sky-400"
+                      />
+                    </th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Company</th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Contact</th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Status</th>
@@ -275,6 +341,14 @@ export default function AdminLeadsPage() {
                       onClick={() => router.push(`/admin/leads/${lead.id}`)}
                       className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer"
                     >
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(lead.id)}
+                          onChange={() => toggleSelected(lead.id)}
+                          className="accent-sky-400"
+                        />
+                      </td>
                       <td className="px-6 py-4 font-medium">
                         <span className="flex items-center gap-1.5">
                           {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}
@@ -316,6 +390,24 @@ export default function AdminLeadsPage() {
             } else {
               load();
             }
+          }}
+        />
+      )}
+
+      {showImport && (
+        <ImportLeadsModal
+          onClose={() => setShowImport(false)}
+          onImported={load}
+        />
+      )}
+
+      {showBulkEmail && (
+        <BulkEmailComposer
+          recipients={selectedLeads.map((l) => ({ id: l.id, company: l.company, contactName: l.contactName, email: l.email }))}
+          onClose={() => setShowBulkEmail(false)}
+          onSent={() => {
+            setSelected(new Set());
+            load();
           }}
         />
       )}
