@@ -66,7 +66,7 @@ export const BASE_SERVICES: Record<
   },
   'web-app': {
     label: 'Web App',
-    description: 'A tool people log into and actually use — their own account, their own data, real functionality that does something.',
+    description: 'A tool people log into and actually use — their own account, their own data, real functionality that does something. Includes the backend and user accounts needed to make that work, so you won\'t also be charged for those as separate add-ons.',
     bestFor: 'Dashboards, booking systems, internal tools, anything with user accounts, saved data, or logic beyond "here\'s some information."',
     price: 800000,
   },
@@ -196,7 +196,7 @@ export const ADD_ONS: Record<
   // Backend & integrations
   'custom-backend': {
     label: 'Custom Backend / API',
-    description: 'A purpose-built backend for logic that off-the-shelf tools can\'t handle.',
+    description: 'A purpose-built backend for logic that off-the-shelf tools can\'t handle. Already included if you picked Web App — this is for bolting real backend logic onto an otherwise simple Website or native app.',
     price: 300000,
     category: 'backend-integrations',
   },
@@ -214,7 +214,7 @@ export const ADD_ONS: Record<
   },
   'user-accounts': {
     label: 'User Accounts & Auth',
-    description: 'Sign-up, login, and per-user data — the foundation for any logged-in product.',
+    description: 'Sign-up, login, and per-user data. Already included if you picked Web App — this is for adding accounts to an otherwise simple Website or native app.',
     price: 150000,
     category: 'backend-integrations',
   },
@@ -286,6 +286,33 @@ export const ADD_ON_REQUIRES: Partial<Record<AddOnKey, AddOnKey[]>> = {
   'push-notifications': ['custom-backend'],
   'admin-dashboard': ['custom-backend'],
 };
+
+/**
+ * A Web App's base price already assumes "their own account, their own data,
+ * real functionality" — i.e. a backend and user accounts. Without this, a
+ * client could check "Web App" ($8,000, which already implies a backend) AND
+ * separately check "Custom Backend / API" (+$3,000), paying twice for the
+ * same underlying thing. These add-ons are bundled into the base price for
+ * the base services listed here — still shown as selected in the UI (since
+ * the product genuinely has them), but priced at $0 and locked, since
+ * unchecking them wouldn't actually remove a backend from a "Web App."
+ * A plain Website has no backend by default, so Custom Backend / API stays a
+ * real, separately-priced add-on there (e.g. a mostly-static site that just
+ * needs a contact-form endpoint or a small bit of server logic).
+ */
+export const BASE_SERVICE_INCLUDES: Partial<Record<BaseService, AddOnKey[]>> = {
+  'web-app': ['custom-backend', 'user-accounts'],
+};
+
+export function isIncludedInBase(baseService: BaseService, addOn: AddOnKey): boolean {
+  return BASE_SERVICE_INCLUDES[baseService]?.includes(addOn) ?? false;
+}
+
+/** Add-ons bundled into this base service's price, merged into whatever's already selected. */
+export function withBaseIncludes(baseService: BaseService, selected: AddOnKey[]): AddOnKey[] {
+  const included = BASE_SERVICE_INCLUDES[baseService] ?? [];
+  return Array.from(new Set([...selected, ...included]));
+}
 
 /**
  * Given the add-ons someone has checked, returns the full set including
@@ -407,7 +434,7 @@ export function isTimelineKey(value: string): value is TimelineKey {
 export function calculatePrice(selection: PricingSelection): PricingBreakdown {
   const basePrice = BASE_SERVICES[selection.baseService].price;
   const addOnsPrice = selection.addOns.reduce(
-    (sum, key) => sum + ADD_ONS[key].price,
+    (sum, key) => sum + (isIncludedInBase(selection.baseService, key) ? 0 : ADD_ONS[key].price),
     0
   );
   const subtotal = basePrice + addOnsPrice;

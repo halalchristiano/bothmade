@@ -26,6 +26,8 @@ import {
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
+  isIncludedInBase,
+  withBaseIncludes,
   type AddOnCategory,
   type AddOnKey,
   type BaseService,
@@ -92,8 +94,13 @@ export default function LeadDetailPage() {
   const [loggingActivity, setLoggingActivity] = useState(false);
   const [activityMessage, setActivityMessage] = useState('');
 
-  const [proposalService, setProposalService] = useState<BaseService>('website');
+  const [proposalService, setProposalServiceRaw] = useState<BaseService>('website');
   const [proposalAddOns, setProposalAddOns] = useState<AddOnKey[]>([]);
+
+  const setProposalService = (next: BaseService) => {
+    setProposalServiceRaw(next);
+    setProposalAddOns((prev) => withBaseIncludes(next, prev));
+  };
   const [proposalClientType, setProposalClientType] = useState<ClientType>('smb');
   const [proposalTimeline, setProposalTimeline] = useState<TimelineKey>('standard');
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
@@ -113,6 +120,7 @@ export default function LeadDetailPage() {
   });
 
   const toggleProposalAddOn = (key: AddOnKey) => {
+    if (isIncludedInBase(proposalService, key)) return;
     setProposalAddOns((prev) => {
       if (prev.includes(key)) {
         const toRemove = new Set([key, ...dependentsOf(key, prev)]);
@@ -877,10 +885,14 @@ export default function LeadDetailPage() {
                           {cat.label}
                         </p>
                         <div className="grid sm:grid-cols-2 gap-2">
-                          {entries.map(([key, addOn]) => (
+                          {entries.map(([key, addOn]) => {
+                            const includedInBase = isIncludedInBase(proposalService, key);
+                            return (
                             <label
                               key={key}
-                              className={`flex items-start gap-2 rounded-lg p-3 border cursor-pointer transition-colors ${
+                              className={`flex items-start gap-2 rounded-lg p-3 border transition-colors ${
+                                includedInBase ? 'cursor-default' : 'cursor-pointer'
+                              } ${
                                 proposalAddOns.includes(key)
                                   ? 'bg-gradient-to-r from-sky-400/15 to-purple-500/15 border-sky-400/40'
                                   : 'border-white/10 hover:border-white/25'
@@ -891,14 +903,20 @@ export default function LeadDetailPage() {
                                 className="mt-0.5"
                                 checked={proposalAddOns.includes(key)}
                                 onChange={() => toggleProposalAddOn(key)}
+                                disabled={includedInBase}
                               />
                               <span className="flex-1">
                                 <span className="text-sm block">{addOn.label}</span>
                                 <span className="text-xs text-white/35">{addOn.description}</span>
                               </span>
-                              <span className="text-xs text-white/40 whitespace-nowrap">+{formatCents(addOn.price)}</span>
+                              {includedInBase ? (
+                                <span className="text-xs text-emerald-300 whitespace-nowrap">Included</span>
+                              ) : (
+                                <span className="text-xs text-white/40 whitespace-nowrap">+{formatCents(addOn.price)}</span>
+                              )}
                             </label>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );

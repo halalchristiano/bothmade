@@ -15,6 +15,8 @@ import {
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
+  isIncludedInBase,
+  withBaseIncludes,
   type AddOnCategory,
   type AddOnKey,
   type BaseService,
@@ -110,8 +112,16 @@ export default function StartPage() {
   const [interestSent, setInterestSent] = useState(false);
   const [interestError, setInterestError] = useState('');
 
-  const [baseService, setBaseService] = useState<BaseService>('website');
+  const [baseService, setBaseServiceRaw] = useState<BaseService>('website');
   const [addOns, setAddOns] = useState<AddOnKey[]>([]);
+
+  // Switching base service may bundle in add-ons that are already part of
+  // that base price (e.g. Web App already includes a backend + accounts) —
+  // keep the selection in sync so nothing gets silently double-charged.
+  const setBaseService = (next: BaseService) => {
+    setBaseServiceRaw(next);
+    setAddOns((prev) => withBaseIncludes(next, prev));
+  };
   const [clientType, setClientType] = useState<ClientType>('smb');
   const [timeline, setTimeline] = useState<TimelineKey>('standard');
 
@@ -126,6 +136,7 @@ export default function StartPage() {
   );
 
   const toggleAddOn = (key: AddOnKey) => {
+    if (isIncludedInBase(baseService, key)) return; // bundled into the base price — not a separate toggle
     setAddOns((prev) => {
       if (prev.includes(key)) {
         // Unchecking a foundation (e.g. Custom Backend) also clears anything
@@ -283,6 +294,7 @@ export default function StartPage() {
                     {keys.map((key) => {
                       const addOn = ADD_ONS[key];
                       const isChecked = addOns.includes(key);
+                      const includedInBase = isIncludedInBase(baseService, key);
                       const requires = ADD_ON_REQUIRES[key];
                       const requiredBy = isChecked
                         ? dependentsOf(key, addOns).map((k) => ADD_ONS[k].label)
@@ -290,18 +302,23 @@ export default function StartPage() {
                       return (
                         <label
                           key={key}
-                          className={`${cardClass(isChecked)} flex items-start gap-3 cursor-pointer`}
+                          className={`${cardClass(isChecked)} flex items-start gap-3 ${includedInBase ? 'cursor-default' : 'cursor-pointer'}`}
                         >
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => toggleAddOn(key)}
+                            disabled={includedInBase}
                             className="mt-1"
                           />
                           <div>
                             <h4 className="font-semibold mb-1">{addOn.label}</h4>
                             <p className="text-sm mb-2 text-white/50">{addOn.description}</p>
-                            <p className="text-sm font-medium">+{formatCents(addOn.price)}</p>
+                            {includedInBase ? (
+                              <p className="text-sm font-medium text-emerald-300">Included in {BASE_SERVICES[baseService].label}</p>
+                            ) : (
+                              <p className="text-sm font-medium">+{formatCents(addOn.price)}</p>
+                            )}
                             {isChecked && requires && (
                               <p className="text-xs text-sky-300 mt-2 pt-2 border-t border-white/10">
                                 Needs {requires.map((r) => ADD_ONS[r].label).join(' + ')} to actually work —
@@ -373,12 +390,19 @@ export default function StartPage() {
               <span className="text-white/50">{BASE_SERVICES[baseService].label}</span>
               <span>{formatCents(breakdown.basePrice)}</span>
             </div>
-            {addOns.map((key) => (
-              <div key={key} className="flex justify-between">
-                <span className="text-white/50">{ADD_ONS[key].label}</span>
-                <span>+{formatCents(ADD_ONS[key].price)}</span>
-              </div>
-            ))}
+            {addOns.map((key) =>
+              isIncludedInBase(baseService, key) ? (
+                <div key={key} className="flex justify-between">
+                  <span className="text-white/50">{ADD_ONS[key].label}</span>
+                  <span className="text-emerald-300 text-xs">Included</span>
+                </div>
+              ) : (
+                <div key={key} className="flex justify-between">
+                  <span className="text-white/50">{ADD_ONS[key].label}</span>
+                  <span>+{formatCents(ADD_ONS[key].price)}</span>
+                </div>
+              )
+            )}
             <div className="flex justify-between border-t border-white/10 pt-3">
               <span className="text-white/50">Subtotal</span>
               <span>{formatCents(breakdown.subtotal)}</span>
