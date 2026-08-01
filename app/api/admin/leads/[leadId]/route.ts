@@ -66,6 +66,11 @@ export async function PATCH(
       contractStatus,
       mockupRequested,
       mockupUrl,
+      qualNeed,
+      qualAuthority,
+      qualBudget,
+      qualTiming,
+      qualMotivation,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -83,10 +88,28 @@ export async function PATCH(
     // Signing the contract is a real pipeline milestone — auto-advance the
     // main status to reflect it, unless the caller is already setting a
     // (presumably more informed) status explicitly in the same request.
-    const autoStatus =
+    let autoStatus =
       status === undefined && contractStatus === 'signed' && isFurtherAlong(existing.status, 'contract_signed')
         ? 'contract_signed'
         : undefined;
+
+    // Qualification is "complete" once all five BANT answers are on file —
+    // that's what actually makes "qualified" mean something instead of a
+    // gut call. Merge incoming values over existing so a partial save still
+    // detects completion correctly.
+    const merged = {
+      qualNeed: qualNeed !== undefined ? qualNeed : existing.qualNeed,
+      qualAuthority: qualAuthority !== undefined ? qualAuthority : existing.qualAuthority,
+      qualBudget: qualBudget !== undefined ? qualBudget : existing.qualBudget,
+      qualTiming: qualTiming !== undefined ? qualTiming : existing.qualTiming,
+      qualMotivation: qualMotivation !== undefined ? qualMotivation : existing.qualMotivation,
+    };
+    const nowQualified = Object.values(merged).every((v) => v && v.trim().length > 0);
+    const wasQualified = !!existing.qualifiedAt;
+    const qualifiedAt = nowQualified && !wasQualified ? new Date() : undefined;
+    if (nowQualified && !wasQualified && status === undefined && isFurtherAlong(existing.status, 'qualified')) {
+      autoStatus = 'qualified';
+    }
 
     const lead = await prisma.lead.update({
       where: { id: leadId },
@@ -108,6 +131,12 @@ export async function PATCH(
         mockupRequestedAt: mockupRequested === true && !existing.mockupRequested ? new Date() : undefined,
         mockupUrl: mockupUrl !== undefined ? mockupUrl : undefined,
         mockupDeliveredAt: mockupUrl !== undefined && mockupUrl ? new Date() : undefined,
+        qualNeed: qualNeed !== undefined ? qualNeed : undefined,
+        qualAuthority: qualAuthority !== undefined ? qualAuthority : undefined,
+        qualBudget: qualBudget !== undefined ? qualBudget : undefined,
+        qualTiming: qualTiming !== undefined ? qualTiming : undefined,
+        qualMotivation: qualMotivation !== undefined ? qualMotivation : undefined,
+        qualifiedAt,
       },
     });
 

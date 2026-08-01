@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus, CheckCircle2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { PageIn } from '@/components/admin/ui';
@@ -21,6 +21,7 @@ interface LeadCard {
   status: LeadStatus;
   estimatedValue: number | null;
   hotLead: boolean;
+  qualifiedAt: string | null;
   updatedAt: string;
   assignedTo: { name: string | null } | null;
 }
@@ -162,7 +163,12 @@ export default function PipelinePage() {
                           <span className="truncate">{lead.company}</span>
                           <ExternalLink size={11} className="opacity-0 group-hover:opacity-50 shrink-0" />
                         </Link>
-                        {lead.hotLead && <Flame size={13} className="text-amber-400 shrink-0" />}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {lead.qualifiedAt && (
+                            <CheckCircle2 size={12} className="text-emerald-400" aria-label="Qualified" />
+                          )}
+                          {lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                        </div>
                       </div>
                       <p className="text-xs text-white/40 mb-2">
                         {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}

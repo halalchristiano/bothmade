@@ -194,6 +194,16 @@ model Lead {
   mockupUrl         String?   // link to the finished mockup, once delivered
   mockupDeliveredAt DateTime?
 
+  // BANT-style qualification — structured so "qualified" means something
+  // consistent instead of a gut call. Each is a freeform answer summary,
+  // not just a checkbox, since the real value is in what was actually said.
+  qualNeed       String? // does the current situation create an actual problem?
+  qualAuthority  String? // can this person actually approve the project?
+  qualBudget     String? // realistic expectations vs. our $5-6k range?
+  qualTiming     String? // is there a real driver/timeline, or "someday"?
+  qualMotivation String? // why are they considering this now?
+  qualifiedAt    DateTime? // set automatically once all 5 fields are filled
+
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 

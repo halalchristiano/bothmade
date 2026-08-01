@@ -63,6 +63,12 @@ interface LeadDetail {
   mockupRequestedAt: string | null;
   mockupUrl: string | null;
   mockupDeliveredAt: string | null;
+  qualNeed: string | null;
+  qualAuthority: string | null;
+  qualBudget: string | null;
+  qualTiming: string | null;
+  qualMotivation: string | null;
+  qualifiedAt: string | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -85,6 +91,13 @@ export default function LeadDetailPage() {
   const [estimatedValue, setEstimatedValue] = useState('');
   const [notes, setNotes] = useState('');
   const [painPoints, setPainPoints] = useState<PainPointKey[]>([]);
+
+  const [qualNeed, setQualNeed] = useState('');
+  const [qualAuthority, setQualAuthority] = useState('');
+  const [qualBudget, setQualBudget] = useState('');
+  const [qualTiming, setQualTiming] = useState('');
+  const [qualMotivation, setQualMotivation] = useState('');
+  const [savingQual, setSavingQual] = useState(false);
 
   const [activityType, setActivityType] = useState<LeadActivityType>('note');
   const [activityContent, setActivityContent] = useState('');
@@ -157,6 +170,11 @@ export default function LeadDetailPage() {
             .filter(Boolean)
             .filter((p): p is PainPointKey => p in PAIN_POINTS)
         );
+        setQualNeed(l.qualNeed || '');
+        setQualAuthority(l.qualAuthority || '');
+        setQualBudget(l.qualBudget || '');
+        setQualTiming(l.qualTiming || '');
+        setQualMotivation(l.qualMotivation || '');
       }
     } finally {
       setLoading(false);
@@ -242,6 +260,26 @@ export default function LeadDetailPage() {
       load();
     } finally {
       setDeliveringMockup(false);
+    }
+  };
+
+  const handleSaveQualification = async () => {
+    setSavingQual(true);
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          qualNeed,
+          qualAuthority,
+          qualBudget,
+          qualTiming,
+          qualMotivation,
+        }),
+      });
+      load();
+    } finally {
+      setSavingQual(false);
     }
   };
 
@@ -770,6 +808,80 @@ export default function LeadDetailPage() {
                 </button>
               </>
             )}
+          </div>
+
+          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-bold">Qualification</h2>
+              <span className={`text-xs font-semibold ${lead.qualifiedAt ? 'text-emerald-300' : 'text-white/40'}`}>
+                {[qualNeed, qualAuthority, qualBudget, qualTiming, qualMotivation].filter((v) => v.trim()).length}/5
+                {lead.qualifiedAt ? ' — Qualified' : ''}
+              </span>
+            </div>
+            <p className="text-xs text-white/40 mb-4">
+              Need, Authority, Budget, Timing, Motivation — fill in all five and this lead auto-advances to "Qualified."
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-white/40 mb-1">Need — does the current situation create an actual problem?</label>
+                <textarea
+                  value={qualNeed}
+                  onChange={(e) => setQualNeed(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Enquiry form is confusing, mobile menu is broken, no clear route to a quote request..."
+                  className={`${inputClass} text-sm resize-none`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">Authority — can this person actually approve the project?</label>
+                <textarea
+                  value={qualAuthority}
+                  onChange={(e) => setQualAuthority(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Owner, sole decision-maker. Or: needs sign-off from a business partner."
+                  className={`${inputClass} text-sm resize-none`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">Budget — realistic expectations vs. our $5k–6k range?</label>
+                <textarea
+                  value={qualBudget}
+                  onChange={(e) => setQualBudget(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Confirmed comfortable in range. Or: hoping for something closer to $2k."
+                  className={`${inputClass} text-sm resize-none`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">Timing — is there a real driver, or "someday"?</label>
+                <textarea
+                  value={qualTiming}
+                  onChange={(e) => setQualTiming(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Wants to launch before a trade show in March. Or: no urgency, just browsing."
+                  className={`${inputClass} text-sm resize-none`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1">Motivation — why are they considering this now?</label>
+                <textarea
+                  value={qualMotivation}
+                  onChange={(e) => setQualMotivation(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Losing quotes to a competitor with a stronger site."
+                  className={`${inputClass} text-sm resize-none`}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveQualification}
+              disabled={savingQual}
+              className="mt-4 px-5 py-2.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
+            >
+              {savingQual ? 'Saving...' : 'Save Qualification'}
+            </button>
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">

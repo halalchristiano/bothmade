@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame, Phone, Mail, Sparkles } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn } from '@/components/admin/ui';
@@ -20,6 +20,7 @@ interface LeadRow {
   estimatedValue: number | null;
   updatedAt: string;
   hotLead: boolean;
+  qualifiedAt: string | null;
   assignedTo: { name: string | null } | null;
   activities: Array<{ createdAt: string }>;
 }
@@ -234,7 +235,7 @@ export default function AdminLeadsPage() {
               >
                 <div className="flex justify-between items-start mb-2 gap-2">
                   <p className="font-semibold flex items-center gap-1.5">
-                    {lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                    {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}
                     {lead.company}
                   </p>
                   <StatusSelect lead={lead} onChange={handleStatusChange} />
@@ -272,7 +273,7 @@ export default function AdminLeadsPage() {
                     >
                       <td className="px-6 py-4 font-medium">
                         <span className="flex items-center gap-1.5">
-                          {lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                          {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}
                           {lead.company}
                         </span>
                       </td>
