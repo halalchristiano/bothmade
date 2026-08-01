@@ -26,6 +26,12 @@ const COLUMNS: Array<{ header: string; required: boolean; description: string; e
     description: 'A full pre-written cold email — first line "Subject: ...", blank line, then the body. Lets it be sent in one click from the leads list.',
     example: 'Subject: Thoughts on Linpotia\\n\\nHi [First Name], ...',
   },
+  {
+    header: 'mockupURL',
+    required: false,
+    description: 'Link to the finished mockup — pre-fills the Loom/mockup link in the email composer',
+    example: 'https://evolve-med-spa.bothmade.studio',
+  },
   { header: 'industry', required: false, description: "Folded into notes — there's no dedicated column yet", example: 'Dental practice' },
   { header: 'address', required: false, description: "Folded into notes — there's no dedicated column yet", example: '123 Main St' },
   { header: 'originalWebsite', required: false, description: "Folded into notes — there's no dedicated column yet", example: 'https://example.com' },

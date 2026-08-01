@@ -13,8 +13,10 @@ const MAX_ROWS = 500;
  * (semicolon-separated keys), notes, status. Also accepts a few optional
  * research columns produced by external prep work — personalisedcoldemail
  * (a full "Subject: ...\n\n<body>" draft, stored as-is for one-click
- * sending), address, industry and originalwebsite (folded into notes since
- * there's no dedicated column for them yet).
+ * sending), mockupurl (stored on the lead's mockupUrl field — powers the
+ * Loom/mockup link default in the email composer), and address, industry,
+ * originalwebsite (folded into notes since there's no dedicated column for
+ * them yet).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
           notes,
           status,
           coldEmailDraft: row.personalisedcoldemail?.trim() || null,
+          mockupUrl: row.mockupurl?.trim() || null,
           assignedToId: session.userId,
         };
       })
