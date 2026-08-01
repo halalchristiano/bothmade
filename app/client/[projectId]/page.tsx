@@ -23,6 +23,7 @@ interface Project {
   messages: any[];
   updates: any[];
   deliverables: Array<{ id: string; name: string; url: string; size?: string }>;
+  contractUrl: string | null;
   client: any;
 }
 
@@ -309,6 +310,25 @@ export default function ClientDashboard() {
                 )}
               </div>
             </div>
+
+            {/* Signed Agreement */}
+            {project.contractUrl && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+                <h2 className="text-xl font-bold mb-6">Your Agreement</h2>
+                <a
+                  href={project.contractUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
+                >
+                  <div>
+                    <p className="font-medium">Signed project agreement</p>
+                    <p className="text-xs text-white/40">A copy of the contract you agreed to</p>
+                  </div>
+                  <span className="text-sm font-semibold text-sky-300">Download</span>
+                </a>
+              </div>
+            )}
 
             {/* Deliverables */}
             {project.deliverables.length > 0 && (

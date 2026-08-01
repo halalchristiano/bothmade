@@ -64,6 +64,7 @@ interface LeadDetail {
   mockupUrl: string | null;
   mockupDeliveredAt: string | null;
   agreementSignedAt: string | null;
+  signedContractUrl?: string | null;
   agreementIp: string | null;
   qualNeed: string | null;
   qualAuthority: string | null;
@@ -1199,6 +1200,16 @@ export default function LeadDetailPage() {
                 ✓ Agreed online {new Date(lead.agreementSignedAt).toLocaleString()}
                 {lead.agreementIp ? ` from ${lead.agreementIp}` : ''}
               </p>
+            )}
+            {lead.signedContractUrl && (
+              <a
+                href={lead.signedContractUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-sky-300 hover:underline"
+              >
+                View signed copy
+              </a>
             )}
 
             {linkEmailStatus && <p className="text-xs text-white/50">{linkEmailStatus}</p>}

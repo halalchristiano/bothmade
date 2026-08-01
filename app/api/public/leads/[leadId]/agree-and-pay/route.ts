@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import Stripe from 'stripe';
+import { put } from '@vercel/blob';
 import { prisma } from '@/lib/prisma';
 import { buildContractSections } from '@/lib/contract-terms';
+import { buildContractPdf } from '@/lib/contract-pdf';
 import { isFurtherAlong } from '@/lib/leads';
+import { getAdminEmails } from '@/lib/notify';
+import { sendSignedContractCopyEmail } from '@/lib/email';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -99,15 +103,45 @@ export async function POST(
       request.headers.get('x-real-ip') ||
       'unknown';
 
+    // Save a PDF copy of exactly what they agreed to — same sections that
+    // were hashed above — so there's a real document backing the clickwrap,
+    // not just a hash. Failure here shouldn't block the client from paying.
+    const signedAt = new Date();
+    let signedContractUrl: string | null = null;
+    try {
+      const pdfBytes = await buildContractPdf({
+        company: lead.company,
+        contactName: lead.contactName,
+        serviceLabel,
+        addOnLabels,
+        timelineLabel,
+        basePrice: formatCents(breakdown.basePrice),
+        addOnsPrice: formatCents(breakdown.addOnsPrice),
+        totalPrice: formatCents(totalPrice),
+        depositAmount: formatCents(deposit),
+        sections,
+        signedOnline: { at: signedAt, ip },
+      });
+      const blob = await put(
+        `contracts/${leadId}-${signedAt.getTime()}.pdf`,
+        Buffer.from(pdfBytes),
+        { access: 'public', contentType: 'application/pdf' }
+      );
+      signedContractUrl = blob.url;
+    } catch (pdfError) {
+      console.error('Failed to save signed contract copy:', pdfError);
+    }
+
     const wasFurtherAlong = isFurtherAlong(lead.status, 'contract_signed');
     await prisma.lead.update({
       where: { id: leadId },
       data: {
-        agreementSignedAt: new Date(),
+        agreementSignedAt: signedAt,
         agreementIp: ip,
         agreementHash: contractHash,
         contractStatus: 'signed',
         status: wasFurtherAlong ? 'contract_signed' : undefined,
+        signedContractUrl: signedContractUrl || undefined,
       },
     });
 
@@ -116,8 +150,16 @@ export async function POST(
         leadId,
         type: 'proposal',
         content: `Contract agreed to online (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
+        url: signedContractUrl || undefined,
       },
     });
+
+    if (signedContractUrl) {
+      const teamEmails = await getAdminEmails();
+      await sendSignedContractCopyEmail(teamEmails, lead.company, signedContractUrl, formatCents(totalPrice)).catch(
+        (e) => console.error('Failed to email signed contract copy:', e)
+      );
+    }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const session = await stripe.checkout.sessions.create({

@@ -64,7 +64,7 @@ function renderShell(opts: {
             <tr>
               <td style="padding-bottom:28px; text-align:center;">
                 <span style="font-size:22px; font-weight:800; letter-spacing:-0.02em;">
-                  <span style="-webkit-text-stroke:1px #ffffff; color:transparent;">both</span><span style="background:linear-gradient(90deg,#38bdf8,#a855f7); -webkit-background-clip:text; background-clip:text; color:#38bdf8;">made</span>
+                  <span style="color:#7dd3fc;">both</span><span style="color:#ffffff;">made</span>
                 </span>
               </td>
             </tr>
@@ -284,6 +284,35 @@ export async function sendSignAndPayEmail(
       bodyHtml,
       ctaLabel: 'Review & Pay',
       ctaUrl: signUrl,
+    }),
+  });
+}
+
+/**
+ * Notify the internal team the moment a client agrees online — a copy of
+ * exactly what they signed, ready for the books.
+ */
+export async function sendSignedContractCopyEmail(
+  toEmails: string[],
+  company: string,
+  contractUrl: string,
+  totalPriceLabel: string
+): Promise<boolean> {
+  if (toEmails.length === 0) return false;
+  const bodyHtml = `
+    <p><strong style="color:#fff;">${company}</strong> just agreed to their project agreement online (total: ${totalPriceLabel}).</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">A copy is saved below and will also show up on the project once payment clears.</p>
+  `;
+
+  return sendEmail({
+    to: toEmails,
+    subject: `Signed: ${company}'s project agreement`,
+    html: renderShell({
+      eyebrow: 'Contract signed',
+      title: `${company} agreed online`,
+      bodyHtml,
+      ctaLabel: 'View signed copy',
+      ctaUrl: contractUrl,
     }),
   });
 }

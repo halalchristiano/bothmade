@@ -100,6 +100,7 @@ export async function GET(
           deliverables: project.deliverables
             ? JSON.parse(project.deliverables)
             : [],
+          contractUrl: project.contractUrl,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt,
           client: clientData,

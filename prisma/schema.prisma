@@ -97,6 +97,11 @@ model Project {
   convertedFromLeadId String?
   handoffAcknowledgedAt DateTime?
 
+  // Copy of the exact contract the client agreed to before paying (or the
+  // last one generated, for manually-onboarded projects) — carried over
+  // from the Lead so the client can always find it in their own dashboard.
+  contractUrl String?
+
   // Metadata
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -219,6 +224,7 @@ model Lead {
   agreementSignedAt DateTime?
   agreementIp       String?
   agreementHash     String? // sha256 of the exact contract text shown at signing
+  signedContractUrl String? // saved PDF copy of what they actually agreed to
 
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)

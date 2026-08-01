@@ -160,6 +160,11 @@ async function handleCheckoutSessionCompleted(
   // someone remembers to update it by hand.
   if (leadId) {
     const lead = await prisma.lead.update({ where: { id: leadId }, data: { status: 'won' } }).catch(() => null);
+    if (lead?.signedContractUrl) {
+      // Carry the signed copy over so the client can find it on their own
+      // project — leads aren't visible to clients, but projects are.
+      await prisma.project.update({ where: { id: project.id }, data: { contractUrl: lead.signedContractUrl } });
+    }
     const notifier = lead?.assignedToId || (await prisma.user.findFirst({ select: { id: true } }))?.id;
     if (lead && notifier) {
       await prisma.teamMessage.create({

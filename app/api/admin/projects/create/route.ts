@@ -140,10 +140,16 @@ export async function POST(request: NextRequest) {
     if (convertedFromLeadId) {
       // Converting a lead into a paying project is the deal closing — reflect
       // that in the CRM so it shows up correctly in the sales dashboard.
-      await prisma.lead.update({
-        where: { id: convertedFromLeadId },
-        data: { status: 'won' },
-      }).catch(() => {}); // lead may already be deleted/invalid — non-fatal
+      const updatedLead = await prisma.lead
+        .update({ where: { id: convertedFromLeadId }, data: { status: 'won' } })
+        .catch(() => null); // lead may already be deleted/invalid — non-fatal
+
+      if (updatedLead?.signedContractUrl) {
+        await prisma.project.update({
+          where: { id: project.id },
+          data: { contractUrl: updatedLead.signedContractUrl },
+        });
+      }
     }
 
     if (generatedPassword) {

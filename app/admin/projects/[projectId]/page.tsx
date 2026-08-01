@@ -55,6 +55,7 @@ interface ProjectDetail {
   }>;
   sourcedLead?: { id: string; company: string } | null;
   handoffAcknowledgedAt?: string | null;
+  contractUrl?: string | null;
 }
 
 const STATUSES = ['discovery', 'design', 'build', 'launch', 'complete'];
@@ -686,6 +687,24 @@ export default function AdminProjectDetailPage() {
 
         {/* RIGHT: Deliverables */}
         <div className="lg:col-span-2 space-y-6">
+          {project.contractUrl && (
+            <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+              <h2 className="text-lg font-bold mb-4">Signed Agreement</h2>
+              <a
+                href={project.contractUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex justify-between items-center p-3 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-medium">Client-signed project agreement</p>
+                  <p className="text-xs text-white/40">The exact copy they agreed to before paying</p>
+                </div>
+                <span className="text-sm font-semibold text-sky-300 shrink-0">Download</span>
+              </a>
+            </div>
+          )}
+
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-lg font-bold mb-4">Deliverables</h2>
 
