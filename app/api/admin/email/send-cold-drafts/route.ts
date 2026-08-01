@@ -1,0 +1,101 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getCurrentSession } from '@/lib/auth';
+import { unauthorizedResponse } from '@/lib/middleware';
+import { renderShell } from '@/lib/email';
+import { sendAsUser } from '@/lib/mailer';
+
+const MAX_LEADS = 200;
+
+/**
+ * Splits a "Subject: ...\n\n<body>" draft into its parts. Falls back to a
+ * generic subject if the draft doesn't start with a Subject line, since
+ * research-imported drafts should always have one but the field is freeform.
+ */
+function splitDraft(draft: string, company: string): { subject: string; body: string } {
+  const match = draft.match(/^Subject:\s*(.+?)\r?\n+([\s\S]*)$/i);
+  if (match) {
+    return { subject: match[1].trim(), body: match[2].trim() };
+  }
+  return { subject: `Thoughts on ${company}`, body: draft.trim() };
+}
+
+/**
+ * Sends every selected lead's pre-written cold email draft as-is, one click,
+ * no per-recipient typing — the personalization already happened when the
+ * draft was researched and imported. Leads without a stored draft or email
+ * are skipped and reported back so they can be called instead.
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getCurrentSession();
+    if (!session || session.type !== 'user') return unauthorizedResponse();
+
+    const { leadIds } = await request.json();
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return NextResponse.json({ error: 'No leads selected' }, { status: 400 });
+    }
+    if (leadIds.length > MAX_LEADS) {
+      return NextResponse.json({ error: `Max ${MAX_LEADS} leads per send` }, { status: 400 });
+    }
+
+    const sender = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { name: true, email: true, gmailAddress: true, gmailAppPassword: true },
+    });
+    if (!sender) return unauthorizedResponse();
+
+    const leads = await prisma.lead.findMany({ where: { id: { in: leadIds } } });
+
+    const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string }> = [];
+
+    for (const lead of leads) {
+      if (!lead.email) {
+        results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'No email on file — call instead' });
+        continue;
+      }
+      if (!lead.coldEmailDraft) {
+        results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'No cold email draft saved' });
+        continue;
+      }
+
+      const { subject, body } = splitDraft(lead.coldEmailDraft, lead.company);
+      const firstName = lead.contactName?.split(' ')[0] || 'there';
+      const personalizedBody = body.replace(/\[First Name\]/gi, firstName);
+
+      const bodyHtml = personalizedBody
+        .split(/\n{2,}/)
+        .map((para) => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
+        .join('');
+
+      const html = renderShell({
+        title: subject,
+        bodyHtml,
+        footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
+      });
+
+      const sent = await sendAsUser(
+        { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
+        { to: lead.email, subject, html }
+      );
+
+      if (!sent) {
+        results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'Send failed' });
+        continue;
+      }
+
+      await prisma.lead.update({ where: { id: lead.id }, data: { coldEmailSentAt: new Date() } }).catch(() => null);
+      await prisma.leadActivity
+        .create({ data: { leadId: lead.id, type: 'email', content: subject, createdById: session.userId } })
+        .catch(() => null);
+
+      results.push({ leadId: lead.id, company: lead.company, ok: true });
+    }
+
+    const sentCount = results.filter((r) => r.ok).length;
+    return NextResponse.json({ success: true, sentCount, total: results.length, results }, { status: 200 });
+  } catch (error) {
+    console.error('Send cold drafts error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

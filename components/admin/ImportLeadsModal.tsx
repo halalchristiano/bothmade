@@ -20,6 +20,15 @@ const COLUMNS: Array<{ header: string; required: boolean; description: string; e
   },
   { header: 'notes', required: false, description: 'Freeform notes', example: 'Found via Google Maps' },
   { header: 'status', required: false, description: 'new, researched, contacted, replied, qualified (defaults to "new" if blank)', example: 'new' },
+  {
+    header: 'personalisedColdEmail',
+    required: false,
+    description: 'A full pre-written cold email — first line "Subject: ...", blank line, then the body. Lets it be sent in one click from the leads list.',
+    example: 'Subject: Thoughts on Linpotia\\n\\nHi [First Name], ...',
+  },
+  { header: 'industry', required: false, description: "Folded into notes — there's no dedicated column yet", example: 'Dental practice' },
+  { header: 'address', required: false, description: "Folded into notes — there's no dedicated column yet", example: '123 Main St' },
+  { header: 'originalWebsite', required: false, description: "Folded into notes — there's no dedicated column yet", example: 'https://example.com' },
 ];
 
 export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {

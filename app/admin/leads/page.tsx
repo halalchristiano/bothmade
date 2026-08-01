@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
@@ -23,6 +23,8 @@ interface LeadRow {
   updatedAt: string;
   hotLead: boolean;
   qualifiedAt: string | null;
+  coldEmailDraft: string | null;
+  coldEmailSentAt: string | null;
   assignedTo: { name: string | null } | null;
   activities: Array<{ createdAt: string }>;
 }
@@ -67,6 +69,27 @@ function StatusSelect({
       ))}
     </select>
   );
+}
+
+// Shows whether a lead is one click away from a cold email, or needs a call
+// instead — the whole point of storing a pre-written draft is knowing at a
+// glance which leads are ready without opening each one.
+function ColdOutreachFlag({ lead }: { lead: LeadRow }) {
+  if (!lead.email) {
+    return (
+      <span title="No email on file — call instead" className="inline-flex">
+        <PhoneCall size={13} className="text-amber-400" />
+      </span>
+    );
+  }
+  if (lead.coldEmailDraft && !lead.coldEmailSentAt) {
+    return (
+      <span title="Cold email drafted and ready to send" className="inline-flex">
+        <MailCheck size={13} className="text-emerald-400" />
+      </span>
+    );
+  }
+  return null;
 }
 
 function QuickActions({ lead, onLogged }: { lead: LeadRow; onLogged?: () => void }) {
@@ -114,6 +137,8 @@ export default function AdminLeadsPage() {
   const [showBulkEmail, setShowBulkEmail] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
+  const [sendingColdDrafts, setSendingColdDrafts] = useState(false);
+  const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[] } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -191,6 +216,34 @@ export default function AdminLeadsPage() {
   };
 
   const selectedLeads = useMemo(() => leads.filter((l) => selected.has(l.id)), [leads, selected]);
+  const selectedReadyToSend = useMemo(
+    () => selectedLeads.filter((l) => l.email && l.coldEmailDraft),
+    [selectedLeads]
+  );
+  const selectedNeedingCall = useMemo(() => selectedLeads.filter((l) => !l.email), [selectedLeads]);
+
+  const handleSendColdDrafts = async () => {
+    if (selectedReadyToSend.length === 0) return;
+    setSendingColdDrafts(true);
+    try {
+      const res = await fetch('/api/admin/email/send-cold-drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: selectedReadyToSend.map((l) => l.id) }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const failures = (data.results || [])
+          .filter((r: { ok: boolean }) => !r.ok)
+          .map((r: { company: string; reason?: string }) => `${r.company}: ${r.reason}`);
+        setColdSendResult({ sentCount: data.sentCount, total: data.total, failures });
+        setSelected(new Set());
+        load();
+      }
+    } finally {
+      setSendingColdDrafts(false);
+    }
+  };
 
   const inputClass =
     'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
@@ -239,22 +292,59 @@ export default function AdminLeadsPage() {
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-sky-400/5 px-5 py-3 mb-6">
-          <span className="text-sm">
-            <strong className="text-sky-300">{selected.size}</strong> selected
-          </span>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSelected(new Set())} className="text-xs text-white/40 hover:text-white transition-colors">
-              Clear
-            </button>
-            <button
-              onClick={() => setShowBulkEmail(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
-            >
-              <Send size={14} />
-              Send cold email
+        <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 px-5 py-3 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm">
+              <strong className="text-sky-300">{selected.size}</strong> selected
+              {selectedNeedingCall.length > 0 && (
+                <span className="text-amber-300"> · {selectedNeedingCall.length} no email — call instead</span>
+              )}
+            </span>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setSelected(new Set())} className="text-xs text-white/40 hover:text-white transition-colors">
+                Clear
+              </button>
+              {selectedReadyToSend.length > 0 && (
+                <button
+                  onClick={handleSendColdDrafts}
+                  disabled={sendingColdDrafts}
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  <Send size={14} />
+                  {sendingColdDrafts ? 'Sending...' : `Send prepared cold emails (${selectedReadyToSend.length})`}
+                </button>
+              )}
+              <button
+                onClick={() => setShowBulkEmail(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+              >
+                <Send size={14} />
+                Compose cold email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {coldSendResult && (
+        <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-5 py-3 mb-6">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm">
+              Sent <strong className="text-emerald-300">{coldSendResult.sentCount}</strong> of {coldSendResult.total} prepared cold emails.
+            </p>
+            <button onClick={() => setColdSendResult(null)} className="text-xs text-white/40 hover:text-white transition-colors shrink-0">
+              Dismiss
             </button>
           </div>
+          {coldSendResult.failures.length > 0 && (
+            <div className="mt-2 space-y-0.5">
+              {coldSendResult.failures.map((f, i) => (
+                <p key={i} className="text-xs text-amber-300">
+                  {f}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -297,7 +387,7 @@ export default function AdminLeadsPage() {
                       onChange={() => toggleSelected(lead.id)}
                       className="accent-sky-400"
                     />
-                    {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                    {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}<ColdOutreachFlag lead={lead} />
                     {lead.company}
                   </p>
                   <StatusSelect lead={lead} onChange={handleStatusChange} />
@@ -351,7 +441,7 @@ export default function AdminLeadsPage() {
                       </td>
                       <td className="px-6 py-4 font-medium">
                         <span className="flex items-center gap-1.5">
-                          {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                          {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}<ColdOutreachFlag lead={lead} />
                           {lead.company}
                         </span>
                       </td>

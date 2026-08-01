@@ -207,6 +207,13 @@ model Lead {
   mockupUrl         String?   // link to the finished mockup, once delivered
   mockupDeliveredAt DateTime?
 
+  // A fully pre-written cold email (subject on the first line as "Subject: ...",
+  // body after), usually populated via CSV import from research done ahead of
+  // outreach — lets a lead be cold-emailed in one click with zero typing,
+  // instead of routing through the template composer every time.
+  coldEmailDraft String?
+  coldEmailSentAt DateTime?
+
   // BANT-style qualification — structured so "qualified" means something
   // consistent instead of a gut call. Each is a freeform answer summary,
   // not just a checkbox, since the real value is in what was actually said.

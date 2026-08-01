@@ -10,7 +10,11 @@ const MAX_ROWS = 500;
  * Bulk-import leads from a CSV (already parsed client-side into row objects
  * keyed by lowercased header name). Recognized columns: company (required),
  * contactname, email, phone, source, estimatedvalue (dollars), painpoints
- * (semicolon-separated keys), notes, status.
+ * (semicolon-separated keys), notes, status. Also accepts a few optional
+ * research columns produced by external prep work — personalisedcoldemail
+ * (a full "Subject: ...\n\n<body>" draft, stored as-is for one-click
+ * sending), address, industry and originalwebsite (folded into notes since
+ * there's no dedicated column for them yet).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +49,17 @@ export async function POST(request: NextRequest) {
 
         const status = isLeadStatus(row.status?.trim()) ? row.status.trim() : undefined;
 
+        // Extra research columns don't have dedicated fields yet — fold
+        // whatever's present into notes rather than silently dropping it.
+        const extra = [
+          row.industry ? `Industry: ${row.industry.trim()}` : '',
+          row.address ? `Address: ${row.address.trim()}` : '',
+          row.originalwebsite ? `Existing site: ${row.originalwebsite.trim()}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+        const notes = [row.notes?.trim(), extra].filter(Boolean).join('\n\n') || null;
+
         return {
           company,
           contactName: row.contactname || null,
@@ -53,8 +68,9 @@ export async function POST(request: NextRequest) {
           source: row.source || null,
           estimatedValue,
           painPoints,
-          notes: row.notes || null,
+          notes,
           status,
+          coldEmailDraft: row.personalisedcoldemail?.trim() || null,
           assignedToId: session.userId,
         };
       })
