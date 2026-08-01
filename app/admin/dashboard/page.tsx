@@ -130,7 +130,13 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
 
   return (
     <Card className="p-6" glow={actions.length > 0 ? 'amber' : undefined}>
-      <CardHeader icon={Flame} tone="amber" title="Do This Next" subtitle="Every lead here needs a touch, ranked by urgency" />
+      <CardHeader
+        icon={Flame}
+        tone="amber"
+        title="Do This Next"
+        subtitle="Every lead here needs a touch, ranked by urgency"
+        action={actions.length > 0 ? <Badge tone={actions.length > 5 ? 'red' : 'amber'}>{actions.length}</Badge> : undefined}
+      />
       {actions.length === 0 ? (
         <EmptyState icon={Flame} text="Nothing urgent — you're caught up." />
       ) : (
