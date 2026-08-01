@@ -54,7 +54,7 @@ export const PAIN_POINTS: Record<PainPointKey, string> = {
   'disconnected-tools': "Tools don't talk to each other",
 };
 
-export const LEAD_ACTIVITY_TYPES = ['note', 'email', 'call', 'loom'] as const;
+export const LEAD_ACTIVITY_TYPES = ['note', 'email', 'call', 'loom', 'proposal'] as const;
 export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
 
 export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
@@ -62,6 +62,7 @@ export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
   email: 'Email',
   call: 'Call',
   loom: 'Loom Video',
+  proposal: 'Proposal',
 };
 
 export function isPainPointKey(value: string): value is PainPointKey {

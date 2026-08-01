@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ADD_ONS,
@@ -10,6 +10,10 @@ import {
   TIMELINES,
   calculatePrice,
   formatCents,
+  isAddOnKey,
+  isBaseService,
+  isClientType,
+  isTimelineKey,
   type AddOnKey,
   type BaseService,
   type ClientType,
@@ -17,7 +21,17 @@ import {
 } from '@/lib/pricing';
 
 export default function NewProjectPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewProjectForm />
+    </Suspense>
+  );
+}
+
+function NewProjectForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [company, setCompany] = useState('');
   const [contactName, setContactName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
@@ -28,6 +42,30 @@ export default function NewProjectPage() {
   const [clientType, setClientType] = useState<ClientType>('smb');
   const [timeline, setTimeline] = useState<TimelineKey>('standard');
   const [priceOverride, setPriceOverride] = useState('');
+
+  // Pre-fill from a converted lead, e.g. /admin/projects/new?company=...&baseService=...
+  useEffect(() => {
+    const qCompany = searchParams.get('company');
+    const qContactName = searchParams.get('contactName');
+    const qClientEmail = searchParams.get('clientEmail');
+    const qPhone = searchParams.get('phone');
+    const qBaseService = searchParams.get('baseService');
+    const qAddOns = searchParams.get('addOns');
+    const qClientType = searchParams.get('clientType');
+    const qTimeline = searchParams.get('timeline');
+
+    if (qCompany) setCompany(qCompany);
+    if (qContactName) setContactName(qContactName);
+    if (qClientEmail) setClientEmail(qClientEmail);
+    if (qPhone) setPhone(qPhone);
+    if (qBaseService && isBaseService(qBaseService)) setBaseService(qBaseService);
+    if (qAddOns) {
+      setAddOns(qAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a)));
+    }
+    if (qClientType && isClientType(qClientType)) setClientType(qClientType);
+    if (qTimeline && isTimelineKey(qTimeline)) setTimeline(qTimeline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

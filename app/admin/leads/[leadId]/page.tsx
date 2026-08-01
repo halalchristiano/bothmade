@@ -13,7 +13,18 @@ import {
   type LeadActivityType,
   type PainPointKey,
 } from '@/lib/leads';
-import { formatCents } from '@/lib/pricing';
+import {
+  ADD_ONS,
+  BASE_SERVICES,
+  CLIENT_TYPES,
+  TIMELINES,
+  calculatePrice,
+  formatCents,
+  type AddOnKey,
+  type BaseService,
+  type ClientType,
+  type TimelineKey,
+} from '@/lib/pricing';
 
 interface Activity {
   id: string;
@@ -65,6 +76,27 @@ export default function LeadDetailPage() {
   const [emailSubject, setEmailSubject] = useState('');
   const [loggingActivity, setLoggingActivity] = useState(false);
   const [activityMessage, setActivityMessage] = useState('');
+
+  const [proposalService, setProposalService] = useState<BaseService>('website');
+  const [proposalAddOns, setProposalAddOns] = useState<AddOnKey[]>([]);
+  const [proposalClientType, setProposalClientType] = useState<ClientType>('smb');
+  const [proposalTimeline, setProposalTimeline] = useState<TimelineKey>('standard');
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
+  const [creatingLink, setCreatingLink] = useState(false);
+  const [downloadingContract, setDownloadingContract] = useState(false);
+  const [proposalError, setProposalError] = useState('');
+  const [convertingToProject, setConvertingToProject] = useState(false);
+
+  const proposalBreakdown = calculatePrice({
+    baseService: proposalService,
+    addOns: proposalAddOns,
+    clientType: proposalClientType,
+    timeline: proposalTimeline,
+  });
+
+  const toggleProposalAddOn = (key: AddOnKey) => {
+    setProposalAddOns((prev) => (prev.includes(key) ? prev.filter((a) => a !== key) : [...prev, key]));
+  };
 
   const inputClass =
     'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
@@ -170,6 +202,77 @@ export default function LeadDetailPage() {
     } finally {
       setLoggingActivity(false);
     }
+  };
+
+  const proposalSelection = {
+    baseService: proposalService,
+    addOns: proposalAddOns,
+    clientType: proposalClientType,
+    timeline: proposalTimeline,
+  };
+
+  const handleCreatePaymentLink = async () => {
+    setProposalError('');
+    setCreatingLink(true);
+    try {
+      const response = await fetch(`/api/admin/leads/${leadId}/payment-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(proposalSelection),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPaymentLinkUrl(data.url);
+        load();
+      } else {
+        setProposalError(data.error || 'Failed to create payment link');
+      }
+    } finally {
+      setCreatingLink(false);
+    }
+  };
+
+  const handleDownloadContract = async () => {
+    setProposalError('');
+    setDownloadingContract(true);
+    try {
+      const response = await fetch(`/api/admin/leads/${leadId}/contract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(proposalSelection),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setProposalError(data.error || 'Failed to generate contract');
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${lead?.company.replace(/[^a-z0-9]/gi, '-') || 'contract'}-contract.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      load();
+    } finally {
+      setDownloadingContract(false);
+    }
+  };
+
+  const handleConvertToProject = () => {
+    if (!lead) return;
+    const query = new URLSearchParams({
+      company: lead.company,
+      contactName: lead.contactName || '',
+      clientEmail: lead.email || '',
+      phone: lead.phone || '',
+      baseService: proposalService,
+      addOns: proposalAddOns.join(','),
+      clientType: proposalClientType,
+      timeline: proposalTimeline,
+    });
+    setConvertingToProject(true);
+    router.push(`/admin/projects/new?${query.toString()}`);
   };
 
   if (loading || !lead) {
@@ -412,6 +515,136 @@ export default function LeadDetailPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Proposal builder — configure exactly what they want, then send a payment link or a contract */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 mt-6">
+        <h2 className="text-xl font-bold mb-1">Onboard This Customer</h2>
+        <p className="text-sm text-white/40 mb-6">
+          Configure exactly what they want, then generate a payment link to send them or a contract
+          to sign — no need to send them back to the pricing page.
+        </p>
+
+        <div className="grid md:grid-cols-3 gap-3 mb-4">
+          {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
+            ([key, service]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setProposalService(key)}
+                className={`text-left rounded-lg p-3 border transition-colors ${
+                  proposalService === key
+                    ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
+                    : 'border-white/10 hover:border-white/25'
+                }`}
+              >
+                <p className="font-medium text-sm">{service.label}</p>
+                <p className="text-xs text-white/40">{formatCents(service.price)}</p>
+              </button>
+            )
+          )}
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-3 mb-4 max-h-64 overflow-y-auto pr-1">
+          {(Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).map(([key, addOn]) => (
+            <label
+              key={key}
+              className={`flex items-center gap-2 rounded-lg p-3 border cursor-pointer transition-colors ${
+                proposalAddOns.includes(key)
+                  ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
+                  : 'border-white/10 hover:border-white/25'
+              }`}
+            >
+              <input type="checkbox" checked={proposalAddOns.includes(key)} onChange={() => toggleProposalAddOn(key)} />
+              <span className="text-sm">{addOn.label}</span>
+              <span className="text-xs text-white/40 ml-auto">+{formatCents(addOn.price)}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium mb-2 text-white/70">Client Type</label>
+            <select
+              value={proposalClientType}
+              onChange={(e) => setProposalClientType(e.target.value as ClientType)}
+              className={inputClass}
+            >
+              {(Object.entries(CLIENT_TYPES) as [ClientType, (typeof CLIENT_TYPES)[ClientType]][]).map(
+                ([key, type]) => (
+                  <option key={key} value={key} className="bg-[#05030a]">
+                    {type.label}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2 text-white/70">Timeline</label>
+            <select
+              value={proposalTimeline}
+              onChange={(e) => setProposalTimeline(e.target.value as TimelineKey)}
+              className={inputClass}
+            >
+              {(Object.entries(TIMELINES) as [TimelineKey, (typeof TIMELINES)[TimelineKey]][]).map(([key, tl]) => (
+                <option key={key} value={key} className="bg-[#05030a]">
+                  {tl.label} ({tl.weeks})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center rounded-lg bg-white/5 p-4 mb-4">
+          <span className="font-semibold">Total</span>
+          <span className="text-2xl font-bold">{formatCents(proposalBreakdown.totalPrice)}</span>
+        </div>
+
+        {proposalError && <p className="text-red-400 text-sm mb-3">{proposalError}</p>}
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleCreatePaymentLink}
+            disabled={creatingLink}
+            className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+          >
+            {creatingLink ? 'Creating...' : 'Create Payment Link'}
+          </button>
+          <button
+            onClick={handleDownloadContract}
+            disabled={downloadingContract}
+            className="rounded-lg border border-white/20 px-5 py-2.5 font-semibold disabled:opacity-50 hover:bg-white/5 transition-colors"
+          >
+            {downloadingContract ? 'Generating...' : 'Download Contract PDF'}
+          </button>
+          <button
+            onClick={handleConvertToProject}
+            disabled={convertingToProject}
+            className="rounded-lg border border-emerald-400/30 px-5 py-2.5 font-semibold text-emerald-300 disabled:opacity-50 hover:bg-emerald-400/10 transition-colors"
+          >
+            Convert to Project (skip payment)
+          </button>
+        </div>
+
+        {paymentLinkUrl && (
+          <div className="mt-4 rounded-lg bg-white/5 border border-white/10 p-4">
+            <p className="text-sm text-white/50 mb-2">Send this link to the customer:</p>
+            <div className="flex gap-2">
+              <input readOnly value={paymentLinkUrl} className={`${inputClass} text-sm`} />
+              <button
+                onClick={() => navigator.clipboard.writeText(paymentLinkUrl)}
+                className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-white/30 mt-4">
+          For e-signature: download the contract, then upload it to Google Drive and use your
+          Workspace Business Standard plan's built-in "Request eSignature" on the PDF.
+        </p>
       </div>
     </div>
   );
