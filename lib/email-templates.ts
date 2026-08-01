@@ -122,7 +122,6 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
         ],
       },
       { key: 'senderTitle', label: 'Your title', type: 'text', placeholder: 'e.g. Director of Sales' },
-      { key: 'schedulingLink', label: 'Scheduling link (optional)', type: 'url' },
     ],
     build: ({ recipientName, company, senderName, fields }) => {
       const first = senderName ? senderName.split(' ')[0] : 'Evan';
@@ -141,8 +140,6 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>If you like the direction, we can discuss taking it further. If not, you'll still leave with ideas you can use.</p>` +
           `<p>Would you be open to a quick 15-minute conversation next week?</p>` +
           `<p>Kind regards,<br/>${first}<br/>${title}<br/>Bothmade Studio</p>`,
-        ctaLabel: fields.schedulingLink ? 'Book a 15-minute call' : undefined,
-        ctaUrl: fields.schedulingLink || undefined,
       };
     },
   },
@@ -167,7 +164,6 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       },
       { key: 'senderTitle', label: 'Your title', type: 'text', placeholder: 'e.g. Director of Sales' },
       { key: 'callDays', label: 'Days to propose (optional)', type: 'text', placeholder: 'e.g. Tuesday or Wednesday' },
-      { key: 'schedulingLink', label: 'Scheduling link (optional)', type: 'url' },
     ],
     build: ({ recipientName, company, senderName, fields }) => {
       const first = senderName ? senderName.split(' ')[0] : 'Evan';
@@ -186,8 +182,6 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>If it isn't for you, that's absolutely fine. At the very least, you'll leave with ideas you can use.</p>` +
           `<p>Would ${fields.callDays || 'next week'} work for a brief 15-minute conversation?</p>` +
           `<p>Kind regards,<br/>${first}<br/>${title}<br/>Bothmade Studio</p>`,
-        ctaLabel: fields.schedulingLink ? 'Book a 15-minute call' : undefined,
-        ctaUrl: fields.schedulingLink || undefined,
       };
     },
   },

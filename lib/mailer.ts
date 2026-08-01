@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { decryptSecret } from '@/lib/crypto';
 import { sendEmail as sendViaResend } from '@/lib/email';
+import { sendAsDelegatedUser, isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 
 export interface SenderIdentity {
   name: string | null;
@@ -16,13 +17,26 @@ export interface OutgoingEmail {
 }
 
 /**
- * Sends a client-facing email as a specific team member. If they've connected
- * their own Gmail (app password), it goes out through smtp.gmail.com under
- * their real address — Gmail saves a copy to that account's own Sent folder,
- * and the client sees it as a normal email from a real person. Otherwise it
- * falls back to the shared Resend sender with a reply-to of their address.
+ * Sends a client-facing email as a specific team member, trying the best
+ * available method in order:
+ *   1. Domain-wide delegation (Google Cloud service account impersonating
+ *      the user's real Workspace address) — no per-user setup, lands in
+ *      their actual Gmail Sent folder. Used automatically once configured.
+ *   2. Their own connected Gmail app password (per-user opt-in, same effect).
+ *   3. The shared Resend sender, with their name and reply-to — always works,
+ *      but doesn't land in their personal Sent folder.
  */
 export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): Promise<boolean> {
+  if (sender.email && isDomainDelegationConfigured()) {
+    const sent = await sendAsDelegatedUser(sender.email, {
+      fromName: sender.name,
+      to: email.to,
+      subject: email.subject,
+      html: email.html,
+    });
+    if (sent) return true;
+  }
+
   if (sender.gmailAddress && sender.gmailAppPassword) {
     try {
       const transport = nodemailer.createTransport({

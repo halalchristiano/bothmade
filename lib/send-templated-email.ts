@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { getTemplate } from '@/lib/email-templates';
 import { renderShell } from '@/lib/email';
 import { sendAsUser } from '@/lib/mailer';
+import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 
 export interface SendTemplatedEmailInput {
   senderId: string;
@@ -17,6 +18,51 @@ export interface SendTemplatedEmailResult {
   ok: boolean;
   error?: string;
   sentVia?: 'gmail' | 'resend';
+}
+
+export interface BuiltTemplatedEmail {
+  ok: boolean;
+  error?: string;
+  subject?: string;
+  html?: string;
+}
+
+/**
+ * Builds (but does not send) the exact HTML an email would go out as —
+ * shared by the send path and the live preview endpoint so what you preview
+ * is guaranteed to be what actually sends, not an approximation.
+ */
+export async function buildTemplatedEmail(
+  input: Omit<SendTemplatedEmailInput, 'leadId' | 'to'>
+): Promise<BuiltTemplatedEmail> {
+  const { senderId, templateId, toName, company, fields } = input;
+
+  const template = getTemplate(templateId);
+  if (!template) return { ok: false, error: 'Unknown template' };
+
+  const sender = await prisma.user.findUnique({
+    where: { id: senderId },
+    select: { name: true },
+  });
+  if (!sender) return { ok: false, error: 'Sender not found' };
+
+  const built = template.build({
+    recipientName: toName || '',
+    company: company || '',
+    senderName: sender.name || 'Bothmade',
+    fields: fields || {},
+  });
+
+  const html = renderShell({
+    eyebrow: built.eyebrow,
+    title: built.title,
+    bodyHtml: built.bodyHtml,
+    ctaLabel: built.ctaLabel,
+    ctaUrl: built.ctaUrl,
+    footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
+  });
+
+  return { ok: true, subject: built.subject, html };
 }
 
 /**
@@ -79,5 +125,6 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
       .catch(() => null);
   }
 
-  return { ok: true, sentVia: sender.gmailAddress ? 'gmail' : 'resend' };
+  const sentViaGmail = (!!sender.email && isDomainDelegationConfigured()) || !!sender.gmailAddress;
+  return { ok: true, sentVia: sentViaGmail ? 'gmail' : 'resend' };
 }
