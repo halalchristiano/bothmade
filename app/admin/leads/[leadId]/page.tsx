@@ -283,6 +283,19 @@ export default function LeadDetailPage() {
     }
   };
 
+  const [confirmingDeleteLead, setConfirmingDeleteLead] = useState(false);
+  const [deletingLead, setDeletingLead] = useState(false);
+
+  const handleDeleteLead = async () => {
+    setDeletingLead(true);
+    try {
+      const response = await fetch(`/api/admin/leads/${leadId}`, { method: 'DELETE' });
+      if (response.ok) router.push('/admin/leads');
+    } finally {
+      setDeletingLead(false);
+    }
+  };
+
   const handleConfirmLost = async (reason: string) => {
     setPendingLostStatus(false);
     await fetch(`/api/admin/leads/${leadId}`, {
@@ -493,9 +506,36 @@ export default function LeadDetailPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <Link href="/admin/leads" className="text-white/50 hover:text-white text-sm transition-colors">
-        ← Back to Leads
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/leads" className="text-white/50 hover:text-white text-sm transition-colors">
+          ← Back to Leads
+        </Link>
+        {confirmingDeleteLead ? (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-white/40">Delete {lead.company} permanently?</span>
+            <button
+              onClick={handleDeleteLead}
+              disabled={deletingLead}
+              className="px-3 py-1 rounded-lg bg-red-500/90 text-white font-semibold disabled:opacity-50 hover:bg-red-500 transition-colors"
+            >
+              {deletingLead ? 'Deleting...' : 'Confirm'}
+            </button>
+            <button
+              onClick={() => setConfirmingDeleteLead(false)}
+              className="px-3 py-1 rounded-lg border border-white/15 hover:bg-white/5 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmingDeleteLead(true)}
+            className="text-xs text-white/30 hover:text-red-300 transition-colors"
+          >
+            Delete lead
+          </button>
+        )}
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-6 mt-4">
         {/* LEFT: Lead info */}

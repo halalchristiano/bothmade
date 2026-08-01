@@ -35,6 +35,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      if (client.archivedAt) {
+        return NextResponse.json(
+          { error: 'This account has been decommissioned. Contact us if you believe this is a mistake.' },
+          { status: 403 }
+        );
+      }
+
       // Update last login
       await prisma.client.update({
         where: { id: client.id },

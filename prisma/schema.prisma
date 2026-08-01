@@ -53,6 +53,7 @@ model Client {
   onboardingComplete Boolean  @default(false)
   mustChangePassword Boolean  @default(true) // forces a password reset on first login after being auto-generated
   lastLoginAt        DateTime?
+  archivedAt         DateTime? // "decommissioned" — hidden from active lists, login blocked, but records kept intact
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

@@ -12,6 +12,7 @@ interface ClientRow {
   company: string;
   phone: string | null;
   createdAt: string;
+  archivedAt: string | null;
   projects: Array<{ id: string }>;
   lastActivityAt: string | null;
 }
@@ -39,6 +40,7 @@ export default function AdminClientsPage() {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -59,13 +61,14 @@ export default function AdminClientsPage() {
     load();
   }, [router]);
 
+  const archivedCount = useMemo(() => clients.filter((c) => c.archivedAt).length, [clients]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return clients;
-    return clients.filter(
-      (c) => c.email.toLowerCase().includes(q) || c.company.toLowerCase().includes(q)
-    );
-  }, [clients, search]);
+    return clients
+      .filter((c) => showArchived || !c.archivedAt)
+      .filter((c) => !q || c.email.toLowerCase().includes(q) || c.company.toLowerCase().includes(q));
+  }, [clients, search, showArchived]);
 
   if (loading) {
     return (
@@ -84,13 +87,21 @@ export default function AdminClientsPage() {
           </span>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Clients</h1>
         </div>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by email or company..."
-          className="w-full sm:w-80 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all"
-        />
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by email or company..."
+            className="flex-1 sm:w-72 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all"
+          />
+          {archivedCount > 0 && (
+            <label className="flex items-center gap-2 text-xs text-white/40 whitespace-nowrap cursor-pointer">
+              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+              Show decommissioned ({archivedCount})
+            </label>
+          )}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -108,8 +119,12 @@ export default function AdminClientsPage() {
                 className="block rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-4 hover:border-white/20 transition-colors"
               >
                 <div className="flex justify-between items-start mb-1">
-                  <p className="font-semibold">{client.company}</p>
-                  <HealthBadge lastActivityAt={client.lastActivityAt} />
+                  <p className={`font-semibold ${client.archivedAt ? 'text-white/40 line-through' : ''}`}>{client.company}</p>
+                  {client.archivedAt ? (
+                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/40 whitespace-nowrap">Decommissioned</span>
+                  ) : (
+                    <HealthBadge lastActivityAt={client.lastActivityAt} />
+                  )}
                 </div>
                 <p className="text-sm text-white/50 mb-2">{client.email}</p>
                 <div className="flex justify-between text-xs text-white/30">
@@ -136,11 +151,15 @@ export default function AdminClientsPage() {
                 </thead>
                 <tbody>
                   {filtered.map((client) => (
-                    <tr key={client.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                    <tr key={client.id} className={`border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors ${client.archivedAt ? 'opacity-50' : ''}`}>
                       <td className="px-6 py-4 font-medium">{client.company}</td>
                       <td className="px-6 py-4 text-white/50">{client.email}</td>
                       <td className="px-6 py-4">
-                        <HealthBadge lastActivityAt={client.lastActivityAt} />
+                        {client.archivedAt ? (
+                          <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/40 whitespace-nowrap">Decommissioned</span>
+                        ) : (
+                          <HealthBadge lastActivityAt={client.lastActivityAt} />
+                        )}
                       </td>
                       <td className="px-6 py-4 text-white/50">{client.projects.length}</td>
                       <td className="px-6 py-4 text-white/50">

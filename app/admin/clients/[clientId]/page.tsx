@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare, Archive, ArchiveRestore, Trash2, AlertTriangle } from 'lucide-react';
 import { Card, CardHeader, PageIn, EmptyState, Badge } from '@/components/admin/ui';
 
 interface ClientDetail {
@@ -14,6 +14,7 @@ interface ClientDetail {
   contactName: string | null;
   createdAt: string;
   lastLoginAt: string | null;
+  archivedAt: string | null;
   projects: Array<{
     id: string;
     name: string;
@@ -38,6 +39,10 @@ export default function AdminClientDetailPage() {
   const [broadcastContent, setBroadcastContent] = useState('');
   const [broadcasting, setBroadcasting] = useState(false);
   const [message, setMessage] = useState('');
+
+  const [archiving, setArchiving] = useState(false);
+  const [confirmDeleteText, setConfirmDeleteText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const inputClass =
     'w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all';
@@ -103,6 +108,32 @@ export default function AdminClientDetailPage() {
     }
   };
 
+  const handleToggleArchive = async () => {
+    if (!client) return;
+    setArchiving(true);
+    try {
+      const response = await fetch(`/api/admin/clients/${clientId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !client.archivedAt }),
+      });
+      if (response.ok) loadClient();
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!client || confirmDeleteText !== client.company) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/admin/clients/${clientId}`, { method: 'DELETE' });
+      if (response.ok) router.push('/admin/clients');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading || !client) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -118,16 +149,45 @@ export default function AdminClientDetailPage() {
         Back to Clients
       </Link>
 
+      {client.archivedAt && (
+        <Card className="p-4 flex items-center justify-between" glow="amber">
+          <p className="text-sm text-amber-200">
+            <Archive size={14} className="inline mr-1.5 -mt-0.5" />
+            Decommissioned {new Date(client.archivedAt).toLocaleDateString()} — hidden from active lists, login blocked.
+          </p>
+          <button
+            onClick={handleToggleArchive}
+            disabled={archiving}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/15 text-sm hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            <ArchiveRestore size={14} />
+            {archiving ? 'Restoring...' : 'Reactivate'}
+          </button>
+        </Card>
+      )}
+
       <Card className="p-6 md:p-8">
         <div className="flex justify-between items-start mb-6">
           <CardHeader icon={Building2} tone="purple" title={client.company} subtitle="Client" />
-          <button
-            onClick={() => setEditing(!editing)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 font-medium text-sm hover:bg-white/5 transition-colors"
-          >
-            <Pencil size={14} />
-            {editing ? 'Cancel' : 'Edit'}
-          </button>
+          <div className="flex items-center gap-2">
+            {!client.archivedAt && (
+              <button
+                onClick={handleToggleArchive}
+                disabled={archiving}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 font-medium text-sm hover:bg-white/5 disabled:opacity-50 transition-colors"
+              >
+                <Archive size={14} />
+                {archiving ? 'Decommissioning...' : 'Decommission'}
+              </button>
+            )}
+            <button
+              onClick={() => setEditing(!editing)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 font-medium text-sm hover:bg-white/5 transition-colors"
+            >
+              <Pencil size={14} />
+              {editing ? 'Cancel' : 'Edit'}
+            </button>
+          </div>
         </div>
 
         {editing ? (
@@ -211,6 +271,33 @@ export default function AdminClientDetailPage() {
         >
           {broadcasting ? 'Sending...' : 'Send to All Projects'}
         </button>
+      </Card>
+
+      <Card className="p-6 md:p-8" glow="red">
+        <CardHeader icon={AlertTriangle} tone="red" title="Danger Zone" subtitle="Permanently deletes this client and every project, payment, and message tied to it" />
+        <p className="text-xs text-white/40 mb-3">
+          This cannot be undone. If you just want to offboard a client while keeping their records, use{' '}
+          <span className="text-white/60">Decommission</span> above instead.
+        </p>
+        <p className="text-xs text-white/50 mb-2">
+          Type <span className="font-mono text-white/80">{client.company}</span> to confirm:
+        </p>
+        <div className="flex gap-2">
+          <input
+            value={confirmDeleteText}
+            onChange={(e) => setConfirmDeleteText(e.target.value)}
+            placeholder={client.company}
+            className="flex-1 px-4 py-2 rounded-xl bg-white/[0.04] border border-red-400/20 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-red-400/40 focus:border-transparent transition-all"
+          />
+          <button
+            onClick={handleDelete}
+            disabled={deleting || confirmDeleteText !== client.company}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500/90 text-white font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-red-500 transition-colors whitespace-nowrap"
+          >
+            <Trash2 size={14} />
+            {deleting ? 'Deleting...' : 'Delete Permanently'}
+          </button>
+        </div>
       </Card>
     </PageIn>
   );

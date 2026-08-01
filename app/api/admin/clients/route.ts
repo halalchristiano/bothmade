@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
           subscription: client.subscription,
           subscriptionTier: client.subscriptionTier,
           onboardingComplete: client.onboardingComplete,
+          archivedAt: client.archivedAt,
           createdAt: client.createdAt,
           projects: client.projects,
           lastActivityAt,
