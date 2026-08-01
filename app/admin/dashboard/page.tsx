@@ -86,6 +86,9 @@ const STATUS_LABELS: Record<string, string> = {
   proposal: 'Proposal Sent',
 };
 
+// Commission split: Evan 25% · Kiana 25% · company 30% · taxes 20%.
+const EVAN_COMMISSION_RATE = 0.25;
+
 const CLIENT_TIER_LABELS: Record<string, string> = {
   'startup-tier': 'Startup-tier',
   'smb-tier': 'SMB-tier',
@@ -304,8 +307,12 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
             icon={DollarSign}
             tone="emerald"
             title="Won Deals"
-            subtitle="Your commission log"
-            action={<span className="text-sm text-emerald-300 font-semibold">{formatCents(stats.totalWonValue)}</span>}
+            subtitle={`Your commission log · ${Math.round(EVAN_COMMISSION_RATE * 100)}% of closed value`}
+            action={
+              <span className="text-sm text-emerald-300 font-semibold">
+                {formatCents(Math.round(stats.totalWonValue * EVAN_COMMISSION_RATE))}
+              </span>
+            }
           />
           {stats.wonDeals.length === 0 ? (
             <EmptyState icon={DollarSign} text="No deals closed yet." />
@@ -316,9 +323,13 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
                   key={d.id}
                   href={`/admin/leads/${d.id}`}
                   title={d.company}
+                  subtitle={`Deal value ${formatCents(d.value)}`}
                   trailing={
                     <span className="text-white/40 text-xs whitespace-nowrap">
-                      {formatCents(d.value)} · {new Date(d.wonAt).toLocaleDateString()}
+                      <span className="text-emerald-300/80 font-medium">
+                        {formatCents(Math.round(d.value * EVAN_COMMISSION_RATE))}
+                      </span>{' '}
+                      · {new Date(d.wonAt).toLocaleDateString()}
                     </span>
                   }
                 />
