@@ -37,6 +37,9 @@ export default function AdminClientDetailPage() {
   const [broadcasting, setBroadcasting] = useState(false);
   const [message, setMessage] = useState('');
 
+  const inputClass =
+    'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
+
   const loadClient = async () => {
     try {
       const response = await fetch(`/api/admin/clients/${clientId}`);
@@ -100,26 +103,26 @@ export default function AdminClientDetailPage() {
 
   if (loading || !client) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-56px)]">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
       <div>
-        <Link href="/admin/clients" className="text-gray-600 hover:text-black text-sm">
+        <Link href="/admin/clients" className="text-white/50 hover:text-white text-sm transition-colors">
           ← Back to Clients
         </Link>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg p-8">
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
         <div className="flex justify-between items-start mb-6">
           <h1 className="text-3xl font-bold">{client.company}</h1>
           <button
             onClick={() => setEditing(!editing)}
-            className="px-4 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 rounded-lg border border-white/15 font-medium hover:bg-white/5 transition-colors"
           >
             {editing ? 'Cancel' : 'Edit'}
           </button>
@@ -128,33 +131,21 @@ export default function AdminClientDetailPage() {
         {editing ? (
           <div className="space-y-4 max-w-md">
             <div>
-              <label className="block text-sm font-medium mb-2">Company</label>
-              <input
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
+              <label className="block text-sm font-medium mb-2 text-white/70">Company</label>
+              <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Contact Name</label>
-              <input
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
+              <label className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
+              <input value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Phone</label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
+              <label className="block text-sm font-medium mb-2 text-white/70">Phone</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
             </div>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="bg-black text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-gray-900 disabled:opacity-50 transition-colors"
+              className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
@@ -162,39 +153,39 @@ export default function AdminClientDetailPage() {
         ) : (
           <div className="grid md:grid-cols-2 gap-6 text-sm">
             <div>
-              <p className="text-gray-600 mb-1">Email</p>
+              <p className="text-white/40 mb-1">Email</p>
               <p className="font-medium">{client.email}</p>
             </div>
             <div>
-              <p className="text-gray-600 mb-1">Contact Name</p>
+              <p className="text-white/40 mb-1">Contact Name</p>
               <p className="font-medium">{client.contactName || '—'}</p>
             </div>
             <div>
-              <p className="text-gray-600 mb-1">Phone</p>
+              <p className="text-white/40 mb-1">Phone</p>
               <p className="font-medium">{client.phone || '—'}</p>
             </div>
             <div>
-              <p className="text-gray-600 mb-1">Client Since</p>
+              <p className="text-white/40 mb-1">Client Since</p>
               <p className="font-medium">{new Date(client.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
         )}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg p-8">
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
         <h2 className="text-xl font-bold mb-4">Projects</h2>
         {client.projects.length === 0 ? (
-          <p className="text-gray-600 text-sm">No projects yet.</p>
+          <p className="text-white/40 text-sm">No projects yet.</p>
         ) : (
           <div className="space-y-3">
             {client.projects.map((project) => (
               <Link
                 key={project.id}
                 href={`/admin/projects/${project.id}`}
-                className="flex justify-between items-center p-4 rounded-lg border border-gray-200 hover:border-gray-400 transition-colors"
+                className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
               >
                 <span className="font-medium">{project.name}</span>
-                <span className="text-xs px-2 py-1 bg-gray-100 rounded-full capitalize">
+                <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize">
                   {project.status}
                 </span>
               </Link>
@@ -203,23 +194,23 @@ export default function AdminClientDetailPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg p-8">
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
         <h2 className="text-xl font-bold mb-4">Message All Projects</h2>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-white/40 mb-4">
           Sends the same message to every project thread for this client.
         </p>
         <textarea
           value={broadcastContent}
           onChange={(e) => setBroadcastContent(e.target.value)}
           rows={3}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black resize-none mb-4"
+          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent resize-none mb-4 transition-colors"
           placeholder="Type a message to send to all their projects..."
         />
-        {message && <p className="text-green-700 text-sm mb-4">{message}</p>}
+        {message && <p className="text-emerald-300 text-sm mb-4">{message}</p>}
         <button
           onClick={handleBroadcast}
           disabled={broadcasting || !broadcastContent.trim()}
-          className="bg-black text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-gray-900 disabled:opacity-50 transition-colors"
+          className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
           {broadcasting ? 'Sending...' : 'Send to All Projects'}
         </button>

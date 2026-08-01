@@ -64,6 +64,7 @@ export async function GET(
             id: project.client.id,
             email: project.client.email,
             company: project.client.company,
+            contactName: project.client.contactName,
           };
 
     return NextResponse.json(

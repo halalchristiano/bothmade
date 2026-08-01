@@ -1,0 +1,225 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  ADD_ONS,
+  BASE_SERVICES,
+  CLIENT_TYPES,
+  TIMELINES,
+  calculatePrice,
+  formatCents,
+  type AddOnKey,
+  type BaseService,
+  type ClientType,
+  type TimelineKey,
+} from '@/lib/pricing';
+
+export default function NewProjectPage() {
+  const router = useRouter();
+  const [company, setCompany] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [phone, setPhone] = useState('');
+
+  const [baseService, setBaseService] = useState<BaseService>('website');
+  const [addOns, setAddOns] = useState<AddOnKey[]>([]);
+  const [clientType, setClientType] = useState<ClientType>('smb');
+  const [timeline, setTimeline] = useState<TimelineKey>('standard');
+  const [priceOverride, setPriceOverride] = useState('');
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const breakdown = useMemo(
+    () => calculatePrice({ baseService, addOns, clientType, timeline }),
+    [baseService, addOns, clientType, timeline]
+  );
+
+  const toggleAddOn = (key: AddOnKey) => {
+    setAddOns((prev) => (prev.includes(key) ? prev.filter((a) => a !== key) : [...prev, key]));
+  };
+
+  const handleSubmit = async () => {
+    setError('');
+    setSaving(true);
+    try {
+      const response = await fetch('/api/admin/projects/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientEmail,
+          company,
+          contactName,
+          phone,
+          baseService,
+          addOns,
+          clientType,
+          timeline,
+          totalPriceOverride: priceOverride ? Number(priceOverride) * 100 : undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        router.push(`/admin/projects/${data.project.id}`);
+      } else {
+        setError(data.error || 'Failed to create project');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create project');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputClass =
+    'w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
+
+  const canSubmit = clientEmail && company && contactName && !saving;
+
+  return (
+    <div className="max-w-3xl mx-auto px-6 py-10">
+      <Link href="/admin/projects" className="text-white/50 hover:text-white text-sm transition-colors">
+        ← Back to Projects
+      </Link>
+
+      <h1 className="text-3xl font-bold mt-4 mb-2">New Project</h1>
+      <p className="text-white/40 mb-8 text-sm">
+        Manually create a client and project — for deals closed outside Stripe (bank transfer,
+        invoice, cash).
+      </p>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 space-y-6">
+        <div>
+          <h2 className="text-lg font-bold mb-4">Client</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
+              <input value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-white/70">Company</label>
+              <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-white/70">Email</label>
+              <input
+                type="email"
+                value={clientEmail}
+                onChange={(e) => setClientEmail(e.target.value)}
+                className={inputClass}
+              />
+              <p className="text-xs text-white/30 mt-1">
+                If this email already exists, the project is added to that client.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-white/70">Phone (optional)</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-6 border-t border-white/10">
+          <h2 className="text-lg font-bold mb-4">Project</h2>
+          <div className="grid md:grid-cols-2 gap-3 mb-4">
+            {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
+              ([key, service]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setBaseService(key)}
+                  className={`text-left rounded-lg p-3 border transition-colors ${
+                    baseService === key
+                      ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
+                      : 'border-white/10 hover:border-white/25'
+                  }`}
+                >
+                  <p className="font-medium text-sm">{service.label}</p>
+                  <p className="text-xs text-white/40">{formatCents(service.price)}</p>
+                </button>
+              )
+            )}
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-3 mb-4">
+            {(Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).map(([key, addOn]) => (
+              <label
+                key={key}
+                className={`flex items-center gap-2 rounded-lg p-3 border cursor-pointer transition-colors ${
+                  addOns.includes(key)
+                    ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
+                    : 'border-white/10 hover:border-white/25'
+                }`}
+              >
+                <input type="checkbox" checked={addOns.includes(key)} onChange={() => toggleAddOn(key)} />
+                <span className="text-sm">{addOn.label}</span>
+                <span className="text-xs text-white/40 ml-auto">+{formatCents(addOn.price)}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-white/70">Client Type</label>
+              <select
+                value={clientType}
+                onChange={(e) => setClientType(e.target.value as ClientType)}
+                className={inputClass}
+              >
+                {(Object.entries(CLIENT_TYPES) as [ClientType, (typeof CLIENT_TYPES)[ClientType]][]).map(
+                  ([key, type]) => (
+                    <option key={key} value={key} className="bg-[#05030a]">
+                      {type.label}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-white/70">Timeline</label>
+              <select
+                value={timeline}
+                onChange={(e) => setTimeline(e.target.value as TimelineKey)}
+                className={inputClass}
+              >
+                {(Object.entries(TIMELINES) as [TimelineKey, (typeof TIMELINES)[TimelineKey]][]).map(
+                  ([key, tl]) => (
+                    <option key={key} value={key} className="bg-[#05030a]">
+                      {tl.label} ({tl.weeks})
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2 text-white/70">
+              Override price (optional, USD) — suggested: {formatCents(breakdown.totalPrice)}
+            </label>
+            <input
+              type="number"
+              value={priceOverride}
+              onChange={(e) => setPriceOverride(e.target.value)}
+              placeholder={String(breakdown.totalPrice / 100)}
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        {error && <div className="text-red-400 text-sm">{error}</div>}
+
+        <button
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+        >
+          {saving ? 'Creating...' : 'Create Project'}
+        </button>
+      </div>
+    </div>
+  );
+}

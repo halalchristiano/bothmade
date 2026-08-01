@@ -2,13 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { ClientHeader } from '@/components/portal/ClientHeader';
 
 interface Preferences {
   notificationsEnabled: boolean;
   digestFrequency: string;
   statusUpdates: boolean;
   messages: boolean;
+}
+
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-12 h-6 rounded-full transition-colors ${
+        on ? 'bg-gradient-to-r from-sky-400 to-purple-500' : 'bg-white/10'
+      }`}
+    >
+      <div
+        className={`w-5 h-5 rounded-full bg-white transition-transform ${
+          on ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
+    </button>
+  );
 }
 
 export default function ClientSettingsPage() {
@@ -106,173 +123,141 @@ export default function ClientSettingsPage() {
     }
   };
 
+  const inputClass =
+    'w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+      <main className="min-h-screen bg-[#05030a] flex items-center justify-center">
+        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-6 py-6 flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <Link href="/client/projects" className="text-gray-600 hover:text-black transition-colors">
-            Back to Projects
-          </Link>
-        </div>
-      </div>
+    <main className="min-h-screen bg-[#05030a] text-white">
+      <ClientHeader />
 
-      <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+      <div className="max-w-3xl mx-auto px-6 py-12 space-y-6">
+        <h1 className="text-3xl font-bold mb-2">Settings</h1>
+
         {message && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700">
+          <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-300 text-sm">
             {message}
           </div>
         )}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+          <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-red-300 text-sm">
             {error}
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <h2 className="text-2xl font-bold mb-6">Email Preferences</h2>
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+          <h2 className="text-xl font-bold mb-6">Email Preferences</h2>
 
           <div className="space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+            <div className="flex items-center justify-between pb-6 border-b border-white/10">
               <div>
                 <h3 className="font-semibold">Notify me of project updates</h3>
-                <p className="text-sm text-gray-600">Master toggle for all email notifications</p>
+                <p className="text-sm text-white/40">Master toggle for all email notifications</p>
               </div>
-              <button
+              <Toggle
+                on={preferences.notificationsEnabled}
                 onClick={() =>
                   setPreferences({
                     ...preferences,
                     notificationsEnabled: !preferences.notificationsEnabled,
                   })
                 }
-                className={`w-12 h-6 rounded-full transition-colors ${
-                  preferences.notificationsEnabled ? 'bg-black' : 'bg-gray-300'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                    preferences.notificationsEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+              />
             </div>
 
-            <div className="pb-4 border-b border-gray-200">
+            <div className="pb-6 border-b border-white/10">
               <h3 className="font-semibold mb-3">Notification frequency</h3>
               <select
                 value={preferences.digestFrequency}
                 onChange={(e) =>
                   setPreferences({ ...preferences, digestFrequency: e.target.value })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                className={inputClass}
               >
-                <option value="immediate">Immediate</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
+                <option className="bg-[#05030a]" value="immediate">Immediate</option>
+                <option className="bg-[#05030a]" value="daily">Daily</option>
+                <option className="bg-[#05030a]" value="weekly">Weekly</option>
               </select>
             </div>
 
-            <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-              <div>
-                <h3 className="font-semibold">Email me about status changes</h3>
-              </div>
-              <button
+            <div className="flex items-center justify-between pb-6 border-b border-white/10">
+              <h3 className="font-semibold">Email me about status changes</h3>
+              <Toggle
+                on={preferences.statusUpdates}
                 onClick={() =>
                   setPreferences({ ...preferences, statusUpdates: !preferences.statusUpdates })
                 }
-                className={`w-12 h-6 rounded-full transition-colors ${
-                  preferences.statusUpdates ? 'bg-black' : 'bg-gray-300'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                    preferences.statusUpdates ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+              />
             </div>
 
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Email me about new messages</h3>
-              </div>
-              <button
-                onClick={() =>
-                  setPreferences({ ...preferences, messages: !preferences.messages })
-                }
-                className={`w-12 h-6 rounded-full transition-colors ${
-                  preferences.messages ? 'bg-black' : 'bg-gray-300'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                    preferences.messages ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+              <h3 className="font-semibold">Email me about new messages</h3>
+              <Toggle
+                on={preferences.messages}
+                onClick={() => setPreferences({ ...preferences, messages: !preferences.messages })}
+              />
             </div>
 
             <button
               onClick={handleSavePreferences}
               disabled={saving}
-              className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-900 disabled:opacity-50 transition-colors"
+              className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {saving ? 'Saving...' : 'Save Preferences'}
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <h2 className="text-2xl font-bold mb-6">Update Password</h2>
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+          <h2 className="text-xl font-bold mb-6">Update Password</h2>
 
           <form onSubmit={handleChangePassword} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Current Password</label>
+              <label className="block text-sm font-medium mb-2 text-white/70">Current Password</label>
               <input
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                className={inputClass}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">New Password</label>
+              <label className="block text-sm font-medium mb-2 text-white/70">New Password</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                className={inputClass}
                 minLength={8}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Confirm New Password</label>
+              <label className="block text-sm font-medium mb-2 text-white/70">Confirm New Password</label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                className={inputClass}
                 minLength={8}
                 required
               />
             </div>
 
-            {passwordError && <div className="text-red-600 text-sm">{passwordError}</div>}
+            {passwordError && <div className="text-red-400 text-sm">{passwordError}</div>}
 
             <button
               type="submit"
               disabled={passwordSaving}
-              className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-900 disabled:opacity-50 transition-colors"
+              className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {passwordSaving ? 'Updating...' : 'Update Password'}
             </button>

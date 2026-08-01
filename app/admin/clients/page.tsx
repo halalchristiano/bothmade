@@ -48,14 +48,14 @@ export default function AdminClientsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-56px)]">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-6 py-10">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Clients</h1>
         <input
@@ -63,34 +63,34 @@ export default function AdminClientsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by email or company..."
-          className="w-80 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+          className="w-80 px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors"
         />
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden">
         <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="border-b border-white/10">
             <tr>
-              <th className="px-6 py-3 text-sm font-semibold text-gray-600">Company</th>
-              <th className="px-6 py-3 text-sm font-semibold text-gray-600">Email</th>
-              <th className="px-6 py-3 text-sm font-semibold text-gray-600">Projects</th>
-              <th className="px-6 py-3 text-sm font-semibold text-gray-600">Joined</th>
-              <th className="px-6 py-3 text-sm font-semibold text-gray-600">Actions</th>
+              <th className="px-6 py-3 text-sm font-semibold text-white/40">Company</th>
+              <th className="px-6 py-3 text-sm font-semibold text-white/40">Email</th>
+              <th className="px-6 py-3 text-sm font-semibold text-white/40">Projects</th>
+              <th className="px-6 py-3 text-sm font-semibold text-white/40">Joined</th>
+              <th className="px-6 py-3 text-sm font-semibold text-white/40">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((client) => (
-              <tr key={client.id} className="border-b border-gray-100 last:border-0">
+              <tr key={client.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
                 <td className="px-6 py-4 font-medium">{client.company}</td>
-                <td className="px-6 py-4 text-gray-600">{client.email}</td>
-                <td className="px-6 py-4 text-gray-600">{client.projects.length}</td>
-                <td className="px-6 py-4 text-gray-600">
+                <td className="px-6 py-4 text-white/50">{client.email}</td>
+                <td className="px-6 py-4 text-white/50">{client.projects.length}</td>
+                <td className="px-6 py-4 text-white/50">
                   {new Date(client.createdAt).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4">
                   <Link
                     href={`/admin/clients/${client.id}`}
-                    className="text-black font-semibold hover:underline"
+                    className="text-sky-300 font-semibold hover:underline"
                   >
                     View
                   </Link>
@@ -99,7 +99,7 @@ export default function AdminClientsPage() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-gray-600">
+                <td colSpan={5} className="px-6 py-8 text-center text-white/40">
                   No clients found.
                 </td>
               </tr>

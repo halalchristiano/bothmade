@@ -52,33 +52,33 @@ export default function AdminDashboardPage() {
 
   if (loading || !stats) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-56px)]">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-6 py-10">
       <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
 
       <div className="grid md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <p className="text-sm text-gray-600 mb-2">Total Clients</p>
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <p className="text-sm text-white/40 mb-2">Total Clients</p>
           <p className="text-4xl font-bold">{stats.totalClients}</p>
         </div>
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <p className="text-sm text-gray-600 mb-2">Total Projects</p>
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <p className="text-sm text-white/40 mb-2">Total Projects</p>
           <p className="text-4xl font-bold">{stats.totalProjects}</p>
         </div>
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <p className="text-sm text-gray-600 mb-2">Active Projects</p>
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+          <p className="text-sm text-white/40 mb-2">Active Projects</p>
           <p className="text-4xl font-bold">{stats.activeProjects}</p>
         </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
           <h2 className="text-xl font-bold mb-4">Projects by Status</h2>
           <div className="space-y-3">
             {Object.entries(STATUS_LABELS).map(([key, label]) => {
@@ -90,11 +90,11 @@ export default function AdminDashboardPage() {
                 <div key={key}>
                   <div className="flex justify-between text-sm mb-1">
                     <span>{label}</span>
-                    <span className="text-gray-600">{count}</span>
+                    <span className="text-white/40">{count}</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-white/10 rounded-full h-2">
                     <div
-                      className="bg-black h-2 rounded-full"
+                      className="bg-gradient-to-r from-sky-400 to-purple-500 h-2 rounded-full transition-all"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -104,24 +104,24 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
           <h2 className="text-xl font-bold mb-4">Recent Activity</h2>
           {stats.recentActivity.length === 0 ? (
-            <p className="text-gray-600 text-sm">No projects yet.</p>
+            <p className="text-white/40 text-sm">No projects yet.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {stats.recentActivity.map((p) => (
                 <Link
                   key={p.id}
                   href={`/admin/projects/${p.id}`}
-                  className="block p-3 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="block p-3 rounded-lg hover:bg-white/5 transition-colors"
                 >
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="font-medium">{p.name}</p>
-                      <p className="text-sm text-gray-600">{p.company}</p>
+                      <p className="text-sm text-white/40">{p.company}</p>
                     </div>
-                    <span className="text-xs px-2 py-1 bg-gray-100 rounded-full capitalize">
+                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize">
                       {p.status}
                     </span>
                   </div>
@@ -135,13 +135,13 @@ export default function AdminDashboardPage() {
       <div className="flex gap-4">
         <Link
           href="/admin/clients"
-          className="px-5 py-3 bg-black text-white rounded-lg font-semibold hover:bg-gray-900 transition-colors"
+          className="px-5 py-3 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
         >
           View Clients
         </Link>
         <Link
           href="/admin/projects"
-          className="px-5 py-3 bg-white border border-gray-200 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+          className="px-5 py-3 rounded-lg border border-white/15 font-semibold hover:bg-white/5 transition-colors"
         >
           View Projects
         </Link>

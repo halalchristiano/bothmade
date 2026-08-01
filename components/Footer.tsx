@@ -114,7 +114,12 @@ export function Footer() {
 
           <div>
             <h4 className="text-sm font-semibold mb-4 text-white/70">Start a project</h4>
-            <PillCTA href="/#contact">Get in touch →</PillCTA>
+            <div className="flex flex-col items-start gap-4">
+              <PillCTA href="/start">See pricing →</PillCTA>
+              <Link href="/client/login" className="text-sm text-white/40 hover:text-sky-300 transition">
+                Existing client? Log in
+              </Link>
+            </div>
           </div>
         </div>
 

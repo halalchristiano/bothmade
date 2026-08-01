@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { ClientHeader } from '@/components/portal/ClientHeader';
 
 interface Project {
   id: string;
@@ -21,6 +22,21 @@ interface Project {
   client: any;
 }
 
+const STATUS_STAGES = ['Discovery', 'Design', 'Build', 'Launch', 'Complete'];
+
+const STAGE_EXPLANATIONS: Record<string, string> = {
+  Discovery:
+    "We're mapping out exactly what you need — the requirements, the pages or screens involved, and how it should all work together. This is the planning phase before anything is designed or built.",
+  Design:
+    "We're designing how your product looks and feels — layouts and mockups for you to review, before a single line of code is written.",
+  Build:
+    "Our engineers are writing the actual software — turning the approved designs into a real, working product.",
+  Launch:
+    "We're testing everything end-to-end, fixing edge cases, and getting your product live — deployed to the web, or submitted to the App Store.",
+  Complete:
+    "Your project is live and delivered. We're here for any follow-up support you need.",
+};
+
 export default function ClientDashboard() {
   const router = useRouter();
   const params = useParams();
@@ -29,18 +45,12 @@ export default function ClientDashboard() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages'>('overview');
   const [messageContent, setMessageContent] = useState('');
-  const [preferences, setPreferences] = useState({
-    notificationsEnabled: true,
-    digestFrequency: 'daily',
-    statusUpdates: true,
-    messages: true,
-  });
 
   useEffect(() => {
     loadProject();
-    loadPreferences();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const loadProject = async () => {
@@ -60,20 +70,6 @@ export default function ClientDashboard() {
       setError(err instanceof Error ? err.message : 'Failed to load project');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadPreferences = async () => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/email-preferences`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setPreferences(data.preferences);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load preferences:', err);
     }
   };
 
@@ -97,35 +93,12 @@ export default function ClientDashboard() {
     }
   };
 
-  const handleUpdatePreferences = async () => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/email-preferences`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(preferences),
-      });
-
-      if (response.ok) {
-        alert('Preferences updated successfully');
-      }
-    } catch (err) {
-      alert('Failed to update preferences');
-    }
-  };
-
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/client/login');
-  };
-
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50">
-        <div className="flex items-center justify-center h-screen">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
-            <p className="text-gray-600">Loading project...</p>
-          </div>
+      <main className="min-h-screen bg-[#05030a] flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400 mb-4"></div>
+          <p className="text-white/50 text-sm">Loading project...</p>
         </div>
       </main>
     );
@@ -133,11 +106,11 @@ export default function ClientDashboard() {
 
   if (error || !project) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md">
+      <main className="min-h-screen bg-[#05030a] text-white flex items-center justify-center px-4">
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 max-w-md">
           <h1 className="text-2xl font-bold mb-4">Error</h1>
-          <p className="text-gray-600 mb-6">{error || 'Project not found'}</p>
-          <Link href="/client/login" className="text-black font-semibold hover:underline">
+          <p className="text-white/50 mb-6">{error || 'Project not found'}</p>
+          <Link href="/client/login" className="text-sky-300 font-semibold hover:underline">
             Back to Login
           </Link>
         </div>
@@ -145,41 +118,34 @@ export default function ClientDashboard() {
     );
   }
 
-  const statusStages = ['Discovery', 'Design', 'Build', 'Launch', 'Complete'];
-  const currentStage = statusStages[Math.min(project.statusStage, 4)];
+  const currentStage = STATUS_STAGES[Math.min(project.statusStage, 4)];
+  const progressPct = ((Math.min(project.statusStage + 1, 5)) / 5) * 100;
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">{project.name}</h1>
-            <p className="text-gray-600 text-sm">
-              {project.client.company} • Created {new Date(project.createdAt).toLocaleDateString()}
-            </p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-gray-600 hover:text-black transition-colors"
-          >
-            Logout
-          </button>
+    <main className="min-h-screen bg-[#05030a] text-white">
+      <ClientHeader />
+
+      {/* Project header */}
+      <div className="border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-6 py-8">
+          <h1 className="text-3xl font-bold">{project.name}</h1>
+          <p className="text-white/50 text-sm mt-1">
+            {project.client.company} • Created {new Date(project.createdAt).toLocaleDateString()}
+          </p>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Tabs */}
-        <div className="flex gap-4 mb-8 border-b border-gray-200">
-          {(['overview', 'timeline', 'messages', 'settings'] as const).map((tab) => (
+        <div className="flex gap-2 mb-8 border-b border-white/10">
+          {(['overview', 'timeline', 'messages'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-3 font-medium border-b-2 transition-colors ${
                 activeTab === tab
-                  ? 'border-black text-black'
-                  : 'border-transparent text-gray-600 hover:text-black'
+                  ? 'border-sky-400 text-white'
+                  : 'border-transparent text-white/40 hover:text-white'
               }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -189,69 +155,71 @@ export default function ClientDashboard() {
 
         {/* Overview Tab */}
         {activeTab === 'overview' && (
-          <div className="space-y-8">
+          <div className="space-y-6">
             {/* Current Status */}
-            <div className="bg-white rounded-2xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-6">Project Status</h2>
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+              <h2 className="text-xl font-bold mb-6">Project Status</h2>
 
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-semibold">{currentStage}</span>
-                    <span className="text-sm text-gray-600">
-                      {Math.min(project.statusStage + 1, 5)}/5
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className="bg-black h-3 rounded-full transition-all"
-                      style={{
-                        width: `${((Math.min(project.statusStage + 1, 5)) / 5) * 100}%`,
-                      }}
-                    />
-                  </div>
-                </div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-semibold">{currentStage}</span>
+                <span className="text-sm text-white/50">
+                  {Math.min(project.statusStage + 1, 5)}/5
+                </span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-2 mb-8">
+                <div
+                  className="bg-gradient-to-r from-sky-400 to-purple-500 h-2 rounded-full transition-all"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-                  {statusStages.map((stage, idx) => (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {STATUS_STAGES.map((stage, idx) => {
+                  const reached = idx <= Math.min(project.statusStage, 4);
+                  return (
                     <div
                       key={stage}
-                      className={`p-4 rounded-lg text-center text-sm font-medium ${
-                        idx <= Math.min(project.statusStage, 4)
-                          ? 'bg-black text-white'
-                          : 'bg-gray-100 text-gray-600'
+                      className={`p-3 rounded-lg text-center text-sm font-medium transition-colors ${
+                        reached
+                          ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border border-sky-400/30 text-white'
+                          : 'bg-white/5 border border-white/10 text-white/30'
                       }`}
                     >
                       {stage}
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 rounded-lg bg-white/5 border border-white/10 p-4">
+                <p className="text-sm font-semibold text-sky-300 mb-1">What's happening in {currentStage}?</p>
+                <p className="text-sm text-white/60">{STAGE_EXPLANATIONS[currentStage]}</p>
               </div>
             </div>
 
             {/* Project Details */}
-            <div className="bg-white rounded-2xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-6">Project Details</h2>
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+              <h2 className="text-xl font-bold mb-6">Project Details</h2>
 
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <h3 className="text-sm text-gray-600 mb-1">Service Type</h3>
+                  <h3 className="text-sm text-white/40 mb-1">Service Type</h3>
                   <p className="text-lg font-semibold capitalize">{project.baseService.replace('-', ' ')}</p>
                 </div>
 
                 <div>
-                  <h3 className="text-sm text-gray-600 mb-1">Timeline</h3>
+                  <h3 className="text-sm text-white/40 mb-1">Timeline</h3>
                   <p className="text-lg font-semibold">{project.timeline || 'To be determined'}</p>
                 </div>
 
                 <div>
-                  <h3 className="text-sm text-gray-600 mb-1">Project Value</h3>
+                  <h3 className="text-sm text-white/40 mb-1">Project Value</h3>
                   <p className="text-lg font-semibold">${(project.totalPrice / 100).toLocaleString()}</p>
                 </div>
 
                 {project.addOns.length > 0 && (
                   <div>
-                    <h3 className="text-sm text-gray-600 mb-1">Add-ons</h3>
+                    <h3 className="text-sm text-white/40 mb-1">Add-ons</h3>
                     <p className="text-lg font-semibold">
                       {project.addOns.map((addon) => addon.charAt(0).toUpperCase() + addon.slice(1)).join(', ')}
                     </p>
@@ -262,8 +230,8 @@ export default function ClientDashboard() {
 
             {/* Deliverables */}
             {project.deliverables.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg p-8">
-                <h2 className="text-2xl font-bold mb-6">Deliverables</h2>
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+                <h2 className="text-xl font-bold mb-6">Deliverables</h2>
                 <div className="space-y-3">
                   {project.deliverables.map((file) => (
                     <a
@@ -271,13 +239,13 @@ export default function ClientDashboard() {
                       href={file.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex justify-between items-center p-4 rounded-lg border border-gray-200 hover:border-gray-400 transition-colors"
+                      className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
                     >
                       <div>
                         <p className="font-medium">{file.name}</p>
-                        {file.size && <p className="text-xs text-gray-500">{file.size}</p>}
+                        {file.size && <p className="text-xs text-white/40">{file.size}</p>}
                       </div>
-                      <span className="text-sm font-semibold text-black">Download</span>
+                      <span className="text-sm font-semibold text-sky-300">Download</span>
                     </a>
                   ))}
                 </div>
@@ -286,15 +254,15 @@ export default function ClientDashboard() {
 
             {/* Latest Updates */}
             {project.updates.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg p-8">
-                <h2 className="text-2xl font-bold mb-6">Latest Updates</h2>
+              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+                <h2 className="text-xl font-bold mb-6">Latest Updates</h2>
 
                 <div className="space-y-4">
                   {project.updates.slice(0, 3).map((update) => (
-                    <div key={update.id} className="border-b border-gray-200 pb-4 last:border-b-0">
+                    <div key={update.id} className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0">
                       <h3 className="font-semibold mb-1">{update.title}</h3>
-                      <p className="text-gray-600 text-sm mb-2">{update.description}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-white/50 text-sm mb-2">{update.description}</p>
+                      <p className="text-xs text-white/30">
                         {new Date(update.createdAt).toLocaleDateString()} by {update.user?.name || 'Bothmade'}
                       </p>
                     </div>
@@ -307,28 +275,30 @@ export default function ClientDashboard() {
 
         {/* Timeline Tab */}
         {activeTab === 'timeline' && (
-          <div className="bg-white rounded-2xl shadow-lg p-8">
-            <h2 className="text-2xl font-bold mb-6">Project Timeline</h2>
+          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+            <h2 className="text-xl font-bold mb-6">Project Timeline</h2>
 
             <div className="space-y-4">
               {project.updates.length > 0 ? (
                 project.updates.map((update, idx) => (
                   <div key={update.id} className="flex gap-4">
                     <div className="flex flex-col items-center">
-                      <div className="w-4 h-4 bg-black rounded-full"></div>
-                      {idx < project.updates.length - 1 && <div className="w-1 h-16 bg-gray-300"></div>}
+                      <div className="w-3 h-3 rounded-full bg-gradient-to-r from-sky-400 to-purple-500"></div>
+                      {idx < project.updates.length - 1 && (
+                        <div className="w-px h-16 bg-white/10 mt-1"></div>
+                      )}
                     </div>
                     <div className="flex-1 pb-8">
                       <h3 className="font-semibold mb-1">{update.title}</h3>
-                      <p className="text-gray-600 mb-2">{update.description}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-white/50 mb-2 text-sm">{update.description}</p>
+                      <p className="text-xs text-white/30">
                         {new Date(update.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-gray-600">No updates yet. Check back soon!</p>
+                <p className="text-white/50">No updates yet. Check back soon!</p>
               )}
             </div>
           </div>
@@ -336,33 +306,33 @@ export default function ClientDashboard() {
 
         {/* Messages Tab */}
         {activeTab === 'messages' && (
-          <div className="bg-white rounded-2xl shadow-lg p-8">
-            <h2 className="text-2xl font-bold mb-6">Project Messages</h2>
+          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+            <h2 className="text-xl font-bold mb-6">Project Messages</h2>
 
             <div className="space-y-4 mb-8 max-h-96 overflow-y-auto">
               {project.messages.length > 0 ? (
                 project.messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`p-4 rounded-lg ${
+                    className={`p-4 rounded-lg border-l-2 ${
                       message.isFromAdmin
-                        ? 'bg-gray-100 border-l-4 border-black'
-                        : 'bg-blue-50 border-l-4 border-blue-500'
+                        ? 'bg-white/5 border-white/30'
+                        : 'bg-sky-400/10 border-sky-400/50'
                     }`}
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <p className="font-semibold">
+                      <p className="font-semibold text-sm">
                         {message.isFromAdmin ? message.user?.name || 'Team' : 'You'}
                       </p>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-xs text-white/30">
                         {new Date(message.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <p className="text-gray-700">{message.content}</p>
+                    <p className="text-white/70 text-sm">{message.content}</p>
                   </div>
                 ))
               ) : (
-                <p className="text-gray-600">No messages yet. Start a conversation with the team!</p>
+                <p className="text-white/50">No messages yet. Start a conversation with the team!</p>
               )}
             </div>
 
@@ -371,127 +341,17 @@ export default function ClientDashboard() {
                 value={messageContent}
                 onChange={(e) => setMessageContent(e.target.value)}
                 placeholder="Type your message..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black resize-none"
+                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent resize-none transition-colors"
                 rows={4}
               />
               <button
                 type="submit"
                 disabled={!messageContent.trim()}
-                className="bg-black text-white px-6 py-3 rounded-lg font-semibold disabled:opacity-50 hover:bg-gray-900 transition-colors"
+                className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-6 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
               >
                 Send Message
               </button>
             </form>
-          </div>
-        )}
-
-        {/* Settings Tab */}
-        {activeTab === 'settings' && (
-          <div className="bg-white rounded-2xl shadow-lg p-8">
-            <h2 className="text-2xl font-bold mb-6">Email Preferences</h2>
-
-            <div className="space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-                <div>
-                  <h3 className="font-semibold">Notifications</h3>
-                  <p className="text-sm text-gray-600">Receive email notifications</p>
-                </div>
-                <button
-                  onClick={() =>
-                    setPreferences({
-                      ...preferences,
-                      notificationsEnabled: !preferences.notificationsEnabled,
-                    })
-                  }
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    preferences.notificationsEnabled ? 'bg-black' : 'bg-gray-300'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                      preferences.notificationsEnabled
-                        ? 'translate-x-6'
-                        : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="pb-4 border-b border-gray-200">
-                <h3 className="font-semibold mb-3">Email Frequency</h3>
-                <select
-                  value={preferences.digestFrequency}
-                  onChange={(e) =>
-                    setPreferences({
-                      ...preferences,
-                      digestFrequency: e.target.value,
-                    })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                >
-                  <option value="immediate">Immediate</option>
-                  <option value="daily">Daily Digest</option>
-                  <option value="weekly">Weekly Digest</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-                <div>
-                  <h3 className="font-semibold">Status Updates</h3>
-                  <p className="text-sm text-gray-600">When project status changes</p>
-                </div>
-                <button
-                  onClick={() =>
-                    setPreferences({
-                      ...preferences,
-                      statusUpdates: !preferences.statusUpdates,
-                    })
-                  }
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    preferences.statusUpdates ? 'bg-black' : 'bg-gray-300'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                      preferences.statusUpdates
-                        ? 'translate-x-6'
-                        : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold">New Messages</h3>
-                  <p className="text-sm text-gray-600">When team sends a message</p>
-                </div>
-                <button
-                  onClick={() =>
-                    setPreferences({
-                      ...preferences,
-                      messages: !preferences.messages,
-                    })
-                  }
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    preferences.messages ? 'bg-black' : 'bg-gray-300'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                      preferences.messages ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <button
-                onClick={handleUpdatePreferences}
-                className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-900 transition-colors mt-8"
-              >
-                Save Preferences
-              </button>
-            </div>
           </div>
         )}
       </div>

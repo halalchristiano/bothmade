@@ -10,6 +10,7 @@ const LINKS = [
   { label: 'Web', href: '/web' },
   { label: 'iOS', href: '/ios' },
   { label: 'Vision Pro', href: '/visionpro' },
+  { label: 'Pricing', href: '/start' },
   { label: 'Contact', href: '/#contact' },
 ];
 
@@ -83,7 +84,7 @@ export function Nav() {
           </Link>
 
           {/* Desktop links */}
-          <div className="hidden md:flex gap-8">
+          <div className="hidden md:flex items-center gap-8">
             {LINKS.map((link) => {
               const current = isCurrent(link.href);
               return (
@@ -104,6 +105,12 @@ export function Nav() {
                 </Link>
               );
             })}
+            <Link
+              href="/client/login"
+              className="text-sm rounded-full border border-white/20 px-4 py-1.5 text-white/70 hover:text-white hover:border-white/40 transition-colors"
+            >
+              Client Login
+            </Link>
           </div>
 
           {/* Mobile toggle */}
@@ -163,6 +170,20 @@ export function Nav() {
                   </Link>
                 </motion.div>
               ))}
+              <motion.div
+                initial={{ opacity: 0, x: -30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -30 }}
+                transition={{ delay: LINKS.length * 0.07, duration: 0.3 }}
+              >
+                <Link
+                  href="/client/login"
+                  onClick={() => setOpen(false)}
+                  className="block text-4xl font-bold py-3 text-gray-300 hover:text-sky-300 transition-colors"
+                >
+                  Client Login
+                </Link>
+              </motion.div>
             </div>
           </motion.div>
         )}

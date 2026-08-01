@@ -3,6 +3,22 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { GridBackdrop } from '@/components/ui';
+
+function Logo() {
+  return (
+    <span className="text-2xl font-bold tracking-tight">
+      <span
+        aria-hidden="true"
+        className="text-transparent"
+        style={{ WebkitTextStroke: '1px rgba(125,211,252,0.9)' }}
+      >
+        both
+      </span>
+      <span aria-hidden="true">made</span>
+    </span>
+  );
+}
 
 export default function ClientLoginPage() {
   const router = useRouter();
@@ -69,121 +85,138 @@ export default function ClientLoginPage() {
     }
   };
 
-  if (showForgotPassword) {
-    return (
-      <main className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-lg p-8">
-            <h1 className="text-3xl font-bold mb-2">Reset Password</h1>
-            <p className="text-gray-600 mb-6">Enter your email and we'll send you a reset link.</p>
+  const inputClass =
+    'w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
 
-            {resetSent ? (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-700">
-                Check your email for the reset link. You'll be redirected shortly.
-              </div>
-            ) : (
-              <form onSubmit={handlePasswordReset} className="space-y-4">
+  return (
+    <main className="relative min-h-screen bg-[#05030a] text-white flex items-center justify-center px-4 overflow-hidden">
+      <GridBackdrop className="opacity-60" />
+      <div
+        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full blur-[120px] opacity-30"
+        style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.5), transparent 70%)' }}
+      />
+
+      <div className="relative w-full max-w-md">
+        <div className="mb-8 text-center">
+          <Link href="/">
+            <Logo />
+          </Link>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl">
+          {showForgotPassword ? (
+            <>
+              <h1 className="text-2xl font-bold mb-2">Reset Password</h1>
+              <p className="text-white/50 mb-6 text-sm">
+                Enter your email and we'll send you a reset link.
+              </p>
+
+              {resetSent ? (
+                <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-300 text-sm">
+                  Check your email for the reset link. You'll be redirected shortly.
+                </div>
+              ) : (
+                <form onSubmit={handlePasswordReset} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-white/70">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="your@company.com"
+                      className={inputClass}
+                      required
+                    />
+                  </div>
+
+                  {error && <div className="text-red-400 text-sm">{error}</div>}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    {loading ? 'Sending...' : 'Send Reset Link'}
+                  </button>
+                </form>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setError('');
+                  setResetEmail('');
+                  setResetSent(false);
+                }}
+                className="w-full text-center text-white/50 hover:text-white mt-4 text-sm transition-colors"
+              >
+                Back to Login
+              </button>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold mb-2">Client Login</h1>
+              <p className="text-white/50 mb-6 text-sm">Access your project dashboard</p>
+
+              <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Email Address</label>
+                  <label className="block text-sm font-medium mb-2 text-white/70">
+                    Email Address
+                  </label>
                   <input
                     type="email"
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="your@company.com"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                    className={inputClass}
                     required
                   />
                 </div>
 
-                {error && <div className="text-red-600 text-sm">{error}</div>}
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-white/70">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className={inputClass}
+                    required
+                  />
+                </div>
+
+                {error && <div className="text-red-400 text-sm">{error}</div>}
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-black text-white py-3 rounded-lg font-semibold disabled:opacity-50 hover:bg-gray-900 transition-colors"
+                  className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
                 >
-                  {loading ? 'Sending...' : 'Send Reset Link'}
+                  {loading ? 'Logging in...' : 'Login'}
                 </button>
               </form>
-            )}
 
-            <button
-              onClick={() => {
-                setShowForgotPassword(false);
-                setError('');
-                setResetEmail('');
-                setResetSent(false);
-              }}
-              className="w-full text-center text-gray-600 hover:text-black mt-4"
-            >
-              Back to Login
-            </button>
-          </div>
-        </div>
-      </main>
-    );
-  }
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-white/50 hover:text-white text-sm transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
 
-  return (
-    <main className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          <h1 className="text-3xl font-bold mb-2">Client Login</h1>
-          <p className="text-gray-600 mb-6">Access your project dashboard</p>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Email Address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@company.com"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                required
-              />
-            </div>
-
-            {error && <div className="text-red-600 text-sm">{error}</div>}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-black text-white py-3 rounded-lg font-semibold disabled:opacity-50 hover:bg-gray-900 transition-colors"
-            >
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
-          </form>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => setShowForgotPassword(true)}
-              className="text-gray-600 hover:text-black text-sm"
-            >
-              Forgot password?
-            </button>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-gray-200 text-center">
-            <p className="text-gray-600 text-sm">
-              Looking to start a new project?{' '}
-              <Link href="/start" className="text-black font-semibold hover:underline">
-                Get Started
-              </Link>
-            </p>
-          </div>
+              <div className="mt-6 pt-6 border-t border-white/10 text-center">
+                <p className="text-white/50 text-sm">
+                  Looking to start a new project?{' '}
+                  <Link href="/start" className="text-sky-300 font-semibold hover:underline">
+                    Get Started
+                  </Link>
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </main>
