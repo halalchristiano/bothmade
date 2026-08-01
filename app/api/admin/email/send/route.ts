@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     });
 
     const sent = await sendAsUser(
-      { name: sender.name, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
+      { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
       { to, subject: built.subject, html }
     );
 

@@ -8,6 +8,8 @@ export interface EmailData {
   to: string | string[];
   subject: string;
   html: string;
+  fromName?: string;
+  replyTo?: string;
 }
 
 /**
@@ -16,10 +18,11 @@ export interface EmailData {
 export async function sendEmail(data: EmailData): Promise<boolean> {
   try {
     const result = await resend.emails.send({
-      from: `Bothmade <${CONTACT_EMAIL}>`,
+      from: `${data.fromName || 'Bothmade'} <${CONTACT_EMAIL}>`,
       to: data.to,
       subject: data.subject,
       html: data.html,
+      ...(data.replyTo ? { replyTo: data.replyTo } : {}),
     });
 
     if (result.error) {

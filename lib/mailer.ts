@@ -4,6 +4,7 @@ import { sendEmail as sendViaResend } from '@/lib/email';
 
 export interface SenderIdentity {
   name: string | null;
+  email?: string | null; // the sender's real login email, used for reply-to on the Resend fallback
   gmailAddress: string | null;
   gmailAppPassword: string | null; // encrypted
 }
@@ -43,7 +44,13 @@ export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): 
     }
   }
 
-  return sendViaResend({ to: email.to, subject: email.subject, html: email.html });
+  return sendViaResend({
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    fromName: sender.name || undefined,
+    replyTo: sender.email || undefined,
+  });
 }
 
 /**
