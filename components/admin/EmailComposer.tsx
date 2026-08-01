@@ -70,10 +70,17 @@ export function EmailComposer({
   if (defaultLoomUrl) staticDefaultFields.loomUrl = defaultLoomUrl;
   if (defaultPainPoint) staticDefaultFields.painPoint = defaultPainPoint;
 
-  const buildDefaultFields = (id: string) => ({
-    ...staticDefaultFields,
-    ...defaultsForTemplate(id, { leadId, projectId, defaultObservation }),
-  });
+  const buildDefaultFields = (id: string) => {
+    const selectDefaults: Record<string, string> = {};
+    for (const f of getTemplate(id)?.fields || []) {
+      if (f.type === 'select' && f.options?.[0]) selectDefaults[f.key] = f.options[0].value;
+    }
+    return {
+      ...staticDefaultFields,
+      ...selectDefaults,
+      ...defaultsForTemplate(id, { leadId, projectId, defaultObservation }),
+    };
+  };
 
   const [templateId, setTemplateId] = useState(EMAIL_TEMPLATES[0].id);
   const [fields, setFields] = useState<Record<string, string>>(() => buildDefaultFields(EMAIL_TEMPLATES[0].id));
@@ -209,7 +216,12 @@ export function EmailComposer({
               </div>
 
               <div className="space-y-3 mb-4">
-                {template.fields.map((field) => (
+                {template.fields
+                  // The custom-headline text box only makes sense once "Custom
+                  // headline…" is picked in the select above it — otherwise it's
+                  // just dead space that never affects the email.
+                  .filter((field) => field.key !== 'headlineCustom' || fields.headline === '__custom__')
+                  .map((field) => (
                   <div key={field.key}>
                     <label className="block text-xs text-white/50 mb-1.5">
                       {field.label}
@@ -223,6 +235,18 @@ export function EmailComposer({
                         rows={4}
                         className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                       />
+                    ) : field.type === 'select' ? (
+                      <select
+                        value={fields[field.key] || field.options?.[0]?.value || ''}
+                        onChange={(e) => setField(field.key, e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+                      >
+                        {field.options?.map((opt) => (
+                          <option key={opt.value} value={opt.value} className="bg-[#0a0812]">
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         value={fields[field.key] || ''}

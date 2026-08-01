@@ -6,7 +6,7 @@
 export interface TemplateField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'url' | 'datetime-local';
+  type: 'text' | 'textarea' | 'url' | 'datetime-local' | 'select';
   placeholder?: string;
   required?: boolean;
   // Shown under the field to explain why it matters and how to fill it in
@@ -15,7 +15,26 @@ export interface TemplateField {
   // observation in a cold email).
   helpText?: string;
   examples?: string[];
+  // For type: 'select' — a fixed set of on-brand options. Include a
+  // '__custom__' value with a friendly label to let the field fall back to
+  // free text when nothing preset fits.
+  options?: Array<{ value: string; label: string }>;
 }
+
+// Preset headlines for the custom template — kept separate from the subject
+// line on purpose: the subject is what shows in the inbox and should vary
+// email to email, but the big headline inside the email body reads more
+// professional when it's pulled from a short, consistent, on-brand set
+// instead of restating (or clashing with) the subject line verbatim.
+export const CUSTOM_HEADLINE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'A note from Bothmade', label: 'A note from Bothmade' },
+  { value: 'Following up', label: 'Following up' },
+  { value: 'Quick update', label: 'Quick update' },
+  { value: 'Thought you’d want to see this', label: 'Thought you’d want to see this' },
+  { value: 'Checking in', label: 'Checking in' },
+  { value: 'One more thing', label: 'One more thing' },
+  { value: '__custom__', label: 'Custom headline…' },
+];
 
 export interface BuiltEmail {
   subject: string;
@@ -73,26 +92,47 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
     description: 'Write your own — still gets the full branded header, footer, and optional button.',
     audience: 'both',
     fields: [
-      { key: 'subject', label: 'Subject', type: 'text', required: true },
+      {
+        key: 'headline',
+        label: 'Headline (shown inside the email — separate from the subject line)',
+        type: 'select',
+        required: true,
+        options: CUSTOM_HEADLINE_OPTIONS,
+      },
+      {
+        key: 'headlineCustom',
+        label: 'Custom headline',
+        type: 'text',
+        placeholder: 'e.g. Something worth flagging',
+      },
+      { key: 'subject', label: 'Subject line (what they see in their inbox)', type: 'text', required: true },
       { key: 'body', label: 'Message', type: 'textarea', required: true, placeholder: "Write what you'd like to say..." },
+      { key: 'senderTitle', label: 'Your title (optional, shown in the sign-off)', type: 'text', placeholder: 'e.g. Director of Sales' },
       { key: 'ctaLabel', label: 'Button text (optional)', type: 'text', placeholder: 'e.g. View proposal' },
       { key: 'ctaUrl', label: 'Button link (optional)', type: 'url' },
       LOOM_FIELD,
     ],
-    build: ({ recipientName, fields }) => ({
-      subject: fields.subject || 'A message from Bothmade',
-      title: fields.subject || 'A message from Bothmade',
-      bodyHtml: withLoom(
-        `<p>Hi ${greeting(recipientName)},</p>` +
-          fields.body
-            .split('\n\n')
-            .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
-            .join(''),
-        fields.loomUrl
-      ),
-      ctaLabel: fields.ctaLabel || undefined,
-      ctaUrl: fields.ctaUrl || undefined,
-    }),
+    build: ({ recipientName, senderName, fields }) => {
+      const headline = fields.headline === '__custom__' ? fields.headlineCustom || 'A note from Bothmade' : fields.headline || 'A note from Bothmade';
+      const first = senderName ? senderName.split(' ')[0] : 'The Bothmade team';
+      return {
+        subject: fields.subject || headline,
+        title: headline,
+        bodyHtml: withLoom(
+          `<p>Hi ${greeting(recipientName)},</p>` +
+            fields.body
+              .split('\n\n')
+              .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+              .join('') +
+            `<p style="margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.08);">Best,<br/><strong style="color:#fff;">${first}</strong>${
+              fields.senderTitle ? `<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">${fields.senderTitle}</span>` : ''
+            }<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">Bothmade Studio</span></p>`,
+          fields.loomUrl
+        ),
+        ctaLabel: fields.ctaLabel || undefined,
+        ctaUrl: fields.ctaUrl || undefined,
+      };
+    },
   },
 
   // ── Outreach & follow-up sequence (sales) ────────────────────────────

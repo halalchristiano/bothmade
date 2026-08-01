@@ -26,7 +26,13 @@ export function BulkEmailComposer({
   onSent: () => void;
 }) {
   const [templateId, setTemplateId] = useState(BULK_TEMPLATES[0].id);
-  const [sharedFields, setSharedFields] = useState<Record<string, string>>({});
+  const [sharedFields, setSharedFields] = useState<Record<string, string>>(() => {
+    const d: Record<string, string> = {};
+    for (const f of BULK_TEMPLATES[0].fields) {
+      if (f.type === 'select' && f.options?.[0]) d[f.key] = f.options[0].value;
+    }
+    return d;
+  });
   const [perLead, setPerLead] = useState<Record<string, Record<string, string>>>({});
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sentCount: number; total: number; failures: string[] } | null>(null);
@@ -160,8 +166,13 @@ export function BulkEmailComposer({
               <select
                 value={templateId}
                 onChange={(e) => {
+                  const nextTemplate = getTemplate(e.target.value);
+                  const selectDefaults: Record<string, string> = {};
+                  for (const f of nextTemplate?.fields || []) {
+                    if (f.type === 'select' && f.options?.[0]) selectDefaults[f.key] = f.options[0].value;
+                  }
                   setTemplateId(e.target.value);
-                  setSharedFields({});
+                  setSharedFields(selectDefaults);
                   setPerLead({});
                 }}
                 className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm mb-1 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
@@ -177,7 +188,9 @@ export function BulkEmailComposer({
               {sharedTemplateFields.length > 0 && (
                 <div className="space-y-3 mb-4">
                   <p className="text-xs font-semibold text-white/50">Same for every recipient</p>
-                  {sharedTemplateFields.map((field) => (
+                  {sharedTemplateFields
+                    .filter((field) => field.key !== 'headlineCustom' || sharedFields.headline === '__custom__')
+                    .map((field) => (
                     <div key={field.key}>
                       <label className="block text-xs text-white/50 mb-1.5">
                         {field.label}
@@ -191,6 +204,18 @@ export function BulkEmailComposer({
                           rows={3}
                           className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                         />
+                      ) : field.type === 'select' ? (
+                        <select
+                          value={sharedFields[field.key] || field.options?.[0]?.value || ''}
+                          onChange={(e) => setShared(field.key, e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+                        >
+                          {field.options?.map((opt) => (
+                            <option key={opt.value} value={opt.value} className="bg-[#0a0812]">
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
                         <input
                           value={sharedFields[field.key] || ''}
