@@ -17,7 +17,19 @@ import {
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
-import { Mail, Phone, Send, CheckCircle2 } from 'lucide-react';
+import {
+  Mail,
+  Phone,
+  Send,
+  CheckCircle2,
+  Tag,
+  CalendarClock,
+  User,
+  Compass,
+  DollarSign,
+  StickyNote,
+  AlertTriangle,
+} from 'lucide-react';
 import {
   ADD_ON_CATEGORIES,
   ADD_ONS,
@@ -631,14 +643,34 @@ export default function LeadDetailPage() {
               </button>
             </div>
 
-            <div className="mb-4">
-              <label className="block text-xs text-white/40 mb-1">Next Follow-Up</label>
-              <input
-                type="date"
-                defaultValue={lead.nextFollowUpAt ? lead.nextFollowUpAt.slice(0, 10) : ''}
-                onChange={(e) => handleSetFollowUp(e.target.value)}
-                className={inputClass}
-              />
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-white/35 mb-1">
+                  <Tag size={11} /> Status
+                </label>
+                <select
+                  value={lead.status}
+                  onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
+                  className={inputClass}
+                >
+                  {LEAD_STATUSES.map((s) => (
+                    <option key={s} value={s} className="bg-[#05030a]">
+                      {LEAD_STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-white/35 mb-1">
+                  <CalendarClock size={11} /> Follow-up
+                </label>
+                <input
+                  type="date"
+                  defaultValue={lead.nextFollowUpAt ? lead.nextFollowUpAt.slice(0, 10) : ''}
+                  onChange={(e) => handleSetFollowUp(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
             </div>
 
             {lead.lostReason && (
@@ -647,21 +679,6 @@ export default function LeadDetailPage() {
                 <p className="text-sm text-red-200">{lead.lostReason}</p>
               </div>
             )}
-
-            <div className="mb-4">
-              <label className="block text-xs text-white/40 mb-1">Status</label>
-              <select
-                value={lead.status}
-                onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
-                className={inputClass}
-              >
-                {LEAD_STATUSES.map((s) => (
-                  <option key={s} value={s} className="bg-[#05030a]">
-                    {LEAD_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </div>
 
             {editing ? (
               <div className="space-y-3">
@@ -710,39 +727,62 @@ export default function LeadDetailPage() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="text-white/40 text-xs">Contact</p>
-                  <p>{lead.contactName || '—'}</p>
+              <div className="text-sm">
+                <div className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <User size={14} className="text-white/30 shrink-0" />
+                    <span className={lead.contactName ? '' : 'text-white/30 italic'}>
+                      {lead.contactName || 'No contact name'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <Mail size={14} className="text-white/30 shrink-0" />
+                    {lead.email ? (
+                      <a href={`mailto:${lead.email}`} className="hover:text-sky-300 transition-colors truncate">
+                        {lead.email}
+                      </a>
+                    ) : (
+                      <span className="text-amber-300/70 italic">No email — call instead</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <Phone size={14} className="text-white/30 shrink-0" />
+                    {lead.phone ? (
+                      <a href={`tel:${lead.phone}`} className="hover:text-sky-300 transition-colors">
+                        {lead.phone}
+                      </a>
+                    ) : (
+                      <span className="text-white/30 italic">No phone on file</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <Compass size={14} className="text-white/30 shrink-0" />
+                    <span className={lead.source ? '' : 'text-white/30 italic'}>{lead.source || 'Unknown source'}</span>
+                  </div>
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <DollarSign size={14} className="text-white/30 shrink-0" />
+                    <span className={lead.estimatedValue ? 'font-semibold text-emerald-300' : 'text-white/30 italic'}>
+                      {lead.estimatedValue ? formatCents(lead.estimatedValue) : 'No estimate set'}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-white/40 text-xs">Email</p>
-                  <p>{lead.email || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-white/40 text-xs">Phone</p>
-                  <p>{lead.phone || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-white/40 text-xs">Source</p>
-                  <p>{lead.source || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-white/40 text-xs">Estimated Value</p>
-                  <p>{lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}</p>
-                </div>
+
                 {lead.notes && (
-                  <div>
-                    <p className="text-white/40 text-xs">Notes</p>
-                    <p className="text-white/70">{lead.notes}</p>
+                  <div className="mt-4">
+                    <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-white/35 mb-1.5">
+                      <StickyNote size={11} /> Notes
+                    </p>
+                    <p className="text-white/70 leading-relaxed whitespace-pre-line">{lead.notes}</p>
                   </div>
                 )}
                 {painPoints.length > 0 && (
-                  <div>
-                    <p className="text-white/40 text-xs mb-1">Identified issues</p>
+                  <div className="mt-4">
+                    <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-white/35 mb-1.5">
+                      <AlertTriangle size={11} /> Identified issues
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {painPoints.map((p) => (
-                        <span key={p} className="text-xs px-2 py-1 rounded-full bg-red-400/10 text-red-300">
+                        <span key={p} className="text-xs px-2 py-1 rounded-full bg-red-400/10 text-red-300 border border-red-400/10">
                           {PAIN_POINTS[p]}
                         </span>
                       ))}
