@@ -10,6 +10,7 @@ import { formatCents } from '@/lib/pricing';
 import { PageIn } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 
 interface LeadCard {
   id: string;
@@ -191,6 +192,7 @@ export default function PipelinePage() {
                               <Mail size={12} />
                             </a>
                           )}
+                          <LogTouchPopover leadId={lead.id} onLogged={load} />
                         </div>
                       </div>
                     </motion.div>

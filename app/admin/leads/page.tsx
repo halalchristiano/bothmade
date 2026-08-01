@@ -8,6 +8,7 @@ import { formatCents } from '@/lib/pricing';
 import { Card, PageIn } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 
 interface LeadRow {
   id: string;
@@ -55,7 +56,7 @@ function StatusSelect({
   );
 }
 
-function QuickActions({ lead }: { lead: LeadRow }) {
+function QuickActions({ lead, onLogged }: { lead: LeadRow; onLogged?: () => void }) {
   return (
     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
       {lead.phone && (
@@ -76,6 +77,7 @@ function QuickActions({ lead }: { lead: LeadRow }) {
           <Mail size={14} />
         </a>
       )}
+      <LogTouchPopover leadId={lead.id} onLogged={onLogged} />
     </div>
   );
 }
@@ -283,7 +285,7 @@ export default function AdminLeadsPage() {
                           : '—'}
                       </td>
                       <td className="px-6 py-4">
-                        <QuickActions lead={lead} />
+                        <QuickActions lead={lead} onLogged={load} />
                       </td>
                     </tr>
                   ))}

@@ -113,6 +113,7 @@ export function StatCard({
   tone = 'sky',
   trend,
   accent = false,
+  note,
 }: {
   icon: LucideIcon;
   label: string;
@@ -120,6 +121,8 @@ export function StatCard({
   tone?: 'sky' | 'purple' | 'emerald' | 'amber' | 'red';
   trend?: { value: number; label?: string };
   accent?: boolean;
+  /** Extra line under the value — independent of trend, e.g. a commission cut. */
+  note?: string;
 }) {
   return (
     <Card hover className="p-5">
@@ -145,6 +148,7 @@ export function StatCard({
         {value}
       </p>
       {trend?.label && <p className="text-[11px] text-white/30 mt-2">{trend.label}</p>}
+      {note && <p className="text-[11px] text-white/30 mt-2">{note}</p>}
     </Card>
   );
 }
@@ -198,29 +202,36 @@ export function ListRow({
   href?: string;
   title: string;
   subtitle?: string;
+  /** Rendered outside the row's own link/button — safe to put interactive
+   * elements here (a popover trigger, etc.) without nesting them inside an
+   * anchor, which is invalid HTML and can trigger unwanted navigation. */
   trailing?: React.ReactNode;
   onClick?: () => void;
 }) {
-  const inner = (
-    <div className="group flex items-center justify-between gap-3 pl-3 pr-3 py-2.5 rounded-md border-l-2 border-transparent hover:border-l-sky-400/60 hover:bg-white/[0.03] transition-all">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-white truncate">{title}</p>
-        {subtitle && <p className="text-xs text-white/40 truncate">{subtitle}</p>}
-      </div>
-      {trailing && <div className="shrink-0">{trailing}</div>}
+  const text = (
+    <div className="min-w-0">
+      <p className="text-sm font-medium text-white truncate">{title}</p>
+      {subtitle && <p className="text-xs text-white/40 truncate">{subtitle}</p>}
     </div>
   );
-  if (href) {
-    return (
-      <Link href={href} className="block">
-        {inner}
-      </Link>
-    );
-  }
-  return (
-    <button onClick={onClick} className="w-full text-left block">
-      {inner}
+  const wrapperClass =
+    'group flex items-center justify-between gap-3 pl-3 pr-3 py-2.5 rounded-md border-l-2 border-transparent hover:border-l-sky-400/60 hover:bg-white/[0.03] transition-all';
+
+  const clickable = href ? (
+    <Link href={href} className="block min-w-0 flex-1">
+      {text}
+    </Link>
+  ) : (
+    <button onClick={onClick} className="text-left block min-w-0 flex-1">
+      {text}
     </button>
+  );
+
+  return (
+    <div className={wrapperClass}>
+      {clickable}
+      {trailing && <div className="shrink-0">{trailing}</div>}
+    </div>
   );
 }
 

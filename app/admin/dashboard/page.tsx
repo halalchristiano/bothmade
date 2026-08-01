@@ -26,6 +26,7 @@ import {
   Palette,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
+import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { Card, CardHeader, StatCard, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 
@@ -87,7 +88,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 // Commission split: Evan 25% · Kiana 25% · company 30% · taxes 20%.
-const EVAN_COMMISSION_RATE = 0.25;
+const COMMISSION_RATE = 0.25;
 
 const CLIENT_TIER_LABELS: Record<string, string> = {
   'startup-tier': 'Startup-tier',
@@ -154,6 +155,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                 <div className="flex items-center gap-2">
                   {a.meta && <span className="text-white/40 text-xs whitespace-nowrap">{a.meta}</span>}
                   <Badge tone={a.tone}>{a.tone === 'red' ? 'urgent' : a.tone === 'sky' ? 'today' : 'hot'}</Badge>
+                  <LogTouchPopover leadId={a.id} />
                 </div>
               }
             />
@@ -307,10 +309,10 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
             icon={DollarSign}
             tone="emerald"
             title="Won Deals"
-            subtitle={`Your commission log · ${Math.round(EVAN_COMMISSION_RATE * 100)}% of closed value`}
+            subtitle={`Your commission log · ${Math.round(COMMISSION_RATE * 100)}% of closed value`}
             action={
               <span className="text-sm text-emerald-300 font-semibold">
-                {formatCents(Math.round(stats.totalWonValue * EVAN_COMMISSION_RATE))}
+                {formatCents(Math.round(stats.totalWonValue * COMMISSION_RATE))}
               </span>
             }
           />
@@ -327,7 +329,7 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
                   trailing={
                     <span className="text-white/40 text-xs whitespace-nowrap">
                       <span className="text-emerald-300/80 font-medium">
-                        {formatCents(Math.round(d.value * EVAN_COMMISSION_RATE))}
+                        {formatCents(Math.round(d.value * COMMISSION_RATE))}
                       </span>{' '}
                       · {new Date(d.wonAt).toLocaleDateString()}
                     </span>
@@ -579,7 +581,15 @@ function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard icon={FolderKanban} label="Active Projects" value={String(stats.activeProjectCount)} tone="sky" />
-        <StatCard icon={DollarSign} label="Revenue This Month" value={formatCents(stats.revenueThisMonth)} tone="emerald" accent trend={revenueTrend !== undefined ? { value: revenueTrend } : undefined} />
+        <StatCard
+          icon={DollarSign}
+          label="Revenue This Month"
+          value={formatCents(stats.revenueThisMonth)}
+          tone="emerald"
+          accent
+          trend={revenueTrend !== undefined ? { value: revenueTrend } : undefined}
+          note={`Your cut (${Math.round(COMMISSION_RATE * 100)}%): ${formatCents(Math.round(stats.revenueThisMonth * COMMISSION_RATE))}`}
+        />
         <StatCard icon={UserPlus} label="New Clients This Week" value={String(stats.newClientsThisWeek)} tone="purple" />
         <StatCard icon={FileSignature} label="Awaiting Signature" value={String(stats.awaitingSignature.length)} tone="amber" />
       </div>
