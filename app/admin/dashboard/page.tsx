@@ -26,6 +26,7 @@ import {
   Palette,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
+import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
@@ -550,7 +551,7 @@ function HandoffRow({
   );
 }
 
-function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
+function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; name: string; showLeadsSpreadsheet: boolean }) {
   const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
   const [newHandoffs, setNewHandoffs] = useState(stats.newHandoffs);
   const revenueTrend =
@@ -727,6 +728,12 @@ function OpsDashboard({ stats, name }: { stats: OpsStats; name: string }) {
           Team Chat
         </Link>
       </div>
+
+      {showLeadsSpreadsheet && (
+        <div className="mt-8">
+          <LeadsSpreadsheet />
+        </div>
+      )}
     </PageIn>
   );
 }
@@ -781,7 +788,7 @@ export default function AdminDashboardPage() {
   }
 
   if (opsStats) {
-    return <OpsDashboard stats={opsStats} name={name} />;
+    return <OpsDashboard stats={opsStats} name={name} showLeadsSpreadsheet={role !== 'sales'} />;
   }
 
   return null;

@@ -45,6 +45,28 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   lost: 'Lost',
 };
 
+// Single source of truth for status pill colors — used by the leads list,
+// the pipeline board, and the owner's spreadsheet view, so a status always
+// reads the same color everywhere instead of drifting between screens.
+export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
+  new: 'bg-white/10 text-white',
+  researched: 'bg-white/10 text-white/80',
+  contacted: 'bg-sky-400/20 text-sky-300',
+  replied: 'bg-sky-400/25 text-sky-200',
+  qualified: 'bg-purple-400/20 text-purple-300',
+  discovery_scheduled: 'bg-purple-400/25 text-purple-200',
+  discovery_done: 'bg-purple-400/30 text-purple-100',
+  mockup_prep: 'bg-pink-400/20 text-pink-300',
+  presented: 'bg-pink-400/25 text-pink-200',
+  proposal_sent: 'bg-amber-400/20 text-amber-300',
+  verbal_yes: 'bg-amber-400/30 text-amber-200',
+  contract_sent: 'bg-orange-400/20 text-orange-300',
+  contract_signed: 'bg-orange-400/30 text-orange-200',
+  deposit_pending: 'bg-teal-400/20 text-teal-300',
+  won: 'bg-emerald-400/20 text-emerald-300',
+  lost: 'bg-red-400/20 text-red-300',
+};
+
 /** Short labels for tight spaces (pipeline board column headers). */
 export const LEAD_STATUS_SHORT_LABELS: Record<LeadStatus, string> = {
   new: 'New',
