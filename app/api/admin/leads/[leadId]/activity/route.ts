@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isLeadActivityType, advanceToContactedOnOutreach } from '@/lib/leads';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, escapeHtml } from '@/lib/email';
 
 export async function POST(
   request: NextRequest,
@@ -38,7 +38,7 @@ export async function POST(
       emailSent = await sendEmail({
         to: lead.email,
         subject: emailSubject || `Following up — ${lead.company}`,
-        html: `<div style="font-family: -apple-system, sans-serif; white-space: pre-wrap;">${content}</div>`,
+        html: `<div style="font-family: -apple-system, sans-serif; white-space: pre-wrap;">${escapeHtml(content)}</div>`,
       });
     }
 
@@ -53,10 +53,25 @@ export async function POST(
       include: { createdBy: { select: { id: true, name: true } } },
     });
 
+    const attemptedEmail = type === 'email' && sendEmailNow && !!lead.email;
     const nextStatus = emailSent ? advanceToContactedOnOutreach(lead.status) : lead.status;
     await prisma.lead.update({
       where: { id: leadId },
-      data: { updatedAt: new Date(), status: nextStatus },
+      data: {
+        updatedAt: new Date(),
+        status: nextStatus,
+        // Flag a failed send so the lead surfaces on the "couldn't reach"
+        // list instead of looking like it was contacted; clear it on success.
+        ...(attemptedEmail
+          ? emailSent
+            ? { emailDeliveryFailedAt: null, emailDeliveryFailedReason: null }
+            : {
+                emailDeliveryFailedAt: new Date(),
+                emailDeliveryFailedReason:
+                  "Couldn't send — the address may be invalid or no longer active.",
+              }
+          : {}),
+      },
     });
 
     return NextResponse.json({ success: true, activity, emailSent }, { status: 201 });
