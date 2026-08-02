@@ -23,12 +23,12 @@ import { getCurrentSession, type AuthPayload, type ClientAuthPayload } from './a
  * constraint; it is not decoration.
  *
  * The names below say what they check, so a call site can't be wrong about it.
+ * Two more helpers that lived here — a bare `requireAuth` and an
+ * `isClientAuthorized` that was a one-line `===` — are gone rather than
+ * fixed: nothing called either, and an unused guard is just a guard nobody
+ * has checked. Ownership is enforced where the query is (`findFirst` scoped
+ * by `clientId`), which is harder to forget than a comparison helper.
  */
-
-/** Any authenticated principal — staff or client. */
-export async function requireAuth(): Promise<AuthPayload | ClientAuthPayload | null> {
-  return getCurrentSession();
-}
 
 /**
  * Any Bothmade team member, regardless of role. This is the guard for the
@@ -131,16 +131,6 @@ export function passwordChangeRequiredResponse() {
     { error: 'Set your own password before continuing.', code: 'PASSWORD_CHANGE_REQUIRED' },
     { status: 403 }
   );
-}
-
-/**
- * Check authorization - match client to resource
- */
-export function isClientAuthorized(
-  clientId: string,
-  sessionClientId: string
-): boolean {
-  return clientId === sessionClientId;
 }
 
 /**

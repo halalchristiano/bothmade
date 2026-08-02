@@ -51,7 +51,9 @@ export function buildSignUrl(leadId: string, shareToken: string, origin?: string
   return `${origin || siteUrl()}/sign/${leadId}?${SHARE_TOKEN_PARAM}=${shareToken}`;
 }
 
-/** The public read-only status link for a project. */
-export function buildStatusUrl(projectId: string, shareToken: string, origin?: string): string {
-  return `${origin || siteUrl()}/status/${projectId}?${SHARE_TOKEN_PARAM}=${shareToken}`;
-}
+// There is deliberately no buildStatusUrl() counterpart: the only place
+// that link is produced is the client dashboard's "copy share link" button,
+// which is a browser component and wants window.location.origin. Importing
+// this module there would pull node:crypto into the client bundle, so that
+// one URL is assembled inline. EmailComposer does the same, for the same
+// reason.
