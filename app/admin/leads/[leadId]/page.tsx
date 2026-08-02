@@ -156,6 +156,38 @@ export default function LeadDetailPage() {
   const [loggingActivity, setLoggingActivity] = useState(false);
   const [activityMessage, setActivityMessage] = useState('');
 
+  // Quick per-section notes on the priced brief — a rep on the phone jots
+  // feedback against the exact item being discussed instead of one big note
+  // at the end. Keyed by section label; lives at this level (not inside the
+  // inline PricedCard) because that card is redefined on every render and
+  // would otherwise lose whatever's mid-typing on any unrelated state change.
+  const [sectionNoteDrafts, setSectionNoteDrafts] = useState<Record<string, string>>({});
+  const [sectionNoteSaving, setSectionNoteSaving] = useState<Record<string, boolean>>({});
+  const [sectionNoteJustLogged, setSectionNoteJustLogged] = useState<Record<string, boolean>>({});
+
+  const handleLogSectionNote = async (sectionLabel: string) => {
+    const text = (sectionNoteDrafts[sectionLabel] || '').trim();
+    if (!text) return;
+    setSectionNoteSaving((prev) => ({ ...prev, [sectionLabel]: true }));
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/activity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'note', content: `[${sectionLabel}] ${text}` }),
+      });
+      if (res.ok) {
+        setSectionNoteDrafts((prev) => ({ ...prev, [sectionLabel]: '' }));
+        setSectionNoteJustLogged((prev) => ({ ...prev, [sectionLabel]: true }));
+        setTimeout(() => {
+          setSectionNoteJustLogged((prev) => ({ ...prev, [sectionLabel]: false }));
+        }, 2500);
+        load();
+      }
+    } finally {
+      setSectionNoteSaving((prev) => ({ ...prev, [sectionLabel]: false }));
+    }
+  };
+
   const [proposalService, setProposalServiceRaw] = useState<BaseService>('website');
   const [proposalAddOns, setProposalAddOns] = useState<AddOnKey[]>([]);
 
@@ -880,6 +912,32 @@ export default function LeadDetailPage() {
                   )}
                 </>
               )}
+
+              {/* Quick note — jot their reaction to this exact item while on
+                  the call; logs straight to the lead's timeline. */}
+              <div className="mt-3 pt-3 border-t border-white/10">
+                <textarea
+                  value={sectionNoteDrafts[i.point] || ''}
+                  onChange={(e) =>
+                    setSectionNoteDrafts((prev) => ({ ...prev, [i.point]: e.target.value }))
+                  }
+                  placeholder="Their feedback on this..."
+                  rows={2}
+                  className="w-full px-2.5 py-2 rounded-md bg-white/[0.03] border border-white/10 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-400/50 resize-none"
+                />
+                <div className="flex items-center justify-between mt-1.5">
+                  <button
+                    onClick={() => handleLogSectionNote(i.point)}
+                    disabled={sectionNoteSaving[i.point] || !(sectionNoteDrafts[i.point] || '').trim()}
+                    className="px-3 py-1 rounded-md bg-emerald-400 text-black text-[11px] font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  >
+                    {sectionNoteSaving[i.point] ? 'Logging...' : 'Log to timeline'}
+                  </button>
+                  {sectionNoteJustLogged[i.point] && (
+                    <span className="text-[11px] text-emerald-300">Logged ✓</span>
+                  )}
+                </div>
+              </div>
             </div>
           );
         };
