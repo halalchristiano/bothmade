@@ -427,10 +427,17 @@ export default function ClientDashboard() {
             )}
 
             {/* Latest Updates */}
-            {project.updates.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
-                <h2 className="text-xl font-bold mb-6">Latest Updates</h2>
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+              <h2 className="text-xl font-bold mb-6">Latest Updates</h2>
 
+              {project.updates.length === 0 ? (
+                <div className="flex items-center gap-4 rounded-lg bg-white/5 border border-white/10 p-4">
+                  <div className="h-2 w-2 rounded-full bg-sky-400 animate-pulse shrink-0" />
+                  <p className="text-sm text-white/50">
+                    Your team is on it — the first update will show up here as soon as there's progress to share.
+                  </p>
+                </div>
+              ) : (
                 <div className="space-y-4">
                   {project.updates.slice(0, 3).map((update) => (
                     <div key={update.id} className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0">
@@ -445,8 +452,8 @@ export default function ClientDashboard() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
