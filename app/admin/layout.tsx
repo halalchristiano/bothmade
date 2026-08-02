@@ -19,7 +19,7 @@ import {
   X,
   Settings,
   PhoneCall,
-  ImageIcon,
+  Palette,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -27,9 +27,9 @@ const NAV_ITEMS = [
   { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, salesVisible: true },
   { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, salesVisible: true },
   { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true },
+  { href: '/admin/mockups', label: 'Mockups', icon: Palette, salesVisible: false },
   { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
-  { href: '/admin/mockup-queue', label: 'Mockup Queue', icon: ImageIcon, salesVisible: false },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, salesVisible: true },
   { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, salesVisible: true },
   { href: '/admin/settings', label: 'Settings', icon: Settings, salesVisible: true },

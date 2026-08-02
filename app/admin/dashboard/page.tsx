@@ -1248,7 +1248,17 @@ function OpsDashboard({
 
       {pendingMockups.length > 0 && (
         <Card className="p-6 mb-6" glow="amber">
-          <CardHeader icon={Palette} tone="amber" title="Mockup Requests" subtitle="Evan's waiting on these" />
+          <CardHeader
+            icon={Palette}
+            tone="amber"
+            title="Mockup Requests"
+            subtitle="Evan's waiting on these"
+            action={
+              <Link href="/admin/mockups" className="text-xs text-amber-300/70 hover:text-amber-300">
+                Full briefs →
+              </Link>
+            }
+          />
           <div className="space-y-2">
             {pendingMockups.map((r) => (
               <MockupRequestRow
