@@ -14,7 +14,13 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { gmailAddress: true, gmailConnectedAt: true, googleRefreshToken: true, gmailAppPassword: true },
+      select: {
+        gmailAddress: true,
+        gmailConnectedAt: true,
+        googleRefreshToken: true,
+        gmailAppPassword: true,
+        gmailNeedsReconnect: true,
+      },
     });
 
     const connectedVia: 'oauth' | 'app-password' | null = user?.googleRefreshToken
@@ -34,6 +40,12 @@ export async function GET() {
         // Sent folder — via OAuth, a personal app password, OR org-wide
         // delegation (which needs no per-user setup at all).
         willLandInGmailSent: connectedVia !== null || isDomainDelegationConfigured(),
+        // Sending and reading are separate capabilities and it matters which
+        // you have: org-wide delegation only carries the gmail.send scope, so
+        // an account can be perfectly set up to send while still being unable
+        // to see replies or bounce notices. Reading is per-user OAuth only.
+        canReadInbox: !!user?.googleRefreshToken && !user.gmailNeedsReconnect,
+        sendingCoveredOrgWide: connectedVia === null && isDomainDelegationConfigured(),
       },
       { status: 200 }
     );
