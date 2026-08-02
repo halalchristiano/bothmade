@@ -84,7 +84,13 @@ export type Block =
    * intro — the seam-line-expands-into-light timeline — with a button to
    * trigger it again instead of the real one-per-session gate.
    */
-  | { type: 'introDemo' };
+  | { type: 'introDemo' }
+  /**
+   * Side-by-side scroll boxes — one native, one with a simulated scroll
+   * hijack (delayed, eased response to wheel input) — so the difference
+   * described in the surrounding prose can actually be felt, not just read.
+   */
+  | { type: 'scrollCompareDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -799,6 +805,62 @@ transition={{ duration: 1.4, times: [0, 0.3, 0.6, 1] }}`,
       {
         type: 'p',
         text: "sessionStorage was the deliberate middle ground between two worse options. A cookie or localStorage-based \"seen it once, ever\" would mean a visitor who leaves and comes back a week later never sees the studio's own entrance again — the thing exists to make a first impression, and a week is still a first impression if enough time has passed to forget it. Showing it on literally every page navigation within one visit would train people to wait it out or, worse, to bounce before it finishes. Once per browser session is the one setting where it functions as a title sequence instead of a tax.",
+      },
+    ],
+  },
+  {
+    slug: 'why-we-dont-use-smooth-scroll-libraries',
+    title: "Why we don't use smooth-scroll libraries",
+    dek: 'Scroll hijacking is the reason your arrow keys and Page Down "randomly stop working" on some sites. Feel the difference between the two below.',
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-11-15',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: 'If you\'ve ever landed on a site where your mouse wheel felt "floaty," where Page Down stopped doing anything, or where scrolling to the bottom took an unreasonably long, syrupy fade — you were on a site running a smooth-scroll library. Somewhere along the way, "make scrolling smoother" became a default addition to a lot of portfolio and agency sites, including plenty of good-looking ones. We don\'t run one, anywhere on this site, on purpose.',
+      },
+      {
+        type: 'statement',
+        text: "What is scroll hijacking? It's a library intercepting your native scroll input — wheel, trackpad, arrow keys — and replaying it through its own physics instead of the browser's.",
+      },
+      { type: 'heading', text: 'Feel it yourself' },
+      { type: 'scrollCompareDemo' },
+      {
+        type: 'p',
+        text: "The box on the left is a plain overflow-y-auto element — the browser's own scroll physics, exactly what your operating system and input device already agreed on. The box on the right intercepts every wheel event, cancels the browser's default handling of it, and replays your input through a deliberately sluggish easing loop instead — a small, honest simulation of what a scroll-hijacking library does at a larger scale, across an entire page instead of one box.",
+      },
+      { type: 'heading', text: 'What breaks when a library owns your scroll' },
+      {
+        type: 'p',
+        text: "Once a library is intercepting wheel and touch events to drive its own scroll animation, it has to reimplement everything the browser used to give you for free: Page Up/Page Down, Home/End, spacebar, screen-reader scroll commands, momentum scrolling on trackpads, scroll-anchoring so the page doesn't jump when an image above you finishes loading. Most libraries reimplement some of this and quietly miss the rest — which is exactly the shape of the complaint \"scrolling on this site feels broken,\" because functionally, for that one user's input method, it is.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `// components/ScrollReset.tsx — the entire scroll-behavior
+// customization on this site. Not a hijack: it doesn't touch
+// wheel, keyboard, or touch input at all.
+export function ScrollReset() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (window.location.hash) return;
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}`,
+      },
+      { type: 'heading', text: 'What we do instead' },
+      {
+        type: 'p',
+        text: "Every scroll-driven effect on this site — the sheet stack, the scrub-in text, the reading-line focus, the scroll-progress bar — reads scroll position, it never sets it. Framer Motion's useScroll subscribes to the native scrollY the browser is already tracking and turns it into a number other elements react to. The browser stays in sole control of the actual act of scrolling; nothing ever calls scrollTo or intercepts a wheel event to fake it. That's the whole difference: react to native scrolling, don't replace it.",
+      },
+      {
+        type: 'p',
+        text: "The one exception, shown above, is ScrollReset — and it's not a hijack either. It doesn't touch how scrolling behaves at all; it just resets the position to the top when you navigate to a new route, which is what browsers already do on a full page load and what single-page apps have to do manually since they never actually reload the page. Nothing about wheel, keyboard, or touch input passes through custom code anywhere on this site.",
       },
     ],
   },

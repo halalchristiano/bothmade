@@ -288,7 +288,88 @@ function BlockRenderer({
 
     case 'introDemo':
       return <IntroDemo />;
+
+    case 'scrollCompareDemo':
+      return <ScrollCompareDemo />;
   }
+}
+
+/**
+ * Left box: plain overflow-y-auto, the browser's own scroll physics.
+ * Right box: wheel events are captured and replayed through an eased,
+ * delayed scrollTop update instead of letting the browser handle them
+ * directly — a small, honest simulation of what a scroll-hijacking
+ * library actually does, so the difference is something you feel rather
+ * than take our word for.
+ */
+function ScrollCompareDemo() {
+  const hijackRef = useRef<HTMLDivElement>(null);
+  const targetScroll = useRef(0);
+  const currentScroll = useRef(0);
+  const frame = useRef<number | undefined>(undefined);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const el = hijackRef.current;
+    if (!el || reduceMotion) return;
+
+    targetScroll.current = el.scrollTop;
+    currentScroll.current = el.scrollTop;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const max = el.scrollHeight - el.clientHeight;
+      targetScroll.current = Math.min(max, Math.max(0, targetScroll.current + e.deltaY));
+    };
+
+    const tick = () => {
+      // Deliberately sluggish easing — 6% of the gap per frame — to make
+      // the lag a hijacked scroll introduces obvious rather than subtle.
+      currentScroll.current += (targetScroll.current - currentScroll.current) * 0.06;
+      el.scrollTop = currentScroll.current;
+      frame.current = requestAnimationFrame(tick);
+    };
+    frame.current = requestAnimationFrame(tick);
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (frame.current) cancelAnimationFrame(frame.current);
+    };
+  }, [reduceMotion]);
+
+  const filler = Array.from({ length: 8 });
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-300/70 border-b border-white/10">
+          native
+        </p>
+        <div className="h-48 overflow-y-auto p-5 space-y-3">
+          {filler.map((_, i) => (
+            <p key={i} className="text-sm text-white/45">
+              Scroll me — this is the browser's own physics, untouched.
+            </p>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-red-300/70 border-b border-white/10">
+          simulated hijack
+        </p>
+        <div ref={hijackRef} className="h-48 overflow-y-auto p-5 space-y-3">
+          {filler.map((_, i) => (
+            <p key={i} className="text-sm text-white/45">
+              {reduceMotion
+                ? 'Disabled under reduced motion.'
+                : 'Scroll me — every wheel tick gets intercepted and replayed on a lag.'}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
