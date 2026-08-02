@@ -4,12 +4,18 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
+
 export interface EmailData {
   to: string | string[];
   subject: string;
   html: string;
   fromName?: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
 }
 
 /**
@@ -23,6 +29,7 @@ export async function sendEmail(data: EmailData): Promise<boolean> {
       subject: data.subject,
       html: data.html,
       ...(data.replyTo ? { replyTo: data.replyTo } : {}),
+      ...(data.attachments ? { attachments: data.attachments } : {}),
     });
 
     if (result.error) {
@@ -270,13 +277,15 @@ export async function sendSignAndPayEmail(
   company: string,
   signUrl: string,
   amountLabel: string,
-  isDeposit: boolean
+  isDeposit: boolean,
+  invoicePdf?: Buffer
 ): Promise<boolean> {
   const bodyHtml = `
     <p>Hi ${contactName || 'there'},</p>
     <p>Here's everything to get ${company}'s project moving — the agreement to review and a secure place to pay ${
       isDeposit ? `your deposit of <strong style="color:#fff;">${amountLabel}</strong>` : `<strong style="color:#fff;">${amountLabel}</strong>`
     }, all on one page.</p>
+    ${invoicePdf ? '<p style="font-size:13px; color:rgba(255,255,255,0.5);">The itemized invoice is attached to this email as a PDF.</p>' : ''}
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
   `;
 
@@ -290,6 +299,40 @@ export async function sendSignAndPayEmail(
       ctaLabel: 'Review & Pay',
       ctaUrl: signUrl,
     }),
+    ...(invoicePdf
+      ? { attachments: [{ filename: `${company.replace(/[^a-z0-9]/gi, '-')}-invoice.pdf`, content: invoicePdf }] }
+      : {}),
+  });
+}
+
+/**
+ * Sends just the itemized invoice PDF on its own — for re-sending a copy to
+ * the client after the fact, or for Evan to email a copy to himself to
+ * check it over, independent of the full sign-and-pay send.
+ */
+export async function sendInvoiceOnlyEmail(
+  toEmail: string,
+  contactName: string | null,
+  company: string,
+  invoicePdf: Buffer,
+  isSelfCopy: boolean
+): Promise<boolean> {
+  const bodyHtml = isSelfCopy
+    ? `<p>Here's a copy of the current invoice for ${company}, attached as a PDF.</p>`
+    : `
+      <p>Hi ${contactName || 'there'},</p>
+      <p>Here's a copy of your invoice for ${company}'s project, attached as a PDF.</p>
+    `;
+
+  return sendEmail({
+    to: toEmail,
+    subject: isSelfCopy ? `Invoice copy — ${company}` : `Your invoice — ${company}`,
+    html: renderShell({
+      eyebrow: 'Invoice',
+      title: `${company} — Invoice`,
+      bodyHtml,
+    }),
+    attachments: [{ filename: `${company.replace(/[^a-z0-9]/gi, '-')}-invoice.pdf`, content: invoicePdf }],
   });
 }
 

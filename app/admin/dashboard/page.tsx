@@ -360,6 +360,84 @@ function WonDealsCard({ stats }: { stats: SalesStats }) {
   );
 }
 
+/**
+ * The first thing a rep should see: how many businesses are waiting on a
+ * call, and a way straight into them.
+ *
+ * The dashboard opened on pipeline value and conversion rate — useful to an
+ * owner, and not an answer to "what do I do now". Reads the same endpoint the
+ * call list does, so the numbers here and the list there can't disagree.
+ */
+function CallListBanner() {
+  const [counts, setCounts] = useState<{ bounced: number; overdue: number; today: number; total: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    fetch('/api/admin/leads/call-list')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.success) return;
+        const rows: Array<{ reason: string }> = d.callable ?? [];
+        setCounts({
+          bounced: rows.filter((r) => r.reason === 'bounced').length,
+          overdue: rows.filter((r) => r.reason === 'overdue').length,
+          today: rows.filter((r) => r.reason === 'today').length,
+          total: rows.length,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!counts) return null;
+
+  if (counts.total === 0) {
+    return (
+      <Link
+        href="/admin/call-list"
+        className="block mb-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 hover:bg-white/[0.05] transition-colors"
+      >
+        <p className="text-sm font-semibold text-white/70">Nothing waiting on a call right now.</p>
+        <p className="text-xs text-white/40 mt-0.5">Every lead is booked for later, won, or closed off.</p>
+      </Link>
+    );
+  }
+
+  const urgent = counts.bounced + counts.overdue;
+
+  return (
+    <Link
+      href="/admin/call-list"
+      className={`block mb-6 rounded-2xl border px-5 py-4 transition-colors ${
+        urgent > 0
+          ? 'border-amber-400/30 bg-amber-400/[0.08] hover:bg-amber-400/[0.13]'
+          : 'border-sky-400/25 bg-sky-400/[0.07] hover:bg-sky-400/[0.12]'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-white/90">
+            <Phone size={14} />
+            {counts.total} {counts.total === 1 ? 'business' : 'businesses'} to call
+          </p>
+          <p className="text-xs text-white/50 mt-1 leading-relaxed">
+            {[
+              counts.bounced > 0 && `${counts.bounced} whose email bounced — phone is the only way in`,
+              counts.overdue > 0 && `${counts.overdue} overdue`,
+              counts.today > 0 && `${counts.today} due today`,
+            ]
+              .filter(Boolean)
+              .join(' · ') || 'Nothing urgent — work down the list when you can.'}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black">
+          Start calling
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 function SalesDashboard({
   stats,
   name,
@@ -383,6 +461,8 @@ function SalesDashboard({
         </div>
         <RangePicker range={range} onChange={onRangeChange} />
       </div>
+
+      <CallListBanner />
 
       <div className="mb-6">
         <StatRow

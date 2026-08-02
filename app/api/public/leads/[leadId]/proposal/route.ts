@@ -8,12 +8,14 @@ import {
   DEPOSIT_PERCENT,
   TIMELINES,
   calculatePrice,
+  customItemsTotal,
   depositAmount,
   formatCents,
   isAddOnKey,
   isBaseService,
   isClientType,
   isTimelineKey,
+  sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
 
@@ -52,14 +54,20 @@ export async function GET(
     const clientType = lead.proposalClientType;
     const timeline = lead.proposalTimeline;
     const addOnKeys: AddOnKey[] = lead.proposalAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a));
+    const customItems = sanitizeCustomItems(lead.proposalCustomItems);
+    const customTotal = customItemsTotal(customItems);
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
-    const totalPrice = lead.proposalTotalPrice && lead.proposalTotalPrice > 0 ? lead.proposalTotalPrice : breakdown.totalPrice;
+    const calculatedTotal = breakdown.totalPrice + customTotal;
+    const totalPrice = lead.proposalTotalPrice && lead.proposalTotalPrice > 0 ? lead.proposalTotalPrice : calculatedTotal;
     const deposit = depositAmount(totalPrice);
     const chargeAmount = lead.proposalDepositOnly ? deposit : totalPrice;
 
     const serviceLabel = BASE_SERVICES[baseService].label;
-    const addOnLabels = addOnKeys.map((k) => ADD_ONS[k].label);
+    const addOnLabels = [
+      ...addOnKeys.map((k) => ADD_ONS[k].label),
+      ...customItems.map((c) => `${c.label} (${formatCents(c.priceCents)})`),
+    ];
     const timelineLabel = `${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`;
 
     const sections = buildContractSections({
@@ -75,7 +83,7 @@ export async function GET(
       timelineLabel,
       clientTypeLabel: CLIENT_TYPES[clientType].label,
       basePrice: formatCents(breakdown.basePrice),
-      addOnsPrice: formatCents(breakdown.addOnsPrice),
+      addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
       totalPrice: formatCents(totalPrice),
       depositAmount: formatCents(deposit),
       balanceAmount: formatCents(totalPrice - deposit),

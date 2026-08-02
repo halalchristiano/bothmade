@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { constructWebhookEvent } from '@/lib/stripe';
 import {
@@ -16,6 +17,7 @@ import {
   isAddOnKey,
   isBaseService,
   isTimelineKey,
+  sanitizeCustomItems,
   type AddOnKey,
   type BaseService,
   type TimelineKey,
@@ -83,6 +85,7 @@ async function handleCheckoutSessionCompleted(
     timeline: rawTimeline,
     basePrice: rawBasePrice,
     totalPrice: rawTotalPrice,
+    customItems: rawCustomItems,
     leadId,
   } = metadata;
 
@@ -96,6 +99,15 @@ async function handleCheckoutSessionCompleted(
     rawTimeline && isTimelineKey(rawTimeline) ? rawTimeline : 'standard';
   const basePrice = Number(rawBasePrice) || BASE_SERVICES[baseService].price;
   const totalPrice = Number(rawTotalPrice) || basePrice;
+  const customItems = sanitizeCustomItems(
+    (() => {
+      try {
+        return rawCustomItems ? JSON.parse(rawCustomItems) : [];
+      } catch {
+        return [];
+      }
+    })()
+  );
 
   // Idempotency: Stripe may redeliver the same event
   const existingProjectForSession = await prisma.project.findFirst({
@@ -149,6 +161,7 @@ async function handleCheckoutSessionCompleted(
       timeline: timelineLabel,
       basePrice,
       totalPrice,
+      customItems: customItems as unknown as Prisma.InputJsonValue,
       stripeSessionId: session.id,
       convertedFromLeadId: leadId || null,
     },
