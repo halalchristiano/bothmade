@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { useState, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { Intro } from '@/components/Intro';
 import { PillCTA, SectionTag, ScrubText } from '@/components/ui';
 import { Nav } from '@/components/Nav';
@@ -13,6 +14,7 @@ import { WhyUs } from '@/components/WhyUs';
 import { Footer } from '@/components/Footer';
 
 function ContactForm() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -54,7 +56,7 @@ function ContactForm() {
           service: 'web',
           website: '',
         });
-        setTimeout(() => setSubmitted(false), 4000);
+        router.push('/contact/success');
       } else {
         const data = await response.json().catch(() => null);
         setError(data?.error ?? 'Failed to send message. Please try again.');

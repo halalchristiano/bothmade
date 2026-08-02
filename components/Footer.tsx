@@ -89,9 +89,24 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
           <div>
             <h3 className="text-2xl font-bold mb-3">bothmade</h3>
-            <p className="text-white/40 text-sm max-w-xs">
+            <p className="text-white/40 text-sm max-w-xs mb-4">
               Web and native Apple development. One team, from first sketch to App Store.
             </p>
+            <p className="text-white/40 text-sm max-w-xs">
+              London &amp; Delaware.
+            </p>
+            <div className="mt-4 space-y-1 text-sm text-white/40">
+              <p>
+                <a href="mailto:info@bothmade.studio" className="hover:text-sky-300 transition">
+                  info@bothmade.studio
+                </a>
+              </p>
+              <p>
+                <a href="tel:+18484443252" className="hover:text-sky-300 transition">
+                  +1 (848) 444-3252
+                </a>
+              </p>
+            </div>
           </div>
 
           <div>
@@ -131,7 +146,14 @@ export function Footer() {
           viewport={{ once: true }}
         >
           <p>© 2026 Bothmade. All rights reserved.</p>
-          <p>Built with obsessive attention to detail.</p>
+          <div className="flex gap-6">
+            <Link href="/privacy" className="hover:text-sky-300 transition">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="hover:text-sky-300 transition">
+              Terms of Service
+            </Link>
+          </div>
         </motion.div>
       </div>
     </footer>

@@ -12,6 +12,9 @@ import { CASE_STUDIES, ACCENT_HEX } from '@/lib/case-studies';
 
 export function WorkIndex() {
   const [active, setActive] = useState<string | null>(null);
+  // Fictional/demo entries stay in lib/case-studies.ts for reference but never
+  // render publicly — only real, launched work is shown here.
+  const publishedStudies = CASE_STUDIES.filter((p) => p.status === 'live');
 
   return (
     <main className="relative bg-[#05030a] text-white">
@@ -48,9 +51,8 @@ export function WorkIndex() {
             transition={{ delay: 0.3 }}
           >
             Bothmade is new, and we&apos;d rather show you nothing than show you someone
-            else&apos;s work. Our own products are in development now — each one will be
-            written up here properly: the problem, the decisions, and what actually happened
-            after launch.
+            else&apos;s work. Real projects land here as soon as they ship — the problem,
+            the decisions, and what actually happened after launch.
           </motion.p>
         </div>
       </section>
@@ -63,12 +65,22 @@ export function WorkIndex() {
               In the works
             </h2>
             <span className="font-mono text-sm text-white/25">
-              {String(CASE_STUDIES.length).padStart(2, '0')} projects
+              {String(publishedStudies.length).padStart(2, '0')} projects
             </span>
           </div>
 
+          {publishedStudies.length === 0 && (
+            <p className="py-16 text-center text-white/35 text-sm">
+              Nothing published yet — check back soon, or{' '}
+              <Link href="/#contact" className="text-sky-300 hover:underline">
+                be our first
+              </Link>
+              .
+            </p>
+          )}
+
           <div>
-            {CASE_STUDIES.map((p, idx) => {
+            {publishedStudies.map((p, idx) => {
               const accent = ACCENT_HEX[p.accent];
 
               return (

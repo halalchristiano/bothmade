@@ -14,7 +14,7 @@ import {
   type AddOnKey,
 } from '@/lib/pricing';
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.CONTACT_EMAIL || 'contact@bothmade.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.CONTACT_EMAIL || 'info@bothmade.studio';
 
 /**
  * Per-instance sliding window — same tradeoff as /api/contact: blunts casual

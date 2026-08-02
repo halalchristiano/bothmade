@@ -58,6 +58,24 @@ export function WhyUs() {
             </motion.div>
           ))}
         </div>
+
+        <motion.div
+          className="mt-20 md:mt-28 pt-16 border-t border-white/10"
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true, margin: '-10% 0px' }}
+        >
+          <p className="text-sm font-mono uppercase tracking-[0.3em] text-white/40 mb-4">
+            Who's behind it
+          </p>
+          <p className="text-base md:text-lg text-white/60 leading-relaxed max-w-2xl">
+            Bothmade is run by <span className="text-white/85 font-medium">Evan</span> and{' '}
+            <span className="text-white/85 font-medium">Kiana</span>, working out of London
+            and Delaware. No account managers, no outsourced dev shop — you work directly
+            with the two people building your product.
+          </p>
+        </motion.div>
       </div>
     </section>
   );

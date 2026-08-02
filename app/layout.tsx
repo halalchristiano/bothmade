@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ScrollReset } from "@/components/ScrollReset";
 import { ScrollProgress } from "@/components/ScrollProgress";
 import { ScrollSeamIndicator } from "@/components/ScrollSeamIndicator";
+import { GA_MEASUREMENT_ID } from "@/lib/analytics";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -62,6 +64,22 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {GA_MEASUREMENT_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_MEASUREMENT_ID}');
+              `}
+            </Script>
+          </>
+        )}
         {/* Machine-readable identity for search — what the site is, in the
             vocabulary Google actually indexes agencies by. */}
         <script

@@ -1,8 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect } from 'react';
+import { trackEvent } from '@/lib/analytics';
 
 export default function CheckoutSuccessPage() {
+  useEffect(() => {
+    trackEvent('checkout_success');
+  }, []);
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-lg text-center">
@@ -10,10 +16,11 @@ export default function CheckoutSuccessPage() {
           <div className="w-16 h-16 rounded-full bg-black text-white flex items-center justify-center text-3xl mx-auto mb-6">
             ✓
           </div>
-          <h1 className="text-3xl font-bold mb-4">Payment Received</h1>
+          <h1 className="text-3xl font-bold mb-4">Deposit Received</h1>
           <p className="text-gray-600 mb-6">
-            Thanks for starting your project with Bothmade! We've created your account and
-            sent your login details to your email, along with a temporary password.
+            Thanks for starting your project with Bothmade! Your 50% deposit is in, we've
+            created your account, and we've sent your login details to your email along
+            with a temporary password.
           </p>
           <p className="text-gray-600 mb-8">
             Check your inbox, then log in to your dashboard to track progress and message

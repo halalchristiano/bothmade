@@ -5,6 +5,7 @@ import {
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  depositAmount,
   formatCents,
   type AddOnKey,
   type BaseService,
@@ -45,10 +46,11 @@ export async function createCheckoutSession(
 
     const serviceLabel = BASE_SERVICES[input.baseService].label;
     const addOnLabels = input.addOns.map((key) => ADD_ONS[key].label);
+    const deposit = depositAmount(breakdown.totalPrice);
     const description =
       addOnLabels.length > 0
-        ? `${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label} + ${addOnLabels.join(', ')}`
-        : `${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label}`;
+        ? `50% deposit — ${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label} + ${addOnLabels.join(', ')}`
+        : `50% deposit — ${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label}`;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -57,10 +59,10 @@ export async function createCheckoutSession(
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Bothmade ${serviceLabel} — ${input.company}`,
+              name: `Bothmade ${serviceLabel} — ${input.company} (50% deposit)`,
               description,
             },
-            unit_amount: breakdown.totalPrice,
+            unit_amount: deposit,
           },
           quantity: 1,
         },
@@ -80,6 +82,8 @@ export async function createCheckoutSession(
         timeline: input.timeline,
         basePrice: String(breakdown.basePrice),
         totalPrice: String(breakdown.totalPrice),
+        depositAmount: String(deposit),
+        paymentType: 'deposit',
       },
     });
 

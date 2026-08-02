@@ -7,14 +7,14 @@ import { PillCTA } from '@/components/ui';
 type Rect = { top: number; left: number; width: number; height: number };
 
 const APPS = [
-  { label: 'Ridgeline', glyph: '⛰', from: '#4f46e5', to: '#1e1b4b' },
-  { label: 'Cadence', glyph: '◷', from: '#0ea5e9', to: '#0c2f52' },
-  { label: 'Ledger', glyph: '◧', from: '#059669', to: '#052e26' },
-  { label: 'Signal', glyph: '◉', from: '#e11d48', to: '#4c0519' },
-  { label: 'Atlas', glyph: '◈', from: '#f59e0b', to: '#451a03' },
-  { label: 'Prism', glyph: '◐', from: '#8b5cf6', to: '#2e1065' },
-  { label: 'Volta', glyph: '⌁', from: '#06b6d4', to: '#083344' },
-  { label: 'Quarry', glyph: '⬢', from: '#64748b', to: '#0f172a' },
+  { label: 'Notes', glyph: '⛰', from: '#4f46e5', to: '#1e1b4b' },
+  { label: 'Weather', glyph: '◷', from: '#0ea5e9', to: '#0c2f52' },
+  { label: 'Wallet', glyph: '◧', from: '#059669', to: '#052e26' },
+  { label: 'Messages', glyph: '◉', from: '#e11d48', to: '#4c0519' },
+  { label: 'Maps', glyph: '◈', from: '#f59e0b', to: '#451a03' },
+  { label: 'Photos', glyph: '◐', from: '#8b5cf6', to: '#2e1065' },
+  { label: 'Health', glyph: '⌁', from: '#06b6d4', to: '#083344' },
+  { label: 'Calendar', glyph: '⬢', from: '#64748b', to: '#0f172a' },
 ];
 
 /**

@@ -1126,10 +1126,10 @@ function KineticWordDemo({ word }: { word: string }) {
 type Rect = { top: number; left: number; width: number; height: number };
 
 const DEMO_APPS = [
-  { label: 'Ridgeline', glyph: '⛰', from: '#4f46e5', to: '#1e1b4b' },
-  { label: 'Cadence', glyph: '◷', from: '#0ea5e9', to: '#0c2f52' },
-  { label: 'Ledger', glyph: '◧', from: '#059669', to: '#052e26' },
-  { label: 'Signal', glyph: '◉', from: '#e11d48', to: '#4c0519' },
+  { label: 'Notes', glyph: '⛰', from: '#4f46e5', to: '#1e1b4b' },
+  { label: 'Weather', glyph: '◷', from: '#0ea5e9', to: '#0c2f52' },
+  { label: 'Wallet', glyph: '◧', from: '#059669', to: '#052e26' },
+  { label: 'Messages', glyph: '◉', from: '#e11d48', to: '#4c0519' },
 ];
 
 /**

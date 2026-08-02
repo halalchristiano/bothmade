@@ -8,7 +8,7 @@ the site is deployable after the first section.
 - [ ] **Deploy to Vercel.** Push this repo to GitHub, import it at
       vercel.com/new, accept the defaults (Next.js is auto-detected).
 - [ ] **Set `NEXT_PUBLIC_SITE_URL`** in Vercel → Project → Settings →
-      Environment Variables to the real domain (e.g. `https://bothmade.com`).
+      Environment Variables to the real domain (`https://bothmade.studio`).
       Until this is set, canonical URLs, Open Graph tags, sitemap, robots,
       and JSON-LD all publish localhost links.
 - [ ] **Set `RESEND_API_KEY`** (from resend.com → API Keys) and
@@ -49,21 +49,21 @@ and Vercel — no amount of code changes fixes it.
 
 ## Required before running ads
 
-- [ ] **Replace the sample case studies.** Everything in
+- [x] **Replace the sample case studies.** Everything in
       `lib/case-studies.ts` under the `SAMPLE CONTENT` banner is invented
-      demo copy (Ridgeline / Cadence / Massing). Each is `status:
-      'in-progress'`, which keeps it `noindex` — flip to `'live'` only when
-      the entry describes something real. Never point paid traffic at
-      fiction.
-- [ ] **Write the About/credibility block.** The site never says who is
-      behind it — names, location, background. At high-ticket budgets this
-      is the biggest conversion leak. 3–4 honest sentences are enough; the
-      section will be designed around whatever is supplied.
+      demo copy (Ridgeline / Cadence / Massing). `WorkIndex` now only
+      renders entries with `status: 'live'`, so the fictional entries no
+      longer appear on `/work`. Add real projects and flip them to `'live'`
+      when ready.
+- [x] **Write the About/credibility block.** Added to `components/WhyUs.tsx`
+      — names (Evan, Kiana) and location (London & Delaware).
 - [ ] **Add real screenshots** to case studies (`shots[].src`, files under
       `public/work/…`). Placeholder frames render until then.
-- [ ] **Analytics.** Nothing is installed. Easiest: enable Vercel Analytics
-      in the dashboard; privacy-friendlier: Plausible/Fathom. Needed to
-      judge ad spend at all.
+- [x] **Analytics.** GA4 is wired in (`app/layout.tsx`, `lib/analytics.ts`) —
+      set `NEXT_PUBLIC_GA_MEASUREMENT_ID` in Vercel env vars to your GA4
+      measurement ID (`G-XXXXXXX`) to turn it on. Conversion events fire on
+      `/contact/success` (`contact_success`) and `/checkout/success`
+      (`checkout_success`).
 
 ## Deliberately deferred engineering
 
