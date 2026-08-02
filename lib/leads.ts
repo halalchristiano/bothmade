@@ -159,6 +159,48 @@ export function isLeadStatus(value: string): value is LeadStatus {
 }
 
 /**
+ * A generic "Subject: ...\n\n<body>" cold-email draft for leads that don't
+ * have a bespoke personalisedColdEmail from CSV research — so "send all"
+ * doesn't silently skip them just because nobody wrote a custom line yet.
+ * Uses whatever personalization is on file (observation, then pain points)
+ * and falls back to a plain first-contact line if there's neither.
+ * [First Name] and [Sender Name] are resolved at send/preview time.
+ */
+export function buildFallbackColdEmailDraft(lead: {
+  company: string;
+  painPoints: string;
+  personalizedObservation: string | null;
+}): string {
+  const observation =
+    lead.personalizedObservation?.trim() ||
+    (() => {
+      const sentence = painPointSentence(lead.painPoints);
+      return sentence ? `your website currently has ${sentence}` : null;
+    })();
+
+  const hook = observation
+    ? `One thing stood out to me: ${observation}.`
+    : `I wanted to reach out because I think there's an opportunity to help ${lead.company} stand out more online.`;
+
+  return [
+    `Subject: Thoughts on ${lead.company}`,
+    '',
+    `Hi [First Name],`,
+    '',
+    `I came across ${lead.company} while researching businesses in your industry and spent some time looking through your online presence.`,
+    '',
+    hook,
+    '',
+    `Rather than sending a generic pitch, we'd like to earn the opportunity to work with you by putting together a free, no-obligation concept for your homepage — no strings attached.`,
+    '',
+    `Would you be open to a quick 15-minute conversation next week?`,
+    '',
+    `Best,`,
+    `[Sender Name]`,
+  ].join('\n');
+}
+
+/**
  * Whether `target` is further along the pipeline than `current` — used to
  * auto-advance a lead's stage (e.g. generating a contract bumps it to
  * "Contract Sent") without ever accidentally moving it backwards or past

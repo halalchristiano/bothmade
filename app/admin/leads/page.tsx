@@ -27,6 +27,7 @@ interface LeadRow {
   coldEmailDraft: string | null;
   coldEmailSentAt: string | null;
   personalizedObservation: string | null;
+  painPoints: string;
   assignedTo: { name: string | null } | null;
   activities: Array<{ createdAt: string }>;
 }
@@ -84,10 +85,13 @@ function ColdOutreachFlag({ lead }: { lead: LeadRow }) {
       </span>
     );
   }
-  if (lead.coldEmailDraft && !lead.coldEmailSentAt) {
+  if (!lead.coldEmailSentAt) {
     return (
-      <span title="Cold email drafted and ready to send" className="inline-flex">
-        <MailCheck size={13} className="text-emerald-400" />
+      <span
+        title={lead.coldEmailDraft ? 'Custom cold email drafted and ready to send' : 'Ready to send (generic template)'}
+        className="inline-flex"
+      >
+        <MailCheck size={13} className={lead.coldEmailDraft ? 'text-emerald-400' : 'text-sky-400'} />
       </span>
     );
   }
@@ -176,7 +180,7 @@ export default function AdminLeadsPage() {
       return leads.filter((l) => l.status === 'new' && l.activities.length === 0);
     }
     if (statusFilter === 'cold-ready') {
-      return leads.filter((l) => l.email && l.coldEmailDraft && !l.coldEmailSentAt);
+      return leads.filter((l) => l.email && !l.coldEmailSentAt);
     }
     if (statusFilter === 'needs-call') {
       return leads.filter((l) => !l.email);
@@ -193,7 +197,7 @@ export default function AdminLeadsPage() {
   // powers the big "send them all" banner so Evan doesn't have to hunt for
   // small icons or manually select anything for the common case.
   const coldReadyLeads = useMemo(
-    () => leads.filter((l) => l.email && l.coldEmailDraft && !l.coldEmailSentAt),
+    () => leads.filter((l) => l.email && !l.coldEmailSentAt),
     [leads]
   );
   const needsCallLeads = useMemo(() => leads.filter((l) => !l.email && l.coldEmailDraft), [leads]);
@@ -242,7 +246,7 @@ export default function AdminLeadsPage() {
 
   const selectedLeads = useMemo(() => leads.filter((l) => selected.has(l.id)), [leads, selected]);
   const selectedReadyToSend = useMemo(
-    () => selectedLeads.filter((l) => l.email && l.coldEmailDraft),
+    () => selectedLeads.filter((l) => l.email),
     [selectedLeads]
   );
   const selectedNeedingCall = useMemo(() => selectedLeads.filter((l) => !l.email), [selectedLeads]);
@@ -344,7 +348,7 @@ export default function AdminLeadsPage() {
                     : 'No cold emails ready right now'}
                 </p>
                 <p className="text-sm text-white/50">
-                  Pre-written from your CSV import — no typing needed.
+                  Custom drafts from your CSV import, generic templates for the rest — no typing needed.
                   {needsCallLeads.length > 0 && (
                     <span className="text-amber-300"> {needsCallLeads.length} more have no email on file — call them instead.</span>
                   )}

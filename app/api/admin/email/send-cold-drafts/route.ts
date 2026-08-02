@@ -4,6 +4,7 @@ import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
 import { sendAsUser } from '@/lib/mailer';
+import { buildFallbackColdEmailDraft } from '@/lib/leads';
 
 const MAX_LEADS = 200;
 
@@ -21,10 +22,13 @@ function splitDraft(draft: string, company: string): { subject: string; body: st
 }
 
 /**
- * Sends every selected lead's pre-written cold email draft as-is, one click,
- * no per-recipient typing — the personalization already happened when the
- * draft was researched and imported. Leads without a stored draft or email
- * are skipped and reported back so they can be called instead.
+ * Sends every selected lead's cold email draft one click, no per-recipient
+ * typing. Uses the bespoke research draft when one was imported; otherwise
+ * falls back to a generic first-contact template built from whatever
+ * personalization is on file (observation, then pain points) so a lead
+ * missing a hand-written draft doesn't just get silently skipped. Leads
+ * without an email on file are skipped and reported so they can be called
+ * instead.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -54,14 +58,20 @@ export async function POST(request: NextRequest) {
         results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'No email on file — call instead' });
         continue;
       }
-      if (!lead.coldEmailDraft) {
-        results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'No cold email draft saved' });
-        continue;
-      }
+      const draft =
+        lead.coldEmailDraft ||
+        buildFallbackColdEmailDraft({
+          company: lead.company,
+          painPoints: lead.painPoints,
+          personalizedObservation: lead.personalizedObservation,
+        });
 
-      const { subject, body } = splitDraft(lead.coldEmailDraft, lead.company);
+      const { subject, body } = splitDraft(draft, lead.company);
       const firstName = lead.contactName?.split(' ')[0] || 'there';
-      const personalizedBody = body.replace(/\[First Name\]/gi, firstName);
+      const senderFirstName = sender.name?.split(' ')[0] || 'The Bothmade Team';
+      const personalizedBody = body
+        .replace(/\[First Name\]/gi, firstName)
+        .replace(/\[Sender Name\]/gi, senderFirstName);
 
       const bodyHtml = personalizedBody
         .split(/\n{2,}/)

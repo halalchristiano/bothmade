@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Send, Loader2, UserX } from 'lucide-react';
+import { buildFallbackColdEmailDraft } from '@/lib/leads';
 
 interface PreviewLead {
   id: string;
@@ -9,6 +10,8 @@ interface PreviewLead {
   contactName: string | null;
   email: string | null;
   coldEmailDraft: string | null;
+  painPoints: string;
+  personalizedObservation: string | null;
 }
 
 /** Mirrors the server's splitDraft() in send-cold-drafts/route.ts so the preview matches exactly what gets sent. */
@@ -30,6 +33,17 @@ export function ColdEmailPreviewModal({
   onConfirm: (leadIds: string[]) => void;
 }) {
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [senderFirstName, setSenderFirstName] = useState('The Bothmade Team');
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((data) => {
+        const name = data?.user?.name as string | undefined;
+        if (name) setSenderFirstName(name.split(' ')[0]);
+      })
+      .catch(() => {});
+  }, []);
 
   const toggleExclude = (id: string) => {
     setExcluded((prev) => {
@@ -60,11 +74,19 @@ export function ColdEmailPreviewModal({
         <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-3">
           {leads.map((lead) => {
             const isExcluded = excluded.has(lead.id);
-            const { subject, body } = lead.coldEmailDraft
-              ? splitDraft(lead.coldEmailDraft, lead.company)
-              : { subject: '', body: '' };
+            const isGeneric = !lead.coldEmailDraft;
+            const draft =
+              lead.coldEmailDraft ||
+              buildFallbackColdEmailDraft({
+                company: lead.company,
+                painPoints: lead.painPoints,
+                personalizedObservation: lead.personalizedObservation,
+              });
+            const { subject, body } = splitDraft(draft, lead.company);
             const firstName = lead.contactName?.split(' ')[0] || 'there';
-            const personalizedBody = body.replace(/\[First Name\]/gi, firstName);
+            const personalizedBody = body
+              .replace(/\[First Name\]/gi, firstName)
+              .replace(/\[Sender Name\]/gi, senderFirstName);
 
             return (
               <div
@@ -75,7 +97,14 @@ export function ColdEmailPreviewModal({
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold truncate">{lead.company}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold truncate">{lead.company}</p>
+                      {isGeneric && (
+                        <span className="shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-sky-400/10 text-sky-300 border border-sky-400/20">
+                          Generic
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-white/40 truncate">To: {lead.email}</p>
                   </div>
                   <button
