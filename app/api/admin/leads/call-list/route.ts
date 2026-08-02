@@ -180,6 +180,14 @@ export async function GET() {
 
     const due = rows.filter((r) => r.reason !== 'scheduled');
 
+    // Hot leads booked for later are correctly excluded from today's call
+    // list — but "not on the list" shouldn't mean "invisible". A rep glancing
+    // at their day should still see the big ones coming up.
+    const scheduledHot = rows
+      .filter((r) => r.reason === 'scheduled' && r.hotLead)
+      .sort((a, b) => (a.nextFollowUpAt?.getTime() ?? Infinity) - (b.nextFollowUpAt?.getTime() ?? Infinity))
+      .slice(0, 20);
+
     due.sort((a, b) => {
       const byReason = REASON_RANK[a.reason] - REASON_RANK[b.reason];
       if (byReason !== 0) return byReason;
@@ -197,6 +205,7 @@ export async function GET() {
         success: true,
         callable: due.filter((r) => r.phone),
         noPhone: due.filter((r) => !r.phone),
+        scheduledHot,
         // What the numbers on screen actually mean.
         totalOpen,
         callsToday,
