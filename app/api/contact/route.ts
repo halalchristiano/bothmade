@@ -3,7 +3,7 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
+const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.studio';
 
 const SERVICES = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
 
