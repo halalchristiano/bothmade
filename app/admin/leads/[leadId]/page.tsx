@@ -700,7 +700,10 @@ export default function LeadDetailPage() {
         const writtenNeeds = parseSalesPoints(lead.essentialPoints);
         const writtenUpsell = parseSalesPoints(lead.upsellPoints);
 
-        const inferred = inferPainPointsFromNotes(lead.notes, painPoints);
+        // Guessing at pain points from notes exists to fill a vacuum. Once
+        // someone has written five bespoke ones for this business, keyword
+        // matching has nothing to add and everything to get wrong.
+        const inferred = writtenPains.length > 0 ? [] : inferPainPointsFromNotes(lead.notes, painPoints);
         const allPains = [...painPoints, ...inferred];
         const recs = buildSalesRecommendations(allPains);
         const base = BASE_SERVICES[recs.baseService];

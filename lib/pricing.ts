@@ -708,9 +708,34 @@ const NOTE_SIGNALS: Array<{ key: PainPointKey; patterns: RegExp[] }> = [
   { key: 'scaling-issues', patterns: [/\bscal(e|ing)\b/i, /\bcan'?t keep up\b/i, /\boutgrow/i] },
 ];
 
+/**
+ * Sections of the notes that describe OUR sales plan rather than THEIR
+ * business. Research exports routinely include a line like "...CRM, SEO,
+ * analytics, booking, e-commerce, portal, integration and compliance
+ * pricing" — our own service catalogue. Scanning that for pain signals
+ * concluded every lead had an e-commerce and a compliance problem, so these
+ * sections are cut before any matching happens.
+ */
+const INTERNAL_NOTE_LABELS = /(NEEDS|UPSELL|PRICING|ESTIMATE|ANGLE|GUIDANCE|SEGMENT|SOURCE|TEMPLATE|SCRIPT)/i;
+
+function stripInternalNoteSections(text: string): string {
+  return text
+    .split(/\s+\|\s+|\n{2,}/)
+    .filter((section) => {
+      const label = section.split(':')[0];
+      return !(label.length <= 40 && INTERNAL_NOTE_LABELS.test(label));
+    })
+    .join('\n');
+}
+
 /** Pain points implied by freeform notes but not explicitly ticked on the lead. */
-export function inferPainPointsFromNotes(text: string | null | undefined, already: PainPointKey[]): PainPointKey[] {
-  if (!text) return [];
+export function inferPainPointsFromNotes(
+  rawText: string | null | undefined,
+  already: PainPointKey[]
+): PainPointKey[] {
+  if (!rawText) return [];
+  const text = stripInternalNoteSections(rawText);
+  if (!text.trim()) return [];
   const have = new Set(already);
   return NOTE_SIGNALS.filter(({ key, patterns }) => !have.has(key) && patterns.some((re) => re.test(text))).map(
     ({ key }) => key
