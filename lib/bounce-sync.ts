@@ -6,6 +6,13 @@ import {
   scanReplyAddresses,
 } from '@/lib/gmail-oauth';
 
+/** Records whether this mailbox needs re-authorising, so the UI can say so. */
+async function flagNeedsReconnect(userId: string, needed: boolean): Promise<void> {
+  await prisma.user
+    .update({ where: { id: userId }, data: { gmailNeedsReconnect: needed } })
+    .catch((err) => console.error('Could not record Gmail reconnect state:', err));
+}
+
 export interface BounceSyncResult {
   ok: boolean;
   scanned: number;
@@ -47,8 +54,11 @@ export async function syncBouncesForUser(
 
   const scan = await scanBouncedAddresses(createGmailOAuthBatchClient(refreshToken), opts);
   if (!scan.ok) {
+    if (scan.needsReconnect) await flagNeedsReconnect(userId, true);
     return { ok: false, ...empty, needsReconnect: scan.needsReconnect, error: scan.error };
   }
+  // A read that worked proves the scope is there, whatever we thought before.
+  await flagNeedsReconnect(userId, false);
   if (scan.addresses.length === 0) {
     return { ok: true, ...empty, scanned: scan.scanned };
   }
@@ -146,8 +156,10 @@ export async function syncRepliesForUser(
 
   const scan = await scanReplyAddresses(createGmailOAuthBatchClient(refreshToken), opts);
   if (!scan.ok) {
+    if (scan.needsReconnect) await flagNeedsReconnect(userId, true);
     return { ok: false, ...empty, needsReconnect: scan.needsReconnect, error: scan.error };
   }
+  await flagNeedsReconnect(userId, false);
   if (scan.addresses.length === 0) {
     return { ok: true, ...empty, scanned: scan.scanned };
   }
