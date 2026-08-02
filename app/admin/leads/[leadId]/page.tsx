@@ -556,7 +556,7 @@ export default function LeadDetailPage() {
           {lead.phone && (
             <a
               href={`tel:${lead.phone}`}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 transition-colors"
             >
               <Phone size={13} /> Call
             </a>
@@ -565,19 +565,19 @@ export default function LeadDetailPage() {
             <button
               onClick={handleSendColdDraft}
               disabled={sendingColdDraft}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               <Send size={13} /> {sendingColdDraft ? 'Sending...' : 'Send cold email'}
             </button>
           )}
           {(lead.coldEmailSentAt || coldDraftSent) && (
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white/40">
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-300/70">
               <CheckCircle2 size={13} /> Cold email sent
             </span>
           )}
           <button
             onClick={() => setComposingEmail(true)}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
           >
             <Mail size={13} /> Compose email
           </button>
@@ -639,7 +639,7 @@ export default function LeadDetailPage() {
               </div>
               <button
                 onClick={() => setEditing(!editing)}
-                className="text-xs px-3 py-1 rounded-lg border border-white/15 hover:bg-white/5 transition-colors"
+                className="text-xs font-semibold px-3.5 py-1.5 rounded-full border border-white/15 hover:bg-white/5 transition-colors"
               >
                 {editing ? 'Cancel' : 'Edit'}
               </button>
@@ -647,13 +647,13 @@ export default function LeadDetailPage() {
 
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-white/35 mb-1">
+                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-purple-300/70 mb-1">
                   <Tag size={11} /> Status
                 </label>
                 <select
                   value={lead.status}
                   onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
-                  className={inputClass}
+                  className={`${inputClass} border-purple-400/20 focus:ring-purple-400/50`}
                 >
                   {LEAD_STATUSES.map((s) => (
                     <option key={s} value={s} className="bg-[#05030a]">
@@ -663,14 +663,14 @@ export default function LeadDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-white/35 mb-1">
+                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-sky-300/70 mb-1">
                   <CalendarClock size={11} /> Follow-up
                 </label>
                 <input
                   type="date"
                   defaultValue={lead.nextFollowUpAt ? lead.nextFollowUpAt.slice(0, 10) : ''}
                   onChange={(e) => handleSetFollowUp(e.target.value)}
-                  className={`${inputClass} overflow-hidden [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:mr-0`}
+                  className={`${inputClass} border-sky-400/20 focus:ring-sky-400/50 overflow-hidden [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:mr-0`}
                 />
               </div>
             </div>
@@ -731,38 +731,48 @@ export default function LeadDetailPage() {
             ) : (
               <div className="text-sm">
                 <div className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-                  <div className="flex items-center gap-2.5 px-3 py-2.5">
-                    <User size={14} className="text-white/30 shrink-0" />
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-sky-400/10 text-sky-300 shrink-0">
+                      <User size={14} />
+                    </span>
                     <span className={lead.contactName ? '' : 'text-white/30 italic'}>
                       {lead.contactName || 'No contact name'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2.5 px-3 py-2.5">
-                    <Mail size={14} className="text-white/30 shrink-0" />
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-sky-400/10 text-sky-300 shrink-0">
+                      <Mail size={14} />
+                    </span>
                     {lead.email ? (
                       <a href={`mailto:${lead.email}`} className="hover:text-sky-300 transition-colors truncate">
                         {lead.email}
                       </a>
                     ) : (
-                      <span className="text-amber-300/70 italic">No email — call instead</span>
+                      <span className="text-amber-300/80 italic">No email — call instead</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2.5 px-3 py-2.5">
-                    <Phone size={14} className="text-white/30 shrink-0" />
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-amber-400/10 text-amber-300 shrink-0">
+                      <Phone size={14} />
+                    </span>
                     {lead.phone ? (
-                      <a href={`tel:${lead.phone}`} className="hover:text-sky-300 transition-colors">
+                      <a href={`tel:${lead.phone}`} className="hover:text-amber-300 transition-colors">
                         {lead.phone}
                       </a>
                     ) : (
                       <span className="text-white/30 italic">No phone on file</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2.5 px-3 py-2.5">
-                    <Compass size={14} className="text-white/30 shrink-0" />
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-purple-400/10 text-purple-300 shrink-0">
+                      <Compass size={14} />
+                    </span>
                     <span className={lead.source ? '' : 'text-white/30 italic'}>{lead.source || 'Unknown source'}</span>
                   </div>
-                  <div className="flex items-center gap-2.5 px-3 py-2.5">
-                    <DollarSign size={14} className="text-white/30 shrink-0" />
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-400/10 text-emerald-300 shrink-0">
+                      <DollarSign size={14} />
+                    </span>
                     <span className={lead.estimatedValue ? 'font-semibold text-emerald-300' : 'text-white/30 italic'}>
                       {lead.estimatedValue ? formatCents(lead.estimatedValue) : 'No estimate set'}
                     </span>
