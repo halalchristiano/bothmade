@@ -72,6 +72,7 @@ export async function PATCH(
       qualTiming,
       qualMotivation,
       clearEmailFailure,
+      assignedToId,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -140,6 +141,7 @@ export async function PATCH(
         qualifiedAt,
         emailDeliveryFailedAt: clearEmailFailure ? null : undefined,
         emailDeliveryFailedReason: clearEmailFailure ? null : undefined,
+        assignedToId: assignedToId !== undefined ? (assignedToId || null) : undefined,
       },
     });
 

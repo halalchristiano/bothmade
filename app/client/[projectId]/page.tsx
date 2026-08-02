@@ -62,11 +62,37 @@ export default function ClientDashboard() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
 
+  // Live-feeling messages: poll for new ones in the background and badge the
+  // tab if any arrived while the client was looking at something else,
+  // instead of requiring a manual refresh to see a reply.
+  const [unreadCount, setUnreadCount] = useState(0);
+  const seenMessageCountRef = useRef<number | null>(null);
+
   useEffect(() => {
     loadProject();
     loadOnboarding();
+    const interval = setInterval(loadProject, 20000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Track unread messages across polls/visits (persisted per-project so a
+  // page reload doesn't just forget what's already been seen).
+  useEffect(() => {
+    if (!project) return;
+    const storageKey = `bothmade_seen_messages_${projectId}`;
+    if (seenMessageCountRef.current === null) {
+      const stored = Number(localStorage.getItem(storageKey) || 0);
+      seenMessageCountRef.current = stored;
+    }
+    if (activeTab === 'messages') {
+      seenMessageCountRef.current = project.messages.length;
+      localStorage.setItem(storageKey, String(project.messages.length));
+      setUnreadCount(0);
+    } else {
+      setUnreadCount(Math.max(0, project.messages.length - (seenMessageCountRef.current || 0)));
+    }
+  }, [project, activeTab, projectId]);
 
   const loadOnboarding = async () => {
     try {
@@ -216,13 +242,18 @@ export default function ClientDashboard() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                className={`relative px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   activeTab === tab
                     ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black'
                     : 'text-white/50 hover:text-white'
                 }`}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'messages' && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                    {unreadCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>

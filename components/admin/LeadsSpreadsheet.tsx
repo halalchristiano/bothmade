@@ -16,9 +16,16 @@ interface SpreadsheetLead {
   source: string | null;
   estimatedValue: number | null;
   notes: string | null;
+  assignedToId: string | null;
   assignedTo: { name: string | null } | null;
   updatedAt: string;
   createdAt: string;
+}
+
+interface TeamMember {
+  id: string;
+  name: string | null;
+  email: string;
 }
 
 type SortKey = 'company' | 'status' | 'estimatedValue' | 'updatedAt' | 'createdAt';
@@ -58,6 +65,8 @@ export function LeadsSpreadsheet() {
   const [sortKey, setSortKey] = useState<SortKey>('updatedAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
+  const [savingAssignId, setSavingAssignId] = useState<string | null>(null);
+  const [team, setTeam] = useState<TeamMember[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -72,6 +81,10 @@ export function LeadsSpreadsheet() {
 
   useEffect(() => {
     load();
+    fetch('/api/admin/users')
+      .then((r) => r.json())
+      .then((data) => setTeam(data.users || []))
+      .catch(() => {});
   }, []);
 
   const toggleSort = (key: SortKey) => {
@@ -94,6 +107,23 @@ export function LeadsSpreadsheet() {
       });
     } finally {
       setSavingStatusId(null);
+    }
+  };
+
+  const handleAssignChange = async (leadId: string, assignedToId: string) => {
+    setSavingAssignId(leadId);
+    const member = team.find((t) => t.id === assignedToId);
+    setLeads((prev) =>
+      prev.map((l) => (l.id === leadId ? { ...l, assignedToId: assignedToId || null, assignedTo: member ? { name: member.name } : null } : l))
+    );
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedToId: assignedToId || null }),
+      });
+    } finally {
+      setSavingAssignId(null);
     }
   };
 
@@ -297,8 +327,20 @@ export function LeadsSpreadsheet() {
                   <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
                     {lead.source || '—'}
                   </td>
-                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
-                    {lead.assignedTo?.name || '—'}
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={lead.assignedToId || ''}
+                      onChange={(e) => handleAssignChange(lead.id, e.target.value)}
+                      disabled={savingAssignId === lead.id}
+                      className="bg-transparent text-white/60 hover:text-white text-sm border-none cursor-pointer disabled:opacity-50 focus:outline-none"
+                    >
+                      <option value="" className="bg-[#05030a] text-white">Unassigned</option>
+                      {team.map((t) => (
+                        <option key={t.id} value={t.id} className="bg-[#05030a] text-white">
+                          {t.name || t.email}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/40 whitespace-nowrap">
                     {new Date(lead.createdAt).toLocaleDateString()}

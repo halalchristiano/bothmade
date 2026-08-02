@@ -24,6 +24,8 @@ import {
   Megaphone,
   ArrowRight,
   Palette,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
@@ -40,10 +42,10 @@ interface SalesStats {
   conversionRate: number;
   avgDealSize: number;
   lostReasonCounts: Record<string, number>;
-  hotLeads: Array<{ id: string; company: string; estimatedValue: number | null }>;
-  followUpsToday: Array<{ id: string; company: string }>;
-  followUpsOverdue: Array<{ id: string; company: string; nextFollowUpAt: string }>;
-  staleLeads: Array<{ id: string; company: string; updatedAt: string }>;
+  hotLeads: Array<{ id: string; company: string; estimatedValue: number | null; phone: string | null; email: string | null }>;
+  followUpsToday: Array<{ id: string; company: string; phone: string | null; email: string | null }>;
+  followUpsOverdue: Array<{ id: string; company: string; nextFollowUpAt: string; phone: string | null; email: string | null }>;
+  staleLeads: Array<{ id: string; company: string; updatedAt: string; phone: string | null; email: string | null }>;
   sourcePerformance: Array<{ source: string; total: number; won: number }>;
   clientTypeBreakdown: Record<string, number>;
   wonDeals: Array<{ id: string; company: string; value: number; wonAt: string }>;
@@ -100,6 +102,8 @@ interface NextAction {
   reason: string;
   tone: ActionTone;
   meta: string;
+  phone: string | null;
+  email: string | null;
 }
 
 function NextActionsCard({ stats }: { stats: SalesStats }) {
@@ -109,22 +113,22 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
   for (const l of stats.followUpsOverdue) {
     if (seen.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString() });
+    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email });
   }
   for (const l of stats.followUpsToday) {
     if (seen.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '' });
+    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email });
   }
   for (const l of stats.hotLeads) {
     if (seen.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '' });
+    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
   }
   for (const l of stats.staleLeads) {
     if (seen.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString() });
+    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email });
   }
 
   return (
@@ -147,9 +151,27 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
               title={a.company}
               subtitle={a.reason}
               trailing={
-                <div className="flex items-center gap-2">
-                  {a.meta && <span className="text-white/40 text-xs whitespace-nowrap">{a.meta}</span>}
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  {a.meta && <span className="text-white/40 text-xs whitespace-nowrap hidden sm:inline">{a.meta}</span>}
                   <Badge tone={a.tone}>{a.tone === 'red' ? 'urgent' : a.tone === 'sky' ? 'today' : 'hot'}</Badge>
+                  {a.phone && (
+                    <a
+                      href={`tel:${a.phone}`}
+                      title={`Call ${a.phone}`}
+                      className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors"
+                    >
+                      <Phone size={13} />
+                    </a>
+                  )}
+                  {a.email && (
+                    <a
+                      href={`mailto:${a.email}`}
+                      title={`Email ${a.email}`}
+                      className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
+                    >
+                      <Mail size={13} />
+                    </a>
+                  )}
                   <LogTouchPopover leadId={a.id} />
                 </div>
               }
