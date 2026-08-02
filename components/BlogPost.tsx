@@ -281,7 +281,36 @@ function BlockRenderer({
 
     case 'focusListDemo':
       return <FocusListDemo items={block.items} />;
+
+    case 'seamIndicatorDemo':
+      return <SeamIndicatorDemo />;
   }
+}
+
+/** Same technique as the site-wide ScrollSeamIndicator, scoped to a bounded box via useScroll({ container }). */
+function SeamIndicatorDemo() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ container: containerRef });
+
+  return (
+    <div className="relative rounded-2xl border border-white/10 overflow-hidden">
+      <motion.div
+        className="absolute right-4 top-4 bottom-4 w-px bg-gradient-to-b from-white via-white to-transparent pointer-events-none z-10"
+        style={{ scaleY: scrollYProgress, transformOrigin: 'top center' }}
+      />
+      <div ref={containerRef} className="h-56 overflow-y-auto p-6 pr-10 space-y-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30">
+          scroll this box — watch the line on the right
+        </p>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <p key={i} className="text-sm text-white/45 leading-relaxed">
+            Line {i + 1} — the seam line grows from nothing to full height exactly in step
+            with how far through this box you've scrolled.
+          </p>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /**

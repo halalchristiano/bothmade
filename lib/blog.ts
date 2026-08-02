@@ -72,7 +72,13 @@ export type Block =
    * this exact section of the article demonstrates the reading-line focus
    * effect on itself.
    */
-  | { type: 'focusListDemo'; items: string[] };
+  | { type: 'focusListDemo'; items: string[] }
+  /**
+   * A bounded box with its own vertical seam line growing top-to-bottom as
+   * you scroll it — same technique as the site-wide ScrollSeamIndicator,
+   * scoped locally via useScroll({ container }).
+   */
+  | { type: 'seamIndicatorDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -698,6 +704,46 @@ const tick = () => {
       {
         type: 'p',
         text: "None of these three would carry an entire article on their own, and none of them are trying to. Put together they're most of what makes scrolling through the site feel considered rather than assembled — small, continuous reactions to exactly where you are, instead of animations that just play once and stop.",
+      },
+    ],
+  },
+  {
+    slug: 'the-seam-follows-you-everywhere',
+    title: 'The seam follows you everywhere',
+    dek: "The hero has a draggable seam. The footer has a splitting wordmark. It turns out there's a third one, quietly running on every single page.",
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2026-11-01',
+    readMinutes: 3,
+    body: [
+      {
+        type: 'p',
+        text: "There's a fixed vertical line on the right edge of every page on the site, one pixel wide, that most visitors will never consciously register. It starts at nothing at the top of the page and grows downward as you scroll, reaching full height exactly when you reach the bottom. It isn't announced anywhere and it doesn't have a label. It's just quietly present the entire time you're on the site, the same brand idea — the seam — running in the background instead of sitting in one hero section waiting for you to find it.",
+      },
+      {
+        type: 'statement',
+        text: "The draggable seam in the hero is the idea stated once, loudly. This is the same idea, said constantly, at a volume nobody has to notice.",
+      },
+      { type: 'heading', text: 'Try it' },
+      { type: 'seamIndicatorDemo' },
+      {
+        type: 'p',
+        text: "That's the identical technique, just pointed at a small box instead of the whole page — a scaled useScroll reading scroll progress through that specific container, mapped directly onto scaleY with the transform origin pinned to the top. No spring this time, deliberately: the hero's seam is dragged by a hand and needs weight, but this line is reporting a fact — how far down the page you are — and a fact shouldn't lag behind what actually happened.",
+      },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `const { scrollYProgress } = useScroll();
+
+<motion.div
+  className="fixed right-0 top-0 w-px h-screen bg-gradient-to-b from-white via-white to-transparent"
+  style={{ scaleY: scrollYProgress, transformOrigin: 'top center' }}
+/>`,
+      },
+      { type: 'heading', text: "Three seams, one idea, three different jobs" },
+      {
+        type: 'p',
+        text: "The hero's seam is interactive and demands attention — it's the pitch. The footer's letter-flip is playful and rewards curiosity — it's the signature. This one asks nothing of you and is visible on literally every page you might land on, including ones with no hero and no footer visible yet — it's the ambient reminder that the idea isn't confined to the homepage. Three different implementations of the same four-pixel-wide concept, each doing a job the other two can't.",
       },
     ],
   },
