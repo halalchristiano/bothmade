@@ -17,6 +17,8 @@ export type AddOnKey =
   | 'cms'
   | 'blog'
   | 'multilingual'
+  | 'email-marketing'
+  | 'local-seo'
   // Commerce & bookings
   | 'ecommerce'
   | 'booking'
@@ -29,10 +31,13 @@ export type AddOnKey =
   // Backend & integrations
   | 'custom-backend'
   | 'integrations'
+  | 'crm-setup'
   | 'admin-dashboard'
   | 'user-accounts'
   | 'push-notifications'
   | 'live-chat'
+  | 'app-store-submission'
+  | 'data-migration'
   // Accessibility & compliance
   | 'accessibility-audit'
   | 'privacy-compliance'
@@ -146,6 +151,18 @@ export const ADD_ONS: Record<
     price: 80000,
     category: 'content-growth',
   },
+  'email-marketing': {
+    label: 'Email Marketing Setup',
+    description: 'Klaviyo/Mailchimp integration with a welcome flow and abandoned-cart or lead-nurture sequences.',
+    price: 85000,
+    category: 'content-growth',
+  },
+  'local-seo': {
+    label: 'Local SEO & Google Business Profile',
+    description: 'Google Business Profile setup, local listings, and map-pack optimization for businesses that rely on nearby customers finding them.',
+    price: 55000,
+    category: 'content-growth',
+  },
 
   // Commerce & bookings
   ecommerce: {
@@ -206,6 +223,12 @@ export const ADD_ONS: Record<
     price: 100000,
     category: 'backend-integrations',
   },
+  'crm-setup': {
+    label: 'CRM & Lead Capture Setup',
+    description: 'Wire your site\'s forms into HubSpot, Salesforce, or a sheet/Zapier pipeline so leads land somewhere you actually work from.',
+    price: 65000,
+    category: 'backend-integrations',
+  },
   'admin-dashboard': {
     label: 'Admin Dashboard',
     description: 'An internal tool for your team to manage data without touching the database.',
@@ -228,6 +251,18 @@ export const ADD_ONS: Record<
     label: 'Live Chat Widget',
     description: 'Real-time chat support built into your product.',
     price: 70000,
+    category: 'backend-integrations',
+  },
+  'app-store-submission': {
+    label: 'App Store Submission & Optimization',
+    description: 'App Store / TestFlight setup, listing copy and screenshots, and handling the actual submission and review process.',
+    price: 45000,
+    category: 'backend-integrations',
+  },
+  'data-migration': {
+    label: 'Content & Data Migration',
+    description: 'Import your existing site\'s pages, products, or customer data instead of starting from a blank slate.',
+    price: 75000,
     category: 'backend-integrations',
   },
 
