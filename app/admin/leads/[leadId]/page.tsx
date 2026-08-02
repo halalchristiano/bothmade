@@ -16,6 +16,7 @@ import {
   type PainPointKey,
 } from '@/lib/leads';
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
+import { findGlossaryTerms } from '@/lib/glossary';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
@@ -270,6 +271,7 @@ export default function LeadDetailPage() {
   };
 
   const [showChecklistPains, setShowChecklistPains] = useState(false);
+  const [showGlossary, setShowGlossary] = useState(false);
 
   const [pendingLostStatus, setPendingLostStatus] = useState(false);
 
@@ -708,6 +710,16 @@ export default function LeadDetailPage() {
         const recs = buildSalesRecommendations(allPains);
         const base = BASE_SERVICES[recs.baseService];
 
+        // Only define the words that actually appear in THIS lead's brief —
+        // a fixed glossary of everything would be noise on a phone.
+        const glossary = findGlossaryTerms(
+          lead.currentSiteAssessment,
+          lead.salesNote,
+          lead.customPainPoints,
+          lead.essentialPoints,
+          lead.upsellPoints
+        );
+
         const useWrittenNeeds = writtenNeeds.length > 0;
         const useWrittenUpsell = writtenUpsell.length > 0;
         const hasRange = lead.estimateLowCents !== null || lead.estimateHighCents !== null;
@@ -987,6 +999,43 @@ export default function LeadDetailPage() {
                     <p className="text-[11px] text-amber-200/60 mt-1 leading-snug">Core plus every extra above</p>
                   </div>
                 </div>
+                {glossary.length > 0 && (
+                  <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <button
+                      onClick={() => setShowGlossary((v) => !v)}
+                      className="w-full flex items-center justify-between gap-3 text-left"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold text-white/85">
+                          Words in this brief, explained
+                        </span>
+                        <span className="block text-xs text-white/40 mt-0.5">
+                          {glossary.length} term{glossary.length === 1 ? '' : 's'} used above — tap if you're not
+                          100% sure what one means
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs font-semibold text-sky-300">
+                        {showGlossary ? 'Hide' : 'Show'}
+                      </span>
+                    </button>
+                    {showGlossary && (
+                      <div className="mt-3 space-y-3">
+                        {glossary.map((g) => (
+                          <div key={g.term} className="border-t border-white/[0.06] pt-3">
+                            <p className="text-sm font-bold text-sky-200">{g.term}</p>
+                            <p className="text-xs text-white/60 leading-relaxed mt-1 break-words">{g.plain}</p>
+                            {g.sayIt && (
+                              <p className="text-xs text-white/45 leading-relaxed mt-1.5 break-words">
+                                <span className="text-emerald-300/80 font-semibold">If they ask: </span>"{g.sayIt}"
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {!hasRange && (
                   <p className="text-[11px] text-white/30 leading-relaxed mt-3">
                     These are our standard list prices, added up from the items above. To build a real quote with
