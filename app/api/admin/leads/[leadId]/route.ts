@@ -195,7 +195,13 @@ export async function PATCH(
         mockupRequested: mockupRequested !== undefined ? mockupRequested : undefined,
         mockupRequestedAt: mockupRequested === true && !existing.mockupRequested ? new Date() : undefined,
         mockupUrl: mockupUrl !== undefined ? mockupUrl : undefined,
-        mockupDeliveredAt: mockupUrl !== undefined && mockupUrl ? new Date() : undefined,
+        // Stamp delivery only when the mockup URL actually changes to a new
+        // value — not on every save, which previously re-dated an already-
+        // delivered mockup whenever any other field on the lead was edited.
+        mockupDeliveredAt:
+          mockupUrl !== undefined && mockupUrl && mockupUrl !== existing.mockupUrl
+            ? new Date()
+            : undefined,
         qualNeed: qualNeed !== undefined ? qualNeed : undefined,
         qualAuthority: qualAuthority !== undefined ? qualAuthority : undefined,
         qualBudget: qualBudget !== undefined ? qualBudget : undefined,
