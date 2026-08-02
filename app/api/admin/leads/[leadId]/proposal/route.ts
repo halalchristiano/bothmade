@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
@@ -96,7 +97,7 @@ export async function POST(
         proposalTimeline: timeline,
         proposalTotalPrice: totalPrice,
         proposalDepositOnly: Boolean(depositOnly),
-        proposalCustomItems: customItems,
+        proposalCustomItems: customItems as unknown as Prisma.InputJsonValue,
         // A new proposal supersedes any prior agreement — the client needs
         // to re-agree if Evan changes the scope or price after they signed.
         agreementSignedAt: null,
