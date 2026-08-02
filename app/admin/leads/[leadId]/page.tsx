@@ -705,7 +705,11 @@ export default function LeadDetailPage() {
   // desk days later. Stacked vertically that meant scrolling past a proposal
   // builder to reach a note field mid-call.
   const [tab, setTab] = useState<'brief' | 'call' | 'proposal'>('brief');
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  // Tracks what's been collapsed, not what's been expanded: every item shows
+  // its full coaching detail by default, because a rep new to this needs the
+  // words in front of him, not one tap away.
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
+  const [allCollapsed, setAllCollapsed] = useState(false);
   const [showScript, setShowScript] = useState(false);
   const [scriptCopied, setScriptCopied] = useState(false);
 
@@ -1564,13 +1568,12 @@ export default function LeadDetailPage() {
         // needs if the customer pushes back on it — cost, what it actually
         // is, the words to sell it, and why the price is fair.
         const PricedCard = ({ i, tone }: { i: PricedItem; tone: 'green' | 'amber' }) => {
-          // Every item used to render all six coaching sections at once. With
-          // 22 items that made this tab 18,000px — the price ended up 21
-          // phone screens down, and the list stopped being scannable at all.
-          // Headline and cost always; the rest on demand.
-          const open = expandedItems.has(i.point);
+          // Everything shows by default. Collapsing is there for scanning a
+          // long list, not a default — hiding the pitch and the note box to
+          // save scrolling removed the reason the page exists.
+          const open = !collapsedItems.has(i.point);
           const toggle = () =>
-            setExpandedItems((prev) => {
+            setCollapsedItems((prev) => {
               const next = new Set(prev);
               if (next.has(i.point)) next.delete(i.point);
               else next.add(i.point);
@@ -1602,16 +1605,14 @@ export default function LeadDetailPage() {
                 </div>
                 {i.explanation && (
                   <p
-                    className={`text-xs text-white/55 leading-relaxed mt-1 break-words ${
+                    className={`text-xs text-white/60 leading-relaxed mt-1.5 break-words ${
                       open ? '' : 'line-clamp-1'
                     }`}
                   >
                     {i.explanation}
                   </p>
                 )}
-                {i.entry && open && (
-                  <p className="text-[11px] font-semibold text-white/40 mt-2">Hide the detail</p>
-                )}
+
               </button>
               {i.entry && open && (
                 <>
@@ -1651,11 +1652,9 @@ export default function LeadDetailPage() {
               )}
 
               {/* Quick note — jot their reaction to this exact item while on
-                  the call; logs straight to the lead's timeline. Shown with
-                  the item's detail rather than always: rendered on all 22
-                  items at once it added 3,400px of open forms to a tab that
-                  was already too long to scroll. */}
-              {open && (
+                  the call; logs straight to the lead's timeline. Always
+                  visible: it's used with someone on the phone, and a note box
+                  behind a tap is a note that doesn't get written. */}
               <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
                 <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
                   <StickyNote size={13} /> Their feedback on this
@@ -1709,7 +1708,6 @@ export default function LeadDetailPage() {
                   <p className="text-xs text-red-300 mt-1.5">{sectionNoteError[i.point]}</p>
                 )}
               </div>
-              )}
             </div>
           );
         };
@@ -1985,6 +1983,21 @@ export default function LeadDetailPage() {
                 </div>
 
                 {/* ---- Step 2: the core sell ---- */}
+                <div className="flex justify-end -mb-1">
+                  <button
+                    onClick={() => {
+                      const next = !allCollapsed;
+                      setAllCollapsed(next);
+                      setCollapsedItems(
+                        next ? new Set([...pricedNeeds, ...pricedUpsell].map((i) => i.point)) : new Set()
+                      );
+                    }}
+                    className="text-[11px] font-semibold text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    {allCollapsed ? 'Show all the detail' : 'Collapse to just names and prices'}
+                  </button>
+                </div>
+
                 <Step
                   n={2}
                   title="What they definitely need"
