@@ -359,6 +359,45 @@ words.map((word, i) => (
       },
     ],
   },
+  {
+    slug: 'vision-pro-is-not-a-stretched-ipad',
+    title: "Vision Pro isn't a stretched iPad",
+    dek: "Windows, volumes, and immersive spaces aren't three sizes of the same screen — they're three different design problems.",
+    tag: 'Design',
+    accent: 'indigo',
+    date: '2026-09-20',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "The fastest way to ship something on Vision Pro that feels wrong is to take an iPad layout, drop it in a floating window, and call it done. It'll compile. It'll even look reasonable in a screenshot. Then someone actually wears the headset, and the flat rectangle full of dense list items sitting in physical space just feels like a monitor that followed you home — because it is one. Nothing about the interface acknowledges that it now has depth to work with, or that the user's whole living room is part of the canvas.",
+      },
+      {
+        type: 'statement',
+        text: 'visionOS gives you three fundamentally different containers, and reaching for the wrong one is the most common mistake we see.',
+      },
+      { type: 'heading', text: 'Windows' },
+      {
+        type: 'p',
+        text: "A window is the closest thing to familiar ground — flat SwiftUI content floating in space, and mostly the right call for anything text- or list-heavy: settings, a document, an inbox. The mistake isn't using a window, it's stopping there for everything. Windows are the default because they're the least effort to build, not because they're the best fit for every screen in the app.",
+      },
+      { type: 'heading', text: 'Volumes' },
+      {
+        type: 'p',
+        text: "A volume gives content actual three-dimensional bounds — you can walk around it. This is where a lot of apps quietly fail: they put a 3D model in a volume and never ask what the user gains from walking around it that they didn't already have from rotating it with a drag gesture in a window. A volume earns its cost when depth adds information — an architectural model, a product you're actually inspecting — not when it's used because volumes feel more 'spatial.'",
+      },
+      { type: 'heading', text: 'Immersive spaces' },
+      {
+        type: 'p',
+        text: "Full immersion replaces the user's surroundings, partially or entirely. It's the most powerful container and the easiest to misuse, because taking over someone's entire visual field is a big ask for a feature that doesn't need it. We treat immersive space as something the user opts into for a specific reason — a fully spatial experience the app is actually about — not a wrapper around content that would work fine in a window.",
+      },
+      { type: 'heading', text: 'The actual rule' },
+      {
+        type: 'p',
+        text: "Pick the container based on what the content needs, not on what looks most impressive in a keynote. Most of an app's screens are still windows. That's not a failure to use the platform — using restraint on a platform this new is usually the harder, better decision.",
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
