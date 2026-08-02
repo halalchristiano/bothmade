@@ -158,7 +158,7 @@ model Project {
   // Separate from the cuid PK on purpose: knowing a project's ID — which
   // shows up in admin URLs, emails, and Stripe metadata — must not be the
   // same thing as being allowed to read its status. Rotate to revoke a link.
-  shareToken String @unique @default(dbgenerated("(replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''))"))
+  shareToken String @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
 
   // Metadata
   createdAt   DateTime @default(now())
@@ -349,7 +349,7 @@ model Lead {
   // The link is both "read the proposal" and "agree to the contract", so it
   // gets its own unguessable secret rather than reusing the cuid PK, which
   // is visible in admin URLs, Stripe metadata, and activity records.
-  shareToken String @unique @default(dbgenerated("(replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''))"))
+  shareToken String @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
 
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
