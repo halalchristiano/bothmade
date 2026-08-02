@@ -91,6 +91,7 @@ export async function GET(
           statusStage: project.statusStage,
           baseService: project.baseService,
           addOns: project.addOns.split(',').filter(Boolean),
+          customItems: project.customItems,
           timeline: project.timeline,
           basePrice: project.basePrice,
           totalPrice: project.totalPrice,

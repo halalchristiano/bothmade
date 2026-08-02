@@ -29,6 +29,7 @@ interface ProjectDetail {
   statusStage: number;
   baseService: string;
   addOns: string[];
+  customItems?: Array<{ label: string; priceCents: number }>;
   timeline: string | null;
   basePrice: number;
   totalPrice: number;
@@ -457,6 +458,18 @@ export default function AdminProjectDetailPage() {
                 <div>
                   <p className="text-white/40 mb-1">Add-ons</p>
                   <p className="font-medium capitalize">{project.addOns.join(', ')}</p>
+                </div>
+              )}
+              {project.customItems && project.customItems.length > 0 && (
+                <div>
+                  <p className="text-white/40 mb-1">Custom items</p>
+                  <div className="space-y-1">
+                    {project.customItems.map((item, i) => (
+                      <p key={i} className="font-medium">
+                        {item.label} <span className="text-white/40">({formatCents(item.priceCents)})</span>
+                      </p>
+                    ))}
+                  </div>
                 </div>
               )}
               <div>

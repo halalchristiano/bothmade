@@ -108,6 +108,10 @@ model Project {
   // Project details
   baseService String   // "website", "web-app", "ios-app", "macos-app", "visionos", "multi"
   addOns      String   @default("") // comma-separated: "seo", "analytics", "maintenance", "hosting"
+  // Ad-hoc items added on the lead's proposal beyond the fixed catalogue,
+  // carried over so onboarding shows the full scope the client paid for.
+  // [{ label: string, priceCents: int }]
+  customItems Json     @default("[]")
 
   // Timeline & pricing
   timeline    String?  // "4 weeks", "8 weeks", "12 weeks", etc.

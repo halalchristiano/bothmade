@@ -15,6 +15,7 @@ interface Project {
   timeline: string;
   baseService: string;
   addOns: string[];
+  customItems?: Array<{ label: string; priceCents: number }>;
   totalPrice: number;
   amountPaid: number;
   balanceDue: number;
@@ -336,6 +337,15 @@ export default function ClientDashboard() {
                     <h3 className="text-sm text-white/40 mb-1">Add-ons</h3>
                     <p className="text-lg font-semibold">
                       {project.addOns.map((addon) => addon.charAt(0).toUpperCase() + addon.slice(1)).join(', ')}
+                    </p>
+                  </div>
+                )}
+
+                {project.customItems && project.customItems.length > 0 && (
+                  <div>
+                    <h3 className="text-sm text-white/40 mb-1">Custom items</h3>
+                    <p className="text-lg font-semibold">
+                      {project.customItems.map((item) => item.label).join(', ')}
                     </p>
                   </div>
                 )}

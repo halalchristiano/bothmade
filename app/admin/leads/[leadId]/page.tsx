@@ -729,6 +729,7 @@ export default function LeadDetailPage() {
       addOns: proposalAddOns.join(','),
       clientType: proposalClientType,
       timeline: proposalTimeline,
+      customItems: JSON.stringify(customItems),
       leadId,
     });
     setConvertingToProject(true);
@@ -770,7 +771,7 @@ export default function LeadDetailPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10 overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/admin/leads"
@@ -2159,7 +2160,7 @@ export default function LeadDetailPage() {
           Configure exactly what they want, then send a payment link or generate a contract — no need to send them back to the pricing page.
         </p>
 
-        <div className="grid lg:grid-cols-[1fr_320px] gap-8">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-8">
           {/* Left: configuration steps */}
           <div className="space-y-8">
             <div>
@@ -2392,18 +2393,18 @@ export default function LeadDetailPage() {
               >
                 {downloadingContract ? 'Generating...' : 'Download Contract PDF'}
               </button>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={() => handleSendInvoice('client')}
                   disabled={sendingInvoice !== null}
-                  className="flex-1 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+                  className="flex-1 min-w-0 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
                 >
                   {sendingInvoice === 'client' ? 'Sending...' : 'Email Invoice to Client'}
                 </button>
                 <button
                   onClick={() => handleSendInvoice('self')}
                   disabled={sendingInvoice !== null}
-                  className="flex-1 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+                  className="flex-1 min-w-0 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
                 >
                   {sendingInvoice === 'self' ? 'Sending...' : 'Email Invoice to Myself'}
                 </button>
