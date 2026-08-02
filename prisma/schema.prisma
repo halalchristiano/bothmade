@@ -337,6 +337,35 @@ model CsvImportLog {
 }
 
 // Timeline of outreach on a lead: notes, logged emails, calls, Loom links
+// The answer sheet behind every line item a rep might have to defend on a
+// call: what it is in plain English, what it costs, the words to sell it,
+// and why that price is fair.
+//
+// Research CSVs name the work ("Guided selection system") and explain why
+// this business needs it, but never what to charge or how to justify it.
+// Deriving that at render time meant a rep could hit an item with no answer
+// mid-call, so it lives in the database instead — seeded, editable, and the
+// same for every lead that mentions the item.
+//
+// Matched to a written point by `slug`, which is the item's name reduced to
+// letters and digits only.
+model SalesPlaybookItem {
+  id            String  @id @default(cuid())
+  slug          String  @unique
+  label         String
+  kind          String  @default("essential") // "essential" | "upsell"
+  priceCents    Int
+  whatItIs      String  @db.Text // plain English — assumes no technical background
+  pitch         String  @db.Text // said to the customer, close to verbatim
+  justification String  @db.Text // why the price is fair, in business terms
+  objection     String? @db.Text // the pushback this attracts, and the answer
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sales_playbook_items")
+}
+
 model LeadActivity {
   id     String @id @default(cuid())
   leadId String

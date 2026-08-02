@@ -31,7 +31,23 @@ export async function GET(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, lead }, { status: 200 });
+    // Sent alongside the lead so the brief can price and justify every line
+    // item in one round trip — a second request could leave the page showing
+    // items with no answer beside them while it resolved.
+    const playbook = await prisma.salesPlaybookItem.findMany({
+      select: {
+        slug: true,
+        label: true,
+        kind: true,
+        priceCents: true,
+        whatItIs: true,
+        pitch: true,
+        justification: true,
+        objection: true,
+      },
+    });
+
+    return NextResponse.json({ success: true, lead, playbook }, { status: 200 });
   } catch (error) {
     console.error('Get lead error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

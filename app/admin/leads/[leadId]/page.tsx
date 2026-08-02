@@ -18,6 +18,7 @@ import {
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { findGlossaryTerms } from '@/lib/glossary';
 import { buildCallScript, callScriptToText, painPointPitch } from '@/lib/call-script';
+import { priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
@@ -120,6 +121,7 @@ export default function LeadDetailPage() {
   const leadId = params.leadId as string;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
+  const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
   const [composingEmail, setComposingEmail] = useState(false);
   const [sendingColdDraft, setSendingColdDraft] = useState(false);
   const [coldDraftSent, setColdDraftSent] = useState(false);
@@ -211,6 +213,7 @@ export default function LeadDetailPage() {
       if (data.success) {
         const l: LeadDetail = data.lead;
         setLead(l);
+        setPlaybook(data.playbook ?? []);
         setCompany(l.company);
         setContactName(l.contactName || '');
         setEmail(l.email || '');
@@ -731,6 +734,7 @@ export default function LeadDetailPage() {
         );
         const checklistPains = allPains.filter((k) => !coveredByWritten.has(k));
 
+        const playbookMap = new Map(playbook.map((e) => [e.slug, e]));
         const useWrittenNeeds = writtenNeeds.length > 0;
         const useWrittenUpsell = writtenUpsell.length > 0;
         const hasRange = lead.estimateLowCents !== null || lead.estimateHighCents !== null;
@@ -739,6 +743,11 @@ export default function LeadDetailPage() {
 
         const low = lead.estimateLowCents ?? recs.coreTotal;
         const high = lead.estimateHighCents ?? recs.maxTotal;
+
+        // Essentials add up to the low figure, upsells make up the rest to the
+        // high figure, so the itemised column always agrees with the headline.
+        const pricedNeeds = priceToTotal(writtenNeeds, playbookMap, hasRange ? low : null);
+        const pricedUpsell = priceToTotal(writtenUpsell, playbookMap, hasRange ? Math.max(0, high - low) : null);
 
         const callScript = buildCallScript({
           company: lead.company,
@@ -774,24 +783,51 @@ export default function LeadDetailPage() {
           </div>
         );
 
-        // A written point: the headline, then why it applies to this business.
-        const WrittenPoint = ({
-          item,
-          tone,
-        }: {
-          item: { point: string; explanation: string | null };
-          tone: 'red' | 'green' | 'amber';
-        }) => {
-          const styles = {
-            red: 'border-red-400/20 bg-red-400/[0.05] text-red-200',
-            green: 'border-emerald-400/20 bg-emerald-400/[0.05] text-emerald-100',
-            amber: 'border-amber-400/20 bg-amber-400/[0.05] text-amber-100',
-          }[tone];
+        // A priced line item: their bespoke wording, then everything a rep
+        // needs if the customer pushes back on it — cost, what it actually
+        // is, the words to sell it, and why the price is fair.
+        const PricedCard = ({ i, tone }: { i: PricedItem; tone: 'green' | 'amber' }) => {
+          const c =
+            tone === 'green'
+              ? { box: 'border-emerald-400/20 bg-emerald-400/[0.05]', head: 'text-emerald-100', price: 'text-emerald-300' }
+              : { box: 'border-amber-400/20 bg-amber-400/[0.05]', head: 'text-amber-100', price: 'text-amber-300' };
           return (
-            <div className={`rounded-xl border p-3.5 min-w-0 ${styles}`}>
-              <p className="text-sm font-bold break-words">{item.point}</p>
-              {item.explanation && (
-                <p className="text-xs text-white/60 leading-relaxed mt-1.5 break-words">{item.explanation}</p>
+            <div className={`rounded-xl border p-3.5 min-w-0 ${c.box}`}>
+              <div className="flex items-start justify-between gap-3">
+                <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
+                {i.priceCents !== null && (
+                  <p className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
+                    {tone === 'amber' ? '+' : ''}
+                    {formatCents(i.priceCents)}
+                  </p>
+                )}
+              </div>
+              {i.explanation && (
+                <p className="text-xs text-white/60 leading-relaxed mt-1.5 break-words">{i.explanation}</p>
+              )}
+              {i.entry && (
+                <>
+                  <p className="text-xs text-white/45 leading-relaxed mt-2 break-words">
+                    <span className="text-white/70 font-semibold">What this actually is: </span>
+                    {i.entry.whatItIs}
+                  </p>
+                  <div className="mt-2.5 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                      Say something like this
+                    </p>
+                    <p className="text-xs text-white/80 italic leading-relaxed break-words">"{i.entry.pitch}"</p>
+                  </div>
+                  <p className="text-xs text-white/50 leading-relaxed mt-2.5 break-words">
+                    <span className="text-amber-300/90 font-semibold">Why it's worth the money: </span>
+                    {i.entry.justification}
+                  </p>
+                  {i.entry.objection && (
+                    <p className="text-xs text-white/45 leading-relaxed mt-2 break-words">
+                      <span className="text-red-300/80 font-semibold">If they push back: </span>
+                      {i.entry.objection}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           );
@@ -1024,7 +1060,7 @@ export default function LeadDetailPage() {
                 />
                 <div className="space-y-2.5 mb-3">
                   {useWrittenNeeds ? (
-                    writtenNeeds.map((item, i) => <WrittenPoint key={i} item={item} tone="green" />)
+                    pricedNeeds.map((item, i) => <PricedCard key={i} i={item} tone="green" />)
                   ) : (
                     <>
                       <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/[0.08] p-3.5 min-w-0">
@@ -1079,7 +1115,7 @@ export default function LeadDetailPage() {
                     />
                     <div className="space-y-2.5 mb-3">
                       {useWrittenUpsell
-                        ? writtenUpsell.map((item, i) => <WrittenPoint key={i} item={item} tone="amber" />)
+                        ? pricedUpsell.map((item, i) => <PricedCard key={i} i={item} tone="amber" />)
                         : recs.upsell.map((item) => (
                             <div
                               key={item.key}
