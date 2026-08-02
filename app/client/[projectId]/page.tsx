@@ -86,6 +86,7 @@ export default function ClientDashboard() {
   const [lastVisitAt, setLastVisitAt] = useState<number | null>(null);
 
   const [summaryCopied, setSummaryCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     const storageKey = `bothmade_last_visit_${projectId}`;
@@ -254,12 +255,18 @@ export default function ClientDashboard() {
       `Balance due: $${(project.balanceDue / 100).toLocaleString()}`,
       latestUpdate ? `Latest update: ${latestUpdate.title} (${new Date(latestUpdate.createdAt).toLocaleDateString()})` : null,
       '',
-      `View live: ${typeof window !== 'undefined' ? window.location.href : ''}`,
+      `View live: ${typeof window !== 'undefined' ? `${window.location.origin}/status/${projectId}` : ''}`,
     ].filter(Boolean);
 
     navigator.clipboard.writeText(lines.join('\n'));
     setSummaryCopied(true);
     setTimeout(() => setSummaryCopied(false), 2000);
+  };
+
+  const handleCopyShareLink = () => {
+    navigator.clipboard.writeText(`${window.location.origin}/status/${projectId}`);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   return (
@@ -285,12 +292,20 @@ export default function ClientDashboard() {
                 Created {new Date(project.createdAt).toLocaleDateString()}
               </p>
             </div>
-            <button
-              onClick={handleCopySummary}
-              className="shrink-0 rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 transition-colors whitespace-nowrap"
-            >
-              {summaryCopied ? 'Copied ✓' : 'Copy status summary'}
-            </button>
+            <div className="shrink-0 flex gap-2">
+              <button
+                onClick={handleCopyShareLink}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 transition-colors whitespace-nowrap"
+              >
+                {linkCopied ? 'Copied ✓' : 'Share status link'}
+              </button>
+              <button
+                onClick={handleCopySummary}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 transition-colors whitespace-nowrap"
+              >
+                {summaryCopied ? 'Copied ✓' : 'Copy status summary'}
+              </button>
+            </div>
           </div>
         </div>
 
