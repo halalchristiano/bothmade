@@ -354,8 +354,8 @@ export function MiniBarChart({
             className={`flex-1 flex flex-col items-center gap-1.5 group ${onBarClick ? 'cursor-pointer' : ''}`}
           >
             <span
-              className={`text-[11px] transition-colors -mb-1 ${
-                isSelected ? 'text-white/70' : 'text-white/0 group-hover:text-white/50'
+              className={`text-[11px] transition-colors -mb-1 font-medium ${
+                isSelected ? 'text-white' : 'text-white/25 group-hover:text-white/60'
               }`}
             >
               {formatValue ? formatValue(d.value) : d.value}
@@ -365,10 +365,12 @@ export function MiniBarChart({
               animate={{ height: `${Math.max((d.value / max) * 100, 3)}%` }}
               transition={{ duration: 0.5, ease: 'easeOut', delay: i * 0.05 }}
               className={`w-full rounded-t-sm transition-colors ${
-                isSelected ? 'bg-sky-400' : 'bg-sky-400/40 group-hover:bg-sky-400/70'
+                isSelected
+                  ? 'bg-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.6)] ring-1 ring-sky-200/60'
+                  : 'bg-sky-400/40 group-hover:bg-sky-400/70'
               }`}
             />
-            <span className={`text-[11px] transition-colors ${isSelected ? 'text-white/70' : 'text-white/30'}`}>{d.label}</span>
+            <span className={`text-[11px] transition-colors ${isSelected ? 'text-white font-semibold' : 'text-white/30'}`}>{d.label}</span>
           </Wrapper>
         );
       })}

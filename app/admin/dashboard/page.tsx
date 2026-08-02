@@ -49,8 +49,10 @@ function RangePicker({ range, onChange }: { range: StatsRange; onChange: (r: Sta
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
-          className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-            range === opt.value ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+          className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+            range === opt.value
+              ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black shadow-sm'
+              : 'text-white/40 hover:text-white/70'
           }`}
         >
           {opt.label}
@@ -227,8 +229,8 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
-              tab === t.key ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+            className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
+              tab === t.key ? 'bg-purple-500/25 text-purple-200 ring-1 ring-purple-400/40' : 'text-white/40 hover:text-white/70'
             }`}
           >
             {t.label}
@@ -321,8 +323,8 @@ function WonDealsCard({ stats }: { stats: SalesStats }) {
                 <button
                   key={s}
                   onClick={() => setSort(s)}
-                  className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
-                    sort === s ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+                  className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                    sort === s ? 'bg-emerald-500/25 text-emerald-200 ring-1 ring-emerald-400/40' : 'text-white/40 hover:text-white/70'
                   }`}
                 >
                   {s === 'recent' ? 'Recent' : 'Value'}
@@ -763,8 +765,8 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
                 <button
                   key={s}
                   onClick={() => setSort(s)}
-                  className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
-                    sort === s ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+                  className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                    sort === s ? 'bg-amber-500/25 text-amber-200 ring-1 ring-amber-400/40' : 'text-white/40 hover:text-white/70'
                   }`}
                 >
                   {s === 'amount' ? 'Amount' : 'Name'}
