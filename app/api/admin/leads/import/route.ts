@@ -301,10 +301,12 @@ export async function POST(request: NextRequest) {
 
     // Two research CSVs overlapping is normal, and nothing stopped the same
     // business being created twice — which ends with a rep ringing someone who
-    // was called yesterday. Match on email where there is one (exact, and the
-    // strongest signal), otherwise on the company name reduced to letters and
-    // digits so "A1 Duran Roofing" and "A1 Duran Roofing, Inc." don't slip
-    // past each other on punctuation alone.
+    // was called yesterday. A row is a duplicate if EITHER its email matches an
+    // existing lead OR its company name does (reduced to letters and digits so
+    // "A1 Duran Roofing" and "A1 Duran Roofing, Inc." don't slip past each
+    // other on punctuation alone). Email alone wasn't enough: the same business
+    // re-imported with a different address (info@ vs contact@) sailed through
+    // as a fresh company — exactly the double-call this guard exists to stop.
     const companyKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const existing = await prisma.lead.findMany({
       select: { email: true, company: true },
@@ -319,7 +321,7 @@ export async function POST(request: NextRequest) {
     const deduped = toCreate.filter((row) => {
       const email = row.email?.toLowerCase();
       const key = companyKey(row.company);
-      const isDup = email ? seenEmails.has(email) : seenCompanies.has(key);
+      const isDup = (!!email && seenEmails.has(email)) || seenCompanies.has(key);
       if (isDup) {
         duplicates++;
         if (duplicateNames.length < 5) duplicateNames.push(row.company);
