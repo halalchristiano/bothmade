@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { getTemplate } from '@/lib/email-templates';
 import { renderShell } from '@/lib/email';
 import { sendAsUser, type createGmailBatchTransport } from '@/lib/mailer';
+import { type GmailOAuthClient } from '@/lib/gmail-oauth';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
 
 export interface SendTemplatedEmailInput {
@@ -12,14 +13,15 @@ export interface SendTemplatedEmailInput {
   company?: string;
   fields?: Record<string, string>;
   leadId?: string;
-  /** Pass one shared pooled transport (from createGmailBatchTransport) when sending many in a loop — see that function's docs for why. */
+  /** Pass one shared pooled transport/client (from createGmailBatchTransport / createGmailOAuthBatchClient) when sending many in a loop — see those functions' docs for why. */
   gmailTransport?: ReturnType<typeof createGmailBatchTransport>;
+  gmailOAuthClient?: GmailOAuthClient;
 }
 
 export interface SendTemplatedEmailResult {
   ok: boolean;
   error?: string;
-  sentVia?: 'delegated' | 'gmail-app-password' | 'resend' | 'failed';
+  sentVia?: 'delegated' | 'oauth' | 'gmail-app-password' | 'resend' | 'failed';
 }
 
 export interface BuiltTemplatedEmail {
@@ -74,7 +76,7 @@ export async function buildTemplatedEmail(
  * Compose Email flow and the bulk-send flow so both behave identically.
  */
 export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promise<SendTemplatedEmailResult> {
-  const { senderId, templateId, to, toName, company, fields, leadId, gmailTransport } = input;
+  const { senderId, templateId, to, toName, company, fields, leadId, gmailTransport, gmailOAuthClient } = input;
 
   const template = getTemplate(templateId);
   if (!template) return { ok: false, error: 'Unknown template' };
@@ -87,7 +89,14 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
 
   const sender = await prisma.user.findUnique({
     where: { id: senderId },
-    select: { name: true, email: true, gmailAddress: true, gmailAppPassword: true, avatarUrl: true },
+    select: {
+      name: true,
+      email: true,
+      gmailAddress: true,
+      gmailAppPassword: true,
+      googleRefreshToken: true,
+      avatarUrl: true,
+    },
   });
   if (!sender) return { ok: false, error: 'Sender not found' };
 
@@ -109,9 +118,15 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
   });
 
   const result = await sendAsUser(
-    { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
+    {
+      name: sender.name,
+      email: sender.email,
+      gmailAddress: sender.gmailAddress,
+      gmailAppPassword: sender.gmailAppPassword,
+      googleRefreshToken: sender.googleRefreshToken,
+    },
     { to, subject: built.subject, html },
-    { gmailTransport }
+    { gmailTransport, gmailOAuthClient }
   );
 
   if (!result.ok) return { ok: false, error: 'Failed to send email' };

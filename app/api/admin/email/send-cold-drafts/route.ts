@@ -5,6 +5,8 @@ import { unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
 import { sendAsUser, createGmailBatchTransport } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
+import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
+import { decryptSecret } from '@/lib/crypto';
 import { buildFallbackColdEmailDraft, advanceToContactedOnOutreach } from '@/lib/leads';
 
 const MAX_LEADS = 200;
@@ -46,7 +48,14 @@ export async function POST(request: NextRequest) {
 
     const sender = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { name: true, email: true, gmailAddress: true, gmailAppPassword: true, avatarUrl: true },
+      select: {
+        name: true,
+        email: true,
+        gmailAddress: true,
+        gmailAppPassword: true,
+        googleRefreshToken: true,
+        avatarUrl: true,
+      },
     });
     if (!sender) return unauthorizedResponse();
 
@@ -54,11 +63,15 @@ export async function POST(request: NextRequest) {
 
     const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
 
-    // One pooled connection for the whole batch — see createGmailBatchTransport
-    // for why per-email connections silently fall over to Resend past the
-    // first few sends in a loop this size.
+    // One authenticated client/connection for the whole batch — see
+    // createGmailBatchTransport for why per-email connections silently fall
+    // over to Resend past the first few sends in a loop this size.
+    const gmailOAuthClient =
+      !isDomainDelegationConfigured() && sender.googleRefreshToken
+        ? createGmailOAuthBatchClient(decryptSecret(sender.googleRefreshToken))
+        : undefined;
     const gmailTransport =
-      !isDomainDelegationConfigured() && sender.gmailAddress && sender.gmailAppPassword
+      !isDomainDelegationConfigured() && !gmailOAuthClient && sender.gmailAddress && sender.gmailAppPassword
         ? createGmailBatchTransport(sender.gmailAddress, sender.gmailAppPassword)
         : undefined;
 
@@ -95,9 +108,15 @@ export async function POST(request: NextRequest) {
       });
 
       const result = await sendAsUser(
-        { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
+        {
+          name: sender.name,
+          email: sender.email,
+          gmailAddress: sender.gmailAddress,
+          gmailAppPassword: sender.gmailAppPassword,
+          googleRefreshToken: sender.googleRefreshToken,
+        },
         { to: lead.email, subject, html },
-        { gmailTransport }
+        { gmailTransport, gmailOAuthClient }
       );
 
       if (!result.ok) {

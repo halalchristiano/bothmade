@@ -24,9 +24,16 @@ model User {
   // Gmail "send as" connection — lets client emails go out from the user's
   // own Gmail address (and land in their real Sent folder) instead of a
   // shared no-reply address. gmailAppPassword is encrypted at rest.
-  gmailAddress     String?
-  gmailAppPassword String?
-  gmailConnectedAt DateTime?
+  // App Passwords don't exist for most Google Workspace accounts (Google
+  // requires "less secure app" access that Workspace admins can no longer
+  // enable), so googleRefreshToken (OAuth 2.0, "Sign in with Google") is
+  // the path that actually works for a @bothmade.studio address — tried
+  // first in sendAsUser(), with the app password kept only as a fallback
+  // for personal Gmail accounts that still support it.
+  gmailAddress       String?
+  gmailAppPassword   String?
+  gmailConnectedAt   DateTime?
+  googleRefreshToken String? // encrypted at rest, same as gmailAppPassword
 
   // Headshot shown in the outbound-email footer next to the sender's name.
   avatarUrl String?

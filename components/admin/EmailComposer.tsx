@@ -197,7 +197,7 @@ export function EmailComposer({
           <div className="flex flex-col items-center gap-2 text-sm py-10 justify-center">
             <div className="flex items-center gap-2 text-emerald-300">
               <CheckCircle2 size={18} />
-              Sent{sentVia === 'gmail-app-password' || sentVia === 'delegated' ? ' from your Gmail' : ''}
+              Sent{sentVia !== 'resend' ? ' from your Gmail' : ''}
             </div>
             {sentVia === 'resend' && (
               <p className="text-xs text-amber-300/80 max-w-xs text-center">

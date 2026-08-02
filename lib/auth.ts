@@ -62,6 +62,25 @@ export function verifyToken(
 }
 
 /**
+ * Short-lived signed state for the Gmail OAuth round-trip — Google redirects
+ * back to our callback with this value verbatim, so it has to carry who's
+ * connecting without relying on session cookies surviving the trip to
+ * Google and back.
+ */
+export function createOAuthState(userId: string): string {
+  return jwt.sign({ userId, purpose: 'gmail-oauth' }, JWT_SECRET, { expiresIn: '10m' });
+}
+
+export function verifyOAuthState(state: string): string | null {
+  try {
+    const decoded = jwt.verify(state, JWT_SECRET) as { userId: string; purpose: string };
+    return decoded.purpose === 'gmail-oauth' ? decoded.userId : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Set auth cookie
  */
 export async function setAuthCookie(token: string): Promise<void> {

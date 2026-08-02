@@ -5,6 +5,8 @@ import { unauthorizedResponse } from '@/lib/middleware';
 import { sendTemplatedEmail } from '@/lib/send-templated-email';
 import { createGmailBatchTransport } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
+import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
+import { decryptSecret } from '@/lib/crypto';
 
 interface Recipient {
   leadId: string;
@@ -43,10 +45,14 @@ export async function POST(request: NextRequest) {
     // this size partway through, silently falling the rest back to Resend.
     const sender = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { gmailAddress: true, gmailAppPassword: true },
+      select: { gmailAddress: true, gmailAppPassword: true, googleRefreshToken: true },
     });
+    const gmailOAuthClient =
+      !isDomainDelegationConfigured() && sender?.googleRefreshToken
+        ? createGmailOAuthBatchClient(decryptSecret(sender.googleRefreshToken))
+        : undefined;
     const gmailTransport =
-      !isDomainDelegationConfigured() && sender?.gmailAddress && sender?.gmailAppPassword
+      !isDomainDelegationConfigured() && !gmailOAuthClient && sender?.gmailAddress && sender?.gmailAppPassword
         ? createGmailBatchTransport(sender.gmailAddress, sender.gmailAppPassword)
         : undefined;
 
@@ -64,6 +70,7 @@ export async function POST(request: NextRequest) {
         fields: { ...(sharedFields || {}), ...(recipient.fields || {}) },
         leadId: recipient.leadId,
         gmailTransport,
+        gmailOAuthClient,
       });
       results.push({ leadId: recipient.leadId, company: recipient.company, ok: result.ok, error: result.error });
     }

@@ -5,6 +5,7 @@ import { unauthorizedResponse } from '@/lib/middleware';
 import { encryptSecret } from '@/lib/crypto';
 import { verifyGmailCredentials } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
+import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 
 export async function GET() {
   try {
@@ -13,18 +14,26 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { gmailAddress: true, gmailConnectedAt: true },
+      select: { gmailAddress: true, gmailConnectedAt: true, googleRefreshToken: true, gmailAppPassword: true },
     });
+
+    const connectedVia: 'oauth' | 'app-password' | null = user?.googleRefreshToken
+      ? 'oauth'
+      : user?.gmailAppPassword
+        ? 'app-password'
+        : null;
 
     return NextResponse.json(
       {
-        connected: !!user?.gmailAddress,
+        connected: connectedVia !== null,
+        connectedVia,
         gmailAddress: user?.gmailAddress || null,
         connectedAt: user?.gmailConnectedAt,
+        googleOAuthAvailable: isGoogleOAuthConfigured(),
         // True either way this account's sends will land in a real Gmail
-        // Sent folder — via a personal app password OR org-wide delegation
-        // (which needs no per-user setup at all).
-        willLandInGmailSent: !!user?.gmailAddress || isDomainDelegationConfigured(),
+        // Sent folder — via OAuth, a personal app password, OR org-wide
+        // delegation (which needs no per-user setup at all).
+        willLandInGmailSent: connectedVia !== null || isDomainDelegationConfigured(),
       },
       { status: 200 }
     );
@@ -48,7 +57,10 @@ export async function POST(request: NextRequest) {
       await verifyGmailCredentials(gmailAddress, appPassword);
     } catch {
       return NextResponse.json(
-        { error: "Couldn't sign in with those details. Make sure it's a 16-character App Password, not your regular Gmail password (Google requires 2-Step Verification to be on to generate one)." },
+        {
+          error:
+            "Couldn't sign in with those details. Make sure it's a 16-character App Password, not your regular Gmail password. If this is a Workspace address (like @bothmade.studio), App Passwords are likely disabled entirely — use \"Sign in with Google\" above instead.",
+        },
         { status: 400 }
       );
     }
@@ -76,7 +88,7 @@ export async function DELETE() {
 
     await prisma.user.update({
       where: { id: session.userId },
-      data: { gmailAddress: null, gmailAppPassword: null, gmailConnectedAt: null },
+      data: { gmailAddress: null, gmailAppPassword: null, gmailConnectedAt: null, googleRefreshToken: null },
     });
 
     return NextResponse.json({ success: true }, { status: 200 });
