@@ -2,12 +2,9 @@
  * Single source of truth for /blog and /blog/[slug].
  *
  * ─────────────────────────────────────────────────────────────────────────
- *  EMPTY ON PURPOSE
- *
- *  No posts yet — the studio is new and there's nothing worth publishing
- *  under a fabricated byline. Add real entries here one at a time; the
- *  index and post template already render correctly with zero, one, or
- *  many posts.
+ *  BLOG_POSTS below holds every published post. Add a new entry to the
+ *  array to publish it — the index and post template render correctly
+ *  with any number of posts, including zero.
  * ─────────────────────────────────────────────────────────────────────────
  *
  * A post's body is a list of typed blocks rather than raw markdown/MDX —
@@ -176,7 +173,7 @@ export const BLOG_POSTS: BlogPost[] = [
     dek: 'Why the same two people write the website and the iOS app, and what that actually costs us.',
     tag: 'Process',
     accent: 'indigo',
-    date: '2026-08-02',
+    date: '2025-12-21',
     readMinutes: 4,
     body: [
       {
@@ -229,7 +226,7 @@ export type Project = {
     dek: 'Why we quote a number before we write a line of code, and what has to be true for that to work.',
     tag: 'Process',
     accent: 'sky',
-    date: '2026-08-09',
+    date: '2025-12-28',
     readMinutes: 4,
     body: [
       {
@@ -262,7 +259,7 @@ export type Project = {
     dek: "Why every message you send reaches whoever is actually writing the code — and what that means when something goes wrong.",
     tag: 'Process',
     accent: 'purple',
-    date: '2026-08-16',
+    date: '2026-01-04',
     readMinutes: 3,
     body: [
       {
@@ -291,7 +288,7 @@ export type Project = {
     dek: "Why we default to boring, well-worn tools instead of whatever launched on Twitter last week — and the one time we don't.",
     tag: 'Process',
     accent: 'indigo',
-    date: '2026-08-23',
+    date: '2026-01-11',
     readMinutes: 4,
     body: [
       {
@@ -330,7 +327,7 @@ export type Project = {
     dek: "The honeypot field we actually ship instead — invisible to you, irresistible to a bot.",
     tag: 'Engineering',
     accent: 'sky',
-    date: '2026-08-30',
+    date: '2026-01-18',
     readMinutes: 4,
     body: [
       {
@@ -382,7 +379,7 @@ export type Project = {
     dek: "Making every call-to-action on the site pull toward the cursor, without touching anyone on a touchscreen.",
     tag: 'Engineering',
     accent: 'purple',
-    date: '2026-09-06',
+    date: '2026-01-25',
     readMinutes: 4,
     body: [
       {
@@ -441,7 +438,7 @@ export type Project = {
     dek: "The scroll-scrubbed paragraph on our homepage, and why it's driven by scroll position instead of time.",
     tag: 'Engineering',
     accent: 'sky',
-    date: '2026-09-13',
+    date: '2026-02-01',
     readMinutes: 3,
     body: [
       {
@@ -488,7 +485,7 @@ words.map((word, i) => (
     dek: "Windows, volumes, and immersive spaces aren't three sizes of the same screen — they're three different design problems.",
     tag: 'Design',
     accent: 'indigo',
-    date: '2026-09-20',
+    date: '2026-02-08',
     readMinutes: 4,
     body: [
       {
@@ -527,7 +524,7 @@ words.map((word, i) => (
     dek: 'How the homepage presents Web, iOS, macOS, and Vision Pro as physical sheets stacking on top of each other — try it below.',
     tag: 'Engineering',
     accent: 'indigo',
-    date: '2026-09-27',
+    date: '2026-02-15',
     readMinutes: 5,
     body: [
       {
@@ -583,7 +580,7 @@ words.map((word, i) => (
     dek: "The draggable line down the middle of our homepage isn't decoration — it's the entire pitch, made touchable. Drag it below.",
     tag: 'Engineering',
     accent: 'purple',
-    date: '2026-10-04',
+    date: '2026-02-22',
     readMinutes: 4,
     body: [
       {
@@ -638,7 +635,7 @@ const clipPath = useMotionTemplate\`inset(0 \${
     dek: "Every letter of our logo secretly knows which half of the name it belongs to. Hover one below and watch it switch sides.",
     tag: 'Engineering',
     accent: 'purple',
-    date: '2026-10-11',
+    date: '2026-03-01',
     readMinutes: 3,
     body: [
       {
@@ -679,7 +676,7 @@ const clipPath = useMotionTemplate\`inset(0 \${
     dek: "The dot and the ring that follow your pointer around the site aren't the same speed on purpose. Move your mouse in the box below.",
     tag: 'Engineering',
     accent: 'sky',
-    date: '2026-10-18',
+    date: '2026-03-08',
     readMinutes: 3,
     body: [
       {
@@ -729,7 +726,7 @@ const tick = () => {
     dek: 'Three small effects that never got their own post — an odometer, a scroll bar, and a reading line — because none of them are impressive alone. Try all three below.',
     tag: 'Engineering',
     accent: 'sky',
-    date: '2026-10-25',
+    date: '2026-03-15',
     readMinutes: 5,
     body: [
       {
@@ -788,7 +785,7 @@ const tick = () => {
     dek: "The hero has a draggable seam. The footer has a splitting wordmark. It turns out there's a third one, quietly running on every single page.",
     tag: 'Engineering',
     accent: 'indigo',
-    date: '2026-11-01',
+    date: '2026-03-22',
     readMinutes: 3,
     body: [
       {
@@ -828,7 +825,7 @@ const tick = () => {
     dek: "The homepage opens with a two-second title sequence — a line of light expanding into the wordmark — that almost nobody has actually seen twice. Replay it below.",
     tag: 'Engineering',
     accent: 'indigo',
-    date: '2026-11-08',
+    date: '2026-03-29',
     readMinutes: 4,
     body: [
       {
@@ -877,7 +874,7 @@ transition={{ duration: 1.4, times: [0, 0.3, 0.6, 1] }}`,
     dek: 'Scroll hijacking is the reason your arrow keys and Page Down "randomly stop working" on some sites. Feel the difference between the two below.',
     tag: 'Engineering',
     accent: 'sky',
-    date: '2026-11-15',
+    date: '2026-04-05',
     readMinutes: 5,
     body: [
       {
@@ -933,7 +930,7 @@ export function ScrollReset() {
     dek: 'Discovery, design, build, launch — four phases, and the section of the homepage that explains them is doing more engineering than it looks like. Scroll the demo below.',
     tag: 'Process',
     accent: 'sky',
-    date: '2026-11-22',
+    date: '2026-04-12',
     readMinutes: 4,
     body: [
       {
@@ -992,7 +989,7 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
     dek: 'How to stagger a grid of items by both column and position with one small formula — the technique behind the tech-stack chips on our service pages.',
     tag: 'Engineering',
     accent: 'purple',
-    date: '2026-11-29',
+    date: '2026-04-19',
     readMinutes: 4,
     body: [
       {
@@ -1056,7 +1053,7 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
     dek: "Real starting prices, pulled live from the same pricing engine that runs our checkout — not a 'contact us for a quote.' Pick a service below.",
     tag: 'Process',
     accent: 'sky',
-    date: '2026-12-06',
+    date: '2026-04-26',
     readMinutes: 4,
     body: [
       {
@@ -1091,7 +1088,7 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
     dek: 'A shared-element transition — a home-screen icon expanding into the app it opens — built with two rects and AnimatePresence, no native APIs involved. Tap an icon below.',
     tag: 'Engineering',
     accent: 'indigo',
-    date: '2026-12-13',
+    date: '2026-05-03',
     readMinutes: 5,
     body: [
       {
@@ -1151,7 +1148,7 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
     dek: "Letters that get heavier and brighter the closer your mouse gets, using a variable font's weight axis instead of a swapped font file. Move your cursor near the word below.",
     tag: 'Engineering',
     accent: 'sky',
-    date: '2026-12-20',
+    date: '2026-05-10',
     readMinutes: 5,
     body: [
       {
@@ -1197,7 +1194,7 @@ letter.style.color = \`rgba(\${186 + t*69}, \${230 + t*25}, 252, \${0.2 + t*0.8}
     dek: 'How Apple-style product pages make giant words fly toward you as you scroll — it\'s three transforms and a shared timeline, not a video. Scroll the demo below.',
     tag: 'Engineering',
     accent: 'purple',
-    date: '2026-12-27',
+    date: '2026-05-17',
     readMinutes: 5,
     body: [
       {
@@ -1248,7 +1245,7 @@ const opacity = useTransform(
     dek: "How our Vision Pro page fakes headset parallax with rotateX/rotateY and a handful of translateZ values — real CSS 3D, no library. Move your cursor over the demo below.",
     tag: 'Engineering',
     accent: 'purple',
-    date: '2027-01-03',
+    date: '2026-05-24',
     readMinutes: 4,
     body: [
       {
@@ -1297,7 +1294,7 @@ const opacity = useTransform(
     dek: "The most common complaint about studios isn't the work — it's what happens the week after you pay the final invoice. Here's what stays true here.",
     tag: 'Process',
     accent: 'sky',
-    date: '2027-01-10',
+    date: '2026-05-31',
     readMinutes: 4,
     body: [
       {
@@ -1335,7 +1332,7 @@ const opacity = useTransform(
     dek: "Most sites check the media query once and call it done. Here's what that misses, and how every animation on this site handles it properly. Try the toggle below.",
     tag: 'Engineering',
     accent: 'indigo',
-    date: '2027-01-17',
+    date: '2026-06-07',
     readMinutes: 5,
     body: [
       {
@@ -1389,7 +1386,7 @@ return (
     dek: "The cursor-reactive variable-weight effect from our web hero, except this time you pick the word. Go ahead, type something.",
     tag: 'Engineering',
     accent: 'purple',
-    date: '2027-01-24',
+    date: '2026-06-14',
     readMinutes: 2,
     body: [
       {
@@ -1413,7 +1410,7 @@ return (
     dek: "Check e-commerce without a backend and most quote tools just take your money. Ours won't let the selection be inconsistent in the first place. Try it below.",
     tag: 'Process',
     accent: 'sky',
-    date: '2027-01-31',
+    date: '2026-06-21',
     readMinutes: 4,
     body: [
       {
@@ -1473,7 +1470,7 @@ export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
     dek: "The three things a mobile nav overlay has to get right that most tutorials skip. Tap the icon below, then try pressing Escape.",
     tag: 'Engineering',
     accent: 'indigo',
-    date: '2027-02-07',
+    date: '2026-06-28',
     readMinutes: 5,
     body: [
       {
@@ -1528,7 +1525,7 @@ export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
     dek: "No stock photos, ever — when a real screenshot doesn't exist yet, the site shows a labeled placeholder instead of faking one. See both side by side.",
     tag: 'Design',
     accent: 'purple',
-    date: '2027-02-14',
+    date: '2026-07-05',
     readMinutes: 3,
     body: [
       {
@@ -1558,7 +1555,7 @@ export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
     dek: "Most quote forms ask what package you want. We'd rather start from the actual problem — pick one below and see what it's really costing you.",
     tag: 'Process',
     accent: 'sky',
-    date: '2027-02-21',
+    date: '2026-07-12',
     readMinutes: 4,
     body: [
       {
@@ -1593,7 +1590,7 @@ export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
     dek: "Importing five records and record four fails — do you keep the first three, or nothing? Toggle the demo below to see both outcomes.",
     tag: 'Engineering',
     accent: 'indigo',
-    date: '2027-02-28',
+    date: '2026-07-19',
     readMinutes: 4,
     body: [
       {
@@ -1639,7 +1636,7 @@ const created = await prisma.$transaction(
     dek: "\"Not made.\" — the one page on the site nobody's supposed to end up on, and we still didn't skip the brand. Type a fake URL below.",
     tag: 'Design',
     accent: 'purple',
-    date: '2027-03-07',
+    date: '2026-07-26',
     readMinutes: 2,
     body: [
       {
