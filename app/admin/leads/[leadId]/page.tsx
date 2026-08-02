@@ -39,6 +39,7 @@ import {
   BASE_SERVICES,
   CLIENT_TYPES,
   TIMELINES,
+  buildSalesRecommendations,
   calculatePrice,
   depositAmount,
   dependentsOf,
@@ -95,6 +96,8 @@ interface LeadDetail {
   personalizedObservation: string | null;
   emailDeliveryFailedAt: string | null;
   emailDeliveryFailedReason: string | null;
+  originalWebsite: string | null;
+  salesNote: string | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -119,6 +122,8 @@ export default function LeadDetailPage() {
   const [source, setSource] = useState('');
   const [estimatedValue, setEstimatedValue] = useState('');
   const [notes, setNotes] = useState('');
+  const [originalWebsite, setOriginalWebsite] = useState('');
+  const [salesNote, setSalesNote] = useState('');
   const [painPoints, setPainPoints] = useState<PainPointKey[]>([]);
 
   const [qualNeed, setQualNeed] = useState('');
@@ -201,6 +206,8 @@ export default function LeadDetailPage() {
         setSource(l.source || '');
         setEstimatedValue(l.estimatedValue ? String(l.estimatedValue / 100) : '');
         setNotes(l.notes || '');
+        setOriginalWebsite(l.originalWebsite || '');
+        setSalesNote(l.salesNote || '');
         setPainPoints(
           l.painPoints
             .split(',')
@@ -241,6 +248,8 @@ export default function LeadDetailPage() {
           source,
           estimatedValue: estimatedValue ? Math.round(Number(estimatedValue) * 100) : null,
           notes,
+          originalWebsite: originalWebsite.trim() || null,
+          salesNote: salesNote.trim() || null,
           painPoints,
         }),
       });
@@ -671,6 +680,101 @@ export default function LeadDetailPage() {
         />
       )}
 
+      {(() => {
+        const recs = buildSalesRecommendations(painPoints);
+        const hasContent =
+          lead.originalWebsite || lead.mockupUrl || lead.salesNote || recs.needs.length > 0 || recs.upsell.length > 0;
+        if (!hasContent) return null;
+        return (
+          <div className="mt-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-white/60 mb-4">Sales Intelligence</h2>
+
+            {(lead.originalWebsite || lead.mockupUrl) && (
+              <div className="flex flex-wrap gap-2 mb-5">
+                {lead.originalWebsite && (
+                  <a
+                    href={lead.originalWebsite}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 px-3.5 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-400/20 transition-colors"
+                  >
+                    <Compass size={12} /> Their current website
+                  </a>
+                )}
+                {lead.mockupUrl && (
+                  <a
+                    href={lead.mockupUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 bg-purple-400/10 px-3.5 py-1.5 text-xs font-semibold text-purple-300 hover:bg-purple-400/20 transition-colors"
+                  >
+                    <CheckCircle2 size={12} /> Mockup we sent them
+                  </a>
+                )}
+              </div>
+            )}
+
+            {(recs.needs.length > 0 || recs.upsell.length > 0) && (
+              <div className="grid sm:grid-cols-2 gap-4 mb-5">
+                <div>
+                  <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-emerald-300/80 mb-2">
+                    <AlertTriangle size={11} /> What they actually need
+                  </p>
+                  {recs.needs.length === 0 ? (
+                    <p className="text-xs text-white/30 italic">No must-have gaps identified from pain points yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recs.needs.map((key) => (
+                        <div key={key} className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-emerald-200">{ADD_ONS[key].label}</p>
+                            <p className="text-xs font-semibold text-emerald-300 whitespace-nowrap">
+                              {formatCents(ADD_ONS[key].price)}
+                            </p>
+                          </div>
+                          <p className="text-xs text-white/45 mt-0.5">{ADD_ONS[key].description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-amber-300/80 mb-2">
+                    <DollarSign size={11} /> Upsell opportunities
+                  </p>
+                  {recs.upsell.length === 0 ? (
+                    <p className="text-xs text-white/30 italic">Nothing obvious to upsell yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recs.upsell.map((key) => (
+                        <div key={key} className="rounded-lg border border-amber-400/20 bg-amber-400/[0.06] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-amber-200">{ADD_ONS[key].label}</p>
+                            <p className="text-xs font-semibold text-amber-300 whitespace-nowrap">
+                              {formatCents(ADD_ONS[key].price)}
+                            </p>
+                          </div>
+                          <p className="text-xs text-white/45 mt-0.5">{ADD_ONS[key].description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {lead.salesNote && (
+              <div className="rounded-lg border border-sky-400/20 bg-sky-400/[0.06] p-3.5">
+                <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-sky-300/80 mb-1">
+                  <StickyNote size={11} /> Note for Evan
+                </p>
+                <p className="text-sm text-sky-100/90 whitespace-pre-wrap">{lead.salesNote}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <div className="grid lg:grid-cols-3 gap-6 mt-4">
         {/* LEFT: Lead info */}
         <div className="lg:col-span-1 space-y-6">
@@ -796,6 +900,19 @@ export default function LeadDetailPage() {
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Quick notes..."
                   rows={3}
+                  className={`${inputClass} resize-none`}
+                />
+                <input
+                  value={originalWebsite}
+                  onChange={(e) => setOriginalWebsite(e.target.value)}
+                  placeholder="Their existing website (https://...)"
+                  className={inputClass}
+                />
+                <textarea
+                  value={salesNote}
+                  onChange={(e) => setSalesNote(e.target.value)}
+                  placeholder="Note for Evan — strategy, what to lead with, etc."
+                  rows={2}
                   className={`${inputClass} resize-none`}
                 />
 

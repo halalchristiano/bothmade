@@ -73,6 +73,8 @@ export async function PATCH(
       qualMotivation,
       clearEmailFailure,
       assignedToId,
+      originalWebsite,
+      salesNote,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -142,6 +144,8 @@ export async function PATCH(
         emailDeliveryFailedAt: clearEmailFailure ? null : undefined,
         emailDeliveryFailedReason: clearEmailFailure ? null : undefined,
         assignedToId: assignedToId !== undefined ? (assignedToId || null) : undefined,
+        originalWebsite: originalWebsite !== undefined ? originalWebsite : undefined,
+        salesNote: salesNote !== undefined ? salesNote : undefined,
       },
     });
 

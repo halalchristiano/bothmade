@@ -45,6 +45,10 @@ const HEADER_ALIASES: Record<string, string> = {
   website: 'originalwebsite',
   servicestopitch: 'servicestopitch',
   services: 'servicestopitch',
+  salesnote: 'salesnote',
+  noteforevan: 'salesnote',
+  evannote: 'salesnote',
+  strategynote: 'salesnote',
 };
 
 /**
@@ -80,6 +84,8 @@ function normalizeRow(row: Record<string, string>): Record<string, string> {
         canonical = 'phone';
       } else if (key.includes('contact') || key.includes('name')) {
         canonical = 'contactname';
+      } else if (key.includes('note') && (key.includes('evan') || key.includes('sales') || key.includes('strateg'))) {
+        canonical = 'salesnote';
       } else if (key.includes('note')) {
         canonical = 'notes';
       } else {
@@ -102,9 +108,12 @@ function normalizeRow(row: Record<string, string>): Record<string, string> {
  * one-liner — pre-fills the "personalized observation" field the
  * cold-outreach templates require), mockupurl (stored on the lead's
  * mockupUrl field — powers the Loom/mockup link default in the email
- * composer), and address, industry, originalwebsite, servicestopitch
- * (folded into notes since there's no dedicated column for them yet).
- * Header matching is tolerant of real-world spelling/spacing — see
+ * composer), originalwebsite (their existing site — its own field, shown
+ * as a one-click link on the lead detail page), salesnote (a strategic
+ * note for whoever works the lead, distinct from general notes), and
+ * address, industry, servicestopitch (folded into notes since there's no
+ * dedicated column for them yet). Header matching is tolerant of
+ * real-world spelling/spacing — see
  * normalizeRow() — since research CSVs rarely use our exact field names.
  */
 export async function POST(request: NextRequest) {
@@ -149,7 +158,6 @@ export async function POST(request: NextRequest) {
         const extra = [
           row.industry ? `Industry: ${row.industry.trim()}` : '',
           row.address ? `Address: ${row.address.trim()}` : '',
-          row.originalwebsite ? `Existing site: ${row.originalwebsite.trim()}` : '',
           row.servicestopitch ? `Services to pitch: ${row.servicestopitch.trim()}` : '',
         ]
           .filter(Boolean)
@@ -170,6 +178,8 @@ export async function POST(request: NextRequest) {
           personalizedObservation:
             row.personalizedobservation?.trim() || row.personalisedobservation?.trim() || null,
           mockupUrl: row.mockupurl?.trim() || null,
+          originalWebsite: row.originalwebsite?.trim() || null,
+          salesNote: row.salesnote?.trim() || null,
           assignedToId: session.userId,
         };
       })

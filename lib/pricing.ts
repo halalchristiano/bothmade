@@ -1,6 +1,8 @@
 // Pricing model for the /start calculator, Stripe checkout, and Project records.
 // All prices are in cents (USD), matching Project.basePrice / Project.totalPrice.
 
+import type { PainPointKey } from '@/lib/leads';
+
 export type BaseService =
   | 'website'
   | 'web-app'
@@ -514,4 +516,49 @@ export function formatCents(cents: number): string {
     currency: 'USD',
     maximumFractionDigits: 0,
   });
+}
+
+/**
+ * Maps each identified pain point to what actually fixes it ("needs" — the
+ * core sell, usually the reason they'd say yes at all) versus what's a
+ * natural add-on once they're already saying yes ("upsell" — real value,
+ * but not the thing that closes the deal). A starting heuristic for the
+ * lead detail page's sales-intelligence panel, not a hard rule — Evan
+ * should still use judgment per lead.
+ */
+export const PAIN_POINT_RECOMMENDATIONS: Record<PainPointKey, { needs: AddOnKey[]; upsell: AddOnKey[] }> = {
+  'no-website': { needs: [], upsell: ['seo', 'copywriting'] },
+  'outdated-design': { needs: [], upsell: ['brand-identity', 'animations', 'illustrations'] },
+  'not-mobile-friendly': { needs: [], upsell: ['accessibility-audit'] },
+  'slow-site': { needs: [], upsell: ['hosting'] },
+  'poor-seo': { needs: ['seo'], upsell: ['local-seo', 'analytics', 'blog'] },
+  'no-analytics': { needs: ['analytics'], upsell: ['local-seo'] },
+  'no-app': { needs: [], upsell: [] },
+  'manual-processes': { needs: ['custom-backend', 'integrations'], upsell: ['admin-dashboard'] },
+  'no-booking': { needs: ['booking'], upsell: ['crm-setup'] },
+  'no-ecommerce': { needs: ['ecommerce'], upsell: ['subscriptions', 'email-marketing'] },
+  'weak-branding': { needs: ['brand-identity'], upsell: ['copywriting', 'illustrations'] },
+  'security-concerns': { needs: ['privacy-compliance'], upsell: ['accessibility-audit'] },
+  'scaling-issues': { needs: ['custom-backend'], upsell: ['admin-dashboard', 'hosting'] },
+  'disconnected-tools': { needs: ['integrations'], upsell: ['crm-setup', 'admin-dashboard'] },
+};
+
+export interface SalesRecommendations {
+  needs: AddOnKey[];
+  upsell: AddOnKey[];
+}
+
+/** Combines every identified pain point's recommendations into one deduped needs/upsell breakdown. */
+export function buildSalesRecommendations(painPointKeys: PainPointKey[]): SalesRecommendations {
+  const needs = new Set<AddOnKey>();
+  const upsell = new Set<AddOnKey>();
+  for (const key of painPointKeys) {
+    const rec = PAIN_POINT_RECOMMENDATIONS[key];
+    if (!rec) continue;
+    rec.needs.forEach((a) => needs.add(a));
+    rec.upsell.forEach((a) => upsell.add(a));
+  }
+  // Don't double-list something as an upsell if it's already a core need.
+  for (const a of needs) upsell.delete(a);
+  return { needs: Array.from(needs), upsell: Array.from(upsell) };
 }

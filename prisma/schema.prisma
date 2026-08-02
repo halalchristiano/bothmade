@@ -250,6 +250,16 @@ model Lead {
   // of starting blank every time.
   personalizedObservation String?
 
+  // Their existing site, if they have one — a dedicated field (rather than
+  // folded into notes) so it can be a one-click link on the lead detail
+  // page instead of buried in a paragraph of text.
+  originalWebsite String?
+
+  // A short strategic note for whoever's working this lead — "lead with the
+  // booking system, they mentioned losing appointments to no-shows" — as
+  // opposed to `notes`, which is general freeform info about the business.
+  salesNote String?
+
   // BANT-style qualification — structured so "qualified" means something
   // consistent instead of a gut call. Each is a freeform answer summary,
   // not just a checkbox, since the real value is in what was actually said.

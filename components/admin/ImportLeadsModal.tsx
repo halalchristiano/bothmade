@@ -41,7 +41,13 @@ const COLUMNS: Array<{ header: string; required: boolean; description: string; e
   },
   { header: 'industry', required: false, description: "Folded into notes — there's no dedicated column yet", example: 'Dental practice' },
   { header: 'address', required: false, description: "Folded into notes — there's no dedicated column yet", example: '123 Main St' },
-  { header: 'originalWebsite', required: false, description: "Folded into notes — there's no dedicated column yet", example: 'https://example.com' },
+  { header: 'originalWebsite', required: false, description: 'Their existing site — shown as a one-click link on the lead page', example: 'https://example.com' },
+  {
+    header: 'salesNote',
+    required: false,
+    description: 'A short strategic note for whoever works this lead — separate from general notes',
+    example: 'Lead with the booking system — they mentioned losing appointments to no-shows.',
+  },
 ];
 
 export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
