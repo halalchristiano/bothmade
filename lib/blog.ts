@@ -162,6 +162,45 @@ export type Project = {
       },
     ],
   },
+  {
+    slug: 'built-to-last',
+    title: 'Built to last',
+    dek: "Why we default to boring, well-worn tools instead of whatever launched on Twitter last week — and the one time we don't.",
+    tag: 'Process',
+    accent: 'indigo',
+    date: '2026-08-23',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "A new framework shows up every few months promising to make everything faster, simpler, more elegant. Some of them are genuinely good ideas. Almost none of them have been run in production long enough for anyone to know what breaks at year two — the upgrade path nobody wrote, the plugin ecosystem that quietly stopped maintaining itself, the one maintainer who moved on. You don't find that out by reading the launch post. You find out by being the client stuck migrating off it.",
+      },
+      {
+        type: 'statement',
+        text: "We'd rather you own something boring for ten years than something exciting for two.",
+      },
+      { type: 'heading', text: 'What "boring" means here' },
+      {
+        type: 'code',
+        language: 'text',
+        code: `Default stack, chosen for longevity over novelty:
+
+  Web       Next.js, TypeScript, Postgres
+  iOS       Swift, SwiftUI
+  Backend   Prisma, plain REST — no bespoke query layer
+  Hosting   Vercel / standard cloud, nothing exotic to operate`,
+      },
+      {
+        type: 'p',
+        text: "None of this is a hot take. That's the point. Every piece has a large community, a multi-year track record, and — crucially — more than one company you could hire if you ever needed to move off us. A product built on a tool only we understand isn't really yours; it's ours, and you're renting it. Boring, popular tools mean you could hand this codebase to a different developer next year and they'd recognize everything in it by lunchtime.",
+      },
+      { type: 'heading', text: 'When we break the rule' },
+      {
+        type: 'p',
+        text: "We'll reach for something newer when the boring option genuinely can't do the job — not because the new thing is interesting, but because there's no mature alternative yet. When that happens, we say so explicitly before you're committed to it, and we explain what the risk actually is, rather than quietly picking the fun tool and letting you find out later.",
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
