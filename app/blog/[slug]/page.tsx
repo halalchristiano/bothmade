@@ -31,6 +31,8 @@ export async function generateMetadata({
   };
 }
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const post = getBlogPost(slug);
@@ -39,5 +41,37 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
   const { prev, next } = getAdjacentBlogPosts(slug);
 
-  return <BlogPostPage post={post} prev={prev} next={next} />;
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'BlogPosting',
+            headline: post.title,
+            description: post.dek,
+            datePublished: post.date,
+            dateModified: post.date,
+            url: `${SITE_URL}/blog/${post.slug}`,
+            author: {
+              '@type': 'Organization',
+              name: 'Bothmade',
+              url: SITE_URL,
+            },
+            publisher: {
+              '@type': 'Organization',
+              name: 'Bothmade',
+              url: SITE_URL,
+            },
+            mainEntityOfPage: {
+              '@type': 'WebPage',
+              '@id': `${SITE_URL}/blog/${post.slug}`,
+            },
+          }),
+        }}
+      />
+      <BlogPostPage post={post} prev={prev} next={next} />
+    </>
+  );
 }

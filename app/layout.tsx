@@ -72,8 +72,12 @@ export default function RootLayout({
               '@type': 'ProfessionalService',
               name: 'Bothmade',
               url: SITE_URL,
+              logo: `${SITE_URL}/icon`,
+              image: `${SITE_URL}/opengraph-image`,
+              email: 'evan@bothmade.studio',
               description:
                 'Web and native Apple development studio. Websites, iOS and iPad apps, macOS software, and Vision Pro experiences — designed and shipped by one team.',
+              priceRange: '$$',
               knowsAbout: [
                 'Web development',
                 'iOS app development',
