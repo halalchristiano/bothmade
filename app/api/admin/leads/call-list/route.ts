@@ -28,7 +28,21 @@ import { unauthorizedResponse } from '@/lib/middleware';
 // stay a cheap query. Truncation is reported rather than hidden.
 const MAX_ROWS = 2000;
 
-export type CallReason = 'bounced' | 'overdue' | 'today' | 'no-follow-up' | 'never-contacted';
+/**
+ * Why a lead is on the list — or, for `scheduled`, why it isn't.
+ *
+ * Every open lead resolves to exactly one of these, and the counts add up to
+ * the total. The rules are checked in this order and the first match wins, so
+ * no lead can qualify for two and none can fall through to a default.
+ */
+export type CallReason =
+  | 'bounced'
+  | 'overdue'
+  | 'today'
+  | 'no-follow-up'
+  | 'never-contacted'
+  /** Booked for a future date — deliberately not callable today. */
+  | 'scheduled';
 
 const REASON_RANK: Record<CallReason, number> = {
   bounced: 0,
@@ -36,7 +50,17 @@ const REASON_RANK: Record<CallReason, number> = {
   today: 2,
   'no-follow-up': 3,
   'never-contacted': 4,
+  scheduled: 5,
 };
+
+/** The bands that make up the call list. `scheduled` is counted, not called. */
+const CALLABLE_REASONS: CallReason[] = [
+  'bounced',
+  'overdue',
+  'today',
+  'no-follow-up',
+  'never-contacted',
+];
 
 export async function GET() {
   try {
@@ -102,21 +126,42 @@ export async function GET() {
     endOfToday.setDate(endOfToday.getDate() + 1);
 
     const rows = leads.map((lead) => {
+      // "Contacted" means anyone actually reached out — an email that went, or
+      // any logged activity. Reading status alone called a lead that had been
+      // rung twice "not contacted yet", because nothing had moved its stage.
+      const hasBeenContacted =
+        !!lead.coldEmailSentAt || lead.activities.length > 0 || lead.status !== 'new';
+
+      // First match wins, and the branches are exhaustive — every lead gets
+      // exactly one reason, so the counts below can be trusted to add up.
       let reason: CallReason;
-      if (lead.emailDeliveryFailedAt) reason = 'bounced';
-      else if (lead.nextFollowUpAt && lead.nextFollowUpAt < startOfToday) reason = 'overdue';
-      else if (lead.nextFollowUpAt && lead.nextFollowUpAt < endOfToday) reason = 'today';
-      else if (!lead.nextFollowUpAt && (lead.coldEmailSentAt || lead.status !== 'new')) reason = 'no-follow-up';
-      else reason = 'never-contacted';
+      if (lead.emailDeliveryFailedAt) {
+        reason = 'bounced'; // email can't reach them at all, so the date is moot
+      } else if (lead.nextFollowUpAt && lead.nextFollowUpAt < startOfToday) {
+        reason = 'overdue';
+      } else if (lead.nextFollowUpAt && lead.nextFollowUpAt < endOfToday) {
+        reason = 'today';
+      } else if (lead.nextFollowUpAt) {
+        reason = 'scheduled'; // booked beyond today
+      } else if (hasBeenContacted) {
+        reason = 'no-follow-up';
+      } else {
+        reason = 'never-contacted';
+      }
 
       return { ...lead, reason, lastActivity: lead.activities[0] ?? null, activities: undefined };
     });
 
-    // A follow-up that's due is due whether or not it's in the future, so
-    // anything scheduled beyond today stays out of the list entirely.
-    const due = rows.filter(
-      (r) => !(r.reason === 'never-contacted' && r.nextFollowUpAt && r.nextFollowUpAt >= endOfToday)
-    );
+    // Every reason is counted, including the one that keeps a lead off the
+    // list, so the page can show a breakdown that reconciles with the total.
+    const breakdown = Object.fromEntries(
+      ([...CALLABLE_REASONS, 'scheduled'] as CallReason[]).map((r) => [
+        r,
+        rows.filter((x) => x.reason === r).length,
+      ])
+    ) as Record<CallReason, number>;
+
+    const due = rows.filter((r) => r.reason !== 'scheduled');
 
     due.sort((a, b) => {
       const byReason = REASON_RANK[a.reason] - REASON_RANK[b.reason];
@@ -137,7 +182,9 @@ export async function GET() {
         noPhone: due.filter((r) => !r.phone),
         // What the numbers on screen actually mean.
         totalOpen,
-        scheduledLater: leads.length - due.length,
+        breakdown,
+        scheduledLater: breakdown.scheduled,
+        noPhoneCount: due.filter((r) => !r.phone).length,
         truncated: leads.length >= MAX_ROWS,
       },
       { status: 200 }

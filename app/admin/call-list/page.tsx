@@ -9,7 +9,7 @@ import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
 
-type CallReason = 'bounced' | 'overdue' | 'today' | 'no-follow-up' | 'never-contacted';
+type CallReason = 'bounced' | 'overdue' | 'today' | 'no-follow-up' | 'never-contacted' | 'scheduled';
 
 interface CallRow {
   id: string;
@@ -54,6 +54,11 @@ const REASONS: Record<CallReason, { label: string; blurb: string; classes: strin
     blurb: 'Fresh leads nobody has spoken to.',
     classes: 'border-white/15 bg-white/[0.04] text-white/70',
   },
+  scheduled: {
+    label: 'Booked for a later date',
+    blurb: "Not on today's list — they have a follow-up date in the future.",
+    classes: 'border-white/15 bg-white/[0.04] text-white/70',
+  },
 };
 
 const ORDER: CallReason[] = ['bounced', 'overdue', 'today', 'no-follow-up', 'never-contacted'];
@@ -62,9 +67,12 @@ export default function CallListPage() {
   const router = useRouter();
   const [callable, setCallable] = useState<CallRow[]>([]);
   const [noPhone, setNoPhone] = useState<CallRow[]>([]);
-  const [meta, setMeta] = useState<{ totalOpen: number; scheduledLater: number; truncated: boolean } | null>(
-    null
-  );
+  const [meta, setMeta] = useState<{
+    totalOpen: number;
+    breakdown: Partial<Record<CallReason, number>>;
+    noPhoneCount: number;
+    truncated: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -72,6 +80,7 @@ export default function CallListPage() {
   // Choosing controls. The list knows the right order; these let a rep pick a
   // business to actually ring now — which the order alone can't, because the
   // most urgent lead is often one where it's the middle of the night.
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [readyNow, setReadyNow] = useState(false);
   const [sortBy, setSortBy] = useState<'urgent' | 'value' | 'time'>('urgent');
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -89,7 +98,8 @@ export default function CallListPage() {
         setNoPhone(data.noPhone);
         setMeta({
           totalOpen: data.totalOpen ?? 0,
-          scheduledLater: data.scheduledLater ?? 0,
+          breakdown: data.breakdown ?? {},
+          noPhoneCount: data.noPhoneCount ?? 0,
           truncated: !!data.truncated,
         });
       }
@@ -186,14 +196,15 @@ export default function CallListPage() {
               ? 'Nothing waiting on a call right now.'
               : `${total} ${total === 1 ? 'business' : 'businesses'} to ring, most urgent first. Work down the list.`}
           </p>
-          {/* Where the number came from. A work queue that shows a subset
-              without saying so reads as "this is everything". */}
+          {/* Every open lead falls into exactly one of these and the figures
+              reconcile with the total, so the number is never a mystery. */}
           {meta && meta.totalOpen > 0 && (
-            <p className="text-xs text-white/30 mt-1.5 leading-relaxed">
-              From {meta.totalOpen} open {meta.totalOpen === 1 ? 'lead' : 'leads'} (won and lost excluded)
-              {meta.scheduledLater > 0 && `, minus ${meta.scheduledLater} booked for a later date`}
-              {noPhone.length > 0 && `, minus ${noPhone.length} with no phone number`}.
-            </p>
+            <button
+              onClick={() => setShowBreakdown((v) => !v)}
+              className="text-xs text-white/35 hover:text-white/60 mt-1.5 underline underline-offset-2 transition-colors"
+            >
+              {showBreakdown ? 'Hide' : 'Where does this number come from?'}
+            </button>
           )}
         </div>
         <button
@@ -205,6 +216,44 @@ export default function CallListPage() {
           {syncing ? 'Checking...' : 'Check for bounced emails'}
         </button>
       </div>
+
+      {showBreakdown && meta && (
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="text-xs text-white/50 leading-relaxed mb-3">
+            Every open lead lands in exactly one row below. Won and lost leads are excluded entirely.
+          </p>
+          <div className="space-y-1.5 text-xs">
+            {(
+              [
+                ['bounced', REASONS.bounced.label],
+                ['overdue', REASONS.overdue.label],
+                ['today', REASONS.today.label],
+                ['no-follow-up', REASONS['no-follow-up'].label],
+                ['never-contacted', REASONS['never-contacted'].label],
+                ['scheduled', REASONS.scheduled.label],
+              ] as Array<[CallReason, string]>
+            ).map(([key, label]) => (
+              <div key={key} className="flex justify-between gap-3">
+                <span className={key === 'scheduled' ? 'text-white/30' : 'text-white/55'}>
+                  {label}
+                  {key === 'scheduled' && ' (not on the list)'}
+                </span>
+                <span className="font-semibold text-white/70 tabular-nums">{meta.breakdown[key] ?? 0}</span>
+              </div>
+            ))}
+            <div className="flex justify-between gap-3 border-t border-white/10 pt-2 mt-2">
+              <span className="text-white/70 font-semibold">Total open leads</span>
+              <span className="font-bold text-white/90 tabular-nums">{meta.totalOpen}</span>
+            </div>
+            {meta.noPhoneCount > 0 && (
+              <p className="text-white/30 pt-2 leading-relaxed">
+                Of those due a contact, {meta.noPhoneCount} have no phone number and are listed separately at the
+                bottom — they need a number finding, or an email instead.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mt-5">
         <SearchFilter
