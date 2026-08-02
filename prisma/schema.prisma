@@ -264,6 +264,12 @@ model Lead {
   emailDeliveryFailedAt DateTime?
   emailDeliveryFailedReason String?
 
+  // Set when a call reaches a dead or wrong number (the "wrong number" call
+  // outcome). The phone equivalent of emailDeliveryFailedAt: a lead flagged
+  // here drops out of the callable band instead of being re-dialed, and it's
+  // cleared automatically when the phone number is changed to a new one.
+  phoneInvalidAt DateTime?
+
   // A short one-liner (not the full draft above) usable as the "personalized
   // observation" field the cold-outreach templates require — lets Compose
   // Email pre-fill that field from research done at CSV-import time instead

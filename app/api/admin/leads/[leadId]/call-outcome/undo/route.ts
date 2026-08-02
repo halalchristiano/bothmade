@@ -45,6 +45,7 @@ export async function POST(
         status: previous.status ?? undefined,
         nextFollowUpAt: previous.nextFollowUpAt ? new Date(previous.nextFollowUpAt) : null,
         lostReason: previous.lostReason ?? null,
+        phoneInvalidAt: previous.phoneInvalidAt ? new Date(previous.phoneInvalidAt) : null,
         updatedAt: new Date(),
       },
     });

@@ -107,6 +107,7 @@ export async function GET() {
         estimatedValue: true,
         nextFollowUpAt: true,
         emailDeliveryFailedAt: true,
+        phoneInvalidAt: true,
         replyReceivedAt: true,
         emailDeliveryFailedReason: true,
         coldEmailSentAt: true,
@@ -203,15 +204,18 @@ export async function GET() {
     return NextResponse.json(
       {
         success: true,
-        callable: due.filter((r) => r.phone),
-        noPhone: due.filter((r) => !r.phone),
+        // A dead/wrong number is as good as no number for calling — keep it out
+        // of the callable list (don't re-dial it) but still surface it under
+        // "can't reach" so it doesn't silently vanish and can get a new number.
+        callable: due.filter((r) => r.phone && !r.phoneInvalidAt),
+        noPhone: due.filter((r) => !r.phone || r.phoneInvalidAt),
         scheduledHot,
         // What the numbers on screen actually mean.
         totalOpen,
         callsToday,
         breakdown,
         scheduledLater: breakdown.scheduled,
-        noPhoneCount: due.filter((r) => !r.phone).length,
+        noPhoneCount: due.filter((r) => !r.phone || r.phoneInvalidAt).length,
         truncated: leads.length >= MAX_ROWS,
         gmailStatus: !user?.googleRefreshToken
           ? 'not-connected'

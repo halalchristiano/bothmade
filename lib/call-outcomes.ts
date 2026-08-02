@@ -26,6 +26,8 @@ export interface CallOutcome {
   followUpDays: number | null;
   /** true = ask for a specific date (a booked meeting, a "ring me Tuesday"). */
   askForDate?: boolean;
+  /** true = the number is dead/wrong; flag the lead so it stops being dialed. */
+  phoneInvalid?: boolean;
   tone: 'good' | 'neutral' | 'bad';
 }
 
@@ -111,6 +113,7 @@ export const CALL_OUTCOMES: CallOutcome[] = [
     note: 'Called — number is wrong or disconnected.',
     status: null,
     followUpDays: null,
+    phoneInvalid: true,
     tone: 'bad',
   },
 ];
