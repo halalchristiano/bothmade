@@ -19,7 +19,19 @@ export async function GET(
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
-        client: true,
+        // Never `client: true` here — the client branch below returns this
+        // object straight to the browser, and the full row includes the bcrypt
+        // password hash, Stripe customer id, and subscription fields. Select
+        // only what a project view legitimately needs.
+        client: {
+          select: {
+            id: true,
+            email: true,
+            company: true,
+            contactName: true,
+            phone: true,
+          },
+        },
         messages: {
           orderBy: { createdAt: 'asc' },
           include: {
