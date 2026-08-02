@@ -34,7 +34,34 @@ import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarC
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 
+type StatsRange = 'week' | 'month' | 'quarter';
+
+const RANGE_OPTIONS: Array<{ value: StatsRange; label: string }> = [
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+  { value: 'quarter', label: 'Quarter' },
+];
+
+function RangePicker({ range, onChange }: { range: StatsRange; onChange: (r: StatsRange) => void }) {
+  return (
+    <div className="inline-flex gap-1 rounded-xl border border-white/10 p-1 bg-white/[0.02]">
+      {RANGE_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+            range === opt.value ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface SalesStats {
+  periodLabel: string;
   pipeline: Array<{ status: string; count: number; value: number }>;
   weightedForecast: number;
   totalPipelineValue: number;
@@ -53,6 +80,7 @@ interface SalesStats {
 }
 
 interface OpsStats {
+  periodLabel: string;
   newHandoffs: Array<{
     id: string;
     name: string;
@@ -254,15 +282,28 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
   );
 }
 
-function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
+function SalesDashboard({
+  stats,
+  name,
+  range,
+  onRangeChange,
+}: {
+  stats: SalesStats;
+  name: string;
+  range: StatsRange;
+  onRangeChange: (r: StatsRange) => void;
+}) {
   const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="mb-8">
-        <p className="text-sm text-sky-300/70 font-medium mb-1">Sales</p>
-        <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
-        <p className="text-white/40">Here's where your pipeline stands.</p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+        <div>
+          <p className="text-sm text-sky-300/70 font-medium mb-1">Sales</p>
+          <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
+          <p className="text-white/40">Here's where your pipeline stands.</p>
+        </div>
+        <RangePicker range={range} onChange={onRangeChange} />
       </div>
 
       <div className="mb-6">
@@ -270,7 +311,7 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
           items={[
             { icon: TrendingUp, label: 'Pipeline Value', value: formatCents(stats.totalPipelineValue), tone: 'sky' },
             { icon: Target, label: 'Weighted Forecast', value: formatCents(stats.weightedForecast), tone: 'purple', accent: true },
-            { icon: Trophy, label: 'Won This Week', value: formatCents(stats.thisWeek.revenue), tone: 'emerald' },
+            { icon: Trophy, label: `Won ${stats.periodLabel}`, value: formatCents(stats.thisWeek.revenue), tone: 'emerald' },
             { icon: Percent, label: 'Conversion Rate', value: `${Math.round(stats.conversionRate * 100)}%`, tone: 'amber' },
           ]}
         />
@@ -312,7 +353,7 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
               <p className="font-semibold">{formatCents(stats.avgDealSize)}</p>
             </div>
             <div>
-              <p className="text-white/40 text-xs mb-1">New Leads This Week</p>
+              <p className="text-white/40 text-xs mb-1">New Leads {stats.periodLabel}</p>
               <p className="font-semibold">{stats.thisWeek.newLeads}</p>
             </div>
             <div>
@@ -573,7 +614,19 @@ function HandoffRow({
   );
 }
 
-function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; name: string; showLeadsSpreadsheet: boolean }) {
+function OpsDashboard({
+  stats,
+  name,
+  showLeadsSpreadsheet,
+  range,
+  onRangeChange,
+}: {
+  stats: OpsStats;
+  name: string;
+  showLeadsSpreadsheet: boolean;
+  range: StatsRange;
+  onRangeChange: (r: StatsRange) => void;
+}) {
   const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
   const [newHandoffs, setNewHandoffs] = useState(stats.newHandoffs);
   const revenueTrend =
@@ -589,7 +642,10 @@ function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; 
           <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
           <p className="text-white/40">Here's what needs you today.</p>
         </div>
-        <BroadcastComposer />
+        <div className="flex items-center gap-3">
+          <RangePicker range={range} onChange={onRangeChange} />
+          <BroadcastComposer />
+        </div>
       </div>
 
       {pendingMockups.length > 0 && (
@@ -613,14 +669,14 @@ function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; 
             { icon: FolderKanban, label: 'Active Projects', value: String(stats.activeProjectCount), tone: 'sky' },
             {
               icon: DollarSign,
-              label: 'Revenue This Month',
+              label: `Revenue ${stats.periodLabel}`,
               value: formatCents(stats.revenueThisMonth),
               tone: 'emerald',
               accent: true,
               trend: revenueTrend !== undefined ? { value: revenueTrend } : undefined,
               note: `Your cut (${Math.round(COMMISSION_RATE * 100)}%): ${formatCents(Math.round(stats.revenueThisMonth * COMMISSION_RATE))}`,
             },
-            { icon: UserPlus, label: 'New Clients This Week', value: String(stats.newClientsThisWeek), tone: 'purple' },
+            { icon: UserPlus, label: `New Clients ${stats.periodLabel}`, value: String(stats.newClientsThisWeek), tone: 'purple' },
             { icon: FileSignature, label: 'Awaiting Signature', value: String(stats.awaitingSignature.length), tone: 'amber' },
           ]}
         />
@@ -769,6 +825,7 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [range, setRange] = useState<StatsRange>('week');
 
   useEffect(() => {
     let cancelled = false;
@@ -787,7 +844,7 @@ export default function AdminDashboardPage() {
         const userRole = me.user?.role || 'admin';
 
         const statsUrl = userRole === 'sales' ? '/api/admin/sales-stats' : '/api/admin/ops-stats';
-        const res = await fetch(statsUrl);
+        const res = await fetch(`${statsUrl}?range=${range}`);
         if (!res.ok) throw new Error(`Failed to load dashboard data (${res.status}).`);
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Failed to load dashboard data.');
@@ -811,7 +868,7 @@ export default function AdminDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, retryCount]);
+  }, [router, retryCount, range]);
 
   if (loading) {
     return (
@@ -840,11 +897,19 @@ export default function AdminDashboardPage() {
   }
 
   if (role === 'sales' && salesStats) {
-    return <SalesDashboard stats={salesStats} name={name} />;
+    return <SalesDashboard stats={salesStats} name={name} range={range} onRangeChange={setRange} />;
   }
 
   if (opsStats) {
-    return <OpsDashboard stats={opsStats} name={name} showLeadsSpreadsheet={role !== 'sales'} />;
+    return (
+      <OpsDashboard
+        stats={opsStats}
+        name={name}
+        showLeadsSpreadsheet={role !== 'sales'}
+        range={range}
+        onRangeChange={setRange}
+      />
+    );
   }
 
   return null;

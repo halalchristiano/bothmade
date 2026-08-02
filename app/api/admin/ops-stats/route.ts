@@ -2,24 +2,35 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
 
-export async function GET() {
+const RANGE_LABELS: Record<StatsRange, string> = {
+  week: 'This Week',
+  month: 'This Month',
+  quarter: 'This Quarter',
+};
+
+export async function GET(request: Request) {
   try {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
+    const { searchParams } = new URL(request.url);
+    const rangeParam = searchParams.get('range');
+    const range: StatsRange = rangeParam === 'week' || rangeParam === 'quarter' ? rangeParam : 'month';
+
     const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const staleThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const periodStart = getPeriodStart(range, now);
+    // Prior period of equal length, for the trend comparison.
+    const previousPeriodStart = new Date(periodStart.getTime() - (now.getTime() - periodStart.getTime()));
 
     const [
       activeProjects,
       newHandoffs,
-      newClientsThisWeek,
-      paymentsThisMonth,
-      paymentsLastMonth,
+      newClientsInPeriod,
+      paymentsInPeriod,
+      paymentsInPreviousPeriod,
       recentClientMessages,
       recentPayments,
       recentLeadWins,
@@ -32,18 +43,18 @@ export async function GET() {
         },
       }),
       prisma.project.findMany({
-        where: { createdAt: { gte: weekAgo } },
+        where: { createdAt: { gte: periodStart } },
         include: {
           client: { select: { company: true, contactName: true, email: true } },
           onboardingQuestions: { include: { response: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.client.count({ where: { createdAt: { gte: weekAgo } } }),
-      prisma.payment.findMany({ where: { createdAt: { gte: startOfThisMonth } } }),
-      prisma.payment.findMany({ where: { createdAt: { gte: startOfLastMonth, lt: startOfThisMonth } } }),
+      prisma.client.count({ where: { createdAt: { gte: periodStart } } }),
+      prisma.payment.findMany({ where: { createdAt: { gte: periodStart } } }),
+      prisma.payment.findMany({ where: { createdAt: { gte: previousPeriodStart, lt: periodStart } } }),
       prisma.projectMessage.findMany({
-        where: { isFromAdmin: false, createdAt: { gte: weekAgo } },
+        where: { isFromAdmin: false, createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
         take: 10,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
@@ -54,7 +65,7 @@ export async function GET() {
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
       prisma.leadActivity.findMany({
-        where: { type: 'proposal', createdAt: { gte: weekAgo } },
+        where: { type: 'proposal', createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
         take: 8,
         include: { lead: { select: { id: true, company: true } } },
@@ -115,13 +126,15 @@ export async function GET() {
       .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin)
       .map((p) => ({ id: p.id, name: p.name, company: p.client.company }));
 
-    const revenueThisMonth = paymentsThisMonth.reduce((s, p) => s + p.amount, 0);
-    const revenueLastMonth = paymentsLastMonth.reduce((s, p) => s + p.amount, 0);
+    const revenueThisMonth = paymentsInPeriod.reduce((s, p) => s + p.amount, 0);
+    const revenueLastMonth = paymentsInPreviousPeriod.reduce((s, p) => s + p.amount, 0);
 
     return NextResponse.json(
       {
         success: true,
         stats: {
+          range,
+          periodLabel: RANGE_LABELS[range],
           newHandoffs: newHandoffs.map((p) => ({
             id: p.id,
             name: p.name,
@@ -132,7 +145,7 @@ export async function GET() {
             onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
             handoffAcknowledgedAt: p.handoffAcknowledgedAt,
           })),
-          newClientsThisWeek,
+          newClientsThisWeek: newClientsInPeriod,
           atRiskProjects: atRiskProjects.slice(0, 10),
           overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
           projectsAwaitingReply,
