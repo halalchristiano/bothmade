@@ -8,25 +8,25 @@ const PHASES = [
   {
     num: '01',
     title: 'Discovery',
-    desc: 'We dig into your goals, users, and constraints before writing a line of code.',
+    desc: 'We dig into your goals, users, and constraints before writing a line of code. That means real conversations with the people who\'ll use it, a look at what\'s worked and what hasn\'t, and a scoped plan you sign off before anything gets built.',
     tag: 'week 0–1',
   },
   {
     num: '02',
     title: 'Design',
-    desc: 'Interface and interaction design that earns its keep. Every pixel is deliberate.',
+    desc: 'Interface and interaction design that earns its keep. Every pixel is deliberate — we design in the browser or in Figma against real content, not placeholder text, so what you approve is what actually ships.',
     tag: 'weeks 1–3',
   },
   {
     num: '03',
     title: 'Build',
-    desc: 'Weekly builds you can actually use. No black boxes, no surprises at the end.',
+    desc: 'Weekly builds you can actually use. No black boxes, no surprises at the end — you get a working link every week, and your feedback shapes the next one instead of arriving after it\'s too late to change course.',
     tag: 'weeks 3–9',
   },
   {
     num: '04',
     title: 'Launch',
-    desc: 'App Store submission, deployment, monitoring. We stay through go-live and beyond.',
+    desc: 'App Store submission, deployment, monitoring. We stay through go-live and beyond, watching for the issues that only show up under real traffic and fixing them before they become your problem to explain.',
     tag: 'week 10+',
   },
 ];
