@@ -20,7 +20,7 @@ import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ScrollProgress } from '@/components/ScrollProgress';
 import { CountUp, FocusRow, ScrubText, GridBackdrop } from '@/components/ui';
 import { formatBlogDate, type BlogPost, type Block } from '@/lib/blog';
-import { BASE_SERVICES, formatCents, type BaseService } from '@/lib/pricing';
+import { BASE_SERVICES, formatCents, expandAddOnDependencies, type BaseService, type AddOnKey } from '@/lib/pricing';
 
 const ACCENT_HEX: Record<BlogPost['accent'], { from: string; to: string; text: string }> = {
   sky: { from: '#0ea5e9', to: '#0c2f52', text: 'rgb(125 211 252)' },
@@ -322,7 +322,180 @@ function BlockRenderer({
 
     case 'kineticPlaygroundDemo':
       return <KineticPlaygroundDemo />;
+
+    case 'dependencyDemo':
+      return <DependencyDemo />;
+
+    case 'mobileMenuDemo':
+      return <MobileMenuDemo />;
+
+    case 'honestFrameDemo':
+      return <HonestFrameDemo />;
   }
+}
+
+const DEMO_ADDONS: { key: AddOnKey; label: string }[] = [
+  { key: 'ecommerce', label: 'E-commerce' },
+  { key: 'booking', label: 'Booking' },
+  { key: 'custom-backend', label: 'Custom Backend / API' },
+];
+
+/** Real dependency logic, imported directly — check an add-on and watch expandAddOnDependencies silently pull in what it actually requires. */
+function DependencyDemo() {
+  const [selected, setSelected] = useState<AddOnKey[]>([]);
+  const expanded = expandAddOnDependencies(selected);
+
+  const toggle = (key: AddOnKey) => {
+    setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="space-y-3">
+        {DEMO_ADDONS.map((item) => {
+          const isSelected = selected.includes(item.key);
+          const isAutoAdded = !isSelected && expanded.includes(item.key);
+          return (
+            <button
+              key={item.key}
+              onClick={() => toggle(item.key)}
+              className={`w-full flex items-center justify-between rounded-xl border px-5 py-4 text-left transition-colors duration-300 ${
+                isSelected || isAutoAdded
+                  ? 'border-sky-400/50 bg-sky-400/5'
+                  : 'border-white/10 hover:border-white/25'
+              }`}
+            >
+              <span className="text-sm text-white/80">{item.label}</span>
+              {isAutoAdded ? (
+                <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-sky-300/70">
+                  auto-added — required
+                </span>
+              ) : (
+                <span
+                  className={`w-4 h-4 rounded border ${
+                    isSelected ? 'bg-sky-400 border-sky-400' : 'border-white/25'
+                  }`}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-6 font-mono text-[10px] uppercase tracking-[0.3em] text-white/30">
+        try checking e-commerce or booking without the backend
+      </p>
+    </div>
+  );
+}
+
+const MOBILE_MENU_LINKS = ['Work', 'Web', 'iOS', 'Contact'];
+
+/** Scaled replay of Nav's mobile overlay: hamburger morph, scroll lock (on the demo stage, not the page), Escape to close, staggered link entrance. */
+function MobileMenuDemo() {
+  const [open, setOpen] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const stage = stageRef.current;
+    const previousOverflow = stage?.style.overflow;
+    if (stage) stage.style.overflow = 'hidden';
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      if (stage && previousOverflow !== undefined) stage.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={stageRef} className="relative h-72 md:h-80 rounded-2xl border border-white/10 overflow-hidden bg-black/40">
+      <div className="absolute top-4 right-4 z-50">
+        <button
+          onClick={() => setOpen(!open)}
+          aria-label={open ? 'Close menu' : 'Open menu'}
+          aria-expanded={open}
+          className="relative w-8 h-8 flex flex-col items-center justify-center gap-1.5"
+        >
+          <motion.span
+            className="block w-6 h-px bg-white origin-center"
+            animate={open ? { rotate: 45, y: 3.5 } : { rotate: 0, y: 0 }}
+            transition={{ duration: 0.3 }}
+          />
+          <motion.span
+            className="block w-6 h-px bg-white origin-center"
+            animate={open ? { rotate: -45, y: -3.5 } : { rotate: 0, y: 0 }}
+            transition={{ duration: 0.3 }}
+          />
+        </button>
+      </div>
+
+      <p className="absolute top-4 left-4 font-mono text-[10px] uppercase tracking-[0.3em] text-white/30">
+        tap the icon — try Escape too
+      </p>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            className="absolute inset-0 z-40 bg-black/95 backdrop-blur-xl flex flex-col justify-center px-8"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="space-y-1">
+              {MOBILE_MENU_LINKS.map((label, idx) => (
+                <motion.div
+                  key={label}
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -30 }}
+                  transition={{ delay: idx * 0.07, duration: 0.3 }}
+                >
+                  <span className="block text-2xl font-bold py-1.5 text-gray-300">{label}</span>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Side by side: a fake "stock photo" card vs. the site's actual dashed honest-empty-frame pattern from CaseStudy's ShotFrame. */
+function HonestFrameDemo() {
+  return (
+    <div className="grid sm:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-red-300/70 border-b border-white/10">
+          what we don&apos;t do
+        </p>
+        <div className="relative aspect-[4/3] grid place-items-center bg-gradient-to-br from-slate-700 to-slate-900">
+          <p className="text-white/40 text-sm italic px-6 text-center">
+            generic stock photo of "people looking at a laptop, smiling"
+          </p>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-300/70 border-b border-white/10">
+          what we actually render
+        </p>
+        <div className="relative aspect-[4/3] grid place-items-center" style={{ background: 'linear-gradient(140deg, #4f46e518, #1e1b4b55)' }}>
+          <div className="text-center px-6">
+            <div className="mx-auto mb-4 w-10 h-10 rounded-lg border border-dashed border-white/25" />
+            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40">
+              trail map with elevation profile
+            </p>
+            <p className="mt-2 font-mono text-[10px] text-white/20">add src to lib/case-studies.ts</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Milestones arrive in sequence via whileInView stagger, with a connecting line drawing behind them via scaleX. */
