@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ListChecks, Inbox, MessageCircle, AlertTriangle, DollarSign } from 'lucide-react';
+import { ListChecks, Inbox, MessageCircle, AlertTriangle, DollarSign, Rocket } from 'lucide-react';
 import { PageIn, PageTitle, Card } from '@/components/admin/ui';
 
 interface OpsStats {
@@ -11,9 +11,10 @@ interface OpsStats {
   atRiskProjects: Array<{ id: string; name: string; company: string; daysSinceUpdate: number }>;
   overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
   projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
+  readyToDeliver: Array<{ id: string; name: string; company: string; updatedAt: string }>;
 }
 
-type Band = 'handoff' | 'reply' | 'atrisk' | 'balance';
+type Band = 'deliver' | 'handoff' | 'reply' | 'atrisk' | 'balance';
 
 interface PriorityRow {
   id: string;
@@ -23,6 +24,11 @@ interface PriorityRow {
 }
 
 const BAND_META: Record<Band, { label: string; icon: typeof Inbox; classes: string }> = {
+  deliver: {
+    label: 'Done but not delivered — set the live URL',
+    icon: Rocket,
+    classes: 'border-purple-400/30 bg-purple-400/[0.06] text-purple-200',
+  },
   handoff: {
     label: "New handoffs waiting to be picked up",
     icon: Inbox,
@@ -45,7 +51,7 @@ const BAND_META: Record<Band, { label: string; icon: typeof Inbox; classes: stri
   },
 };
 
-const BAND_ORDER: Band[] = ['handoff', 'reply', 'atrisk', 'balance'];
+const BAND_ORDER: Band[] = ['deliver', 'handoff', 'reply', 'atrisk', 'balance'];
 
 export default function PrioritiesPage() {
   const router = useRouter();
@@ -69,6 +75,15 @@ export default function PrioritiesPage() {
         const seen = new Set<string>();
         const out: PriorityRow[] = [];
 
+        for (const p of stats.readyToDeliver) {
+          seen.add(p.id);
+          out.push({
+            id: p.id,
+            band: 'deliver',
+            company: p.company,
+            detail: `${p.name} is complete — add the live URL to unlock their delivery moment`,
+          });
+        }
         for (const h of stats.newHandoffs) {
           if (h.handoffAcknowledgedAt) continue;
           seen.add(h.id);
