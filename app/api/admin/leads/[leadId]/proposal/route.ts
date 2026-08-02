@@ -4,10 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import {
-  ADD_ONS,
-  BASE_SERVICES,
-  CLIENT_TYPES,
-  TIMELINES,
   calculatePrice,
   customItemsTotal,
   depositAmount,
@@ -15,14 +11,13 @@ import {
   isAddOnKey,
   isBaseService,
   isClientType,
-  isIncludedInBase,
   isTimelineKey,
   minAllowedPrice,
   sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
 import { sendSignAndPayEmail } from '@/lib/email';
-import { buildInvoicePdf } from '@/lib/invoice-pdf';
+import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
 
 /**
  * Saves the proposal Evan just built (service/add-ons/client type/timeline,
@@ -122,46 +117,17 @@ export async function POST(
     if (sendEmail && lead.email) {
       const chargeAmount = depositOnly ? depositAmount(totalPrice) : totalPrice;
 
-      const lineItems = [
-        { label: BASE_SERVICES[baseService].label, amount: formatCents(breakdown.basePrice) },
-        ...addOnKeys.map((key) => ({
-          label: ADD_ONS[key].label,
-          amount: isIncludedInBase(baseService, key) ? 'Included' : formatCents(ADD_ONS[key].price),
-        })),
-        ...customItems.map((item) => ({ label: item.label, amount: formatCents(item.priceCents) })),
-      ];
-      const adjustments: { label: string; amount: string }[] = [];
-      if (breakdown.clientTypeMultiplier !== 1) {
-        adjustments.push({
-          label: `${CLIENT_TYPES[clientType].label} adjustment (${Math.round((breakdown.clientTypeMultiplier - 1) * 100)}%)`,
-          amount: formatCents(Math.round(breakdown.subtotal * breakdown.clientTypeMultiplier) - breakdown.subtotal),
-        });
-      }
-      if (breakdown.timelineMultiplier !== 1) {
-        adjustments.push({
-          label: `${TIMELINES[timeline].label} timeline (${Math.round((breakdown.timelineMultiplier - 1) * 100)}%)`,
-          amount: formatCents(breakdown.totalPrice - Math.round(breakdown.subtotal * breakdown.clientTypeMultiplier)),
-        });
-      }
-      if (totalPrice !== calculatedTotal) {
-        adjustments.push({
-          label: 'Negotiated adjustment',
-          amount: formatCents(totalPrice - calculatedTotal),
-        });
-      }
-
-      const invoicePdfBytes = await buildInvoicePdf({
-        invoiceNumber: `${leadId.slice(0, 8).toUpperCase()}`,
-        date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      const invoicePdfBytes = await buildInvoiceForProposal({
+        leadId,
         company: lead.company,
         contactName: lead.contactName,
-        lineItems,
-        adjustments,
-        subtotal: formatCents(breakdown.subtotal + customTotal),
-        total: formatCents(totalPrice),
-        amountDue: formatCents(chargeAmount),
-        isDeposit: Boolean(depositOnly),
-        balanceRemaining: depositOnly ? formatCents(totalPrice - chargeAmount) : undefined,
+        baseService,
+        addOnKeys,
+        clientType,
+        timeline,
+        customItems,
+        totalPrice,
+        depositOnly: Boolean(depositOnly),
       });
 
       emailSent = await sendSignAndPayEmail(

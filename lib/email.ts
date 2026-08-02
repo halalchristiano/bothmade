@@ -306,6 +306,37 @@ export async function sendSignAndPayEmail(
 }
 
 /**
+ * Sends just the itemized invoice PDF on its own — for re-sending a copy to
+ * the client after the fact, or for Evan to email a copy to himself to
+ * check it over, independent of the full sign-and-pay send.
+ */
+export async function sendInvoiceOnlyEmail(
+  toEmail: string,
+  contactName: string | null,
+  company: string,
+  invoicePdf: Buffer,
+  isSelfCopy: boolean
+): Promise<boolean> {
+  const bodyHtml = isSelfCopy
+    ? `<p>Here's a copy of the current invoice for ${company}, attached as a PDF.</p>`
+    : `
+      <p>Hi ${contactName || 'there'},</p>
+      <p>Here's a copy of your invoice for ${company}'s project, attached as a PDF.</p>
+    `;
+
+  return sendEmail({
+    to: toEmail,
+    subject: isSelfCopy ? `Invoice copy — ${company}` : `Your invoice — ${company}`,
+    html: renderShell({
+      eyebrow: 'Invoice',
+      title: `${company} — Invoice`,
+      bodyHtml,
+    }),
+    attachments: [{ filename: `${company.replace(/[^a-z0-9]/gi, '-')}-invoice.pdf`, content: invoicePdf }],
+  });
+}
+
+/**
  * Notify the internal team the moment a client agrees online — a copy of
  * exactly what they signed, ready for the books.
  */

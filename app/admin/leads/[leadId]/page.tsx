@@ -208,6 +208,8 @@ export default function LeadDetailPage() {
   const [emailingLink, setEmailingLink] = useState(false);
   const [linkEmailStatus, setLinkEmailStatus] = useState('');
   const [downloadingContract, setDownloadingContract] = useState(false);
+  const [sendingInvoice, setSendingInvoice] = useState<'client' | 'self' | null>(null);
+  const [invoiceStatus, setInvoiceStatus] = useState('');
   const [proposalError, setProposalError] = useState('');
   const [convertingToProject, setConvertingToProject] = useState(false);
 
@@ -665,6 +667,27 @@ export default function LeadDetailPage() {
       }
     } finally {
       setEmailingLink(false);
+    }
+  };
+
+  const handleSendInvoice = async (recipient: 'client' | 'self') => {
+    setProposalError('');
+    setInvoiceStatus('');
+    setSendingInvoice(recipient);
+    try {
+      const response = await fetch(`/api/admin/leads/${leadId}/invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...proposalSelection, depositOnly, recipient }),
+      });
+      const data = await response.json();
+      if (data.success && data.sent) {
+        setInvoiceStatus(`Invoice emailed to ${data.toEmail}.`);
+      } else {
+        setProposalError(data.error || 'Failed to send invoice');
+      }
+    } finally {
+      setSendingInvoice(null);
     }
   };
 
@@ -2369,6 +2392,23 @@ export default function LeadDetailPage() {
               >
                 {downloadingContract ? 'Generating...' : 'Download Contract PDF'}
               </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSendInvoice('client')}
+                  disabled={sendingInvoice !== null}
+                  className="flex-1 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+                >
+                  {sendingInvoice === 'client' ? 'Sending...' : 'Email Invoice to Client'}
+                </button>
+                <button
+                  onClick={() => handleSendInvoice('self')}
+                  disabled={sendingInvoice !== null}
+                  className="flex-1 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+                >
+                  {sendingInvoice === 'self' ? 'Sending...' : 'Email Invoice to Myself'}
+                </button>
+              </div>
+              {invoiceStatus && <p className="text-xs text-emerald-300">{invoiceStatus}</p>}
               <button
                 onClick={handleConvertToProject}
                 disabled={convertingToProject}

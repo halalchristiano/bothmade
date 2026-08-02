@@ -1,4 +1,20 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import {
+  ADD_ONS,
+  BASE_SERVICES,
+  CLIENT_TYPES,
+  TIMELINES,
+  calculatePrice,
+  customItemsTotal,
+  depositAmount,
+  formatCents,
+  isIncludedInBase,
+  type AddOnKey,
+  type BaseService,
+  type ClientType,
+  type CustomItem,
+  type TimelineKey,
+} from '@/lib/pricing';
 
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
@@ -163,4 +179,75 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   }
 
   return doc.save();
+}
+
+export interface InvoiceForProposalInput {
+  leadId: string;
+  company: string;
+  contactName: string | null;
+  baseService: BaseService;
+  addOnKeys: AddOnKey[];
+  clientType: ClientType;
+  timeline: TimelineKey;
+  customItems: CustomItem[];
+  totalPrice: number; // cents — the persisted/negotiated total, may differ from the calculated one
+  depositOnly: boolean;
+}
+
+/**
+ * Builds the invoice for a lead's current proposal selection — shared by the
+ * sign-and-pay send, a standalone re-send, and a self-copy, so all three
+ * always show identical numbers for the same underlying proposal.
+ */
+export async function buildInvoiceForProposal(input: InvoiceForProposalInput): Promise<Uint8Array> {
+  const { leadId, company, contactName, baseService, addOnKeys, clientType, timeline, customItems, totalPrice, depositOnly } =
+    input;
+
+  const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
+  const customTotal = customItemsTotal(customItems);
+  const calculatedTotal = breakdown.totalPrice + customTotal;
+  const chargeAmount = depositOnly ? depositAmount(totalPrice) : totalPrice;
+
+  const lineItems = [
+    { label: BASE_SERVICES[baseService].label, amount: formatCents(breakdown.basePrice) },
+    ...addOnKeys.map((key) => ({
+      label: ADD_ONS[key].label,
+      amount: isIncludedInBase(baseService, key) ? 'Included' : formatCents(ADD_ONS[key].price),
+    })),
+    ...customItems.map((item) => ({ label: item.label, amount: formatCents(item.priceCents) })),
+  ];
+
+  const adjustments: InvoiceLineItem[] = [];
+  if (breakdown.clientTypeMultiplier !== 1) {
+    adjustments.push({
+      label: `${CLIENT_TYPES[clientType].label} adjustment (${Math.round((breakdown.clientTypeMultiplier - 1) * 100)}%)`,
+      amount: formatCents(Math.round(breakdown.subtotal * breakdown.clientTypeMultiplier) - breakdown.subtotal),
+    });
+  }
+  if (breakdown.timelineMultiplier !== 1) {
+    adjustments.push({
+      label: `${TIMELINES[timeline].label} timeline (${Math.round((breakdown.timelineMultiplier - 1) * 100)}%)`,
+      amount: formatCents(breakdown.totalPrice - Math.round(breakdown.subtotal * breakdown.clientTypeMultiplier)),
+    });
+  }
+  if (totalPrice !== calculatedTotal) {
+    adjustments.push({
+      label: 'Negotiated adjustment',
+      amount: formatCents(totalPrice - calculatedTotal),
+    });
+  }
+
+  return buildInvoicePdf({
+    invoiceNumber: leadId.slice(0, 8).toUpperCase(),
+    date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    company,
+    contactName,
+    lineItems,
+    adjustments,
+    subtotal: formatCents(breakdown.subtotal + customTotal),
+    total: formatCents(totalPrice),
+    amountDue: formatCents(chargeAmount),
+    isDeposit: depositOnly,
+    balanceRemaining: depositOnly ? formatCents(totalPrice - chargeAmount) : undefined,
+  });
 }
