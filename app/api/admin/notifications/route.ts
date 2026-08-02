@@ -68,10 +68,35 @@ export async function GET() {
       });
     }
 
-    // Follow-ups due/overdue — relevant to sales.
+    // Leads who wrote back — the call list already surfaces these at the top,
+    // but that only helps if he's on that page. The bell follows him
+    // everywhere else too.
+    const repliedLeads = await prisma.lead.findMany({
+      where: {
+        replyReceivedAt: { not: null },
+        status: { in: [...ACTIVE_LEAD_STATUSES] },
+        OR: [{ assignedToId: session.userId }, { assignedToId: null }],
+      },
+      orderBy: { replyReceivedAt: 'desc' },
+      take: 10,
+    });
+    for (const l of repliedLeads) {
+      items.push({
+        id: `reply-${l.id}`,
+        label: `${l.company} wrote back`,
+        detail: 'Ring these first',
+        href: `/admin/leads/${l.id}`,
+        severity: 'urgent',
+      });
+    }
+
+    // Follow-ups due/overdue — relevant to sales. Excludes leads already
+    // flagged above as "wrote back" — same mutual-exclusivity the call list
+    // uses, so the same lead doesn't ping twice for two reasons at once.
     const dueLeads = await prisma.lead.findMany({
       where: {
         status: { in: [...ACTIVE_LEAD_STATUSES] },
+        replyReceivedAt: null,
         nextFollowUpAt: { lt: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000) },
         OR: [{ assignedToId: session.userId }, { assignedToId: null }],
       },

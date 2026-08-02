@@ -2724,12 +2724,12 @@ export default function LeadDetailPage() {
           </div>
         )}
 
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-8 min-w-0">
           {/* Left: configuration steps */}
           <div className="space-y-8">
             <div>
               <StepLabel n={1} label="Base Service" />
-              <div className="grid sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
                   ([key, service]) => (
                     <button
@@ -2763,7 +2763,7 @@ export default function LeadDetailPage() {
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-white/35 mb-2">
                           {cat.label}
                         </p>
-                        <div className="grid sm:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {entries.map(([key, addOn]) => {
                             const includedInBase = isIncludedInBase(proposalService, key);
                             return (
@@ -2878,7 +2878,7 @@ export default function LeadDetailPage() {
 
             <div>
               <StepLabel n={4} label="Client Details" />
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-2 text-white/50">Client Type</label>
                   <select

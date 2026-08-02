@@ -320,7 +320,30 @@ export function ListRow({
   );
 }
 
-export function EmptyState({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
+/**
+ * `tone="clear"` is for the genuinely good case — a list that's empty
+ * because nothing's wrong (inbox zero, no overdue anything) — vs. the
+ * default neutral tone for a list that just has no data yet. Visually
+ * distinct so scanning the dashboard, an all-clear widget doesn't read
+ * the same as a not-yet-populated one.
+ */
+export function EmptyState({
+  icon: Icon,
+  text,
+  tone = 'neutral',
+}: {
+  icon: LucideIcon;
+  text: string;
+  tone?: 'neutral' | 'clear';
+}) {
+  if (tone === 'clear') {
+    return (
+      <div className="flex flex-col items-center justify-center text-center py-8 text-emerald-300/60">
+        <Icon size={20} strokeWidth={1.5} className="mb-2 opacity-70" />
+        <p className="text-sm font-medium">{text}</p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center justify-center text-center py-8 text-white/30">
       <Icon size={20} strokeWidth={1.5} className="mb-2 opacity-40" />

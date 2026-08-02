@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ImageIcon, ExternalLink } from 'lucide-react';
+import { ImageIcon, ExternalLink, Compass, Clock } from 'lucide-react';
 import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { PAIN_POINTS, parseSalesPoints, type PainPointKey } from '@/lib/leads';
+import { formatCents } from '@/lib/pricing';
 
 interface QueueRow {
   id: string;
@@ -13,6 +15,120 @@ interface QueueRow {
   mockupRequestedAt: string | null;
   hotLead: boolean;
   assignedTo: { name: string | null } | null;
+  painPoints: string;
+  salesNote: string | null;
+  originalWebsite: string | null;
+  currentSiteAssessment: string | null;
+  customPainPoints: string | null;
+  essentialPoints: string | null;
+  estimateLowCents: number | null;
+  estimateHighCents: number | null;
+  estimatedValue: number | null;
+}
+
+/**
+ * Everything needed to actually design the thing, read off the lead's own
+ * dossier. Leads with what the mockup has to demonstrate, because that is the
+ * promise it exists to make believable.
+ */
+function MockupBrief({ lead }: { lead: QueueRow }) {
+  const essentials = parseSalesPoints(lead.essentialPoints);
+  const written = parseSalesPoints(lead.customPainPoints);
+  const ticked = lead.painPoints
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p): p is PainPointKey => p in PAIN_POINTS);
+
+  const hasAnything =
+    lead.originalWebsite ||
+    lead.currentSiteAssessment ||
+    essentials.length > 0 ||
+    written.length > 0 ||
+    ticked.length > 0 ||
+    lead.salesNote;
+  if (!hasAnything) return null;
+
+  return (
+    <div className="mt-3 space-y-3">
+      {lead.originalWebsite && (
+        <a
+          href={lead.originalWebsite}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 px-3.5 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-400/20 transition-colors"
+        >
+          <Compass size={13} /> Open the site you&apos;re replacing <ExternalLink size={11} />
+        </a>
+      )}
+
+      {lead.currentSiteAssessment && (
+        <div className="rounded-xl bg-white/[0.03] px-3.5 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-white/40 font-semibold mb-1">
+            What&apos;s wrong with it now
+          </p>
+          <p className="text-sm text-white/70 leading-relaxed break-words">{lead.currentSiteAssessment}</p>
+        </div>
+      )}
+
+      {essentials.length > 0 && (
+        <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] px-3.5 py-3">
+          <p className="text-[11px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1.5">
+            What the mockup has to show — this is what&apos;s being sold
+          </p>
+          <ul className="space-y-1">
+            {essentials.slice(0, 8).map((e, i) => (
+              <li key={i} className="text-sm text-emerald-50/85 leading-relaxed break-words">
+                • {e.point}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(written.length > 0 || ticked.length > 0) && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-red-300/70 font-semibold mb-1.5">
+            Problems found
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {written.map((p, i) => (
+              <span
+                key={`w${i}`}
+                className="rounded-md bg-red-400/10 border border-red-400/20 px-2 py-1 text-[11px] text-red-200"
+              >
+                {p.point}
+              </span>
+            ))}
+            {ticked.map((k) => (
+              <span
+                key={k}
+                className="rounded-md bg-white/[0.05] border border-white/10 px-2 py-1 text-[11px] text-white/55"
+              >
+                {PAIN_POINTS[k]}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {lead.salesNote && (
+        <p className="text-xs text-sky-200/70 leading-relaxed break-words">
+          <span className="font-semibold text-sky-300/80">Note from sales: </span>
+          {lead.salesNote}
+        </p>
+      )}
+
+      {(lead.estimateLowCents || lead.estimatedValue) && (
+        <p className="text-xs text-white/40 leading-relaxed">
+          <span className="font-semibold text-white/60">Deal size: </span>
+          {lead.estimateLowCents && lead.estimateHighCents
+            ? `${formatCents(lead.estimateLowCents)} – ${formatCents(lead.estimateHighCents)}`
+            : formatCents(lead.estimatedValue ?? lead.estimateLowCents ?? 0)}
+          <span className="text-white/25"> — what tells you how much effort this justifies.</span>
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** Whole days since the request — "waiting since yesterday" beats a raw date. */
@@ -138,8 +254,16 @@ export default function MockupQueuePage() {
                     {lead.assignedTo?.name ? ` · ${lead.assignedTo.name}` : ''}
                   </p>
                 </div>
+                {days !== null && days >= 3 && (
+                  <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-red-400/15 border border-red-400/30 px-2.5 py-1 text-[11px] font-bold text-red-200">
+                    <Clock size={11} /> {days} days — sales is blocked
+                  </span>
+                )}
               </div>
-              <div className="flex gap-2">
+
+              <MockupBrief lead={lead} />
+
+              <div className="flex gap-2 mt-4 pt-4 border-t border-white/[0.08]">
                 <input
                   value={urlDrafts[lead.id] || ''}
                   onChange={(e) => setUrlDrafts((prev) => ({ ...prev, [lead.id]: e.target.value }))}

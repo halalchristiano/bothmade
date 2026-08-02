@@ -32,6 +32,7 @@ import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
+import { UndoToast } from '@/components/admin/UndoToast';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
@@ -82,6 +83,46 @@ function RefreshIndicator({
       <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
       {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
     </button>
+  );
+}
+
+function SkeletonBlock({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-white/[0.06] ${className}`} />;
+}
+
+/**
+ * Shaped to roughly match the dashboard layout (header, stat row, card
+ * grid) instead of a bare spinner — reduces the jarring "page replaced
+ * with nothing" feel on first load.
+ */
+function DashboardSkeleton() {
+  return (
+    <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="flex justify-between items-start mb-8">
+        <div className="space-y-2">
+          <SkeletonBlock className="h-4 w-16" />
+          <SkeletonBlock className="h-8 w-64" />
+          <SkeletonBlock className="h-4 w-48" />
+        </div>
+        <SkeletonBlock className="h-9 w-40 rounded-xl" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-xl overflow-hidden mb-6 border border-white/[0.07]">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="p-5 bg-white/[0.02] space-y-2">
+            <SkeletonBlock className="h-3 w-20" />
+            <SkeletonBlock className="h-7 w-24" />
+          </div>
+        ))}
+      </div>
+      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+        <SkeletonBlock className="lg:col-span-2 h-64 rounded-xl" />
+        <SkeletonBlock className="h-64 rounded-xl" />
+      </div>
+      <div className="grid lg:grid-cols-2 gap-5">
+        <SkeletonBlock className="h-52 rounded-xl" />
+        <SkeletonBlock className="h-52 rounded-xl" />
+      </div>
+    </div>
   );
 }
 
@@ -194,6 +235,7 @@ interface NextAction {
   meta: string;
   phone: string | null;
   email: string | null;
+  previousNextFollowUpAt: string | null;
 }
 
 function NextActionsCard({ stats }: { stats: SalesStats }) {
@@ -204,27 +246,27 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
   for (const l of stats.followUpsOverdue) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: l.nextFollowUpAt });
   }
   for (const l of stats.followUpsToday) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.hotLeads) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.staleLeads) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.stageAging) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
 
   return (
@@ -237,7 +279,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
         action={actions.length > 0 ? <Badge solid tone={actions.length > 5 ? 'red' : 'amber'}>{actions.length}</Badge> : undefined}
       />
       {actions.length === 0 ? (
-        <EmptyState icon={Flame} text="Nothing urgent — you're caught up." />
+        <EmptyState icon={Flame} text="Nothing urgent — you're caught up." tone="clear" />
       ) : (
         <div className="space-y-0.5">
           {actions.map((a) => (
@@ -269,7 +311,18 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                     </a>
                   )}
                   <LogTouchPopover leadId={a.id} />
-                  <SnoozeButton leadId={a.id} onSnoozed={() => setDismissed((prev) => new Set(prev).add(a.id))} />
+                  <SnoozeButton
+                    leadId={a.id}
+                    previousNextFollowUpAt={a.previousNextFollowUpAt}
+                    onSnoozed={() => setDismissed((prev) => new Set(prev).add(a.id))}
+                    onUndo={() =>
+                      setDismissed((prev) => {
+                        const next = new Set(prev);
+                        next.delete(a.id);
+                        return next;
+                      })
+                    }
+                  />
                 </div>
               }
             />
@@ -390,7 +443,7 @@ function WonDealsCard({ stats }: { stats: SalesStats }) {
         <EmptyState icon={DollarSign} text="No deals closed yet." />
       ) : (
         <>
-          <div className="flex gap-2 mb-3">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -831,27 +884,36 @@ function MockupRequestRow({
 function HandoffRow({
   handoff,
   onAcknowledged,
+  onUnacknowledged,
 }: {
   handoff: OpsStats['newHandoffs'][number];
   onAcknowledged: () => void;
+  onUnacknowledged?: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showUndo, setShowUndo] = useState(false);
+
+  const setAcknowledged = async (acknowledgeHandoff: boolean) => {
+    const res = await fetch(`/api/projects/${handoff.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acknowledgeHandoff }),
+    });
+    return res.ok;
+  };
 
   const handleAcknowledge = async () => {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch(`/api/projects/${handoff.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ acknowledgeHandoff: true }),
-      });
-      if (!res.ok) {
+      const ok = await setAcknowledged(true);
+      if (ok) {
+        onAcknowledged();
+        setShowUndo(true);
+      } else {
         setError("Couldn't mark this picked up — try again.");
-        return;
       }
-      onAcknowledged();
     } catch {
       setError('Could not reach the server — check your connection.');
     } finally {
@@ -859,8 +921,20 @@ function HandoffRow({
     }
   };
 
+  const handleUndo = async () => {
+    const ok = await setAcknowledged(false);
+    if (ok) onUnacknowledged?.();
+  };
+
   return (
     <div className="rounded-xl border border-white/10 px-3 py-2.5">
+      {showUndo && (
+        <UndoToast
+          message={`Picked up ${handoff.company}`}
+          onUndo={handleUndo}
+          onDismiss={() => setShowUndo(false)}
+        />
+      )}
       <div className="flex justify-between items-center gap-2">
         <Link href={`/admin/projects/${handoff.id}`} className="text-sm font-medium hover:underline truncate">
           {handoff.company}
@@ -1082,10 +1156,10 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
     <Card className="p-6">
       <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
       {balances.length === 0 ? (
-        <EmptyState icon={Wallet} text="Nothing outstanding." />
+        <EmptyState icon={Wallet} text="Nothing outstanding." tone="clear" />
       ) : (
         <>
-          <div className="flex gap-2 mb-3">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -1153,7 +1227,7 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
     <Card className="p-6" glow="red">
       <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
       {projects.length === 0 ? (
-        <EmptyState icon={AlertTriangle} text="Everything's current." />
+        <EmptyState icon={AlertTriangle} text="Everything's current." tone="clear" />
       ) : (
         <>
           <div className="space-y-0.5">
@@ -1248,7 +1322,17 @@ function OpsDashboard({
 
       {pendingMockups.length > 0 && (
         <Card className="p-6 mb-6" glow="amber">
-          <CardHeader icon={Palette} tone="amber" title="Mockup Requests" subtitle="Evan's waiting on these" />
+          <CardHeader
+            icon={Palette}
+            tone="amber"
+            title="Mockup Requests"
+            subtitle="Evan's waiting on these"
+            action={
+              <Link href="/admin/mockup-queue" className="text-xs text-amber-300/70 hover:text-amber-300">
+                Full briefs →
+              </Link>
+            }
+          />
           <div className="space-y-2">
             {pendingMockups.map((r) => (
               <MockupRequestRow
@@ -1297,6 +1381,9 @@ function OpsDashboard({
                     setNewHandoffs((prev) =>
                       prev.map((h) => (h.id === p.id ? { ...h, handoffAcknowledgedAt: new Date().toISOString() } : h))
                     )
+                  }
+                  onUnacknowledged={() =>
+                    setNewHandoffs((prev) => prev.map((h) => (h.id === p.id ? { ...h, handoffAcknowledgedAt: null } : h)))
                   }
                 />
               ))}
@@ -1444,11 +1531,7 @@ export default function AdminDashboardPage() {
   }, [router, retryCount, range]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-56px)] lg:h-screen">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (error) {
