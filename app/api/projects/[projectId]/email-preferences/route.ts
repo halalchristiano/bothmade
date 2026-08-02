@@ -21,15 +21,19 @@ export async function GET(
       where: { clientId: session.clientId },
     });
 
-    if (!preferences) {
-      return NextResponse.json(
-        { error: 'Email preferences not found' },
-        { status: 404 }
-      );
-    }
-
+    // A client without a preferences row (imported, or a failed create) should
+    // see the defaults, not a 404 that breaks the settings screen.
     return NextResponse.json(
-      { success: true, preferences },
+      {
+        success: true,
+        preferences: preferences ?? {
+          clientId: session.clientId,
+          notificationsEnabled: true,
+          digestFrequency: 'daily',
+          statusUpdates: true,
+          messages: true,
+        },
+      },
       { status: 200 }
     );
   } catch (error) {
@@ -62,9 +66,12 @@ export async function PUT(
       messages,
     } = await request.json();
 
-    const preferences = await prisma.emailPreferences.update({
+    // Upsert, not update: a client whose preferences row was never created
+    // (imported client, or a failed create at signup) would otherwise get a
+    // 500 (P2025) the moment they touch this screen.
+    const preferences = await prisma.emailPreferences.upsert({
       where: { clientId: session.clientId },
-      data: {
+      update: {
         notificationsEnabled:
           notificationsEnabled !== undefined
             ? notificationsEnabled
@@ -72,6 +79,14 @@ export async function PUT(
         digestFrequency: digestFrequency || undefined,
         statusUpdates: statusUpdates !== undefined ? statusUpdates : undefined,
         messages: messages !== undefined ? messages : undefined,
+      },
+      create: {
+        clientId: session.clientId,
+        notificationsEnabled:
+          notificationsEnabled !== undefined ? notificationsEnabled : true,
+        digestFrequency: digestFrequency || 'daily',
+        statusUpdates: statusUpdates !== undefined ? statusUpdates : true,
+        messages: messages !== undefined ? messages : true,
       },
     });
 

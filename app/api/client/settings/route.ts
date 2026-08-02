@@ -108,14 +108,24 @@ export async function PATCH(request: NextRequest) {
 
     let preferences = null;
     if (hasPreferenceUpdate) {
-      preferences = await prisma.emailPreferences.update({
+      // Upsert, not update: a client with no preferences row (imported, or a
+      // failed create at signup) would otherwise 500 (P2025) on save.
+      preferences = await prisma.emailPreferences.upsert({
         where: { clientId: session.clientId },
-        data: {
+        update: {
           notificationsEnabled:
             notificationsEnabled !== undefined ? notificationsEnabled : undefined,
           digestFrequency: digestFrequency || undefined,
           statusUpdates: statusUpdates !== undefined ? statusUpdates : undefined,
           messages: messages !== undefined ? messages : undefined,
+        },
+        create: {
+          clientId: session.clientId,
+          notificationsEnabled:
+            notificationsEnabled !== undefined ? notificationsEnabled : true,
+          digestFrequency: digestFrequency || 'daily',
+          statusUpdates: statusUpdates !== undefined ? statusUpdates : true,
+          messages: messages !== undefined ? messages : true,
         },
       });
     }
