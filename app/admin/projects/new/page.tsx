@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import InfoTooltip from '@/components/InfoTooltip';
 import {
   ADD_ON_REQUIRES,
   ADD_ONS,
@@ -214,7 +215,10 @@ function NewProjectForm() {
                       : 'border-white/10 hover:border-white/25'
                   }`}
                 >
-                  <p className="font-medium text-sm">{service.label}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-medium text-sm">{service.label}</p>
+                    <InfoTooltip text={`${service.description} Best for: ${service.bestFor}`} />
+                  </div>
                   <p className="text-xs text-white/40">{formatCents(service.price)}</p>
                 </button>
               )
@@ -233,6 +237,7 @@ function NewProjectForm() {
               >
                 <input type="checkbox" checked={addOns.includes(key)} onChange={() => toggleAddOn(key)} />
                 <span className="text-sm">{addOn.label}</span>
+                <InfoTooltip text={`${addOn.description} ${addOn.benefit}`} />
                 <span className="text-xs text-white/40 ml-auto">+{formatCents(addOn.price)}</span>
               </label>
             ))}
