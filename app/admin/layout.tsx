@@ -18,11 +18,13 @@ import {
   Menu,
   X,
   Settings,
+  PhoneCall,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, salesVisible: true },
   { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, salesVisible: true },
+  { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, salesVisible: true },
   { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true },
   { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
@@ -57,7 +59,7 @@ const TYPE_LABELS: Record<SearchResult['type'], string> = {
   note: 'Note',
 };
 
-function SearchBox({ onNavigate }: { onNavigate?: () => void }) {
+function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; autoFocus?: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -85,6 +87,7 @@ function SearchBox({ onNavigate }: { onNavigate?: () => void }) {
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
         <input
           value={query}
+          autoFocus={autoFocus}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
@@ -208,6 +211,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [userRole, setUserRole] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -314,9 +318,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Logo compact />
           </Link>
           <div className="flex items-center gap-1">
+            {/* Search lived only inside the collapsed menu, which put it two
+                taps behind a hidden panel on the device it's used on most. */}
+            <button
+              onClick={() => {
+                setMobileSearchOpen((v) => !v);
+                setMobileOpen(false);
+              }}
+              className={`flex items-center justify-center w-9 h-9 rounded-md hover:bg-white/5 transition-colors ${
+                mobileSearchOpen ? 'text-sky-300 bg-white/[0.06]' : ''
+              }`}
+              aria-label="Search"
+              aria-expanded={mobileSearchOpen}
+            >
+              <Search size={18} />
+            </button>
             <NotificationBell />
             <button
-              onClick={() => setMobileOpen((v) => !v)}
+              onClick={() => {
+                setMobileOpen((v) => !v);
+                setMobileSearchOpen(false);
+              }}
               className="flex items-center justify-center w-9 h-9 rounded-md hover:bg-white/5 transition-colors"
               aria-label="Menu"
             >
@@ -324,6 +346,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </button>
           </div>
         </div>
+
+        <AnimatePresence>
+          {mobileSearchOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden border-t border-white/10"
+            >
+              <div className="px-4 py-3">
+                <SearchBox onNavigate={() => setMobileSearchOpen(false)} autoFocus />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence>
           {mobileOpen && (

@@ -323,6 +323,73 @@ export const PLAYBOOK_SEED: PlaybookSeedItem[] = [
     undefined
   ),
 
+  // ---------- Trades / field-service (emergency + scheduled): essentials ----------
+  item(
+    'Website and service-routing rebuild',
+    'essential',
+    2600,
+    'A mobile-first rebuild that splits emergency calls from scheduled work, checks the visitor is in the service area, and adds online estimates, CRM intake and analytics.',
+    "We'd rebuild the site so an emergency and a routine job are never treated the same way — the urgent visitor gets the phone number in one tap, the routine one gets a proper estimate flow.",
+    "This is the item everything else on the list sits on top of. Routing, service-area checks, estimates and CRM intake only pay off once the underlying site is built to carry them.",
+    undefined
+  ),
+  item(
+    'Website restructuring',
+    'essential',
+    900,
+    "Reorganising the site around the journeys visitors actually arrive with — emergency, planned service, commercial, and existing-account.",
+    "We'd organise the site around why someone actually showed up — an emergency, a planned job, a commercial enquiry, or an existing account — instead of one layout trying to serve all four.",
+    "A visitor who has to work out which part of the site applies to them leaves before they find it. Structuring around their reason for being there is what gets them to the right action.",
+    undefined
+  ),
+  item(
+    'Mobile-first call flow',
+    'essential',
+    500,
+    'Keeping the correct emergency phone number visible and one tap away on every page, on the screen size most visitors actually use.',
+    "Wherever someone is on the site, on their phone, the right number to call is one tap away — no hunting through a menu while their basement floods.",
+    "An emergency visitor decides in seconds. If the phone action isn't immediately visible on mobile, where most of this traffic lands, they call the next name on the list instead.",
+    undefined
+  ),
+  item(
+    'Guided intake',
+    'essential',
+    1100,
+    'A short set of questions — incident or project type, location, urgency, key details, photos — collected before the job goes to dispatch or sales.',
+    "Before it ever reaches you, we'd get the type of job, the location, how urgent it is, and any photos — so whoever picks it up already knows what they're walking into.",
+    "Dispatch and sales currently spend the first few minutes of every call gathering the same basics. Collecting it up front shortens every single job by that much, for free, forever.",
+    undefined
+  ),
+  item(
+    'Booking and dispatch',
+    'essential',
+    1300,
+    'Connecting urgent and scheduled requests to the correct team automatically, with a clear response-time expectation set for each.',
+    "Urgent requests and scheduled ones stop competing for the same queue — each goes straight to the right team with the response time that request actually needs.",
+    "Missed or misrouted jobs cost more than this line item in a single bad week. Getting the right job to the right team immediately is what a response-time promise actually depends on.",
+    undefined
+  ),
+
+  // ---------- Trades / field-service: trust & compliance ----------
+  item(
+    'Trust architecture',
+    'essential',
+    650,
+    'Surfacing reviews, licences, guarantees, case studies and response standards where a nervous visitor actually looks for them.',
+    "You've already got the licences, the reviews and the track record — we'd just put them where someone deciding whether to trust you actually looks.",
+    "Trust is the last thing standing between a visitor and picking up the phone. You already own the proof; this is the difference between it existing and it being seen.",
+    undefined
+  ),
+  item(
+    'Privacy and accessibility',
+    'essential',
+    600,
+    'A credible compliance foundation for handling customer information and for mobile and assistive-technology usability.',
+    "We bring the site up to a standard you can point to if a commercial or municipal customer ever asks how customer data and accessibility are handled.",
+    "Cheap to build in now, expensive to bolt on later, and increasingly a checkbox commercial and public-sector customers actually ask about before signing.",
+    undefined
+  ),
+
   // ---------- B2B / industrial: upsells ----------
   item(
     'Quote-status dashboard',
@@ -573,9 +640,48 @@ export const PLAYBOOK_BENEFITS: Record<string, string> = {
     "{company} gets prompted in front of customers at the moments that matter — a quote gone quiet, a service due, parts likely needing reordering. This is revenue {company} has already earned the right to.",
   nativeormultiplatformapp:
     "Only worth it if {company}'s people or customers work somewhere a browser struggles — on site, offline, in a workshop. Where that's true it changes how they work; where it isn't, that budget belongs in the core build.",
+
+  // --- trades / field-service (emergency + scheduled) ---
+  websiteandserviceroutingrebuild:
+    "{company}'s emergency and scheduled visitors stop being funnelled through the same generic page. The urgent ones reach a phone number immediately; the routine ones reach an estimate flow — both convert better than one page trying to do both jobs.",
+  websiterestructuring:
+    "Visitors to {company} find the part of the site meant for them — emergency, planned service, commercial, or account — in one step instead of hunting through a generic menu.",
+  mobilefirstcallflow:
+    "{company} stops losing emergency calls to whoever's site made the phone number easiest to tap. On the phone screen most visitors are using, it's never more than one tap away.",
+  guidedintake:
+    "Every job reaching {company} arrives with the type, location, urgency and photos already attached, so dispatch or sales start working the job instead of interviewing the caller.",
+  bookinganddispatch:
+    "Urgent and scheduled requests to {company} stop competing in the same queue. Each reaches the right team immediately, which is what actually makes a response-time promise real.",
+  trustarchitecture:
+    "{company}'s licences, reviews and track record sit exactly where a nervous visitor is deciding whether to call. The proof already exists — this is what makes it visible at the moment it matters.",
+  privacyandaccessibility:
+    "{company} has a straight answer the next time a commercial or municipal customer asks how data and accessibility are handled — built in now, rather than retrofitted under pressure later.",
 };
 
 /** Fills {company} into a playbook line so it names the business back to them. */
 export function personalise(text: string, company: string): string {
   return text.replace(/\{company\}/g, company);
+}
+
+/**
+ * Inserts any PLAYBOOK_SEED item not yet in the database, keyed by slug.
+ * Never touches an existing row, so an edit made in the database survives
+ * every call. Takes a PrismaClient rather than importing it, so this stays
+ * usable from both the app and standalone scripts without a circular import.
+ */
+export async function ensurePlaybookSeeded(prisma: {
+  salesPlaybookItem: {
+    createMany: (args: {
+      data: Array<PlaybookSeedItem & { benefit: string }>;
+      skipDuplicates: boolean;
+    }) => Promise<unknown>;
+  };
+}): Promise<void> {
+  await prisma.salesPlaybookItem.createMany({
+    data: PLAYBOOK_SEED.map((item) => ({
+      ...item,
+      benefit: PLAYBOOK_BENEFITS[item.slug] ?? '',
+    })),
+    skipDuplicates: true,
+  });
 }

@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import type { LucideIcon } from 'lucide-react';
+import { Search, X, type LucideIcon } from 'lucide-react';
 
 /*
  * Design language, take two. The mono-uppercase-label-on-every-box style
@@ -356,4 +356,71 @@ export function MiniBarChart({
       ))}
     </div>
   );
+}
+
+/**
+ * On-page search for a list that's already loaded.
+ *
+ * Distinct from the global search in the sidebar, which navigates you away
+ * to one record. This narrows the list you're looking at and keeps you on
+ * the page — the thing you want when you're working a list and someone asks
+ * about one business, or when you know the name and don't want to scroll.
+ * Every list long enough to scroll needs one.
+ */
+export function SearchFilter({
+  value,
+  onChange,
+  placeholder = 'Search by business, contact, email or phone...',
+  count,
+  total,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  count?: number;
+  total?: number;
+}) {
+  return (
+    <div className="mb-4">
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className="w-full min-w-0 pl-9 pr-9 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all"
+        />
+        {value && (
+          <button
+            onClick={() => onChange('')}
+            aria-label="Clear search"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
+          >
+            <X size={15} />
+          </button>
+        )}
+      </div>
+      {value && typeof count === 'number' && (
+        <p className="text-xs text-white/40 mt-1.5">
+          {count === 0
+            ? `Nothing matches "${value}".`
+            : `${count}${typeof total === 'number' ? ` of ${total}` : ''} match${count === 1 ? 'es' : ''}.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Case-insensitive match across whichever fields are worth searching on a
+ * record. Multi-word queries must match every word, though not in order or
+ * in the same field — so "van cleaning" finds "Van's Cleaning Services" and
+ * "miami roofing" finds a roofer whose city is only in the notes.
+ */
+export function matchesSearch(query: string, ...fields: Array<string | null | undefined>): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = fields.filter(Boolean).join(' ').toLowerCase();
+  return q.split(/\s+/).every((word) => haystack.includes(word));
 }

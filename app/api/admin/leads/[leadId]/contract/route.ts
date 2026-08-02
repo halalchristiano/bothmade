@@ -12,12 +12,14 @@ import {
   DEPOSIT_PERCENT,
   TIMELINES,
   calculatePrice,
+  customItemsTotal,
   depositAmount,
   formatCents,
   isAddOnKey,
   isBaseService,
   isClientType,
   isTimelineKey,
+  sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
 
@@ -32,12 +34,14 @@ export async function POST(
     }
 
     const { leadId } = await params;
-    const { baseService, addOns = [], clientType, timeline } = await request.json();
+    const { baseService, addOns = [], clientType, timeline, customItems: rawCustomItems = [] } = await request.json();
 
     if (!isBaseService(baseService) || !isClientType(clientType) || !isTimelineKey(timeline)) {
       return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
     }
     const addOnKeys: AddOnKey[] = Array.isArray(addOns) ? addOns.filter(isAddOnKey) : [];
+    const customItems = sanitizeCustomItems(rawCustomItems);
+    const customTotal = customItemsTotal(customItems);
 
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!lead) {
@@ -45,9 +49,13 @@ export async function POST(
     }
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
+    const totalWithCustom = breakdown.totalPrice + customTotal;
     const serviceLabel = BASE_SERVICES[baseService].label;
-    const addOnLabels = addOnKeys.map((k) => ADD_ONS[k].label);
-    const deposit = depositAmount(breakdown.totalPrice);
+    const addOnLabels = [
+      ...addOnKeys.map((k) => ADD_ONS[k].label),
+      ...customItems.map((c) => `${c.label} (${formatCents(c.priceCents)})`),
+    ];
+    const deposit = depositAmount(totalWithCustom);
 
     const sections = buildContractSections({
       company: lead.company,
@@ -62,10 +70,10 @@ export async function POST(
       timelineLabel: `${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
       clientTypeLabel: CLIENT_TYPES[clientType].label,
       basePrice: formatCents(breakdown.basePrice),
-      addOnsPrice: formatCents(breakdown.addOnsPrice),
-      totalPrice: formatCents(breakdown.totalPrice),
+      addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
+      totalPrice: formatCents(totalWithCustom),
       depositAmount: formatCents(deposit),
-      balanceAmount: formatCents(breakdown.totalPrice - deposit),
+      balanceAmount: formatCents(totalWithCustom - deposit),
       depositPercent: DEPOSIT_PERCENT,
       effectiveDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
@@ -81,8 +89,8 @@ export async function POST(
       addOnLabels,
       timelineLabel: `${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
       basePrice: formatCents(breakdown.basePrice),
-      addOnsPrice: formatCents(breakdown.addOnsPrice),
-      totalPrice: formatCents(breakdown.totalPrice),
+      addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
+      totalPrice: formatCents(totalWithCustom),
       depositAmount: formatCents(deposit),
       sections,
     });
@@ -91,7 +99,7 @@ export async function POST(
       data: {
         leadId,
         type: 'proposal',
-        content: `Contract generated: ${serviceLabel}${addOnLabels.length ? ` + ${addOnLabels.join(', ')}` : ''} — ${formatCents(breakdown.totalPrice)}`,
+        content: `Contract generated: ${serviceLabel}${addOnLabels.length ? ` + ${addOnLabels.join(', ')}` : ''} — ${formatCents(totalWithCustom)}`,
         createdById: session.userId,
       },
     });

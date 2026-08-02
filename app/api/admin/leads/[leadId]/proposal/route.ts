@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import {
   calculatePrice,
+  customItemsTotal,
   depositAmount,
   formatCents,
   isAddOnKey,
@@ -11,15 +13,17 @@ import {
   isClientType,
   isTimelineKey,
   minAllowedPrice,
+  sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
 import { sendSignAndPayEmail } from '@/lib/email';
+import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
 
 /**
- * Saves the proposal Evan just built (service/add-ons/client type/timeline)
- * onto the lead so the public sign-and-pay page can reconstruct the exact
- * same pricing and contract without him re-entering anything, and returns
- * the link to send the client.
+ * Saves the proposal Evan just built (service/add-ons/client type/timeline,
+ * plus any custom items he added by hand) onto the lead so the public
+ * sign-and-pay page can reconstruct the exact same pricing and contract
+ * without him re-entering anything, and returns the link to send the client.
  */
 export async function POST(
   request: NextRequest,
@@ -40,12 +44,15 @@ export async function POST(
       depositOnly = false,
       totalPriceOverride,
       sendEmail = false,
+      customItems: rawCustomItems = [],
     } = await request.json();
 
     if (!isBaseService(baseService) || !isClientType(clientType) || !isTimelineKey(timeline)) {
       return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
     }
     const addOnKeys: AddOnKey[] = Array.isArray(addOns) ? addOns.filter(isAddOnKey) : [];
+    const customItems = sanitizeCustomItems(rawCustomItems);
+    const customTotal = customItemsTotal(customItems);
 
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!lead) {
@@ -53,18 +60,19 @@ export async function POST(
     }
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
+    const calculatedTotal = breakdown.totalPrice + customTotal;
 
     if (
       typeof totalPriceOverride === 'number' &&
       totalPriceOverride > 0 &&
       session.role === 'sales' &&
-      Math.round(totalPriceOverride) < minAllowedPrice(breakdown.totalPrice)
+      Math.round(totalPriceOverride) < minAllowedPrice(calculatedTotal)
     ) {
       return NextResponse.json(
         {
           error: `That's below what you're authorized to quote for this scope. Minimum is ${formatCents(
-            minAllowedPrice(breakdown.totalPrice)
-          )} (calculated: ${formatCents(breakdown.totalPrice)}). Ask Kiana if this deal needs a deeper discount.`,
+            minAllowedPrice(calculatedTotal)
+          )} (calculated: ${formatCents(calculatedTotal)}). Ask Kiana if this deal needs a deeper discount.`,
         },
         { status: 403 }
       );
@@ -73,7 +81,7 @@ export async function POST(
     const totalPrice =
       typeof totalPriceOverride === 'number' && totalPriceOverride > 0
         ? Math.round(totalPriceOverride)
-        : breakdown.totalPrice;
+        : calculatedTotal;
 
     await prisma.lead.update({
       where: { id: leadId },
@@ -84,6 +92,7 @@ export async function POST(
         proposalTimeline: timeline,
         proposalTotalPrice: totalPrice,
         proposalDepositOnly: Boolean(depositOnly),
+        proposalCustomItems: customItems as unknown as Prisma.InputJsonValue,
         // A new proposal supersedes any prior agreement — the client needs
         // to re-agree if Evan changes the scope or price after they signed.
         agreementSignedAt: null,
@@ -96,7 +105,7 @@ export async function POST(
       data: {
         leadId,
         type: 'proposal',
-        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''} — $${(totalPrice / 100).toLocaleString()}${depositOnly ? ' (deposit)' : ''}`,
+        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''}${customItems.length ? ` + ${customItems.map((c) => c.label).join(', ')}` : ''} — $${(totalPrice / 100).toLocaleString()}${depositOnly ? ' (deposit)' : ''}`,
         createdById: session.userId,
       },
     });
@@ -107,13 +116,28 @@ export async function POST(
     let emailSent = false;
     if (sendEmail && lead.email) {
       const chargeAmount = depositOnly ? depositAmount(totalPrice) : totalPrice;
+
+      const invoicePdfBytes = await buildInvoiceForProposal({
+        leadId,
+        company: lead.company,
+        contactName: lead.contactName,
+        baseService,
+        addOnKeys,
+        clientType,
+        timeline,
+        customItems,
+        totalPrice,
+        depositOnly: Boolean(depositOnly),
+      });
+
       emailSent = await sendSignAndPayEmail(
         lead.email,
         lead.contactName,
         lead.company,
         signUrl,
         formatCents(chargeAmount),
-        Boolean(depositOnly)
+        Boolean(depositOnly),
+        Buffer.from(invoicePdfBytes)
       );
       if (emailSent) {
         await prisma.leadActivity.create({

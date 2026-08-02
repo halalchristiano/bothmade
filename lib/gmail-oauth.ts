@@ -9,6 +9,11 @@ const SCOPES = [
   // the inbox — not needed just to send.
   'https://www.googleapis.com/auth/gmail.labels',
   'https://www.googleapis.com/auth/gmail.settings.basic',
+  // Read-only access to the bounce notices themselves. The filter above only
+  // files them away; without this we can't read them back to work out WHICH
+  // lead bounced, which is the difference between a tidy inbox and knowing
+  // to ring someone instead of emailing them again.
+  'https://www.googleapis.com/auth/gmail.readonly',
 ];
 
 export const BOUNCE_LABEL_NAME = 'Bounced — Call Instead';
@@ -161,5 +166,120 @@ export async function sendViaGmailOAuth(
   } catch (error) {
     console.error('Gmail OAuth send failed:', error);
     return false;
+  }
+}
+
+export interface BounceScanResult {
+  ok: boolean;
+  /** Lowercased addresses that bounced. */
+  addresses: string[];
+  scanned: number;
+  /** Set when the connected token predates the read scope. */
+  needsReconnect?: boolean;
+  error?: string;
+}
+
+/** Pulls every email address out of a blob of bounce-notice text. */
+function extractAddresses(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of text.matchAll(/[\w.+-]+@[\w-]+\.[\w.-]+/g)) {
+    const addr = m[0].toLowerCase().replace(/[.,;:>)\]]+$/, '');
+    // Skip the postmasters reporting the failure, and our own senders —
+    // otherwise every bounce "matches" whoever sent it.
+    if (/mailer-daemon|postmaster|no-?reply|mail-daemon|googlemail\.com$/.test(addr)) continue;
+    found.add(addr);
+  }
+  return Array.from(found);
+}
+
+/**
+ * Reads the bounce label and returns the addresses that failed.
+ *
+ * A bounce arrives asynchronously, minutes or hours after the send returned
+ * success, so nothing in the send path can catch it. Without reading them
+ * back, a dead address stays "contacted" forever and the rep keeps emailing
+ * a black hole instead of picking up the phone.
+ *
+ * Reads headers first (X-Failed-Recipients is exact when present) and falls
+ * back to scanning the body, which is where Gmail puts the failed address in
+ * its own "Address not found" notices.
+ */
+export async function scanBouncedAddresses(
+  client: GmailOAuthClient,
+  opts: { maxMessages?: number; newerThanDays?: number } = {}
+): Promise<BounceScanResult> {
+  // Each message costs an API round trip, so the work has to be bounded —
+  // an unbounded scan inside a cron job can outlive the function's time
+  // limit and take the rest of that job down with it.
+  const maxMessages = opts.maxMessages ?? 100;
+  const recency = opts.newerThanDays ? `newer_than:${opts.newerThanDays}d` : '';
+  const gmail = google.gmail({ version: 'v1', auth: client });
+  try {
+    const { data: labelList } = await gmail.users.labels.list({ userId: 'me' });
+    const label = labelList.labels?.find((l) => l.name === BOUNCE_LABEL_NAME);
+
+    // Fall back to the same query the filter uses, so this still works before
+    // the label exists or if someone deleted it.
+    const fallbackQuery =
+      '(from:(mailer-daemon OR postmaster OR mail-daemon) OR subject:("Delivery Status Notification" OR "Address not found" OR "Message blocked" OR "Undelivered Mail Returned to Sender"))';
+    const listParams = label?.id
+      ? { userId: 'me' as const, labelIds: [label.id], maxResults: maxMessages, q: recency || undefined }
+      : {
+          userId: 'me' as const,
+          q: [fallbackQuery, recency].filter(Boolean).join(' '),
+          maxResults: maxMessages,
+        };
+
+    const { data: list } = await gmail.users.messages.list(listParams);
+    const messages = list.messages ?? [];
+
+    const addresses = new Set<string>();
+    for (const msg of messages) {
+      if (!msg.id) continue;
+      const { data: full } = await gmail.users.messages.get({
+        userId: 'me',
+        id: msg.id,
+        format: 'full',
+      });
+
+      const headers = full.payload?.headers ?? [];
+      const failed = headers.find((h) => h.name?.toLowerCase() === 'x-failed-recipients')?.value;
+      if (failed) {
+        for (const a of extractAddresses(failed)) addresses.add(a);
+        continue;
+      }
+
+      // Gmail's own notices put the address in the body, so walk the parts.
+      const chunks: string[] = [full.snippet ?? ''];
+      const walk = (part: typeof full.payload) => {
+        if (!part) return;
+        if (part.body?.data) {
+          try {
+            chunks.push(Buffer.from(part.body.data, 'base64url').toString('utf8'));
+          } catch {
+            /* a part we can't decode isn't worth failing the whole scan for */
+          }
+        }
+        part.parts?.forEach(walk);
+      };
+      walk(full.payload);
+      for (const a of extractAddresses(chunks.join('\n'))) addresses.add(a);
+    }
+
+    return { ok: true, addresses: Array.from(addresses), scanned: messages.length };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // A token minted before gmail.readonly was added can't list messages.
+    const needsReconnect = /insufficient|scope|forbidden|403/i.test(message);
+    console.error('Bounce scan failed:', error);
+    return {
+      ok: false,
+      addresses: [],
+      scanned: 0,
+      needsReconnect,
+      error: needsReconnect
+        ? 'Google needs reconnecting to read bounce notices — the current connection can send but not read.'
+        : message,
+    };
   }
 }

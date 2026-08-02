@@ -19,6 +19,10 @@ import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { findGlossaryTerms } from '@/lib/glossary';
 import { buildCallScript, callScriptToText, painPointPitch } from '@/lib/call-script';
 import { personalise, priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
+import { OBJECTIONS } from '@/lib/objections';
+import { CALL_OUTCOMES } from '@/lib/call-outcomes';
+import { leadLocalTime } from '@/lib/local-time';
+import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
@@ -49,6 +53,7 @@ import {
   classifyWrittenPoint,
   inferPainPointsFromNotes,
   calculatePrice,
+  customItemsTotal,
   depositAmount,
   dependentsOf,
   expandAddOnDependencies,
@@ -59,6 +64,7 @@ import {
   type AddOnKey,
   type BaseService,
   type ClientType,
+  type CustomItem,
   type TimelineKey,
 } from '@/lib/pricing';
 
@@ -122,6 +128,19 @@ export default function LeadDetailPage() {
   const leadId = params.leadId as string;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
+  const [showObjections, setShowObjections] = useState(false);
+  const [loggingOutcome, setLoggingOutcome] = useState<string | null>(null);
+  const [outcomeNote, setOutcomeNote] = useState('');
+  const [outcomeDate, setOutcomeDate] = useState('');
+  const [savingOutcome, setSavingOutcome] = useState(false);
+  // The drafted follow-up, shown after an outcome is logged. Editable — it's
+  // a starting point, not something to fire off unread.
+  const [followUp, setFollowUp] = useState<{ subject: string; body: string; why: string } | null>(null);
+  const [sendingFollowUp, setSendingFollowUp] = useState(false);
+  const [followUpResult, setFollowUpResult] = useState<string | null>(null);
+  // Recomputed on a timer so the lead's local time doesn't silently go stale
+  // on a page left open between calls.
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
@@ -234,12 +253,32 @@ export default function LeadDetailPage() {
   };
   const [proposalClientType, setProposalClientType] = useState<ClientType>('smb');
   const [proposalTimeline, setProposalTimeline] = useState<TimelineKey>('standard');
+  // Ad-hoc items Evan adds beyond the fixed catalogue. draftLabel/draftPrice
+  // hold the add-row inputs until "Add" commits them into customItems.
+  const [customItems, setCustomItems] = useState<CustomItem[]>([]);
+  const [draftCustomLabel, setDraftCustomLabel] = useState('');
+  const [draftCustomPrice, setDraftCustomPrice] = useState('');
+
+  const addCustomItem = () => {
+    const label = draftCustomLabel.trim();
+    const dollars = parseFloat(draftCustomPrice);
+    if (!label || !Number.isFinite(dollars) || dollars <= 0) return;
+    setCustomItems((prev) => [...prev, { label, priceCents: Math.round(dollars * 100) }]);
+    setDraftCustomLabel('');
+    setDraftCustomPrice('');
+  };
+
+  const removeCustomItem = (index: number) => {
+    setCustomItems((prev) => prev.filter((_, i) => i !== index));
+  };
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
   const [emailingLink, setEmailingLink] = useState(false);
   const [linkEmailStatus, setLinkEmailStatus] = useState('');
   const [downloadingContract, setDownloadingContract] = useState(false);
+  const [sendingInvoice, setSendingInvoice] = useState<'client' | 'self' | null>(null);
+  const [invoiceStatus, setInvoiceStatus] = useState('');
   const [proposalError, setProposalError] = useState('');
   const [convertingToProject, setConvertingToProject] = useState(false);
 
@@ -326,6 +365,74 @@ export default function LeadDetailPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const pendingFollowUp = (key: string) => {
+    if (!lead?.email) return null;
+    return buildFollowUpDraft(key, {
+      company: lead.company,
+      contactName: lead.contactName,
+      senderName: lead.assignedTo?.name ?? null,
+      essentials: parseSalesPoints(lead.essentialPoints),
+      low: lead.estimateLowCents,
+      high: lead.estimateHighCents,
+    });
+  };
+
+  const sendFollowUp = async () => {
+    if (!followUp) return;
+    setSendingFollowUp(true);
+    setFollowUpResult(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/follow-up`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: followUp.subject, body: followUp.body }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFollowUpResult(data.error || 'Could not send.');
+        return;
+      }
+      setFollowUp(null);
+      setFollowUpResult('Sent — it will be in your Sent folder.');
+      load();
+    } finally {
+      setSendingFollowUp(false);
+    }
+  };
+
+  const handleCallOutcome = async (key: string, needsDate: boolean) => {
+    if (needsDate && !outcomeDate) return;
+    setSavingOutcome(true);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/call-outcome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outcome: key,
+          note: outcomeNote,
+          followUpAt: outcomeDate || undefined,
+        }),
+      });
+      if (res.ok) {
+        setLoggingOutcome(null);
+        setOutcomeNote('');
+        setOutcomeDate('');
+        setFollowUpResult(null);
+        // Offer the follow-up straight away — the moment right after the call
+        // is the only one where it reliably gets sent.
+        setFollowUp(pendingFollowUp(key));
+        load();
+      }
+    } finally {
+      setSavingOutcome(false);
+    }
+  };
 
   const togglePainPoint = (key: PainPointKey) => {
     setPainPoints((prev) => (prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key]));
@@ -578,7 +685,11 @@ export default function LeadDetailPage() {
     addOns: proposalAddOns,
     clientType: proposalClientType,
     timeline: proposalTimeline,
+    customItems,
   };
+
+  const proposalCustomTotal = customItemsTotal(customItems);
+  const proposalGrandTotal = proposalBreakdown.totalPrice + proposalCustomTotal;
 
   const handleCreatePaymentLink = async () => {
     setProposalError('');
@@ -630,6 +741,27 @@ export default function LeadDetailPage() {
     }
   };
 
+  const handleSendInvoice = async (recipient: 'client' | 'self') => {
+    setProposalError('');
+    setInvoiceStatus('');
+    setSendingInvoice(recipient);
+    try {
+      const response = await fetch(`/api/admin/leads/${leadId}/invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...proposalSelection, depositOnly, recipient }),
+      });
+      const data = await response.json();
+      if (data.success && data.sent) {
+        setInvoiceStatus(`Invoice emailed to ${data.toEmail}.`);
+      } else {
+        setProposalError(data.error || 'Failed to send invoice');
+      }
+    } finally {
+      setSendingInvoice(null);
+    }
+  };
+
   const handleDownloadContract = async () => {
     setProposalError('');
     setDownloadingContract(true);
@@ -668,6 +800,7 @@ export default function LeadDetailPage() {
       addOns: proposalAddOns.join(','),
       clientType: proposalClientType,
       timeline: proposalTimeline,
+      customItems: JSON.stringify(customItems),
       leadId,
     });
     setConvertingToProject(true);
@@ -709,7 +842,7 @@ export default function LeadDetailPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10 overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/admin/leads"
@@ -795,6 +928,130 @@ export default function LeadDetailPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Post-call wrap-up — sits directly under the action bar because this is
+          what the rep reaches for the second they hang up. */}
+      <div className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5">
+        <p className="text-sm font-bold text-white/85">Just got off the phone?</p>
+        <p className="text-xs text-white/40 mt-0.5 mb-3.5">
+          Tap what happened. It writes the note, moves the status and books the next follow-up in one go.
+        </p>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {CALL_OUTCOMES.map((o) => {
+            const active = loggingOutcome === o.key;
+            const tone =
+              o.tone === 'good'
+                ? 'border-emerald-400/30 bg-emerald-400/[0.07] text-emerald-100 hover:bg-emerald-400/15'
+                : o.tone === 'bad'
+                  ? 'border-red-400/25 bg-red-400/[0.06] text-red-100 hover:bg-red-400/15'
+                  : 'border-white/12 bg-white/[0.04] text-white/80 hover:bg-white/[0.08]';
+            return (
+              <button
+                key={o.key}
+                onClick={() => {
+                  setLoggingOutcome(active ? null : o.key);
+                  setOutcomeNote('');
+                  setOutcomeDate('');
+                }}
+                className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${tone} ${
+                  active ? 'ring-2 ring-sky-400/60' : ''
+                }`}
+              >
+                <span className="block text-xs font-bold leading-snug">{o.label}</span>
+                <span className="block text-[10px] text-white/40 leading-snug mt-0.5">{o.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {followUpResult && (
+          <p className="mt-3 text-xs text-emerald-300 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-3 py-2">
+            {followUpResult}
+          </p>
+        )}
+
+        {followUp && (
+          <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] p-3.5">
+            <p className="text-sm font-bold text-emerald-100">Send the follow-up now</p>
+            <p className="text-xs text-emerald-200/60 mt-0.5 mb-3 leading-relaxed">{followUp.why}</p>
+
+            <label className="block text-[11px] uppercase tracking-wide text-emerald-300/70 mb-1.5">Subject</label>
+            <input
+              value={followUp.subject}
+              onChange={(e) => setFollowUp({ ...followUp, subject: e.target.value })}
+              className={`${inputClass} text-sm`}
+            />
+
+            <label className="block text-[11px] uppercase tracking-wide text-emerald-300/70 mt-3 mb-1.5">
+              Message — read it before you send, and change anything that isn't true
+            </label>
+            <textarea
+              value={followUp.body}
+              onChange={(e) => setFollowUp({ ...followUp, body: e.target.value })}
+              rows={12}
+              className={`${inputClass} text-sm resize-y font-normal`}
+            />
+
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setFollowUp(null)}
+                className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Not now
+              </button>
+              <button
+                onClick={sendFollowUp}
+                disabled={sendingFollowUp}
+                className="flex-1 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                {sendingFollowUp ? 'Sending...' : `Send it to ${lead.email}`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loggingOutcome && (() => {
+          const o = CALL_OUTCOMES.find((x) => x.key === loggingOutcome)!;
+          const needsDate = !!o.askForDate;
+          return (
+            <div className="mt-3 rounded-xl border border-sky-400/25 bg-sky-400/[0.06] p-3.5">
+              <textarea
+                value={outcomeNote}
+                onChange={(e) => setOutcomeNote(e.target.value)}
+                placeholder="Anything worth remembering? What they said, what they care about, who to ask for next time..."
+                rows={2}
+                className={`${inputClass} resize-none text-sm`}
+              />
+              <div className="mt-2.5">
+                <label className="block text-[11px] uppercase tracking-wide text-sky-300/70 mb-1.5">
+                  {needsDate ? 'When? (required)' : 'Next follow-up'}
+                </label>
+                <input
+                  type="date"
+                  value={outcomeDate}
+                  onChange={(e) => setOutcomeDate(e.target.value)}
+                  className={`${inputClass} text-sm`}
+                />
+                {!needsDate && (
+                  <p className="text-[11px] text-white/35 mt-1">
+                    {o.followUpDays !== null
+                      ? `Leave blank and it'll set one for ${o.followUpDays} days' time.`
+                      : "Leave blank and no follow-up is set."}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => handleCallOutcome(o.key, needsDate)}
+                disabled={savingOutcome || (needsDate && !outcomeDate)}
+                className="w-full mt-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                {savingOutcome ? 'Saving...' : `Log it — ${o.label.toLowerCase()}`}
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {composingEmail && (
@@ -1127,6 +1384,51 @@ export default function LeadDetailPage() {
                             {line}
                           </p>
                         ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {anything && (
+              <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+                <button
+                  onClick={() => setShowObjections((v) => !v)}
+                  className="w-full flex items-start justify-between gap-3 p-4 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm font-bold text-white/85">
+                      <AlertTriangle size={14} /> When they try to end the call
+                    </span>
+                    <span className="block text-xs text-white/40 mt-0.5">
+                      The {OBJECTIONS.length} things people say to get off the phone, what each one really means,
+                      and what to say back.
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-sky-300">
+                    {showObjections ? 'Hide' : 'Open'}
+                  </span>
+                </button>
+                {showObjections && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {OBJECTIONS.map((o) => (
+                      <div key={o.slug} className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3.5 min-w-0">
+                        <p className="text-sm font-bold text-white/85 break-words">{o.trigger}</p>
+                        <p className="text-xs text-white/45 leading-relaxed mt-1.5 break-words">
+                          <span className="text-amber-300/90 font-semibold">What it usually means: </span>
+                          {o.meaning}
+                        </p>
+                        <div className="mt-2.5 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                            Say this
+                          </p>
+                          <p className="text-xs text-white/80 italic leading-relaxed break-words">"{o.response}"</p>
+                        </div>
+                        <p className="text-xs text-white/45 leading-relaxed mt-2 break-words">
+                          <span className="text-sky-300/80 font-semibold">Then: </span>
+                          {o.thenWhat}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1593,17 +1895,35 @@ export default function LeadDetailPage() {
                       <span className="text-amber-300/80 italic">No email — call instead</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 px-3 py-3">
+                  <div className="flex items-start gap-3 px-3 py-3">
                     <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-amber-400/10 text-amber-300 shrink-0">
                       <Phone size={14} />
                     </span>
-                    {lead.phone ? (
-                      <a href={`tel:${lead.phone}`} className="hover:text-amber-300 transition-colors">
-                        {lead.phone}
-                      </a>
-                    ) : (
-                      <span className="text-white/30 italic">No phone on file</span>
-                    )}
+                    <div className="min-w-0">
+                      {lead.phone ? (
+                        <a href={`tel:${lead.phone}`} className="hover:text-amber-300 transition-colors break-all">
+                          {lead.phone}
+                        </a>
+                      ) : (
+                        <span className="text-white/30 italic">No phone on file</span>
+                      )}
+                      {(() => {
+                        const lt = leadLocalTime(lead.phone, new Date(nowTick));
+                        if (!lt) return null;
+                        const c =
+                          lt.callability === 'good'
+                            ? 'text-emerald-300'
+                            : lt.callability === 'okay'
+                              ? 'text-amber-300'
+                              : 'text-red-300';
+                        return (
+                          <p className="text-xs mt-1 leading-relaxed">
+                            {lt.time && <span className={`font-semibold ${c}`}>{lt.time} their time — </span>}
+                            <span className="text-white/40">{lt.advice}</span>
+                          </p>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 px-3 py-3">
                     <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-purple-400/10 text-purple-300 shrink-0">
@@ -1991,7 +2311,7 @@ export default function LeadDetailPage() {
           Configure exactly what they want, then send a payment link or generate a contract — no need to send them back to the pricing page.
         </p>
 
-        <div className="grid lg:grid-cols-[1fr_320px] gap-8">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-8">
           {/* Left: configuration steps */}
           <div className="space-y-8">
             <div>
@@ -2072,7 +2392,62 @@ export default function LeadDetailPage() {
             </div>
 
             <div>
-              <StepLabel n={3} label="Client Details" />
+              <StepLabel n={3} label="Custom Items" hint={customItems.length ? `${customItems.length} added` : 'optional'} />
+              <div className="space-y-2 mb-3">
+                {customItems.map((item, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                  >
+                    <span className="text-sm">{item.label}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-white/60">{formatCents(item.priceCents)}</span>
+                      <button
+                        onClick={() => removeCustomItem(i)}
+                        aria-label={`Remove ${item.label}`}
+                        className="text-white/40 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Custom item name"
+                  value={draftCustomLabel}
+                  onChange={(e) => setDraftCustomLabel(e.target.value)}
+                  className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
+                />
+                <input
+                  type="number"
+                  placeholder="Price"
+                  min="0"
+                  step="1"
+                  value={draftCustomPrice}
+                  onChange={(e) => setDraftCustomPrice(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCustomItem();
+                    }
+                  }}
+                  className={`${inputClass.replace('w-full', '')} w-28 shrink-0`}
+                />
+                <button
+                  onClick={addCustomItem}
+                  disabled={!draftCustomLabel.trim() || !draftCustomPrice}
+                  className="shrink-0 rounded-lg border border-white/20 px-4 text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <StepLabel n={4} label="Client Details" />
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-2 text-white/50">Client Type</label>
@@ -2123,18 +2498,24 @@ export default function LeadDetailPage() {
                     <span>{formatCents(proposalBreakdown.addOnsPrice)}</span>
                   </div>
                 )}
+                {customItems.map((item, i) => (
+                  <div key={i} className="flex justify-between text-white/60">
+                    <span>{item.label}</span>
+                    <span>{formatCents(item.priceCents)}</span>
+                  </div>
+                ))}
               </div>
               <div className="flex justify-between items-baseline border-t border-white/10 pt-3">
                 <span className="font-semibold text-sm">Total</span>
                 <span className="text-2xl font-bold bg-gradient-to-r from-sky-300 to-purple-300 bg-clip-text text-transparent">
-                  {formatCents(proposalBreakdown.totalPrice)}
+                  {formatCents(proposalGrandTotal)}
                 </span>
               </div>
 
               <label className="flex items-start gap-2 text-xs text-white/55 mt-4 cursor-pointer">
                 <input type="checkbox" className="mt-0.5" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
                 <span>
-                  Charge 50% deposit only ({formatCents(depositAmount(proposalBreakdown.totalPrice))}) — collect the rest later
+                  Charge 50% deposit only ({formatCents(depositAmount(proposalGrandTotal))}) — collect the rest later
                 </span>
               </label>
             </div>
@@ -2163,6 +2544,23 @@ export default function LeadDetailPage() {
               >
                 {downloadingContract ? 'Generating...' : 'Download Contract PDF'}
               </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={() => handleSendInvoice('client')}
+                  disabled={sendingInvoice !== null}
+                  className="flex-1 min-w-0 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+                >
+                  {sendingInvoice === 'client' ? 'Sending...' : 'Email Invoice to Client'}
+                </button>
+                <button
+                  onClick={() => handleSendInvoice('self')}
+                  disabled={sendingInvoice !== null}
+                  className="flex-1 min-w-0 rounded-lg border border-white/20 px-3 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+                >
+                  {sendingInvoice === 'self' ? 'Sending...' : 'Email Invoice to Myself'}
+                </button>
+              </div>
+              {invoiceStatus && <p className="text-xs text-emerald-300">{invoiceStatus}</p>}
               <button
                 onClick={handleConvertToProject}
                 disabled={convertingToProject}

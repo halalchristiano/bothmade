@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus, CheckCircle2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
-import { PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
+import { PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { KanbanSquare } from 'lucide-react';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
@@ -52,6 +52,7 @@ export default function PipelinePage() {
   const router = useRouter();
   const [leads, setLeads] = useState<LeadCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [movingId, setMovingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [pendingLostMove, setPendingLostMove] = useState<LeadCard | null>(null);
@@ -81,10 +82,18 @@ export default function PipelinePage() {
       LeadCard[]
     >;
     for (const lead of leads) {
+      if (!matchesSearch(search, lead.company, lead.contactName, lead.email, lead.phone, lead.assignedTo?.name)) {
+        continue;
+      }
       grouped[lead.status]?.push(lead);
     }
     return grouped;
-  }, [leads]);
+  }, [leads, search]);
+
+  const shownCount = useMemo(
+    () => Object.values(columns).reduce((n, col) => n + col.length, 0),
+    [columns]
+  );
 
   const applyStatusChange = async (leadId: string, status: LeadStatus, lostReason?: string) => {
     setMovingId(leadId);
@@ -145,6 +154,14 @@ export default function PipelinePage() {
           Add Companies
         </button>
       </div>
+
+      <SearchFilter
+        value={search}
+        onChange={setSearch}
+        placeholder="Find a business on the board..."
+        count={shownCount}
+        total={leads.length}
+      />
 
       <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMN_STATUSES.map((status) => {

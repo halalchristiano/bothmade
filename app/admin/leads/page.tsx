@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
-import { Card, PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
+import { Card, PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
@@ -132,6 +132,7 @@ export default function AdminLeadsPage() {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showImportHistory, setShowImportHistory] = useState(false);
@@ -174,7 +175,7 @@ export default function AdminLeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => {
+  const byStatus = useMemo(() => {
     if (statusFilter === 'all') return leads;
     if (statusFilter === 'needs-contact') {
       return leads.filter((l) => l.status === 'new' && l.activities.length === 0);
@@ -190,6 +191,16 @@ export default function AdminLeadsPage() {
     }
     return leads.filter((l) => l.status === statusFilter);
   }, [leads, statusFilter]);
+
+  // Search narrows whatever the status tabs already selected, so the two
+  // compose instead of one silently overriding the other.
+  const filtered = useMemo(
+    () =>
+      byStatus.filter((l) =>
+        matchesSearch(search, l.company, l.contactName, l.email, l.phone, l.assignedTo?.name)
+      ),
+    [byStatus, search]
+  );
 
   const needsContactCount = useMemo(
     () => leads.filter((l) => l.status === 'new' && l.activities.length === 0).length,
@@ -389,6 +400,8 @@ export default function AdminLeadsPage() {
           </button>
         </div>
       </div>
+
+      <SearchFilter value={search} onChange={setSearch} count={filtered.length} total={byStatus.length} />
 
       {(coldReadyLeads.length > 0 || needsCallLeads.length > 0) && (
         <Card className="p-5 mb-6" glow="emerald">

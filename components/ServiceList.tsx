@@ -31,7 +31,7 @@ const WORLDS: World[] = [
     title: 'WEB',
     href: '/web',
     meta: 'React · Next.js · TypeScript',
-    blurb: 'Marketing sites, SaaS platforms, dashboards — engineered to load fast and convert.',
+    blurb: 'Marketing sites, SaaS platforms, dashboards — engineered to load fast and convert. Built on the same modern stack we\'d choose for our own product, not whatever\'s fastest to bill.',
     titleStyle: {
       color: 'transparent',
       WebkitTextStroke: '2px rgba(125,211,252,0.85)',
@@ -56,7 +56,7 @@ const WORLDS: World[] = [
     title: 'iOS & iPAD',
     href: '/ios',
     meta: 'Swift · SwiftUI · Combine',
-    blurb: 'Native apps built for the App Store — retention and revenue treated as design problems.',
+    blurb: 'Native apps built for the App Store — retention and revenue treated as design problems, not afterthoughts bolted on post-launch.',
     titleStyle: {
       color: 'transparent',
       backgroundImage: 'linear-gradient(180deg, #fff 25%, #a5b4fc)',
@@ -78,7 +78,7 @@ const WORLDS: World[] = [
     title: 'macOS',
     href: '/ios',
     meta: 'AppKit · SwiftUI · Menu bar',
-    blurb: 'Desktop software that respects the platform, from menu-bar utilities to full suites.',
+    blurb: 'Desktop software that respects the platform, from menu-bar utilities to full suites — built to feel native, not like a web page in a window.',
     titleStyle: {
       color: 'transparent',
       backgroundImage: 'linear-gradient(180deg, #fff 25%, #c4b5fd)',
@@ -109,7 +109,7 @@ const WORLDS: World[] = [
     title: 'VISION PRO',
     href: '/visionpro',
     meta: 'visionOS · RealityKit · Spatial',
-    blurb: 'Immersive spatial computing — the platform almost nobody has shipped on yet.',
+    blurb: 'Immersive spatial computing — the platform almost nobody has shipped on yet, which means arriving early is still worth something.',
     titleStyle: {
       color: 'transparent',
       backgroundImage: 'linear-gradient(100deg, #f0abfc 10%, #c084fc 50%, #818cf8)',
