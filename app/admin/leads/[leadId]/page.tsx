@@ -101,6 +101,7 @@ interface LeadDetail {
   emailDeliveryFailedReason: string | null;
   originalWebsite: string | null;
   salesNote: string | null;
+  currentSiteAssessment: string | null;
   customPainPoints: string | null;
   essentialPoints: string | null;
   upsellPoints: string | null;
@@ -267,6 +268,8 @@ export default function LeadDetailPage() {
       setSaving(false);
     }
   };
+
+  const [showChecklistPains, setShowChecklistPains] = useState(false);
 
   const [pendingLostStatus, setPendingLostStatus] = useState(false);
 
@@ -781,6 +784,15 @@ export default function LeadDetailPage() {
               </div>
             )}
 
+            {lead.currentSiteAssessment && (
+              <div className="mb-5 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/40 mb-1.5 font-semibold">
+                  <Compass size={12} /> What their site does today
+                </p>
+                <p className="text-sm text-white/70 leading-relaxed break-words">{lead.currentSiteAssessment}</p>
+              </div>
+            )}
+
             {lead.salesNote && (
               <div className="mb-5 rounded-xl border border-sky-400/25 bg-sky-400/[0.08] p-4">
                 <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-sky-300 mb-1.5 font-semibold">
@@ -814,13 +826,18 @@ export default function LeadDetailPage() {
                     <WrittenPoint key={`w${i}`} item={item} tone="red" />
                   ))}
 
-                  {allPains.length > 0 && (
+                  {allPains.length > 0 && writtenPains.length > 0 && (
+                    <button
+                      onClick={() => setShowChecklistPains((v) => !v)}
+                      className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-left text-xs font-semibold text-white/55 hover:bg-white/[0.06] transition-colors"
+                    >
+                      {showChecklistPains ? 'Hide' : 'Show'} {allPains.length} more from the checklist — each with a
+                      line you can say out loud
+                    </button>
+                  )}
+
+                  {allPains.length > 0 && (writtenPains.length === 0 || showChecklistPains) && (
                     <>
-                      {writtenPains.length > 0 && (
-                        <p className="text-[11px] uppercase tracking-wide text-white/30 pt-2">
-                          Also flagged on the checklist — with lines you can use
-                        </p>
-                      )}
                       {allPains.map((key) => {
                         const brief = PAIN_POINT_BRIEFS[key];
                         if (!brief) return null;
@@ -1203,8 +1220,8 @@ export default function LeadDetailPage() {
                       <StickyNote size={11} /> Notes
                     </p>
                     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden divide-y divide-white/[0.06]">
-                      {lead.notes.split(/\n{2,}/).map((block, i) => {
-                        const match = block.match(/^([A-Za-z][A-Za-z \/]{1,30}):\s*([\s\S]*)$/);
+                      {lead.notes.split(/\n{2,}|\s+\|\s+/).map((block, i) => {
+                        const match = block.match(/^([A-Za-z][A-Za-z \/()\-]{1,34}):\s*([\s\S]*)$/);
                         return (
                           <div key={i} className="px-3.5 py-3">
                             {match ? (

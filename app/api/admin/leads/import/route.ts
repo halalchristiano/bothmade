@@ -49,9 +49,12 @@ const HEADER_ALIASES: Record<string, string> = {
   noteforevan: 'salesnote',
   evannote: 'salesnote',
   strategynote: 'salesnote',
-  currentwebsite: 'originalwebsite',
+  currentwebsite: 'currentwebsite',
+  currentsite: 'currentwebsite',
+  websiteassessment: 'currentwebsite',
   thingstheyneed: 'needfreeform',
   whattheyneed: 'needfreeform',
+  certainupsells: 'upsellfreeform',
   lowestestimate: 'estimatelow',
   lowestimate: 'estimatelow',
   minimumestimate: 'estimatelow',
@@ -60,6 +63,7 @@ const HEADER_ALIASES: Record<string, string> = {
   maximumestimate: 'estimatehigh',
   range: 'estimaterange',
   estimaterange: 'estimaterange',
+  estimatedrange: 'estimaterange',
   pricerange: 'estimaterange',
 };
 
@@ -106,12 +110,19 @@ function collectNumberedPoints(
     .map((x) => x.value);
 
   const freeform = freeformKey && row[freeformKey] ? row[freeformKey] : '';
+  // Semicolons only separate points in a plain list ("SEO; analytics; CMS").
+  // Once a cell is written as "Point: explanation", a semicolon is just
+  // punctuation inside the prose, and splitting on it would cut a sentence
+  // in half mid-thought.
+  const splitOn = freeform.includes(':') ? /\n/ : /[\n;]/;
   const extra = freeform
-    .split(/[\n;]/)
+    .split(splitOn)
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const all = [...numbered, ...extra];
+  // The freeform column is a summary of the whole group, so it reads first;
+  // the numbered columns are the specifics underneath it.
+  const all = [...extra, ...numbered];
   return all.length > 0 ? all.join('\n') : null;
 }
 
@@ -237,6 +248,14 @@ export async function POST(request: NextRequest) {
         const estimateHighCents = parseMoneyCents(row.estimatehigh) ?? rangeHigh;
 
         const customPainPoints = collectNumberedPoints(row, 'painpoint');
+
+        // "Current website" carries a URL in some sheets and a written
+        // assessment of the existing site in others. Route it by shape rather
+        // than forcing whoever builds the CSV to remember which we wanted.
+        const currentWebsiteRaw = row.currentwebsite?.trim() || '';
+        const currentWebsiteIsUrl = /^(https?:\/\/|www\.)/i.test(currentWebsiteRaw);
+        const originalWebsite = row.originalwebsite?.trim() || (currentWebsiteIsUrl ? currentWebsiteRaw : null);
+        const currentSiteAssessment = !currentWebsiteIsUrl && currentWebsiteRaw ? currentWebsiteRaw : null;
         const essentialPoints = collectNumberedPoints(row, 'essentialpoint', 'needfreeform');
         const upsellPoints = collectNumberedPoints(row, 'upsellpoint', 'upsellfreeform');
 
@@ -267,7 +286,8 @@ export async function POST(request: NextRequest) {
           personalizedObservation:
             row.personalizedobservation?.trim() || row.personalisedobservation?.trim() || null,
           mockupUrl: row.mockupurl?.trim() || null,
-          originalWebsite: row.originalwebsite?.trim() || null,
+          originalWebsite,
+          currentSiteAssessment,
           salesNote: row.salesnote?.trim() || null,
           customPainPoints,
           essentialPoints,

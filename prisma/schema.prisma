@@ -267,6 +267,11 @@ model Lead {
   // ever read back as an ordered list on the lead's page. When present these
   // take precedence over the generic pain-point heuristics, since a human
   // who looked at the business beats a lookup table every time.
+  // A written assessment of the site they have today ("Underperforming
+  // local-service website: still shows template remnants..."), shown right
+  // beside the link to it so the rep reads the verdict and the site together.
+  currentSiteAssessment String? @db.Text
+
   customPainPoints String? @db.Text
   essentialPoints  String? @db.Text
   upsellPoints     String? @db.Text
