@@ -548,15 +548,18 @@ export default function LeadDetailPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex items-center justify-between">
-        <Link href="/admin/leads" className="text-white/50 hover:text-white text-sm transition-colors">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/admin/leads"
+          className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm transition-colors"
+        >
           ← Back to Leads
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {lead.phone && (
             <a
               href={`tel:${lead.phone}`}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 transition-colors"
             >
               <Phone size={13} /> Call
             </a>
@@ -582,30 +585,30 @@ export default function LeadDetailPage() {
             <Mail size={13} /> Compose email
           </button>
           {confirmingDeleteLead ? (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-white/40">Delete {lead.company} permanently?</span>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-white/40">Delete {lead.company}?</span>
+              <button
+                onClick={handleDeleteLead}
+                disabled={deletingLead}
+                className="px-3 py-1.5 rounded-full bg-red-500/90 text-white text-xs font-semibold disabled:opacity-50 hover:bg-red-500 transition-colors"
+              >
+                {deletingLead ? 'Deleting...' : 'Confirm'}
+              </button>
+              <button
+                onClick={() => setConfirmingDeleteLead(false)}
+                className="px-3 py-1.5 rounded-full border border-white/15 text-xs hover:bg-white/5 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
             <button
-              onClick={handleDeleteLead}
-              disabled={deletingLead}
-              className="px-3 py-1 rounded-lg bg-red-500/90 text-white font-semibold disabled:opacity-50 hover:bg-red-500 transition-colors"
+              onClick={() => setConfirmingDeleteLead(true)}
+              className="text-xs text-white/30 hover:text-red-300 transition-colors px-2"
             >
-              {deletingLead ? 'Deleting...' : 'Confirm'}
+              Delete lead
             </button>
-            <button
-              onClick={() => setConfirmingDeleteLead(false)}
-              className="px-3 py-1 rounded-lg border border-white/15 hover:bg-white/5 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmingDeleteLead(true)}
-            className="text-xs text-white/30 hover:text-red-300 transition-colors"
-          >
-            Delete lead
-          </button>
-        )}
+          )}
         </div>
       </div>
 
@@ -626,34 +629,34 @@ export default function LeadDetailPage() {
         {/* LEFT: Lead info */}
         <div className="lg:col-span-1 space-y-6">
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-2">
+            <div className="flex justify-between items-start gap-3 mb-5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <button
                   onClick={handleToggleHot}
                   title={lead.hotLead ? 'Unmark as hot' : 'Mark as hot lead'}
-                  className={`text-lg leading-none transition-colors ${lead.hotLead ? 'text-amber-400' : 'text-white/20 hover:text-white/50'}`}
+                  className={`shrink-0 text-lg leading-none transition-colors ${lead.hotLead ? 'text-amber-400' : 'text-white/20 hover:text-white/50'}`}
                 >
                   ★
                 </button>
-                <h1 className="text-2xl font-bold">{lead.company}</h1>
+                <h1 className="text-2xl font-bold truncate">{lead.company}</h1>
               </div>
               <button
                 onClick={() => setEditing(!editing)}
-                className="text-xs font-semibold px-3.5 py-1.5 rounded-full border border-white/15 hover:bg-white/5 transition-colors"
+                className="shrink-0 text-xs font-semibold px-3.5 py-1.5 rounded-full border border-white/15 hover:bg-white/5 transition-colors"
               >
                 {editing ? 'Cancel' : 'Edit'}
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <div>
-                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-purple-300/70 mb-1">
+              <div className="min-w-0">
+                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-purple-300/70 mb-1.5">
                   <Tag size={11} /> Status
                 </label>
                 <select
                   value={lead.status}
                   onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
-                  className={`${inputClass} border-purple-400/20 focus:ring-purple-400/50`}
+                  className={`${inputClass} w-full min-w-0 border-purple-400/20 focus:ring-purple-400/50`}
                 >
                   {LEAD_STATUSES.map((s) => (
                     <option key={s} value={s} className="bg-[#05030a]">
@@ -662,15 +665,15 @@ export default function LeadDetailPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-sky-300/70 mb-1">
+              <div className="min-w-0">
+                <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-sky-300/70 mb-1.5">
                   <CalendarClock size={11} /> Follow-up
                 </label>
                 <input
                   type="date"
                   defaultValue={lead.nextFollowUpAt ? lead.nextFollowUpAt.slice(0, 10) : ''}
                   onChange={(e) => handleSetFollowUp(e.target.value)}
-                  className={`${inputClass} border-sky-400/20 focus:ring-sky-400/50 overflow-hidden [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:mr-0`}
+                  className={`${inputClass} block w-full min-w-0 max-w-full box-border border-sky-400/20 focus:ring-sky-400/50 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:ml-0.5 [&::-webkit-calendar-picker-indicator]:mr-0`}
                 />
               </div>
             </div>
