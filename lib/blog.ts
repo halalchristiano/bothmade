@@ -147,7 +147,13 @@ export type Block =
   /** A scaled replay of Nav's mobile overlay: hamburger-to-X morph, staggered link entrance, scroll lock, Escape to close — in a bounded stage instead of the real viewport. */
   | { type: 'mobileMenuDemo' }
   /** Side by side: a stock-photo-style placeholder vs. the site's actual dashed "honest empty frame." */
-  | { type: 'honestFrameDemo' };
+  | { type: 'honestFrameDemo' }
+  /** Pick a real business problem, see the real problem/costsThem framing and which add-ons actually fix it — from PAIN_POINT_BRIEFS in lib/pricing.ts. */
+  | { type: 'diagnosisDemo' }
+  /** Toggle between an unwrapped batch write (partial failure leaves a mess) and one wrapped in a transaction (all-or-nothing). */
+  | { type: 'transactionDemo' }
+  /** A tiny live preview of the site's actual 404 treatment — type any fake path and see it render. */
+  | { type: 'notFoundDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -1543,6 +1549,117 @@ export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
       {
         type: 'p',
         text: "The temptation to fill an empty box only gets stronger the longer it stays empty — a case study that's sat unfinished for a few weeks starts to feel like it needs to look done. The actual discipline here isn't the component, which took a few lines; it's not reaching for a placeholder image the fifth time a page feels a little sparse. The dashed frame is a small, constant reminder pointed at us as much as at anyone reading the page: this isn't finished, and the honest thing is to say so rather than dress it up.",
+      },
+    ],
+  },
+  {
+    slug: 'tell-us-whats-actually-wrong',
+    title: "Tell us what's actually wrong",
+    dek: "Most quote forms ask what package you want. We'd rather start from the actual problem — pick one below and see what it's really costing you.",
+    tag: 'Process',
+    accent: 'sky',
+    date: '2027-02-21',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "A typical quote request asks you to already know the answer: pick a package, pick a page count, pick features off a list written by someone who's never seen your business. That works fine if you already know exactly what you need. Most people asking for a website or an app don't — they know something is costing them customers or time, and they're hoping the person on the other end can translate that into the right build. So we start there instead.",
+      },
+      {
+        type: 'statement',
+        text: "The problem comes first. What actually fixes it comes second. The package comes last, and only after both of those are settled.",
+      },
+      { type: 'heading', text: 'Pick what sounds familiar' },
+      { type: 'diagnosisDemo' },
+      {
+        type: 'p',
+        text: "That's not summarized or paraphrased — it's reading directly out of PAIN_POINT_BRIEFS in lib/pricing.ts, the same structured data our own sales process uses internally to make sure every conversation about \"no online booking\" or \"slow site\" actually lands on the same real cost and the same real fix, instead of depending on whoever happens to be on the call that day to remember it correctly.",
+      },
+      { type: 'heading', text: "Why 'needs' and 'upsell' are kept separate" },
+      {
+        type: 'p',
+        text: "Every pain point in that file distinguishes between what genuinely fixes the problem (needs — no fix without it) and real, useful extras that are only worth raising once the core is agreed (upsell). \"No online booking\" needs a booking system; a CRM integration is a legitimate upsell on top of that, not a substitute for it. Keeping those two lists structurally separate in the data means a scope can't accidentally include the extra while skipping the actual fix, and it means a conversation about your problem doesn't turn into a conversation about add-ons before the core has even been agreed.",
+      },
+      { type: 'heading', text: "What this replaces" },
+      {
+        type: 'p',
+        text: "It replaces the version of this conversation where the actual diagnosis lives entirely in one person's head, gets phrased slightly differently every time, and drifts a little further from what actually matters each time it's retold. Writing it down as structured data — a real problem statement, a real cost, a real fix — means the diagnosis is the same whether you talk to us on a Tuesday or a Friday, and it's the same thing driving both the conversation and the actual scope that gets built.",
+      },
+    ],
+  },
+  {
+    slug: 'why-batch-writes-get-wrapped-in-one-transaction',
+    title: 'Why batch writes get wrapped in one transaction',
+    dek: "Importing five records and record four fails — do you keep the first three, or nothing? Toggle the demo below to see both outcomes.",
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2027-02-28',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "Import a batch of records — a CSV upload, a bulk create, anything that writes several rows in one logical operation — and eventually one of them will fail partway through: a duplicate, a constraint violation, a bad value in row 4 of 200. The question that matters isn't \"how do we handle the error,\" it's \"what state is the database left in the moment it happens.\" Without a transaction, the honest answer is: however far it got. Three successful writes, a failure, and 196 rows that never ran — a batch operation that partially happened.",
+      },
+      {
+        type: 'statement',
+        text: 'prisma.$transaction() turns a list of writes into one atomic unit — either every one of them commits, or none of them do. There is no partial state to clean up after.',
+      },
+      { type: 'heading', text: 'See both outcomes' },
+      { type: 'transactionDemo' },
+      {
+        type: 'p',
+        text: "Run it unwrapped and record 4 fails while 1 through 3 sit there committed and 5 never runs — real, permanent rows in the database that now need their own manual cleanup, because the failure happened, but so did the successes before it. Run it wrapped and record 4 still fails, but everything else rolls back with it — the database ends the operation in exactly the state it started in, as if the batch had never been attempted.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `// Real pattern, from a CSV import route on this site:
+const created = await prisma.$transaction(
+  deduped.map((data) => prisma.record.create({ data }))
+);
+// If ANY create() in that array throws, none of them persist.
+// The route's catch block runs against a database unchanged
+// by the attempt — no partial import to reconcile by hand.`,
+      },
+      { type: 'heading', text: 'Why this matters more for imports than single writes' },
+      {
+        type: 'p',
+        text: "A single failed write is usually easy to reason about — it either happened or it didn't, and the user sees an error either way. A batch is where partial failure gets genuinely dangerous, because the operation looks like it happened (three rows, five rows, whatever got through) without actually completing the thing the user asked for. \"Import my 200 leads\" that silently becomes \"import my first 47 leads\" is a worse failure mode than an outright rejected import, because nobody notices the missing 153 until something downstream depends on them and comes up short.",
+      },
+      { type: 'heading', text: 'The tradeoff worth naming' },
+      {
+        type: 'p',
+        text: "Atomicity isn't free — a transaction holds its writes uncommitted until every operation in it succeeds, which means longer-held locks and, for a genuinely huge batch, a meaningfully bigger unit of work to roll back if something late in the list fails. For an import sized in the hundreds or low thousands of rows, that cost is trivial next to the alternative of a half-imported dataset nobody's certain about. For something in the millions of rows, chunking into smaller transactional batches is usually the better trade — all-or-nothing, just at a smaller granularity than \"the entire file.\"",
+      },
+    ],
+  },
+  {
+    slug: 'even-our-404-page-is-a-pun',
+    title: 'Even our 404 page is a pun',
+    dek: "\"Not made.\" — the one page on the site nobody's supposed to end up on, and we still didn't skip the brand. Type a fake URL below.",
+    tag: 'Design',
+    accent: 'purple',
+    date: '2027-03-07',
+    readMinutes: 2,
+    body: [
+      {
+        type: 'p',
+        text: "A 404 page is the one place on a site where almost nobody puts real effort — by definition, every visitor there arrived by accident, following a broken link or a typo, and most templates just say \"Page Not Found\" in the default font and call it handled. Ours says \"Not made.\" instead, split into the same wireframe-outline-versus-solid-gradient treatment the wordmark carries everywhere else on the site.",
+      },
+      {
+        type: 'statement',
+        text: 'bothmade. Both made. Not made — the one state the brand mark was always going to eventually need to say out loud.',
+      },
+      { type: 'heading', text: 'Type a fake path' },
+      { type: 'notFoundDemo' },
+      {
+        type: 'p',
+        text: "That's the real not-found.tsx layout, verbatim — same grid backdrop, same font-mono \"error 404\" kicker, same two-tone treatment on the headline. The only thing swapped out is the browser chrome around it, so you can type whatever nonexistent path you want and watch the page insist it genuinely was never made, which happens to also be exactly true.",
+      },
+      { type: 'heading', text: "Why bother on a page almost nobody sees" },
+      {
+        type: 'p',
+        text: "Precisely because almost nobody sees it, it's low-stakes enough to take a genuine swing at — no client is reviewing the 404 page in a proposal meeting, so it's one of the few places on a site where a small joke is pure upside. It's also a real (if minor) signal: a studio that bothered to make its own error page on-brand is a studio that probably didn't skip the boring parts of your project either.",
       },
     ],
   },

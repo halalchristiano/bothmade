@@ -68,20 +68,35 @@ export async function GET(
     // is done at the moment of dialling: ringing a business someone spoke to
     // yesterday. Cheaper to warn here than to reconcile the whole table.
     const companyKey = lead.company.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const possibleDuplicates = (
+    // A blank or punctuation-only name is not an identity — matching on it
+    // pairs every unnamed lead with every other one.
+    const matchableCompany = companyKey.length > 0;
+    const leadEmail = lead.email?.trim().toLowerCase() || null;
+    const possibleDuplicates = !matchableCompany && !leadEmail ? [] : (
       await prisma.lead.findMany({
         where: {
           id: { not: leadId },
           status: { notIn: ['lost'] },
           OR: [
-            ...(lead.email ? [{ email: { equals: lead.email, mode: 'insensitive' as const } }] : []),
-            { company: { equals: lead.company, mode: 'insensitive' as const } },
+            ...(leadEmail ? [{ email: { equals: leadEmail, mode: 'insensitive' as const } }] : []),
+            ...(matchableCompany
+              ? [{ company: { equals: lead.company, mode: 'insensitive' as const } }]
+              : []),
           ],
         },
-        select: { id: true, company: true, status: true, updatedAt: true },
+        select: { id: true, company: true, email: true, status: true, updatedAt: true },
         take: 5,
       })
-    ).filter((d) => d.company.toLowerCase().replace(/[^a-z0-9]/g, '') === companyKey || !!lead.email);
+    )
+      // The '|| !!lead.email' this replaced meant every row survived whenever
+      // the lead had an email at all, so the query's OR went unchecked and
+      // unrelated businesses were flagged as duplicates of each other.
+      .filter(
+        (d) =>
+          (matchableCompany &&
+            d.company.toLowerCase().replace(/[^a-z0-9]/g, '') === companyKey) ||
+          (!!leadEmail && d.email?.trim().toLowerCase() === leadEmail)
+      );
 
     return NextResponse.json(
       { success: true, lead, playbook, possibleDuplicates },

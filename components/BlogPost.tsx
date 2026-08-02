@@ -20,7 +20,16 @@ import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ScrollProgress } from '@/components/ScrollProgress';
 import { CountUp, FocusRow, ScrubText, GridBackdrop } from '@/components/ui';
 import { formatBlogDate, type BlogPost, type Block } from '@/lib/blog';
-import { BASE_SERVICES, formatCents, expandAddOnDependencies, type BaseService, type AddOnKey } from '@/lib/pricing';
+import {
+  BASE_SERVICES,
+  formatCents,
+  expandAddOnDependencies,
+  ADD_ONS,
+  PAIN_POINT_BRIEFS,
+  type BaseService,
+  type AddOnKey,
+} from '@/lib/pricing';
+import { PAIN_POINTS, type PainPointKey } from '@/lib/leads';
 
 const ACCENT_HEX: Record<BlogPost['accent'], { from: string; to: string; text: string }> = {
   sky: { from: '#0ea5e9', to: '#0c2f52', text: 'rgb(125 211 252)' },
@@ -331,7 +340,194 @@ function BlockRenderer({
 
     case 'honestFrameDemo':
       return <HonestFrameDemo />;
+
+    case 'diagnosisDemo':
+      return <DiagnosisDemo />;
+
+    case 'transactionDemo':
+      return <TransactionDemo />;
+
+    case 'notFoundDemo':
+      return <NotFoundDemo />;
   }
+}
+
+const DIAGNOSIS_KEYS: PainPointKey[] = ['no-website', 'slow-site', 'poor-seo', 'no-booking', 'manual-processes'];
+
+/** Real problem/costsThem framing and real "needs" add-ons, pulled directly from PAIN_POINT_BRIEFS in lib/pricing.ts. */
+function DiagnosisDemo() {
+  const [selected, setSelected] = useState<PainPointKey>('no-website');
+  const brief = PAIN_POINT_BRIEFS[selected];
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="flex flex-wrap gap-2 mb-8">
+        {DIAGNOSIS_KEYS.map((key) => (
+          <button
+            key={key}
+            onClick={() => setSelected(key)}
+            className={`rounded-full border px-4 py-2 text-sm transition-all duration-300 ${
+              selected === key
+                ? 'border-sky-400/70 text-white bg-sky-400/10'
+                : 'border-white/12 text-white/50 hover:text-white hover:border-white/30'
+            }`}
+          >
+            {PAIN_POINTS[key]}
+          </button>
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={selected}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.3 }}
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30 mb-2">what's actually wrong</p>
+          <p className="text-white/80 mb-6 leading-relaxed">{brief.problem}</p>
+
+          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30 mb-2">what it's costing you</p>
+          <p className="text-white/60 mb-6 leading-relaxed">{brief.costsThem}</p>
+
+          {brief.needs.length > 0 && (
+            <>
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30 mb-2">what actually fixes it</p>
+              <div className="flex flex-wrap gap-2">
+                {brief.needs.map((key) => (
+                  <span key={key} className="rounded-full border border-sky-400/40 bg-sky-400/5 px-3 py-1.5 text-xs text-sky-200">
+                    {ADD_ONS[key].label}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Simulated batch write — toggle whether it's wrapped in a transaction; a fake failure on record 4 leaves a partial mess without one, and nothing at all with one. */
+function TransactionDemo() {
+  const [wrapped, setWrapped] = useState(true);
+  const [run, setRun] = useState(0);
+  const [states, setStates] = useState<('idle' | 'pending' | 'done' | 'failed' | 'rolled-back')[]>(
+    Array.from({ length: 5 }, () => 'idle')
+  );
+
+  const execute = () => {
+    setRun((r) => r + 1);
+    const next: typeof states = Array.from({ length: 5 }, () => 'pending');
+    setStates(next);
+
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => {
+        setStates((prev) => {
+          const copy = [...prev];
+          if (i === 3) {
+            copy[i] = 'failed';
+          } else if (!wrapped) {
+            copy[i] = 'done';
+          } else {
+            copy[i] = i < 3 ? 'pending' : copy[i];
+          }
+          return copy;
+        });
+
+        if (i === 3 && wrapped) {
+          setTimeout(() => {
+            setStates((prev) => prev.map((s, idx) => (idx === 3 ? 'failed' : 'rolled-back')));
+          }, 350);
+        }
+      }, i * 220);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="flex items-center justify-between mb-8">
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40">
+          {wrapped ? 'wrapped in a transaction' : 'unwrapped — one write per record'}
+        </p>
+        <button
+          onClick={() => setWrapped((v) => !v)}
+          className={`relative w-12 h-7 rounded-full border transition-colors duration-300 ${
+            wrapped ? 'bg-sky-400/30 border-sky-400/60' : 'bg-white/5 border-white/20'
+          }`}
+          aria-pressed={wrapped}
+          aria-label="Toggle transaction wrapping"
+        >
+          <motion.span
+            className="absolute top-1 left-1 w-5 h-5 rounded-full bg-white"
+            animate={{ x: wrapped ? 20 : 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          />
+        </button>
+      </div>
+
+      <div className="flex gap-2 mb-6">
+        {states.map((s, i) => (
+          <div
+            key={`${run}-${i}`}
+            className={`flex-1 h-14 rounded-lg border grid place-items-center font-mono text-[10px] uppercase tracking-wider transition-colors duration-300 ${
+              s === 'done'
+                ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-300'
+                : s === 'failed'
+                  ? 'border-red-400/50 bg-red-400/10 text-red-300'
+                  : s === 'rolled-back'
+                    ? 'border-white/15 bg-white/[0.02] text-white/30'
+                    : s === 'pending'
+                      ? 'border-sky-400/40 bg-sky-400/5 text-sky-300 animate-pulse'
+                      : 'border-white/10 text-white/25'
+            }`}
+          >
+            {s === 'rolled-back' ? 'undone' : s}
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={execute}
+        className="w-full rounded-xl border border-white/15 py-3 text-sm text-white/70 hover:text-white hover:border-white/30 transition-colors"
+      >
+        run the batch — record 4 always fails
+      </button>
+    </div>
+  );
+}
+
+/** Live preview of the site's actual not-found.tsx treatment, in a bounded stage, with an input to make it feel like you're hitting a real broken link. */
+function NotFoundDemo() {
+  const [path, setPath] = useState('/definitely-not-a-real-page');
+
+  return (
+    <div className="rounded-2xl border border-white/10 overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-white/10 bg-white/[0.02]">
+        <span className="w-2.5 h-2.5 rounded-full bg-white/15" />
+        <span className="w-2.5 h-2.5 rounded-full bg-white/15" />
+        <span className="w-2.5 h-2.5 rounded-full bg-white/15" />
+        <input
+          type="text"
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          aria-label="Type a fake path"
+          className="ml-3 flex-1 bg-transparent font-mono text-xs text-white/50 focus:outline-none"
+        />
+      </div>
+      <div className="relative px-8 py-14 text-center bg-[#05030a]">
+        <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.45em] text-white/40">error 404</p>
+        <p className="font-bold leading-[0.9] tracking-[-0.03em]" style={{ fontSize: 'clamp(2.5rem, 9vw, 4.5rem)' }}>
+          <span className="text-transparent" style={{ WebkitTextStroke: '1.5px rgba(125, 211, 252, 0.8)' }}>
+            Not
+          </span>{' '}
+          <span className="bg-gradient-to-b from-white to-purple-300 bg-clip-text text-transparent">made.</span>
+        </p>
+        <p className="mt-4 font-mono text-xs text-white/30">{path || '/'} doesn&apos;t exist</p>
+      </div>
+    </div>
+  );
 }
 
 const DEMO_ADDONS: { key: AddOnKey; label: string }[] = [
