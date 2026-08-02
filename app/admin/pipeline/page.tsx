@@ -56,6 +56,8 @@ export default function PipelinePage() {
   const [movingId, setMovingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [pendingLostMove, setPendingLostMove] = useState<LeadCard | null>(null);
+  const [moveError, setMoveError] = useState('');
+  const [hideClosedColumns, setHideClosedColumns] = useState(false);
 
   const load = async () => {
     try {
@@ -96,14 +98,27 @@ export default function PipelinePage() {
   );
 
   const applyStatusChange = async (leadId: string, status: LeadStatus, lostReason?: string) => {
+    const previousStatus = leads.find((l) => l.id === leadId)?.status;
     setMovingId(leadId);
+    setMoveError('');
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status } : l)));
     try {
-      await fetch(`/api/admin/leads/${leadId}`, {
+      const res = await fetch(`/api/admin/leads/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, ...(lostReason ? { lostReason } : {}) }),
       });
+      if (!res.ok && previousStatus) {
+        // Roll back the optimistic move — the card can't be left showing a
+        // stage the server never actually recorded.
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: previousStatus } : l)));
+        setMoveError("Couldn't move that card — the change didn't save. Try again.");
+      }
+    } catch {
+      if (previousStatus) {
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: previousStatus } : l)));
+      }
+      setMoveError('Could not reach the server — check your connection and try again.');
     } finally {
       setMovingId(null);
     }
@@ -155,16 +170,34 @@ export default function PipelinePage() {
         </button>
       </div>
 
-      <SearchFilter
-        value={search}
-        onChange={setSearch}
-        placeholder="Find a business on the board..."
-        count={shownCount}
-        total={leads.length}
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-1">
+        <div className="flex-1">
+          <SearchFilter
+            value={search}
+            onChange={setSearch}
+            placeholder="Find a business on the board..."
+            count={shownCount}
+            total={leads.length}
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-white/50 whitespace-nowrap cursor-pointer">
+          <input
+            type="checkbox"
+            checked={hideClosedColumns}
+            onChange={(e) => setHideClosedColumns(e.target.checked)}
+          />
+          Hide Won/Lost
+        </label>
+      </div>
+
+      {moveError && (
+        <p className="text-sm text-red-300 mb-3" role="alert">
+          {moveError}
+        </p>
+      )}
 
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {COLUMN_STATUSES.map((status) => {
+        {COLUMN_STATUSES.filter((status) => !hideClosedColumns || (status !== 'won' && status !== 'lost')).map((status) => {
           const columnLeads = columns[status];
           const totalValue = columnLeads.reduce((s, l) => s + (l.estimatedValue || 0), 0);
           return (

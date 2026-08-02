@@ -70,11 +70,6 @@ export default function ClientLoginPage() {
 
       if (response.ok) {
         setResetSent(true);
-        setTimeout(() => {
-          setShowForgotPassword(false);
-          setResetSent(false);
-          setResetEmail('');
-        }, 3000);
       } else {
         setError('Failed to send reset email');
       }
@@ -112,8 +107,20 @@ export default function ClientLoginPage() {
               </p>
 
               {resetSent ? (
-                <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-300 text-sm">
-                  Check your email for the reset link. You'll be redirected shortly.
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-300 text-sm">
+                    If an account exists for that email, a reset link is on its way — check your inbox (and spam folder).
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowForgotPassword(false);
+                      setResetSent(false);
+                      setResetEmail('');
+                    }}
+                    className="w-full rounded-lg border border-white/15 py-3 font-semibold hover:bg-white/5 transition-colors"
+                  >
+                    Back to Login
+                  </button>
                 </div>
               ) : (
                 <form onSubmit={handlePasswordReset} className="space-y-4">
