@@ -20,6 +20,7 @@ import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ScrollProgress } from '@/components/ScrollProgress';
 import { CountUp, FocusRow, ScrubText, GridBackdrop } from '@/components/ui';
 import { formatBlogDate, type BlogPost, type Block } from '@/lib/blog';
+import { BASE_SERVICES, formatCents, type BaseService } from '@/lib/pricing';
 
 const ACCENT_HEX: Record<BlogPost['accent'], { from: string; to: string; text: string }> = {
   sky: { from: '#0ea5e9', to: '#0c2f52', text: 'rgb(125 211 252)' },
@@ -297,7 +298,69 @@ function BlockRenderer({
 
     case 'stackChipsDemo':
       return <StackChipsDemo columns={block.columns} />;
+
+    case 'pricingDemo':
+      return <PricingDemo />;
   }
+}
+
+/**
+ * Live pricing demo reading BASE_SERVICES straight from lib/pricing.ts —
+ * the exact same data backing /start and Stripe checkout. Selecting a
+ * service springs the price from its old value to its new one instead of
+ * cutting, and formats through the same formatCents used everywhere else.
+ */
+function PricingDemo() {
+  const [selected, setSelected] = useState<BaseService>('website');
+  const reduceMotion = useReducedMotion();
+
+  const targetCents = BASE_SERVICES[selected].price;
+  const spring = useSpring(targetCents, { stiffness: 90, damping: 20, mass: 0.6 });
+  const [display, setDisplay] = useState(formatCents(targetCents));
+
+  useEffect(() => {
+    spring.set(targetCents);
+  }, [targetCents, spring]);
+
+  useMotionValueEvent(spring, 'change', (v) => {
+    setDisplay(formatCents(Math.round(v)));
+  });
+
+  const entries = Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][];
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="flex flex-wrap gap-2 mb-8">
+        {entries.map(([key, svc]) => (
+          <button
+            key={key}
+            onClick={() => setSelected(key)}
+            className={`rounded-full border px-4 py-2 text-sm transition-all duration-300 ${
+              selected === key
+                ? 'border-sky-400/70 text-white bg-sky-400/10'
+                : 'border-white/12 text-white/50 hover:text-white hover:border-white/30'
+            }`}
+          >
+            {svc.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30 mb-2">
+        starting price
+      </p>
+      <p
+        className="font-bold tabular-nums text-white mb-6"
+        style={{ fontSize: 'clamp(2.5rem, 7vw, 4rem)' }}
+      >
+        {reduceMotion ? formatCents(targetCents) : display}
+      </p>
+
+      <p className="text-sm text-white/50 leading-relaxed max-w-lg">
+        {BASE_SERVICES[selected].description}
+      </p>
+    </div>
+  );
 }
 
 /** Scaled replay of ServicePage's stack-chip grid: two-axis stagger (column + per-chip) plus a hover lift. */

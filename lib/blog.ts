@@ -102,7 +102,13 @@ export type Block =
    * (column delay + per-chip delay combined into one formula) plus a
    * hover lift on each chip.
    */
-  | { type: 'stackChipsDemo'; columns: { heading: string; items: string[] }[] };
+  | { type: 'stackChipsDemo'; columns: { heading: string; items: string[] }[] }
+  /**
+   * A live, real pricing demo — reads BASE_SERVICES directly from
+   * lib/pricing.ts (the same data driving /start and Stripe checkout), so
+   * these figures can never drift out of sync with the real pricing page.
+   */
+  | { type: 'pricingDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -996,6 +1002,41 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
       {
         type: 'p',
         text: "Once a chip has arrived, hovering it lifts it half a pixel and brightens its border and text — a plain CSS transition, not Framer Motion at all, because it doesn't need spring physics or scroll awareness; it just needs to feel responsive on :hover, which transition-all duration-300 already does for free. Not every piece of motion on a page needs the same tool. The entrance needed viewport awareness and staggered timing, so it got a motion library. The hover state needed neither, so it got two Tailwind classes.",
+      },
+    ],
+  },
+  {
+    slug: 'how-much-does-it-actually-cost',
+    title: 'How much does it actually cost?',
+    dek: "Real starting prices, pulled live from the same pricing engine that runs our checkout — not a 'contact us for a quote.' Pick a service below.",
+    tag: 'Process',
+    accent: 'sky',
+    date: '2026-12-06',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: '"How much does it cost to build an app" is a question most studio websites dodge — you fill out a form, wait two days, and get a number that was decided by whoever answered your email that morning. We\'d rather just tell you the starting price up front, because a real number you can see before talking to anyone is worth more than a promise that we\'ll be fair about it later.',
+      },
+      {
+        type: 'statement',
+        text: 'These are not marketing figures written for this post. This is the same pricing.ts file our actual checkout charges against.',
+      },
+      { type: 'heading', text: 'Pick a service' },
+      { type: 'pricingDemo' },
+      {
+        type: 'p',
+        text: "That component imports BASE_SERVICES directly from lib/pricing.ts and reads the price off it — it isn't a number typed into this post by hand. If we ever change what a website starts at, this demo updates the next time the site deploys, automatically, because it's reading the exact same constant /start and our Stripe checkout read.",
+      },
+      { type: 'heading', text: "Why 'starting price' and not 'the price'" },
+      {
+        type: 'p',
+        text: "The number above is the base — what a Website, Web App, or iOS App costs with nothing added. Almost nothing ships at the base price alone, because real projects need at least a few of what we scope as add-ons: a CMS, e-commerce, user accounts, an admin dashboard, ongoing maintenance. Our actual calculator at /start walks through every add-on individually so the total you see before paying anything is the real total, not the base figure with a surprise waiting at the bottom.",
+      },
+      { type: 'heading', text: 'Why show this instead of hiding behind a contact form' },
+      {
+        type: 'p',
+        text: "A generic \"contact us for pricing\" isn't neutral — it's a lead-qualification filter that also happens to hide the number from people who'd rather not have a sales conversation before they know if they can afford one. We already run fixed-scope-fixed-price checkout end to end; the number was never a secret internally. The only decision was whether to also say it out loud on the website, and we didn't see a reason not to.",
       },
     ],
   },
