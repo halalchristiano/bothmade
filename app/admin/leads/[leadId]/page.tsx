@@ -58,7 +58,12 @@ import {
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
+  isAddOnKey,
+  isBaseService,
+  isClientType,
   isIncludedInBase,
+  isTimelineKey,
+  sanitizeCustomItems,
   withBaseIncludes,
   type AddOnCategory,
   type AddOnKey,
@@ -276,6 +281,54 @@ export default function LeadDetailPage() {
   const [customItems, setCustomItems] = useState<CustomItem[]>([]);
   const [draftCustomLabel, setDraftCustomLabel] = useState('');
   const [draftCustomPrice, setDraftCustomPrice] = useState('');
+  // Guards the one-time hydration of the builder from the saved proposal (or
+  // a local draft) so later load() calls — triggered by unrelated actions
+  // elsewhere on the page — never silently overwrite an in-progress edit.
+  const hydratedProposalRef = useRef(false);
+  const [restoredDraft, setRestoredDraft] = useState(false);
+  const clearProposalDraft = () => {
+    try {
+      localStorage.removeItem(`bothmade_proposal_draft_${leadId}`);
+    } catch {
+      // no-op — nothing to clean up if storage isn't accessible
+    }
+  };
+
+  // Lets him add the missing email right where he discovers he needs it,
+  // instead of backing out of the builder to go find the edit form.
+  const [quickEmail, setQuickEmail] = useState('');
+  const [savingQuickEmail, setSavingQuickEmail] = useState(false);
+  const handleSaveQuickEmail = async () => {
+    const value = quickEmail.trim();
+    if (!value) return;
+    setSavingQuickEmail(true);
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: value }),
+      });
+      setQuickEmail('');
+      load();
+    } finally {
+      setSavingQuickEmail(false);
+    }
+  };
+
+  // Un-does whatever's been tinkered with since the last send — one click
+  // back to exactly what the client's link currently shows, instead of
+  // manually toggling every changed add-on and custom item back by hand.
+  const handleRevertToLastSent = () => {
+    if (!lead) return;
+    if (lead.proposalBaseService && isBaseService(lead.proposalBaseService)) {
+      setProposalServiceRaw(lead.proposalBaseService);
+    }
+    setProposalAddOns(lead.proposalAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a)));
+    if (lead.proposalClientType && isClientType(lead.proposalClientType)) setProposalClientType(lead.proposalClientType);
+    if (lead.proposalTimeline && isTimelineKey(lead.proposalTimeline)) setProposalTimeline(lead.proposalTimeline);
+    setDepositOnly(lead.proposalDepositOnly);
+    setCustomItems(sanitizeCustomItems(lead.proposalCustomItems || []));
+  };
 
   const addCustomItem = () => {
     const label = draftCustomLabel.trim();
@@ -374,6 +427,45 @@ export default function LeadDetailPage() {
         setQualBudget(l.qualBudget || '');
         setQualTiming(l.qualTiming || '');
         setQualMotivation(l.qualMotivation || '');
+
+        // Only on the very first load — later calls to load() happen after
+        // unrelated actions (logging an activity, changing status) and must
+        // never clobber whatever Evan is mid-way through typing into the
+        // pricing builder.
+        if (!hydratedProposalRef.current) {
+          hydratedProposalRef.current = true;
+          if (l.proposalBaseService && isBaseService(l.proposalBaseService)) {
+            // A proposal already exists server-side — that's the source of
+            // truth for what the client can actually see, so it wins over
+            // any local draft.
+            setProposalServiceRaw(l.proposalBaseService);
+            setProposalAddOns(l.proposalAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a)));
+            if (l.proposalClientType && isClientType(l.proposalClientType)) setProposalClientType(l.proposalClientType);
+            if (l.proposalTimeline && isTimelineKey(l.proposalTimeline)) setProposalTimeline(l.proposalTimeline);
+            setDepositOnly(l.proposalDepositOnly);
+            setCustomItems(sanitizeCustomItems(l.proposalCustomItems || []));
+          } else {
+            // Nothing sent yet — restore whatever was last typed into the
+            // builder in case a crash or accidental navigation lost it.
+            try {
+              const raw = localStorage.getItem(`bothmade_proposal_draft_${leadId}`);
+              const draft = raw ? JSON.parse(raw) : null;
+              if (draft) {
+                if (draft.baseService && isBaseService(draft.baseService)) setProposalServiceRaw(draft.baseService);
+                if (Array.isArray(draft.addOns)) {
+                  setProposalAddOns(draft.addOns.filter((a: string): a is AddOnKey => isAddOnKey(a)));
+                }
+                if (draft.clientType && isClientType(draft.clientType)) setProposalClientType(draft.clientType);
+                if (draft.timeline && isTimelineKey(draft.timeline)) setProposalTimeline(draft.timeline);
+                if (typeof draft.depositOnly === 'boolean') setDepositOnly(draft.depositOnly);
+                if (Array.isArray(draft.customItems)) setCustomItems(sanitizeCustomItems(draft.customItems));
+                setRestoredDraft(true);
+              }
+            } catch {
+              // corrupt or inaccessible localStorage — nothing to restore, no big deal
+            }
+          }
+        }
       }
     } finally {
       setLoading(false);
@@ -384,6 +476,29 @@ export default function LeadDetailPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+
+  // Mirrors the builder to localStorage on every change, so a crashed tab or
+  // an accidental back-button doesn't cost him the selections. Skipped until
+  // hydration has actually run — otherwise the pre-hydration defaults
+  // ('website', no add-ons) would overwrite a real draft in the first tick.
+  useEffect(() => {
+    if (!hydratedProposalRef.current) return;
+    try {
+      localStorage.setItem(
+        `bothmade_proposal_draft_${leadId}`,
+        JSON.stringify({
+          baseService: proposalService,
+          addOns: proposalAddOns,
+          clientType: proposalClientType,
+          timeline: proposalTimeline,
+          depositOnly,
+          customItems,
+        })
+      );
+    } catch {
+      // storage full or disabled — the draft is a convenience, not required
+    }
+  }, [leadId, proposalService, proposalAddOns, proposalClientType, proposalTimeline, depositOnly, customItems]);
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
@@ -805,6 +920,7 @@ export default function LeadDetailPage() {
       const data = await response.json();
       if (data.success) {
         setPaymentLinkUrl(data.signUrl);
+        clearProposalDraft();
         load();
       } else {
         setProposalError(data.error || 'Something went wrong generating this link — try again in a moment.');
@@ -842,6 +958,7 @@ export default function LeadDetailPage() {
         } else {
           setLinkEmailStatus('Link created, but the email failed to send — copy it manually below.');
         }
+        clearProposalDraft();
         load();
       } else {
         setProposalError(data.error || 'Something went wrong sending this — try again in a moment.');
@@ -2504,8 +2621,21 @@ export default function LeadDetailPage() {
         </p>
 
         {nextStepMessage && (
-          <div className="ml-11 mb-8 rounded-lg border border-sky-400/30 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
+          <div className="ml-11 mb-4 rounded-lg border border-sky-400/30 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
             {nextStepMessage}
+          </div>
+        )}
+
+        {restoredDraft && (
+          <div className="ml-11 mb-8 flex items-center justify-between gap-3 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm text-emerald-200">
+            <span>↺ Restored your unsaved selections from last time — nothing was lost.</span>
+            <button
+              onClick={() => setRestoredDraft(false)}
+              aria-label="Dismiss"
+              className="text-emerald-200/60 hover:text-emerald-100 transition-colors shrink-0"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -2719,8 +2849,16 @@ export default function LeadDetailPage() {
             </div>
 
             {proposalChangedSinceSent && !confirmingSend && (
-              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
-                ⚠ You've changed something since this was last sent to {lead.email || 'the client'} — they're still seeing the old version until you send it again.
+              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200 space-y-1.5">
+                <p>
+                  ⚠ You've changed something since this was last sent to {lead.email || 'the client'} — they're still seeing the old version until you send it again.
+                </p>
+                <button
+                  onClick={handleRevertToLastSent}
+                  className="font-medium underline underline-offset-2 hover:text-amber-100 transition-colors"
+                >
+                  ↺ Revert to what was last sent
+                </button>
               </div>
             )}
 
@@ -2756,11 +2894,41 @@ export default function LeadDetailPage() {
               <div className="space-y-2">
                 <button
                   onClick={() => setConfirmingSend(true)}
-                  disabled={emailingLink || creatingLink}
-                  className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  disabled={emailingLink || creatingLink || !lead.email}
+                  title={!lead.email ? 'Add an email for this lead before sending' : undefined}
+                  className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                 >
                   {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
                 </button>
+                {!lead.email && (
+                  <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 space-y-2">
+                    <p className="text-xs text-amber-200">
+                      No email on file for this lead — add one to send the link.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        placeholder="client@company.com"
+                        value={quickEmail}
+                        onChange={(e) => setQuickEmail(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSaveQuickEmail();
+                          }
+                        }}
+                        className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
+                      />
+                      <button
+                        onClick={handleSaveQuickEmail}
+                        disabled={savingQuickEmail || !quickEmail.trim()}
+                        className="shrink-0 rounded-lg border border-white/20 px-4 text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors"
+                      >
+                        {savingQuickEmail ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
