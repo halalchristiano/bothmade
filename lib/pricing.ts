@@ -43,11 +43,24 @@ export type AddOnKey =
   // Accessibility & compliance
   | 'accessibility-audit'
   | 'privacy-compliance'
+  | 'sso-auth'
   // Ongoing care (recurring — first month included in price)
   | 'maintenance'
   | 'growth-plan'
   | 'hosting'
-  | 'onboarding-retainer';
+  | 'onboarding-retainer'
+  | 'sla-uptime'
+  // Growth & conversion (new)
+  | 'video-content'
+  | 'cro-testing'
+  | 'public-api'
+  | 'white-label'
+  | 'performance-optimization'
+  | 'reporting-export'
+  // Tiered upgrades — same underlying add-on, more of it
+  | 'local-seo-multi'
+  | 'multilingual-plus'
+  | 'data-migration-large';
 
 export type AddOnCategory =
   | 'content-growth'
@@ -55,7 +68,8 @@ export type AddOnCategory =
   | 'design-motion'
   | 'backend-integrations'
   | 'accessibility-compliance'
-  | 'ongoing-care';
+  | 'ongoing-care'
+  | 'growth-conversion';
 
 export type ClientType = 'startup' | 'smb' | 'enterprise';
 
@@ -110,6 +124,7 @@ export const ADD_ON_CATEGORIES: Record<AddOnCategory, { label: string }> = {
   'backend-integrations': { label: 'Backend & Integrations' },
   'accessibility-compliance': { label: 'Accessibility & Compliance' },
   'ongoing-care': { label: 'Ongoing Care (recurring)' },
+  'growth-conversion': { label: 'Growth & Conversion' },
 };
 
 export const ADD_ONS: Record<
@@ -165,6 +180,14 @@ export const ADD_ONS: Record<
     price: 80000,
     category: 'content-growth',
   },
+  'multilingual-plus': {
+    label: 'Additional Languages (3-5 total)',
+    benefit:
+      "You cover every market you actually sell into instead of just the one that was easiest to translate first.",
+    description: 'Translation and language switching for up to three more languages beyond the second, priced as an increment above the base Multi-language Support add-on.',
+    price: 140000,
+    category: 'content-growth',
+  },
   'email-marketing': {
     label: 'Email Marketing Setup',
     benefit:
@@ -177,8 +200,16 @@ export const ADD_ONS: Record<
     label: 'Local SEO & Google Business Profile',
     benefit:
       "You appear in the map results when someone nearby searches. That's the highest-intent customer there is.",
-    description: 'Google Business Profile setup, local listings, and map-pack optimization for businesses that rely on nearby customers finding them.',
+    description: 'Google Business Profile setup, local listings, and map-pack optimization for businesses that rely on nearby customers finding them. Covers a single location.',
     price: 55000,
+    category: 'content-growth',
+  },
+  'local-seo-multi': {
+    label: 'Multi-Location Local SEO (2-5 locations)',
+    benefit:
+      "Every location shows up in its own neighborhood's map results, instead of your other branches competing with each other or only your flagship location ranking.",
+    description: 'Local SEO setup and Google Business Profile management across up to 5 locations, priced as an increment above the single-location plan.',
+    price: 150000,
     category: 'content-growth',
   },
 
@@ -283,6 +314,30 @@ export const ADD_ONS: Record<
     price: 150000,
     category: 'backend-integrations',
   },
+  'sso-auth': {
+    label: 'SSO & Enterprise Access Control',
+    benefit:
+      "Your enterprise buyers can actually adopt it, because their IT department requires single sign-on and role-based access before anyone's allowed to log in.",
+    description: 'Single sign-on (Google/Microsoft/Okta/SAML) and role-based permissions on top of standard user accounts.',
+    price: 130000,
+    category: 'backend-integrations',
+  },
+  'public-api': {
+    label: 'Public API for Developers',
+    benefit:
+      "Your customers can build on top of you instead of asking you for one-off integrations forever — that's what turns a product into a platform.",
+    description: 'A documented, authenticated API surface so external developers or partners can integrate with your product.',
+    price: 180000,
+    category: 'backend-integrations',
+  },
+  'white-label': {
+    label: 'White-Label / Multi-Tenant Setup',
+    benefit:
+      "You can resell the same product under different brands or to different customer organizations without building it again for each one.",
+    description: 'Per-tenant branding, data isolation, and configuration so the same build can be sold to multiple customers or under multiple brands.',
+    price: 350000,
+    category: 'backend-integrations',
+  },
   'push-notifications': {
     label: 'Push Notifications',
     benefit:
@@ -311,8 +366,16 @@ export const ADD_ONS: Record<
     label: 'Content & Data Migration',
     benefit:
       "You keep your existing content, customers and search rankings instead of starting from zero on launch day.",
-    description: 'Import your existing site\'s pages, products, or customer data instead of starting from a blank slate.',
+    description: 'Import your existing site\'s pages, products, or customer data instead of starting from a blank slate. Covers typical small-to-medium datasets.',
     price: 75000,
+    category: 'backend-integrations',
+  },
+  'data-migration-large': {
+    label: 'Large-Scale Data Migration (10k+ records)',
+    benefit:
+      "Nothing gets silently dropped or corrupted when your dataset is too big for a manual once-over — someone actually validates it at that scale.",
+    description: 'Migration tooling, validation, and cleanup for datasets beyond what the standard Content & Data Migration add-on covers, priced as an increment above it.',
+    price: 160000,
     category: 'backend-integrations',
   },
 
@@ -367,6 +430,48 @@ export const ADD_ONS: Record<
     price: 40000,
     category: 'ongoing-care',
   },
+  'sla-uptime': {
+    label: 'Uptime SLA',
+    benefit:
+      "You have a contractual guarantee and credits on the table if we don't hit it — not just a promise it'll probably be fine.",
+    description: 'A contracted uptime guarantee with service credits, on top of Managed Hosting (first month included).',
+    price: 50000,
+    category: 'ongoing-care',
+  },
+
+  // Growth & conversion
+  'video-content': {
+    label: 'Video & Motion Content',
+    benefit:
+      "People retain video far better than a wall of text, and it's what actually gets watched and shared instead of skimmed and forgotten.",
+    description: 'A produced product or brand video for your homepage or key landing pages.',
+    price: 160000,
+    category: 'growth-conversion',
+  },
+  'cro-testing': {
+    label: 'Conversion Rate Optimization',
+    benefit:
+      "You stop guessing which headline or layout converts better and start knowing, so the site keeps getting more effective without a redesign.",
+    description: 'A/B testing setup and a first round of tests on your highest-traffic pages.',
+    price: 95000,
+    category: 'growth-conversion',
+  },
+  'performance-optimization': {
+    label: 'Performance & Speed Optimization',
+    benefit:
+      "Fewer people bail before the page even loads, and Google ranks faster sites higher — so this pays for itself twice.",
+    description: 'A dedicated pass to cut load times — image/asset optimization, caching, and render-blocking cleanup — beyond what standard hosting provides.',
+    price: 70000,
+    category: 'growth-conversion',
+  },
+  'reporting-export': {
+    label: 'Reporting & Data Export',
+    benefit:
+      "Your team gets the numbers in the format they actually need — a scheduled email, a CSV for their spreadsheet — instead of logging in and copying it out by hand.",
+    description: 'Scheduled reports and CSV/PDF export built into your dashboard or analytics.',
+    price: 65000,
+    category: 'growth-conversion',
+  },
 };
 
 /**
@@ -382,6 +487,13 @@ export const ADD_ON_REQUIRES: Partial<Record<AddOnKey, AddOnKey[]>> = {
   subscriptions: ['custom-backend', 'user-accounts'],
   'push-notifications': ['custom-backend'],
   'admin-dashboard': ['custom-backend'],
+  'sso-auth': ['user-accounts'],
+  'public-api': ['custom-backend'],
+  'white-label': ['custom-backend', 'user-accounts'],
+  'sla-uptime': ['hosting'],
+  'local-seo-multi': ['local-seo'],
+  'multilingual-plus': ['multilingual'],
+  'data-migration-large': ['data-migration'],
 };
 
 /**

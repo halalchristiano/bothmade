@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import InfoTooltip from '@/components/InfoTooltip';
 import {
   LEAD_STATUSES,
   LEAD_STATUS_LABELS,
@@ -2766,7 +2767,10 @@ export default function LeadDetailPage() {
                           : 'border-white/10 hover:border-white/25 hover:bg-white/[0.03]'
                       }`}
                     >
-                      <p className="font-semibold text-sm">{service.label}</p>
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-semibold text-sm">{service.label}</span>
+                        <InfoTooltip text={`${service.description} Best for: ${service.bestFor}`} />
+                      </span>
                       <p className="text-xs text-white/40 mt-0.5">{formatCents(service.price)}</p>
                     </button>
                   )
@@ -2809,7 +2813,10 @@ export default function LeadDetailPage() {
                                 disabled={includedInBase}
                               />
                               <span className="flex-1">
-                                <span className="text-sm block">{addOn.label}</span>
+                                <span className="text-sm flex items-center gap-1.5">
+                                  {addOn.label}
+                                  <InfoTooltip text={`${addOn.description} ${addOn.benefit}`} />
+                                </span>
                                 <span className="text-xs text-white/35">{addOn.description}</span>
                               </span>
                               {includedInBase ? (
