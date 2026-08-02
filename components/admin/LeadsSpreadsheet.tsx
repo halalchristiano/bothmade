@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, RefreshCw, Download, Users, DollarSign, Trophy, Sparkles } from 'lucide-react';
+import { Search, RefreshCw, Download, Users, DollarSign, Trophy, Sparkles, Clock, X } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 
@@ -67,6 +67,8 @@ export function LeadsSpreadsheet() {
   const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
   const [savingAssignId, setSavingAssignId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -124,6 +126,64 @@ export function LeadsSpreadsheet() {
       });
     } finally {
       setSavingAssignId(null);
+    }
+  };
+
+  const toggleSelected = (leadId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const handleBulkAssign = async (assignedToId: string) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    const member = team.find((t) => t.id === assignedToId);
+    setLeads((prev) =>
+      prev.map((l) =>
+        ids.includes(l.id) ? { ...l, assignedToId: assignedToId || null, assignedTo: member ? { name: member.name } : null } : l
+      )
+    );
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/admin/leads/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assignedToId: assignedToId || null }),
+          })
+        )
+      );
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkSnooze = async (days: number) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    const nextFollowUpAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/admin/leads/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nextFollowUpAt }),
+          })
+        )
+      );
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -258,10 +318,66 @@ export function LeadsSpreadsheet() {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-white/[0.08] bg-sky-400/[0.06]">
+          <span className="text-xs font-semibold text-sky-200 whitespace-nowrap">{selected.size} selected</span>
+          <select
+            onChange={(e) => {
+              if (e.target.value) handleBulkAssign(e.target.value);
+              e.target.value = '';
+            }}
+            disabled={bulkBusy}
+            defaultValue=""
+            className="text-xs px-2 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 text-white disabled:opacity-50"
+          >
+            <option value="" disabled>
+              Assign to...
+            </option>
+            <option value="">Unassigned</option>
+            {team.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name || t.email}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => handleBulkSnooze(3)}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 text-white/80 hover:bg-white/10 transition-colors disabled:opacity-50"
+          >
+            <Clock size={12} /> Snooze 3 days
+          </button>
+          <button
+            onClick={() => handleBulkSnooze(7)}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 text-white/80 hover:bg-white/10 transition-colors disabled:opacity-50"
+          >
+            <Clock size={12} /> Snooze 1 week
+          </button>
+          <button
+            onClick={clearSelection}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg text-white/40 hover:text-white transition-colors disabled:opacity-50 ml-auto"
+          >
+            <X size={12} /> Clear
+          </button>
+        </div>
+      )}
+
       <div className="overflow-x-auto max-h-[600px]">
         <table className="w-full text-left text-sm border-collapse">
           <thead className="sticky top-0 bg-[#0d0a17] z-20">
             <tr>
+              <th className="px-3 py-2.5 border-b border-r border-white/10 w-9">
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))}
+                  onChange={(e) =>
+                    setSelected(e.target.checked ? new Set(filtered.map((l) => l.id)) : new Set())
+                  }
+                  className="cursor-pointer"
+                />
+              </th>
               {COLUMNS.map((col, i) => (
                 <th
                   key={col.key}
@@ -287,6 +403,14 @@ export function LeadsSpreadsheet() {
                   className="cursor-pointer hover:bg-sky-400/[0.06] transition-colors group"
                   style={{ backgroundColor: rowBg }}
                 >
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06]" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(lead.id)}
+                      onChange={() => toggleSelected(lead.id)}
+                      className="cursor-pointer"
+                    />
+                  </td>
                   <td
                     className="px-3 py-2 border-b border-r border-white/[0.06] font-medium whitespace-nowrap sticky left-0 z-10 group-hover:!bg-[#12213a]"
                     style={{ backgroundColor: rowBg }}
@@ -353,7 +477,7 @@ export function LeadsSpreadsheet() {
             })}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={COLUMNS.length} className="px-3 py-8 text-center text-white/40">
+                <td colSpan={COLUMNS.length + 1} className="px-3 py-8 text-center text-white/40">
                   {search ? 'No leads match your search.' : 'No leads yet.'}
                 </td>
               </tr>

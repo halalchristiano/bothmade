@@ -9,43 +9,44 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 });
 
 /**
- * Lets the client pay their own outstanding balance straight from the
- * portal, instead of the only path being ops manually sending a reminder
- * link — same Stripe payment link collect-balance builds, just reachable
- * by the person who actually owes the money.
+ * Client-initiated balance payment — the portal only ever showed
+ * balanceDue as a number with nowhere to act on it, so paying meant
+ * waiting for ops to send a link. Builds the same kind of Checkout
+ * Session the admin-side payment-reminder route creates as a Payment
+ * Link, just started from the client's own session instead.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const session = await getCurrentSession();
     if (!session) return unauthorizedResponse();
+    if (session.type !== 'client') return forbiddenResponse();
 
     const { projectId } = await params;
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      include: { payments: true },
+      include: { client: true, payments: true },
     });
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
-    if (session.type === 'client' && project.clientId !== session.clientId) {
+    if (project.clientId !== session.clientId) {
       return forbiddenResponse();
     }
 
     const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
     const balanceDue = project.totalPrice - amountPaid;
     if (balanceDue <= 0) {
-      return NextResponse.json({ error: 'There is no balance remaining on this project' }, { status: 400 });
+      return NextResponse.json({ error: 'No balance remaining on this project' }, { status: 400 });
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'payment',
-      success_url: `${siteUrl}/checkout/success`,
-      cancel_url: `${siteUrl}/client/${projectId}`,
+      customer_email: project.client.email,
+      success_url: `${siteUrl}/client/${project.id}?paid=1`,
+      cancel_url: `${siteUrl}/client/${project.id}`,
       line_items: [
         {
           price_data: {
@@ -56,15 +57,12 @@ export async function POST(
           quantity: 1,
         },
       ],
-      metadata: {
-        existingProjectId: project.id,
-        paymentType: 'balance',
-      },
+      metadata: { existingProjectId: project.id, paymentType: 'balance' },
     });
 
-    return NextResponse.json({ success: true, url: checkoutSession.url }, { status: 200 });
+    return NextResponse.json({ success: true, url: checkoutSession.url }, { status: 201 });
   } catch (error) {
-    console.error('Pay balance error:', error);
+    console.error('Client pay-balance error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
