@@ -291,7 +291,59 @@ function BlockRenderer({
 
     case 'scrollCompareDemo':
       return <ScrollCompareDemo />;
+
+    case 'processDemo':
+      return <ProcessDemo phases={block.phases} />;
   }
+}
+
+/**
+ * Scaled replay of ProcessTimeline: whileInView card reveals (viewport:
+ * { once: false }, so they replay on re-entry) plus a scroll-derived
+ * progress bar underneath, tracking the same bounded section.
+ */
+function ProcessDemo({ phases }: { phases: { num: string; title: string; tag: string }[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ['start 0.8', 'end 0.4'],
+  });
+  const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
+
+  return (
+    <div ref={containerRef} className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="space-y-6">
+        {phases.map((phase, i) => (
+          <motion.div
+            key={phase.num}
+            className="border-l-2 border-white/20 pl-6 py-2"
+            initial={{ opacity: 0, x: -16 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: i * 0.08 }}
+            viewport={{ once: false, margin: '-15% 0px' }}
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40 mb-1">
+              {phase.num} · {phase.tag}
+            </p>
+            <h4 className="text-xl font-bold text-white">{phase.title}</h4>
+          </motion.div>
+        ))}
+      </div>
+
+      {!reduceMotion && (
+        <div className="mt-8 flex justify-center">
+          <div className="relative w-full max-w-xs h-1 bg-white/10 rounded-full overflow-hidden">
+            <motion.div
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-sky-400 via-indigo-400 to-purple-400"
+              style={{ width: progressWidth }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**

@@ -90,7 +90,13 @@ export type Block =
    * hijack (delayed, eased response to wheel input) — so the difference
    * described in the surrounding prose can actually be felt, not just read.
    */
-  | { type: 'scrollCompareDemo' };
+  | { type: 'scrollCompareDemo' }
+  /**
+   * Scaled replay of ProcessTimeline: a few phase cards that fade/slide in
+   * via whileInView (replaying every time they re-enter the viewport) plus
+   * a separately scroll-derived progress bar underneath.
+   */
+  | { type: 'processDemo'; phases: { num: string; title: string; tag: string }[] };
 
 export type BlogPost = {
   slug: string;
@@ -861,6 +867,65 @@ export function ScrollReset() {
       {
         type: 'p',
         text: "The one exception, shown above, is ScrollReset — and it's not a hijack either. It doesn't touch how scrolling behaves at all; it just resets the position to the top when you navigate to a new route, which is what browsers already do on a full page load and what single-page apps have to do manually since they never actually reload the page. Nothing about wheel, keyboard, or touch input passes through custom code anywhere on this site.",
+      },
+    ],
+  },
+  {
+    slug: 'how-our-web-and-app-development-process-works',
+    title: 'How our web and app development process actually works',
+    dek: 'Discovery, design, build, launch — four phases, and the section of the homepage that explains them is doing more engineering than it looks like. Scroll the demo below.',
+    tag: 'Process',
+    accent: 'sky',
+    date: '2026-11-22',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: 'People asking "what does a web design agency process actually look like" usually get one of two unsatisfying answers: a vague five-word list with no timeline, or a diagram so detailed it reads like it was written to look thorough rather than to be read. Our homepage answers it with four phases — discovery, design, build, launch — each with a real week range, laid out as cards you scroll through with a progress bar tracking how far along the whole thing you are.',
+      },
+      {
+        type: 'statement',
+        text: "The interesting part isn't the four phases. It's that the cards replay every time you scroll back into them, and the progress bar doesn't.",
+      },
+      { type: 'heading', text: 'Scroll through it' },
+      {
+        type: 'processDemo',
+        phases: [
+          { num: '01', title: 'Discovery', tag: 'week 0–1' },
+          { num: '02', title: 'Design', tag: 'weeks 1–3' },
+          { num: '03', title: 'Build', tag: 'weeks 3–9' },
+        ],
+      },
+      {
+        type: 'p',
+        text: "Each card uses whileInView with viewport: { once: false } — deliberately the opposite of most of the reveal animations on this site, which play once and stay played. Scroll a phase card out of view and back in and it fades and slides in again, every single time. For a section that's explaining a sequence, that repeatability matters: if you scroll back up to re-read Design, you should see it arrive again, not sit there inert because it already \"used up\" its one entrance.",
+      },
+      { type: 'heading', text: "Two motion systems, one section, doing different jobs" },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `// Per-card: viewport-triggered, replayable
+<motion.div
+  initial={{ opacity: 0, x: -20 }}
+  whileInView={{ opacity: 1, x: 0 }}
+  viewport={{ once: false, margin: '-20% 0px' }}
+/>
+
+// Whole-section progress: continuous scroll position, not viewport events
+const { scrollYProgress } = useScroll({
+  target: containerRef,
+  offset: ['start 0.2', 'end 0.8'],
+});
+const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
+      },
+      {
+        type: 'p',
+        text: "The cards and the progress bar are driven by two genuinely different mechanisms sitting a few lines apart. whileInView is event-based — it fires when an element crosses a viewport threshold, discrete and re-triggerable. The progress bar is value-based — useScroll continuously reports a 0-to-1 number for how far the pointer target has moved through its scroll range, and the bar's width is just that number, always current, never \"triggered.\" Discrete events for things that should feel like arrivals; continuous values for things that should feel like a fact about where you are.",
+      },
+      { type: 'heading', text: 'Why a real week range on every phase' },
+      {
+        type: 'p',
+        text: "It would be easy to leave the phases untimed — safer, in the sense that nothing can be checked against reality later. We put ranges on them anyway, because a process description without a timeline isn't actually answering the question \"how long does this take,\" which is the question underneath most of the others. Week 0–1 for discovery, weeks 1–3 for design, and so on aren't marketing copy; they're what we tell a client on the first call, published in the same words.",
       },
     ],
   },
