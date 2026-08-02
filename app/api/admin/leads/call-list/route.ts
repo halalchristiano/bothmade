@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 
 /**
  * The day's call list, in the order it should be worked.
@@ -213,6 +214,10 @@ export async function GET() {
         scheduledLater: breakdown.scheduled,
         noPhoneCount: due.filter((r) => !r.phone).length,
         truncated: leads.length >= MAX_ROWS,
+        // The banner's "one tap" reconnect button can't do anything when the
+        // deployment has no OAuth credentials — without this it promised a
+        // fix it couldn't deliver and dead-ended whoever tapped it.
+        googleOAuthAvailable: isGoogleOAuthConfigured(),
         gmailStatus: !user?.googleRefreshToken
           ? 'not-connected'
           : user.gmailNeedsReconnect

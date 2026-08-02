@@ -106,6 +106,7 @@ export default function CallListPage() {
     noPhoneCount: number;
     truncated: boolean;
     gmailStatus: 'ok' | 'needs-reconnect' | 'not-connected';
+    googleOAuthAvailable: boolean;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -179,6 +180,7 @@ export default function CallListPage() {
           noPhoneCount: data.noPhoneCount ?? 0,
           truncated: !!data.truncated,
           gmailStatus: data.gmailStatus ?? 'ok',
+          googleOAuthAvailable: data.googleOAuthAvailable !== false,
         });
       }
     } finally {
@@ -496,21 +498,27 @@ export default function CallListPage() {
         <div className="mb-5 rounded-2xl border border-amber-400/35 bg-amber-400/[0.1] p-4">
           <p className="flex items-center gap-1.5 text-sm font-bold text-amber-100">
             <AlertTriangle size={14} />
-            {meta.gmailStatus === 'not-connected'
-              ? "Your email isn't connected yet"
-              : 'Reconnect your email — one tap'}
+            {!meta.googleOAuthAvailable
+              ? "Replies and bounces are invisible — needs a setup step"
+              : meta.gmailStatus === 'not-connected'
+                ? "Your email isn't connected yet"
+                : 'Reconnect your email — one tap'}
           </p>
           <p className="text-xs text-amber-100/75 mt-1.5 leading-relaxed">
-            {meta.gmailStatus === 'not-connected'
-              ? "Until it is, this page can't tell you who replied to you or whose email address is dead. Both go to the top of your list once it's connected."
-              : "Your connection can send email but not read it, so replies and bounced addresses are invisible right now. Reconnecting takes one tap and fixes both."}
+            {!meta.googleOAuthAvailable
+              ? "This page can't tell you who replied or whose address is dead, and it can't be fixed from here yet — Google sign-in hasn't been set up on this deployment (it needs GOOGLE_OAUTH_CLIENT_ID/SECRET). Sending your emails still works fine in the meantime."
+              : meta.gmailStatus === 'not-connected'
+                ? "Until it is, this page can't tell you who replied to you or whose email address is dead. Both go to the top of your list once it's connected."
+                : "Your connection can send email but not read it, so replies and bounced addresses are invisible right now. Reconnecting takes one tap and fixes both."}
           </p>
-          <a
-            href="/api/admin/settings/gmail-oauth/start"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 mt-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
-          >
-            {meta.gmailStatus === 'not-connected' ? 'Connect Google' : 'Reconnect Google'}
-          </a>
+          {meta.googleOAuthAvailable && (
+            <a
+              href="/api/admin/settings/gmail-oauth/start"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 mt-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+            >
+              {meta.gmailStatus === 'not-connected' ? 'Connect Google' : 'Reconnect Google'}
+            </a>
+          )}
         </div>
       )}
 
