@@ -18,7 +18,7 @@ import {
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { findGlossaryTerms } from '@/lib/glossary';
 import { buildCallScript, callScriptToText, painPointPitch } from '@/lib/call-script';
-import { personalise, priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
+import { personalise, playbookSlug, priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
 import { OBJECTIONS } from '@/lib/objections';
 import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { leadLocalTime } from '@/lib/local-time';
@@ -1538,6 +1538,104 @@ export default function LeadDetailPage() {
           </div>
         );
 
+        // The rich "why this line item" content — plain English, the benefit
+        // to this business, the words to say, the cost justification, and the
+        // pushback answer. Rendered wherever a playbook entry exists, so the
+        // heuristic-fallback cards get it too when one matches by name (not
+        // only the bespoke-research cards).
+        const renderPlaybookDetail = (entry: PlaybookEntry, company: string) => (
+          <>
+            <div className="mt-2.5 rounded-lg bg-white/[0.03] px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wide text-white/40 font-semibold mb-1">
+                In plain English
+              </p>
+              <p className="text-xs text-white/70 leading-relaxed break-words">{entry.whatItIs}</p>
+            </div>
+            {entry.benefit && (
+              <div className="mt-2 rounded-lg bg-white/[0.03] px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-wide text-sky-300/80 font-semibold mb-1">
+                  How it helps {company}
+                </p>
+                <p className="text-xs text-white/70 leading-relaxed break-words">
+                  {personalise(entry.benefit, company)}
+                </p>
+              </div>
+            )}
+            <div className="mt-2 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                Say something like this
+              </p>
+              <p className="text-xs text-white/80 italic leading-relaxed break-words">"{entry.pitch}"</p>
+            </div>
+            <p className="text-xs text-white/50 leading-relaxed mt-2.5 break-words">
+              <span className="text-amber-300/90 font-semibold">If they ask why it costs that: </span>
+              {entry.justification}
+            </p>
+            {entry.objection && (
+              <p className="text-xs text-white/45 leading-relaxed mt-2 break-words">
+                <span className="text-red-300/80 font-semibold">If they push back: </span>
+                {entry.objection}
+              </p>
+            )}
+          </>
+        );
+
+        // Per-item note capture — the rep jots the customer's reaction to one
+        // exact line item, flags it as an objection, and logs it to the
+        // timeline. Rendered on every priced box (bespoke research OR heuristic
+        // fallback) so the tool is never missing just because a lead came in
+        // without hand-written points.
+        const renderSectionNote = (itemKey: string) => {
+          const prefix = `[${itemKey}]`;
+          const lastNote = lead.activities
+            .filter((a) => a.content.startsWith(prefix))
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+          return (
+            <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
+                <StickyNote size={13} /> Their feedback on this
+              </p>
+              {lastNote && (
+                <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">
+                  <span className="font-semibold text-white/80">Last time: </span>
+                  {lastNote.content.slice(prefix.length).trim()}
+                  <span className="text-white/35"> · {new Date(lastNote.createdAt).toLocaleDateString()}</span>
+                </p>
+              )}
+              <textarea
+                value={sectionNoteDrafts[itemKey] || ''}
+                onChange={(e) => setSectionNoteDrafts((prev) => ({ ...prev, [itemKey]: e.target.value }))}
+                placeholder="What did they say about this?"
+                rows={2}
+                className="w-full px-2.5 py-2 rounded-md bg-black/30 border border-sky-400/25 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/60 resize-none"
+              />
+              <div className="flex items-center justify-between mt-2">
+                <label className="flex items-center gap-1.5 text-xs text-white/60 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!sectionNoteObjection[itemKey]}
+                    onChange={(e) => setSectionNoteObjection((prev) => ({ ...prev, [itemKey]: e.target.checked }))}
+                  />
+                  This was an objection
+                </label>
+                <button
+                  onClick={() => handleLogSectionNote(itemKey)}
+                  disabled={sectionNoteSaving[itemKey] || !(sectionNoteDrafts[itemKey] || '').trim()}
+                  className="px-4 py-1.5 rounded-md bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                >
+                  {sectionNoteSaving[itemKey] ? 'Logging...' : 'Log to timeline'}
+                </button>
+              </div>
+              {sectionNoteJustLogged[itemKey] && (
+                <p className="text-xs font-semibold text-emerald-300 mt-1.5">Logged ✓</p>
+              )}
+              {sectionNoteError[itemKey] && (
+                <p className="text-xs text-red-300 mt-1.5">{sectionNoteError[itemKey]}</p>
+              )}
+            </div>
+          );
+        };
+
         // A priced line item: their bespoke wording, then everything a rep
         // needs if the customer pushes back on it — cost, what it actually
         // is, the words to sell it, and why the price is fair.
@@ -1956,6 +2054,11 @@ export default function LeadDetailPage() {
                           <span className="font-semibold">Why this one: </span>
                           {recs.baseReason}
                         </p>
+                        {(() => {
+                          const entry = playbookMap.get(playbookSlug(base.label));
+                          return entry ? renderPlaybookDetail(entry, lead.company) : null;
+                        })()}
+                        {renderSectionNote(base.label)}
                       </div>
                       {recs.needs.map((item) => (
                         <div
@@ -1975,6 +2078,11 @@ export default function LeadDetailPage() {
                             <span className="font-semibold">Needed because: </span>
                             {item.becauseOf.join(', ').toLowerCase()}
                           </p>
+                          {(() => {
+                            const entry = playbookMap.get(playbookSlug(item.label));
+                            return entry ? renderPlaybookDetail(entry, lead.company) : null;
+                          })()}
+                          {renderSectionNote(item.label)}
                         </div>
                       ))}
                     </>
@@ -2010,6 +2118,11 @@ export default function LeadDetailPage() {
                                 <span className="font-semibold">Worth pitching because: </span>
                                 {item.becauseOf.join(', ').toLowerCase()}
                               </p>
+                              {(() => {
+                                const entry = playbookMap.get(playbookSlug(item.label));
+                                return entry ? renderPlaybookDetail(entry, lead.company) : null;
+                              })()}
+                              {renderSectionNote(item.label)}
                             </div>
                           ))}
                     </div>
