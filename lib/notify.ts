@@ -9,6 +9,12 @@ export async function getAdminEmails(): Promise<string[]> {
   return users.map((u) => u.email);
 }
 
+/** Same as getAdminEmails() but respects the per-user weekly-digest opt-out. */
+export async function getDigestRecipientEmails(): Promise<string[]> {
+  const users = await prisma.user.findMany({ where: { weeklyDigestOptOut: false }, select: { email: true } });
+  return users.map((u) => u.email);
+}
+
 const wrap = (title: string, bodyHtml: string, ctaHref?: string, ctaLabel?: string) => `
 <!DOCTYPE html>
 <html>

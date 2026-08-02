@@ -21,7 +21,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 // real one-liner was researched and stored ahead of time.
 function defaultsForTemplate(
   templateId: string,
-  ctx: { leadId?: string; projectId?: string; defaultObservation?: string | null }
+  ctx: { leadId?: string; projectId?: string; defaultObservation?: string | null; defaultSenderTitle?: string | null }
 ): Record<string, string> {
   const d: Record<string, string> = {};
   if ((templateId === 'proposal_followup' || templateId === 'contract_reminder') && ctx.leadId) {
@@ -37,6 +37,9 @@ function defaultsForTemplate(
   }
   if ((templateId === 'cold_outreach' || templateId === 'cold_outreach_researched') && ctx.defaultObservation) {
     d.observation = ctx.defaultObservation;
+  }
+  if (ctx.defaultSenderTitle) {
+    d.senderTitle = ctx.defaultSenderTitle;
   }
   return d;
 }
@@ -70,6 +73,8 @@ export function EmailComposer({
   if (defaultLoomUrl) staticDefaultFields.loomUrl = defaultLoomUrl;
   if (defaultPainPoint) staticDefaultFields.painPoint = defaultPainPoint;
 
+  const [defaultSenderTitle, setDefaultSenderTitle] = useState<string | null>(null);
+
   const buildDefaultFields = (id: string) => {
     const selectDefaults: Record<string, string> = {};
     for (const f of getTemplate(id)?.fields || []) {
@@ -78,7 +83,7 @@ export function EmailComposer({
     return {
       ...staticDefaultFields,
       ...selectDefaults,
-      ...defaultsForTemplate(id, { leadId, projectId, defaultObservation }),
+      ...defaultsForTemplate(id, { leadId, projectId, defaultObservation, defaultSenderTitle }),
     };
   };
 
@@ -97,6 +102,16 @@ export function EmailComposer({
       .then((r) => r.json())
       .then((data) => setGmailConnected(!!data.willLandInGmailSent))
       .catch(() => setGmailConnected(null));
+    fetch('/api/admin/settings/profile')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.title) {
+          setDefaultSenderTitle(data.title);
+          setFields((prev) => (prev.senderTitle ? prev : { ...prev, senderTitle: data.title }));
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [previewHtml, setPreviewHtml] = useState('');

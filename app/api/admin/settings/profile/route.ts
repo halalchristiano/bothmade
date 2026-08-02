@@ -10,10 +10,13 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { name: true, avatarUrl: true },
+      select: { name: true, avatarUrl: true, title: true },
     });
 
-    return NextResponse.json({ name: user?.name || '', avatarUrl: user?.avatarUrl || null }, { status: 200 });
+    return NextResponse.json(
+      { name: user?.name || '', avatarUrl: user?.avatarUrl || null, title: user?.title || '' },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Get profile error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -25,15 +28,18 @@ export async function PATCH(request: NextRequest) {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
-    const { name, avatarUrl } = await request.json();
+    const { name, avatarUrl, title } = await request.json();
 
-    const data: { name?: string; avatarUrl?: string | null } = {};
+    const data: { name?: string; avatarUrl?: string | null; title?: string | null } = {};
     if (typeof name === 'string') {
       if (!name.trim()) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 });
       data.name = name.trim();
     }
     if (avatarUrl === null || typeof avatarUrl === 'string') {
       data.avatarUrl = avatarUrl;
+    }
+    if (typeof title === 'string') {
+      data.title = title.trim() || null;
     }
 
     await prisma.user.update({ where: { id: session.userId }, data });

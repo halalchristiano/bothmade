@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAdminEmails } from '@/lib/notify';
+import { getDigestRecipientEmails } from '@/lib/notify';
 import { sendWeeklyDigestEmail } from '@/lib/email';
 
 const STALE_DAYS = 7;
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       (p) => p.totalPrice - p.payments.reduce((s, pay) => s + pay.amount, 0) > 0
     ).length;
 
-    const emails = await getAdminEmails();
+    const emails = await getDigestRecipientEmails();
     const sent = await sendWeeklyDigestEmail(emails, {
       newLeadsThisWeek,
       wonThisWeek: wonThisWeek.length,

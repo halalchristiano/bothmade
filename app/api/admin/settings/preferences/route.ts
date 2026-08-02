@@ -10,10 +10,16 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { previewBeforeBulkSend: true },
+      select: { previewBeforeBulkSend: true, weeklyDigestOptOut: true },
     });
 
-    return NextResponse.json({ previewBeforeBulkSend: user?.previewBeforeBulkSend ?? true }, { status: 200 });
+    return NextResponse.json(
+      {
+        previewBeforeBulkSend: user?.previewBeforeBulkSend ?? true,
+        weeklyDigestOptOut: user?.weeklyDigestOptOut ?? false,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Get preferences error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -25,15 +31,16 @@ export async function PATCH(request: NextRequest) {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
-    const { previewBeforeBulkSend } = await request.json();
-    if (typeof previewBeforeBulkSend !== 'boolean') {
-      return NextResponse.json({ error: 'previewBeforeBulkSend must be a boolean' }, { status: 400 });
+    const { previewBeforeBulkSend, weeklyDigestOptOut } = await request.json();
+
+    const data: { previewBeforeBulkSend?: boolean; weeklyDigestOptOut?: boolean } = {};
+    if (typeof previewBeforeBulkSend === 'boolean') data.previewBeforeBulkSend = previewBeforeBulkSend;
+    if (typeof weeklyDigestOptOut === 'boolean') data.weeklyDigestOptOut = weeklyDigestOptOut;
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    await prisma.user.update({
-      where: { id: session.userId },
-      data: { previewBeforeBulkSend },
-    });
+    await prisma.user.update({ where: { id: session.userId }, data });
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
