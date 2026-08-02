@@ -51,6 +51,8 @@ interface Project {
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
   estimatedCompletionDate: string | null;
   liveUrl: string | null;
+  /** Capability token for the public /status link — see lib/share-links.ts. */
+  shareToken?: string;
   createdAt: string;
   updatedAt: string;
   messages: any[];
@@ -238,6 +240,13 @@ export default function ClientDashboard() {
         return;
       }
       const data = await response.json();
+      // 403 covers two different things — "this isn't your project" and
+      // "replace the temporary password first". Only the second is a
+      // redirect; the code tells them apart.
+      if (data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+        router.push('/client/settings?force=1');
+        return;
+      }
       if (data.success) {
         setProject(data.project);
       } else {
@@ -276,6 +285,8 @@ export default function ClientDashboard() {
         const blob = await upload(fileToAttach.name, fileToAttach, {
           access: 'public',
           handleUploadUrl: '/api/client/upload',
+          // Scopes the token to this project — the server checks we own it.
+          clientPayload: JSON.stringify({ projectId }),
         });
         attachments = [{ name: fileToAttach.name, url: blob.url }];
       }
@@ -349,6 +360,11 @@ export default function ClientDashboard() {
   const currentStage = STATUS_STAGES[Math.min(project.statusStage, 4)];
   const progressPct = ((Math.min(project.statusStage + 1, 5)) / 5) * 100;
 
+  // The public status link carries a capability token, so the project ID
+  // alone doesn't open it. Without the token there's nothing to share.
+  const shareUrl = () =>
+    project?.shareToken ? `${window.location.origin}/status/${projectId}?t=${project.shareToken}` : '';
+
   const handleCopySummary = () => {
     const latestUpdate = project.updates[0];
     const lines = [
@@ -360,7 +376,7 @@ export default function ClientDashboard() {
       `Balance due: $${(project.balanceDue / 100).toLocaleString()}`,
       latestUpdate ? `Latest update: ${latestUpdate.title} (${new Date(latestUpdate.createdAt).toLocaleDateString()})` : null,
       '',
-      `View live: ${typeof window !== 'undefined' ? `${window.location.origin}/status/${projectId}` : ''}`,
+      `View live: ${typeof window !== 'undefined' ? shareUrl() : ''}`,
     ].filter(Boolean);
 
     navigator.clipboard.writeText(lines.join('\n'));
@@ -369,7 +385,7 @@ export default function ClientDashboard() {
   };
 
   const handleCopyShareLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/status/${projectId}`);
+    navigator.clipboard.writeText(shareUrl());
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };

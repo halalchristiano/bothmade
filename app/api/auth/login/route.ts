@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, createToken } from '@/lib/auth';
+import { enforce, limiterKey, LIMITS, reset } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Two limiters, because either one alone leaves a hole: per-address
+    // stops one machine working through a credential list, per-account
+    // stops a distributed attempt at one specific inbox. Cleared below on
+    // a successful login so a legitimate typo streak costs nothing.
+    const ipKey = limiterKey('login', request);
+    const accountKey = limiterKey(`login:${userType}`, request, String(email));
+    const limited = enforce([
+      { key: ipKey, options: LIMITS.login },
+      { key: accountKey, options: LIMITS.login },
+    ]);
+    if (limited) return limited;
 
     if (userType === 'client') {
       // Client login
@@ -41,6 +54,9 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+
+      reset(ipKey);
+      reset(accountKey);
 
       // Update last login
       await prisma.client.update({
@@ -89,6 +105,9 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         );
       }
+
+      reset(ipKey);
+      reset(accountKey);
 
       // Create auth token
       const token = createToken({

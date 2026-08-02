@@ -104,6 +104,8 @@ interface LeadDetail {
   mockupDeliveredAt: string | null;
   agreementSignedAt: string | null;
   signedContractUrl?: string | null;
+  /** Capability token for the public sign-and-pay link. */
+  shareToken?: string;
   agreementIp: string | null;
   qualNeed: string | null;
   qualAuthority: string | null;
@@ -1477,6 +1479,7 @@ export default function LeadDetailPage() {
           defaultPainPoint={painPointSentence(lead.painPoints)}
           defaultObservation={lead.personalizedObservation}
           leadId={leadId}
+          leadShareToken={lead.shareToken}
           onClose={() => setComposingEmail(false)}
         />
       )}

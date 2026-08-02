@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { buildContractSections } from '@/lib/contract-terms';
+import { readShareToken, shareTokenMatches } from '@/lib/share-links';
+import { enforce, limiterKey, LIMITS } from '@/lib/rate-limit';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -20,10 +22,13 @@ import {
 } from '@/lib/pricing';
 
 /**
- * Public (no login) — the client reads this via the leadId in their
- * sign-and-pay link, same trust model as the mockup/payment links already
- * sent by email. Returns only what's needed to review and agree to the
- * proposal; nothing internal (notes, activity history, other leads).
+ * Public (no login) — the client reads this via the capability token in
+ * their sign-and-pay link. The leadId alone is no longer sufficient: it's a
+ * cuid that appears in admin URLs, Stripe metadata, and activity records, so
+ * treating it as the secret meant anyone who ever saw one could read the
+ * proposal (and, on the sibling route, sign it). Returns only what's needed
+ * to review and agree; nothing internal (notes, activity history, other
+ * leads).
  */
 export async function GET(
   request: NextRequest,
@@ -31,9 +36,17 @@ export async function GET(
 ) {
   try {
     const { leadId } = await params;
+
+    const limited = enforce([
+      { key: limiterKey('public-proposal', request), options: LIMITS.publicRead },
+    ]);
+    if (limited) return limited;
+
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
 
-    if (!lead) {
+    // Same 404 for "no such lead" and "wrong token", so the endpoint can't
+    // be used to confirm which lead IDs exist.
+    if (!lead || !shareTokenMatches(lead.shareToken, readShareToken(request))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     if (

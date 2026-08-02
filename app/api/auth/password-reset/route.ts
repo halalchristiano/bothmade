@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
 import { sendPasswordResetEmail } from '@/lib/email';
-import crypto from 'crypto';
+import { checkPasswordStrength } from '@/lib/password-policy';
+import { clientIp, enforce, limiterKey, LIMITS } from '@/lib/rate-limit';
 
-// In production, use a real database table for reset tokens
-// For now, we'll store them in memory (not production-ready)
-const resetTokens = new Map<string, { email: string; userType: string; expiresAt: number }>();
+/**
+ * Password reset.
+ *
+ * Tokens used to live in a module-level `Map`, which on serverless meant
+ * they belonged to one instance: a link minted by instance A read as
+ * "invalid or expired" on instance B, every outstanding link died on
+ * redeploy, and the Map itself grew forever holding plaintext tokens. They
+ * are now rows in `password_reset_tokens`, storing only the SHA-256 of what
+ * we emailed, with a real expiry and single-use enforcement.
+ */
+
+const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour — a reset link is used within minutes or not at all
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 /**
  * Request a password reset link
@@ -15,56 +30,72 @@ export async function POST(request: NextRequest) {
   try {
     const { email, userType = 'user' } = await request.json();
 
-    if (!email) {
+    if (!email || typeof email !== 'string') {
       return NextResponse.json(
         { error: 'Email is required' },
         { status: 400 }
       );
     }
 
-    // Check if user exists
-    if (userType === 'client') {
-      const client = await prisma.client.findUnique({
-        where: { email },
-      });
+    const normalizedEmail = email.trim().toLowerCase();
+    const resolvedType = userType === 'client' ? 'client' : 'user';
 
-      if (!client) {
-        // Don't reveal whether email exists for security
-        return NextResponse.json(
-          { success: true, message: 'If email exists, reset link will be sent' },
-          { status: 200 }
-        );
-      }
-    } else {
-      const user = await prisma.user.findUnique({
-        where: { email },
-      });
+    // Each reset request is an email we send on someone else's say-so.
+    // Unthrottled, this endpoint is a way to mailbomb any address we hold.
+    const limited = enforce([
+      { key: limiterKey('password-reset', request), options: LIMITS.passwordResetRequest },
+      {
+        key: limiterKey(`password-reset:${resolvedType}`, request, normalizedEmail),
+        options: LIMITS.passwordResetRequest,
+      },
+    ]);
+    if (limited) return limited;
 
-      if (!user) {
-        return NextResponse.json(
-          { success: true, message: 'If email exists, reset link will be sent' },
-          { status: 200 }
-        );
-      }
+    // Same body and same status either way — whether an address has an
+    // account here is not something this endpoint should confirm.
+    const genericBody = { success: true, message: 'If email exists, reset link will be sent' };
+
+    const accountExists =
+      resolvedType === 'client'
+        ? (await prisma.client.findUnique({ where: { email: normalizedEmail }, select: { id: true } })) !== null
+        : (await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } })) !== null;
+
+    if (!accountExists) {
+      return NextResponse.json(genericBody, { status: 200 });
     }
 
-    // Generate reset token
-    const token = crypto.randomBytes(32).toString('hex');
-    resetTokens.set(token, {
-      email,
-      userType,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+    // Any earlier link for this account stops working the moment a new one
+    // is issued — otherwise "I requested three, which one is live?" has
+    // three answers, and two of them are links sitting in an old inbox.
+    await prisma.passwordResetToken.updateMany({
+      where: { email: normalizedEmail, userType: resolvedType, usedAt: null },
+      data: { usedAt: new Date() },
     });
 
-    // Send reset email
-    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password?token=${token}`;
+    const token = crypto.randomBytes(32).toString('hex');
 
-    await sendPasswordResetEmail(email, resetUrl);
+    await prisma.passwordResetToken.create({
+      data: {
+        tokenHash: hashToken(token),
+        email: normalizedEmail,
+        userType: resolvedType,
+        expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
+        requestedIp: clientIp(request),
+      },
+    });
 
-    return NextResponse.json(
-      { success: true, message: 'If email exists, reset link will be sent' },
-      { status: 200 }
-    );
+    // Opportunistic cleanup of anything long dead, so the table doesn't
+    // accumulate rows nobody will ever look at again.
+    await prisma.passwordResetToken
+      .deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } })
+      .catch(() => null);
+
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const resetUrl = `${siteUrl}/auth/reset-password?token=${token}`;
+
+    await sendPasswordResetEmail(normalizedEmail, resetUrl);
+
+    return NextResponse.json(genericBody, { status: 200 });
   } catch (error) {
     console.error('Password reset request error:', error);
     return NextResponse.json(
@@ -81,38 +112,63 @@ export async function PUT(request: NextRequest) {
   try {
     const { token, password } = await request.json();
 
-    if (!token || !password) {
+    if (!token || typeof token !== 'string' || !password) {
       return NextResponse.json(
         { error: 'Token and password are required' },
         { status: 400 }
       );
     }
 
-    const tokenData = resetTokens.get(token);
-    if (!tokenData || tokenData.expiresAt < Date.now()) {
+    const limited = enforce([
+      { key: limiterKey('password-reset-submit', request), options: LIMITS.passwordResetSubmit },
+    ]);
+    if (limited) return limited;
+
+    const record = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash: hashToken(token) },
+    });
+
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
       return NextResponse.json(
         { error: 'Invalid or expired token' },
         { status: 400 }
       );
     }
 
-    // Hash new password and update
+    const strength = checkPasswordStrength(password, record.email);
+    if (!strength.ok) {
+      return NextResponse.json({ error: strength.error }, { status: 400 });
+    }
+
+    // Burn the token before doing the update, and only if it's still
+    // unused — two requests racing with the same link means exactly one of
+    // them gets to set the password.
+    const claimed = await prisma.passwordResetToken.updateMany({
+      where: { id: record.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { error: 'Invalid or expired token' },
+        { status: 400 }
+      );
+    }
+
     const hashedPassword = await hashPassword(password);
 
-    if (tokenData.userType === 'client') {
+    if (record.userType === 'client') {
+      // Setting a password by hand clears the forced-change flag: the
+      // auto-generated one they were emailed is no longer in play.
       await prisma.client.update({
-        where: { email: tokenData.email },
-        data: { password: hashedPassword },
+        where: { email: record.email },
+        data: { password: hashedPassword, mustChangePassword: false },
       });
     } else {
       await prisma.user.update({
-        where: { email: tokenData.email },
+        where: { email: record.email },
         data: { password: hashedPassword },
       });
     }
-
-    // Remove token
-    resetTokens.delete(token);
 
     return NextResponse.json(
       { success: true, message: 'Password reset successful' },

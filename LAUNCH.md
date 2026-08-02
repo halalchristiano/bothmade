@@ -3,6 +3,40 @@
 Everything the site still needs that code cannot supply. Work top to bottom;
 the site is deployable after the first section.
 
+## Required before the site starts at all
+
+These have no fallback. The server refuses to boot without the first two,
+deliberately — the old defaults were strings published in this repo, so a
+deploy that forgot one silently signed sessions with a value anyone could
+read. Generate each independently with `openssl rand -base64 48`; do not
+reuse one value across several.
+
+- [ ] **`JWT_SECRET`** — signs every login session and the Gmail OAuth
+      round-trip. Rotating it logs everyone out; that's the intended effect.
+- [ ] **`SESSION_SECRET`** — session-layer signing, and the legacy key for
+      anything encrypted before `GMAIL_ENCRYPTION_KEY` existed. Keep the
+      existing value if this deployment has ever connected a mailbox (see
+      below); otherwise generate a fresh one.
+- [ ] **`GMAIL_ENCRYPTION_KEY`** — encrypts Gmail app passwords and Google
+      refresh tokens at rest. Its own key, separate from `SESSION_SECRET`,
+      so the two rotate independently. Not required to boot, but every
+      Gmail-connected feature fails loudly until it's set. Mailboxes
+      connected before this env var existed keep working: decryption falls
+      back to the old `SESSION_SECRET`-derived key, and reconnecting a
+      mailbox in Settings re-encrypts it under the new one.
+- [ ] **`CRON_SECRET`** — the shared secret Vercel Cron signs its requests
+      with. The `/api/cron/*` routes fail closed: with this unset they
+      return 503 and no scheduled job runs. Set it in Vercel and it's sent
+      automatically.
+
+Optional, and only for a brand-new deployment with an empty `users` table:
+
+- [ ] **`ADMIN_BOOTSTRAP_TOKEN`** — lets one first owner account be created
+      via `POST /api/auth/signup` with an `x-bootstrap-token` header. The
+      path closes permanently the moment any account exists. Leave it unset
+      on an established deployment; after that, only an owner can add
+      teammates.
+
 ## Required before the site is live
 
 - [ ] **Deploy to Vercel.** Push this repo to GitHub, import it at

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { canOverridePricing, unauthorizedResponse } from '@/lib/middleware';
 import {
   calculatePrice,
   customItemsTotal,
@@ -17,6 +17,7 @@ import {
   type AddOnKey,
 } from '@/lib/pricing';
 import { sendSignAndPayEmail } from '@/lib/email';
+import { buildSignUrl } from '@/lib/share-links';
 import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
 
 /**
@@ -65,7 +66,7 @@ export async function POST(
     if (
       typeof totalPriceOverride === 'number' &&
       totalPriceOverride > 0 &&
-      session.role === 'sales' &&
+      !canOverridePricing(session) &&
       Math.round(totalPriceOverride) < minAllowedPrice(calculatedTotal)
     ) {
       return NextResponse.json(
@@ -110,8 +111,9 @@ export async function POST(
       },
     });
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    const signUrl = `${siteUrl}/sign/${leadId}`;
+    // The link carries the lead's capability token — the ID alone no longer
+    // opens the sign-and-pay page.
+    const signUrl = buildSignUrl(leadId, lead.shareToken);
 
     let emailSent = false;
     if (sendEmail && lead.email) {

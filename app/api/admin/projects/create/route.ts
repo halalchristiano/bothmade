@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession, generateRandomPassword, hashPassword } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { canOverridePricing, unauthorizedResponse } from '@/lib/middleware';
 import { sendWelcomeEmail } from '@/lib/email';
 import {
   BASE_SERVICES,
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     if (
       typeof totalPriceOverride === 'number' &&
       totalPriceOverride > 0 &&
-      session.role === 'sales' &&
+      !canOverridePricing(session) &&
       Math.round(totalPriceOverride) < minAllowedPrice(calculatedTotal)
     ) {
       return NextResponse.json(

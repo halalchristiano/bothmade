@@ -5,6 +5,7 @@ import { unauthorizedResponse } from '@/lib/middleware';
 import { decryptSecret } from '@/lib/crypto';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
+import { escParagraphs } from '@/lib/html';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
 
 /**
@@ -54,10 +55,7 @@ export async function POST(
       );
     }
 
-    const bodyHtml = body
-      .split(/\n{2,}/)
-      .map((para: string) => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
-      .join('');
+    const bodyHtml = escParagraphs(body);
 
     const result = await sendAsUser(
       {

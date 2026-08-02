@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { sendEmail } from './email';
+import { esc, escMultiline, safeUrl } from './html';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
@@ -15,7 +16,17 @@ export async function getDigestRecipientEmails(): Promise<string[]> {
   return users.map((u) => u.email);
 }
 
-const wrap = (title: string, bodyHtml: string, ctaHref?: string, ctaLabel?: string) => `
+/**
+ * Internal-alert shell. `title` and `ctaLabel` are escaped and `ctaHref` is
+ * protocol-checked here; `bodyHtml` is markup the caller assembles and is
+ * responsible for escaping — see the call sites below, every one of which
+ * runs its interpolated values through esc().
+ */
+const wrap = (rawTitle: string, bodyHtml: string, rawCtaHref?: string, rawCtaLabel?: string) => {
+  const title = esc(rawTitle);
+  const ctaHref = safeUrl(rawCtaHref);
+  const ctaLabel = esc(rawCtaLabel);
+  return `
 <!DOCTYPE html>
 <html>
   <head>
@@ -38,6 +49,7 @@ const wrap = (title: string, bodyHtml: string, ctaHref?: string, ctaLabel?: stri
     </div>
   </body>
 </html>`;
+};
 
 async function notifyAdmins(subject: string, html: string): Promise<void> {
   const emails = await getAdminEmails();
@@ -53,8 +65,8 @@ export async function notifyAdminsNewClientMessage(params: {
 }): Promise<void> {
   const html = wrap(
     'New client message',
-    `<p><strong>${params.clientCompany}</strong> sent a message on <strong>${params.projectName}</strong>:</p>
-     <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;">${params.preview}</blockquote>`,
+    `<p><strong>${esc(params.clientCompany)}</strong> sent a message on <strong>${esc(params.projectName)}</strong>:</p>
+     <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;">${escMultiline(params.preview)}</blockquote>`,
     `${SITE_URL}/admin/projects/${params.projectId}`,
     'Reply'
   );
@@ -69,7 +81,7 @@ export async function notifyAdminsPaymentReceived(params: {
 }): Promise<void> {
   const html = wrap(
     'Payment received',
-    `<p><strong>${params.clientCompany}</strong> paid <strong>${params.amountLabel}</strong> for <strong>${params.projectName}</strong>.</p>`,
+    `<p><strong>${esc(params.clientCompany)}</strong> paid <strong>${esc(params.amountLabel)}</strong> for <strong>${esc(params.projectName)}</strong>.</p>`,
     `${SITE_URL}/admin/projects/${params.projectId}`,
     'View Project'
   );
@@ -83,7 +95,7 @@ export async function notifyAdminsStaleLeads(
   const rows = leads
     .map(
       (l) =>
-        `<li><a href="${SITE_URL}/admin/leads/${l.id}">${l.company}</a> — ${l.daysSinceActivity} days since last activity</li>`
+        `<li><a href="${SITE_URL}/admin/leads/${encodeURIComponent(l.id)}">${esc(l.company)}</a> — ${l.daysSinceActivity} days since last activity</li>`
     )
     .join('');
   const html = wrap(
@@ -108,8 +120,8 @@ export async function notifyUserFollowUpDigest(
   const rows = leads
     .map(
       (l) =>
-        `<li><a href="${SITE_URL}/admin/leads/${l.id}">${l.company}</a> — ${
-          l.overdue ? `overdue since ${l.nextFollowUpAt.toLocaleDateString()}` : 'due today'
+        `<li><a href="${SITE_URL}/admin/leads/${encodeURIComponent(l.id)}">${esc(l.company)}</a> — ${
+          l.overdue ? `overdue since ${esc(l.nextFollowUpAt.toLocaleDateString())}` : 'due today'
         }</li>`
     )
     .join('');

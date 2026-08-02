@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { upload } from '@vercel/blob/client';
+import { checkPasswordStrength, MIN_PASSWORD_LENGTH } from '@/lib/password-policy';
 import {
   Mail,
   CheckCircle2,
@@ -278,8 +279,11 @@ export default function AdminSettingsPage() {
 
   const handleChangePassword = async () => {
     setPasswordError(null);
-    if (newPassword.length < 8) {
-      setPasswordError('New password must be at least 8 characters');
+    // Same rules the server enforces — checked here only so the message
+    // arrives before the round trip, never instead of it.
+    const strength = checkPasswordStrength(newPassword, name);
+    if (!strength.ok) {
+      setPasswordError(strength.error || 'Choose a stronger password');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -703,7 +707,7 @@ export default function AdminSettingsPage() {
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="New password (min. 8 characters)"
+            placeholder={`New password (min. ${MIN_PASSWORD_LENGTH} characters)`}
             className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
           />
           <input

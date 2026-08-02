@@ -154,6 +154,12 @@ model Project {
   // by accident after a page reload forgets the button was already used.
   lastPaymentReminderSentAt DateTime?
 
+  // Capability token for the public, no-login status page (/status/[id]?t=…).
+  // Separate from the cuid PK on purpose: knowing a project's ID — which
+  // shows up in admin URLs, emails, and Stripe metadata — must not be the
+  // same thing as being allowed to read its status. Rotate to revoke a link.
+  shareToken String @unique @default(dbgenerated("(replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''))"))
+
   // Metadata
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -339,6 +345,12 @@ model Lead {
   agreementHash     String? // sha256 of the exact contract text shown at signing
   signedContractUrl String? // saved PDF copy of what they actually agreed to
 
+  // Capability token for the public sign-and-pay page (/sign/[id]?t=…).
+  // The link is both "read the proposal" and "agree to the contract", so it
+  // gets its own unguessable secret rather than reusing the cuid PK, which
+  // is visible in admin URLs, Stripe metadata, and activity records.
+  shareToken String @unique @default(dbgenerated("(replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''))"))
+
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 
@@ -514,6 +526,32 @@ model TeamMessage {
   createdAt DateTime  @default(now())
 
   @@map("team_messages")
+}
+
+// A pending password-reset link.
+//
+// These used to live in a module-level Map inside the reset route. On
+// serverless that Map belongs to whichever instance happened to serve the
+// request, so a link minted on one instance was "invalid or expired" on the
+// next, and every outstanding link died silently on redeploy. Worse, the
+// Map was never pruned and held plaintext tokens in memory.
+//
+// Only the SHA-256 of the emailed token is stored, so a database read yields
+// no working reset links. Single-use is enforced by `usedAt`.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  email     String
+  userType  String // "user" (team member) | "client"
+  expiresAt DateTime
+  usedAt    DateTime?
+  // Kept for abuse investigation — who asked for the reset, not who used it.
+  requestedIp String?
+  createdAt DateTime  @default(now())
+
+  @@index([email, userType])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // The client's answer to one onboarding question

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
+import { escParagraphs } from '@/lib/html';
 import { sendAsUser, createGmailBatchTransport } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
@@ -95,10 +96,9 @@ export async function POST(request: NextRequest) {
         .replace(/\[First Name\]/gi, firstName)
         .replace(/\[Sender Name\]/gi, senderFullName);
 
-      const bodyHtml = personalizedBody
-        .split(/\n{2,}/)
-        .map((para) => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
-        .join('');
+      // The draft comes from a research CSV someone imported, and the
+      // substituted name comes from the lead record — neither is markup.
+      const bodyHtml = escParagraphs(personalizedBody);
 
       const html = renderShell({
         title: subject,

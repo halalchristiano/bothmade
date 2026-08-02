@@ -21,11 +21,19 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 // real one-liner was researched and stored ahead of time.
 function defaultsForTemplate(
   templateId: string,
-  ctx: { leadId?: string; projectId?: string; defaultObservation?: string | null; defaultSenderTitle?: string | null }
+  ctx: {
+    leadId?: string;
+    leadShareToken?: string | null;
+    projectId?: string;
+    defaultObservation?: string | null;
+    defaultSenderTitle?: string | null;
+  }
 ): Record<string, string> {
   const d: Record<string, string> = {};
-  if ((templateId === 'proposal_followup' || templateId === 'contract_reminder') && ctx.leadId) {
-    d.signUrl = `${SITE_URL}/sign/${ctx.leadId}`;
+  // The sign-and-pay link needs the lead's capability token — the ID alone
+  // no longer opens the page, so a link built without it is a dead link.
+  if ((templateId === 'proposal_followup' || templateId === 'contract_reminder') && ctx.leadId && ctx.leadShareToken) {
+    d.signUrl = `${SITE_URL}/sign/${ctx.leadId}?t=${ctx.leadShareToken}`;
   }
   if (
     (templateId === 'project_status_update' || templateId === 'project_completed' || templateId === 'requirements_request') &&
@@ -52,6 +60,7 @@ export function EmailComposer({
   defaultPainPoint,
   defaultObservation,
   leadId,
+  leadShareToken,
   clientId,
   projectId,
   onClose,
@@ -64,6 +73,8 @@ export function EmailComposer({
   defaultPainPoint?: string | null;
   defaultObservation?: string | null;
   leadId?: string;
+  /** The lead's public-link capability token, so sign-and-pay URLs work. */
+  leadShareToken?: string | null;
   clientId?: string;
   projectId?: string;
   onClose: () => void;
@@ -83,7 +94,7 @@ export function EmailComposer({
     return {
       ...staticDefaultFields,
       ...selectDefaults,
-      ...defaultsForTemplate(id, { leadId, projectId, defaultObservation, defaultSenderTitle }),
+      ...defaultsForTemplate(id, { leadId, leadShareToken, projectId, defaultObservation, defaultSenderTitle }),
     };
   };
 

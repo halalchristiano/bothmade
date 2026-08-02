@@ -4,6 +4,7 @@ import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isLeadActivityType, advanceToContactedOnOutreach } from '@/lib/leads';
 import { sendEmail } from '@/lib/email';
+import { escMultiline } from '@/lib/html';
 
 export async function POST(
   request: NextRequest,
@@ -38,7 +39,10 @@ export async function POST(
       emailSent = await sendEmail({
         to: lead.email,
         subject: emailSubject || `Following up — ${lead.company}`,
-        html: `<div style="font-family: -apple-system, sans-serif; white-space: pre-wrap;">${content}</div>`,
+        // `content` is whatever was typed into the activity box. It's staff
+        // input, but it lands in a client's inbox, so it's escaped like any
+        // other body text rather than trusted as markup.
+        html: `<div style="font-family: -apple-system, sans-serif; white-space: pre-wrap;">${escMultiline(content)}</div>`,
       });
     }
 
