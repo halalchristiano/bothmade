@@ -378,7 +378,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </AnimatePresence>
       </header>
 
-      <main className="lg:pl-64 relative">{children}</main>
+      {/* overflow-x-hidden: without it a single too-wide child (a long company
+          name, an unbroken URL) makes the document wider than the viewport,
+          and iOS Safari responds by zooming the whole page out — which reads
+          as "everything is squashed into the left with dead space beside it". */}
+      <main className="lg:pl-64 relative w-full min-w-0 overflow-x-hidden">{children}</main>
     </div>
   );
 }

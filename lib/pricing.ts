@@ -1,7 +1,7 @@
 // Pricing model for the /start calculator, Stripe checkout, and Project records.
 // All prices are in cents (USD), matching Project.basePrice / Project.totalPrice.
 
-import type { PainPointKey } from '@/lib/leads';
+import { PAIN_POINTS, type PainPointKey } from '@/lib/leads';
 
 export type BaseService =
   | 'website'
@@ -519,46 +519,303 @@ export function formatCents(cents: number): string {
 }
 
 /**
- * Maps each identified pain point to what actually fixes it ("needs" — the
- * core sell, usually the reason they'd say yes at all) versus what's a
- * natural add-on once they're already saying yes ("upsell" — real value,
- * but not the thing that closes the deal). A starting heuristic for the
- * lead detail page's sales-intelligence panel, not a hard rule — Evan
- * should still use judgment per lead.
+ * Everything the panel on a lead's page needs to say about one pain point,
+ * written for someone who has never built software: what's actually wrong,
+ * what it's costing the business (the bit that makes them care), and a line
+ * that can be read out loud on a call more or less verbatim.
+ *
+ * `needs` are the things that genuinely fix the problem — no fix without
+ * them. `upsell` are real, useful extras worth raising only once the core
+ * is agreed. `implies` nudges which base build the whole job should be.
  */
-export const PAIN_POINT_RECOMMENDATIONS: Record<PainPointKey, { needs: AddOnKey[]; upsell: AddOnKey[] }> = {
-  'no-website': { needs: [], upsell: ['seo', 'copywriting'] },
-  'outdated-design': { needs: [], upsell: ['brand-identity', 'animations', 'illustrations'] },
-  'not-mobile-friendly': { needs: [], upsell: ['accessibility-audit'] },
-  'slow-site': { needs: [], upsell: ['hosting'] },
-  'poor-seo': { needs: ['seo'], upsell: ['local-seo', 'analytics', 'blog'] },
-  'no-analytics': { needs: ['analytics'], upsell: ['local-seo'] },
-  'no-app': { needs: [], upsell: [] },
-  'manual-processes': { needs: ['custom-backend', 'integrations'], upsell: ['admin-dashboard'] },
-  'no-booking': { needs: ['booking'], upsell: ['crm-setup'] },
-  'no-ecommerce': { needs: ['ecommerce'], upsell: ['subscriptions', 'email-marketing'] },
-  'weak-branding': { needs: ['brand-identity'], upsell: ['copywriting', 'illustrations'] },
-  'security-concerns': { needs: ['privacy-compliance'], upsell: ['accessibility-audit'] },
-  'scaling-issues': { needs: ['custom-backend'], upsell: ['admin-dashboard', 'hosting'] },
-  'disconnected-tools': { needs: ['integrations'], upsell: ['crm-setup', 'admin-dashboard'] },
-};
-
-export interface SalesRecommendations {
+export interface PainPointBrief {
+  problem: string;
+  costsThem: string;
+  sayThis: string;
   needs: AddOnKey[];
   upsell: AddOnKey[];
+  implies?: BaseService;
 }
 
-/** Combines every identified pain point's recommendations into one deduped needs/upsell breakdown. */
+export const PAIN_POINT_BRIEFS: Record<PainPointKey, PainPointBrief> = {
+  'no-website': {
+    problem: "They have no website at all — anyone who hears about them has nothing to look at.",
+    costsThem:
+      "Every person who searches their name finds a competitor instead. They're paying for word of mouth and then losing it at the last step.",
+    sayThis:
+      "When someone hears about you and looks you up, what do they find? Right now that's a dead end — and that's the cheapest customer you'll ever get, lost for free.",
+    needs: [],
+    upsell: ['seo', 'copywriting', 'local-seo'],
+    implies: 'website',
+  },
+  'outdated-design': {
+    problem: "Their site looks old. Not broken — just visibly out of date, which people read as 'is this business still going?'",
+    costsThem:
+      "People decide whether they trust a business in a couple of seconds, and they decide on looks. A dated site quietly makes them look smaller and cheaper than they are.",
+    sayThis:
+      "Your site's doing its job, it just looks about ten years behind where your business actually is. People price you off that first screen before they read a word.",
+    needs: [],
+    upsell: ['brand-identity', 'copywriting', 'animations'],
+    implies: 'website',
+  },
+  'not-mobile-friendly': {
+    problem: "Their site doesn't work properly on a phone — text too small, buttons hard to hit, things overlapping.",
+    costsThem:
+      "Most people will visit them on a phone. If it's awkward on mobile, that's the majority of their traffic struggling.",
+    sayThis:
+      "Pull your own site up on your phone right now while we talk. That's what most of your customers are seeing — and Google ranks you on that version, not the desktop one.",
+    needs: [],
+    upsell: ['accessibility-audit'],
+    implies: 'website',
+  },
+  'slow-site': {
+    problem: 'Their site takes too long to load.',
+    costsThem:
+      "People leave before it finishes. It doesn't matter how good the site is if a chunk of visitors never see it.",
+    sayThis:
+      "Every extra second your site takes to load, a slice of people just back out. You're paying to get them there and losing them in the waiting room.",
+    needs: [],
+    upsell: ['hosting', 'maintenance'],
+    implies: 'website',
+  },
+  'poor-seo': {
+    problem: "They don't show up in Google when people search for what they do.",
+    costsThem:
+      "The people searching right now are the ones ready to buy. If they can't find them, that demand goes to whoever ranks above them.",
+    sayThis:
+      "Search what you do plus your city and tell me where you come up. Those people are already looking to buy — they just can't find you.",
+    needs: ['seo'],
+    upsell: ['local-seo', 'blog', 'copywriting', 'analytics'],
+  },
+  'no-analytics': {
+    problem: "They have no tracking, so they can't see who visits, where from, or what people do on the site.",
+    costsThem:
+      "They're making decisions blind — no way to know which marketing works, so they either overspend or stop things that were working.",
+    sayThis:
+      "How do you know which of your marketing is actually bringing people in? Right now there's no way to tell — so you're guessing with real money.",
+    needs: ['analytics'],
+    upsell: ['local-seo'],
+  },
+  'no-app': {
+    problem: "They have no mobile app — no presence on their customers' home screens.",
+    costsThem:
+      "Repeat customers have to go looking for them every time. An app makes them the default instead of a search away.",
+    sayThis:
+      "Your regulars have to go find you every single time. An icon on their phone means you're the one they tap without thinking.",
+    needs: [],
+    upsell: ['push-notifications', 'app-store-submission', 'user-accounts'],
+    implies: 'ios-app',
+  },
+  'manual-processes': {
+    problem: 'Their team is doing things by hand — copying between spreadsheets, re-typing orders, chasing things over email.',
+    costsThem:
+      "Paid hours going into work software should do, plus the mistakes that come with re-typing. It gets worse as they grow, not better.",
+    sayThis:
+      "Walk me through what happens after someone places an order. Every step you just described that a person does by hand is an hour you're paying for, every week, forever.",
+    needs: ['custom-backend', 'integrations'],
+    upsell: ['admin-dashboard', 'crm-setup'],
+    implies: 'web-app',
+  },
+  'no-booking': {
+    problem: "Customers can't book online — it's phone calls, DMs, or back-and-forth emails.",
+    costsThem:
+      "Anyone who wants to book outside working hours gives up or books elsewhere. Someone on their team is also stuck being a receptionist.",
+    sayThis:
+      "What happens when someone wants to book you at 9pm? Right now they can't — and most of them won't ring back tomorrow.",
+    needs: ['booking'],
+    upsell: ['crm-setup', 'email-marketing', 'user-accounts'],
+  },
+  'no-ecommerce': {
+    problem: "They can't take payment online — no way for a customer to actually buy without a human involved.",
+    costsThem:
+      "Every sale needs a person to close it. They can only sell as fast as someone can answer the phone.",
+    sayThis:
+      "Right now every sale needs one of your people involved. That caps how much you can sell in a day at however many calls you can answer.",
+    needs: ['ecommerce'],
+    upsell: ['subscriptions', 'email-marketing', 'copywriting'],
+  },
+  'weak-branding': {
+    problem: 'Their look is inconsistent — logo, colours and wording differ across their site, socials and print.',
+    costsThem:
+      "They read as scrappy next to competitors who look sharp, which makes it harder to charge what they're worth.",
+    sayThis:
+      "Your website, your Instagram and your signage all look like three different companies. That inconsistency is why you get haggled on price.",
+    needs: ['brand-identity'],
+    upsell: ['copywriting', 'illustrations'],
+  },
+  'security-concerns': {
+    problem: 'There are security or compliance gaps — outdated software, no proper privacy handling, or data kept somewhere it should not be.',
+    costsThem:
+      "One incident and it's legal exposure plus the reputational hit. It's the cheapest problem to fix before it happens and the most expensive after.",
+    sayThis:
+      "If customer data leaked tomorrow, who'd be liable? This is the one thing on the list that can end a business rather than just slow it down.",
+    needs: ['privacy-compliance'],
+    upsell: ['accessibility-audit', 'maintenance', 'hosting'],
+  },
+  'scaling-issues': {
+    problem: "What they've got works at today's size but falls over as they grow — slow, fragile, held together manually.",
+    costsThem:
+      "Growth actively hurts. More customers means more breakage, so success creates the fire.",
+    sayThis:
+      "What you've got works today. Double your customers and it doesn't — so the busier you get, the more time you spend firefighting instead of selling.",
+    needs: ['custom-backend'],
+    upsell: ['admin-dashboard', 'hosting', 'maintenance'],
+    implies: 'web-app',
+  },
+  'disconnected-tools': {
+    problem: "Their tools don't talk to each other — the same information gets entered into several systems by hand.",
+    costsThem:
+      "Duplicate data entry, and numbers that disagree between systems so nobody trusts any of them.",
+    sayThis:
+      "How many places does one customer's details get typed into? Every one of those is a chance for them to disagree — and then you don't know which one's right.",
+    needs: ['integrations'],
+    upsell: ['crm-setup', 'admin-dashboard', 'data-migration'],
+  },
+};
+
+/**
+ * Back-compat shape for anything still reading the old needs/upsell table.
+ * Derived from the briefs so there's only one place to edit.
+ */
+export const PAIN_POINT_RECOMMENDATIONS: Record<PainPointKey, { needs: AddOnKey[]; upsell: AddOnKey[] }> =
+  Object.fromEntries(
+    (Object.entries(PAIN_POINT_BRIEFS) as [PainPointKey, PainPointBrief][]).map(([k, v]) => [
+      k,
+      { needs: v.needs, upsell: v.upsell },
+    ])
+  ) as Record<PainPointKey, { needs: AddOnKey[]; upsell: AddOnKey[] }>;
+
+/**
+ * Phrases that reliably indicate a pain point when they turn up in freeform
+ * research notes. Deliberately conservative — a false positive puts a wrong
+ * recommendation in front of a rep on a live call, which is worse than a
+ * miss. Anything inferred this way is labelled as coming from the notes so
+ * it can be sanity-checked rather than trusted blindly.
+ */
+const NOTE_SIGNALS: Array<{ key: PainPointKey; patterns: RegExp[] }> = [
+  { key: 'no-booking', patterns: [/\bbook(ing|ings)?\b/i, /\bappointment/i, /\bschedul/i, /\breservation/i] },
+  { key: 'no-ecommerce', patterns: [/\be-?commerce\b/i, /\bonline store\b/i, /\bshop online\b/i, /\bcheckout\b/i, /\bshopify\b/i] },
+  { key: 'poor-seo', patterns: [/\bseo\b/i, /\branking?s?\b/i, /\bsearch results?\b/i, /\bgoogle search\b/i] },
+  { key: 'no-analytics', patterns: [/\banalytics\b/i, /\btracking\b/i, /\bgoogle analytics\b/i] },
+  { key: 'not-mobile-friendly', patterns: [/\bmobile[- ]friendly\b/i, /\bnot responsive\b/i, /\bon (a )?phone\b/i] },
+  { key: 'slow-site', patterns: [/\bslow\b/i, /\bload(ing)? time/i, /\bpage ?speed\b/i] },
+  { key: 'outdated-design', patterns: [/\boutdated\b/i, /\bdated\b/i, /\bold(-| )?looking\b/i, /\bwordpress theme\b/i, /\b(19|20)\d0s\b/i] },
+  { key: 'weak-branding', patterns: [/\bbranding\b/i, /\blogo\b/i, /\binconsistent\b/i] },
+  { key: 'manual-processes', patterns: [/\bmanual(ly)?\b/i, /\bspreadsheet/i, /\bby hand\b/i, /\bpaper(work)?\b/i] },
+  { key: 'disconnected-tools', patterns: [/\bintegrat/i, /\bdoesn'?t sync\b/i, /\bdon'?t talk\b/i, /\bcopy(ing)? (data|details)\b/i] },
+  { key: 'no-app', patterns: [/\bmobile app\b/i, /\bios app\b/i, /\bapp store\b/i] },
+  { key: 'security-concerns', patterns: [/\bsecurity\b/i, /\bgdpr\b/i, /\bhipaa\b/i, /\bcompliance\b/i, /\bnot secure\b/i, /\bhttp:\/\//i] },
+  { key: 'scaling-issues', patterns: [/\bscal(e|ing)\b/i, /\bcan'?t keep up\b/i, /\boutgrow/i] },
+];
+
+/** Pain points implied by freeform notes but not explicitly ticked on the lead. */
+export function inferPainPointsFromNotes(text: string | null | undefined, already: PainPointKey[]): PainPointKey[] {
+  if (!text) return [];
+  const have = new Set(already);
+  return NOTE_SIGNALS.filter(({ key, patterns }) => !have.has(key) && patterns.some((re) => re.test(text))).map(
+    ({ key }) => key
+  );
+}
+
+/** One line item in the recommendation, carrying why it's being recommended. */
+export interface RecommendedItem {
+  key: AddOnKey;
+  label: string;
+  description: string;
+  price: number;
+  /** Labels of the pain points that triggered this — shown as "why". */
+  becauseOf: string[];
+}
+
+export interface SalesRecommendations {
+  /** The core build the whole job is priced around. */
+  baseService: BaseService;
+  baseReason: string;
+  /** Must-haves: without these the problems Evan just named aren't fixed. */
+  needs: RecommendedItem[];
+  /** Real extras, worth raising only after the core is agreed. */
+  upsell: RecommendedItem[];
+  /** Base + needs, before any client-type or timeline adjustment. */
+  coreTotal: number;
+  /** Core plus every upsell taken. */
+  maxTotal: number;
+  /** Back-compat for older call sites. */
+  needKeys: AddOnKey[];
+  upsellKeys: AddOnKey[];
+}
+
+/**
+ * Turns this lead's specific pain points into a priced, explained sell:
+ * which base build fits, what must be included to actually solve what was
+ * found, what can be added later, and what each of those totals to.
+ */
 export function buildSalesRecommendations(painPointKeys: PainPointKey[]): SalesRecommendations {
-  const needs = new Set<AddOnKey>();
-  const upsell = new Set<AddOnKey>();
-  for (const key of painPointKeys) {
-    const rec = PAIN_POINT_RECOMMENDATIONS[key];
-    if (!rec) continue;
-    rec.needs.forEach((a) => needs.add(a));
-    rec.upsell.forEach((a) => upsell.add(a));
+  const briefs = painPointKeys.map((k) => [k, PAIN_POINT_BRIEFS[k]] as const).filter(([, b]) => !!b);
+
+  // Pick the base build off the most demanding thing they need. A native app
+  // plus anything system-shaped is genuinely a multi-platform job; systems
+  // work alone is a web app; everything else is a website.
+  const implied = new Set(briefs.map(([, b]) => b.implies).filter(Boolean) as BaseService[]);
+  let baseService: BaseService = 'website';
+  let baseReason = 'Nothing here needs accounts or logins — a website covers it.';
+  if (implied.has('ios-app') && (implied.has('web-app') || implied.has('website'))) {
+    baseService = 'multi';
+    baseReason = 'They need both a phone app and a proper system behind it — that\'s one job, built together.';
+  } else if (implied.has('ios-app')) {
+    baseService = 'ios-app';
+    baseReason = 'What they\'re missing lives on a phone home screen, so this is a native app build.';
+  } else if (implied.has('web-app')) {
+    baseService = 'web-app';
+    baseReason = 'Their problems are about how the business runs, not how it looks — that means a tool people log into, not a brochure site.';
+  } else if (implied.has('website')) {
+    baseService = 'website';
+    baseReason = 'Everything they\'re missing is about how they show up publicly — a website is the right build.';
   }
-  // Don't double-list something as an upsell if it's already a core need.
-  for (const a of needs) upsell.delete(a);
-  return { needs: Array.from(needs), upsell: Array.from(upsell) };
+
+  // Collect add-ons with the pain point labels that justified them, so the
+  // panel can show "why" instead of an unexplained shopping list.
+  const needMap = new Map<AddOnKey, Set<string>>();
+  const upsellMap = new Map<AddOnKey, Set<string>>();
+  for (const [key, brief] of briefs) {
+    const label = PAIN_POINTS[key];
+    for (const a of brief.needs) {
+      if (!needMap.has(a)) needMap.set(a, new Set());
+      needMap.get(a)!.add(label);
+    }
+    for (const a of brief.upsell) {
+      if (!upsellMap.has(a)) upsellMap.set(a, new Set());
+      upsellMap.get(a)!.add(label);
+    }
+  }
+  // A core need is never also an upsell, and anything the base build already
+  // covers is not a separate line — quoting it twice loses trust fast.
+  for (const a of needMap.keys()) upsellMap.delete(a);
+  for (const a of [...needMap.keys()]) if (isIncludedInBase(baseService, a)) needMap.delete(a);
+  for (const a of [...upsellMap.keys()]) if (isIncludedInBase(baseService, a)) upsellMap.delete(a);
+
+  const toItems = (m: Map<AddOnKey, Set<string>>): RecommendedItem[] =>
+    Array.from(m.entries())
+      .map(([key, why]) => ({
+        key,
+        label: ADD_ONS[key].label,
+        description: ADD_ONS[key].description,
+        price: ADD_ONS[key].price,
+        becauseOf: Array.from(why),
+      }))
+      .sort((a, b) => b.price - a.price);
+
+  const needs = toItems(needMap);
+  const upsell = toItems(upsellMap);
+  const coreTotal = BASE_SERVICES[baseService].price + needs.reduce((s, i) => s + i.price, 0);
+
+  return {
+    baseService,
+    baseReason,
+    needs,
+    upsell,
+    coreTotal,
+    maxTotal: coreTotal + upsell.reduce((s, i) => s + i.price, 0),
+    needKeys: needs.map((i) => i.key),
+    upsellKeys: upsell.map((i) => i.key),
+  };
 }
