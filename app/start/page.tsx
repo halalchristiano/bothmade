@@ -13,6 +13,8 @@ import {
   TIMELINES,
   calculatePrice,
   dependentsOf,
+  depositAmount,
+  DEPOSIT_PERCENT,
   expandAddOnDependencies,
   formatCents,
   isIncludedInBase,
@@ -427,6 +429,16 @@ export default function StartPage() {
             <span className="text-xl font-bold">Total</span>
             <span className="text-3xl font-bold">{formatCents(breakdown.totalPrice)}</span>
           </div>
+          <div className="mt-4 rounded-xl border border-sky-400/20 bg-sky-400/[0.06] p-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="font-medium">Due today ({DEPOSIT_PERCENT}% deposit)</span>
+              <span className="font-semibold text-sky-300">{formatCents(depositAmount(breakdown.totalPrice))}</span>
+            </div>
+            <div className="flex justify-between text-white/50">
+              <span>Balance, due before launch</span>
+              <span>{formatCents(breakdown.totalPrice - depositAmount(breakdown.totalPrice))}</span>
+            </div>
+          </div>
         </section>
 
         {/* FAQ */}
@@ -498,10 +510,15 @@ export default function StartPage() {
             disabled={!canSubmit || loading}
             className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-4 font-semibold text-black disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
           >
-            {loading ? 'Processing...' : `Proceed to Checkout — ${formatCents(breakdown.totalPrice)}`}
+            {loading
+              ? 'Processing...'
+              : `Pay ${DEPOSIT_PERCENT}% deposit — ${formatCents(depositAmount(breakdown.totalPrice))}`}
           </button>
 
-          <p className="text-center text-sm text-white/40 mt-3">Secure payment powered by Stripe</p>
+          <p className="text-center text-sm text-white/40 mt-3">
+            {formatCents(depositAmount(breakdown.totalPrice))} due now to begin — balance of{' '}
+            {formatCents(breakdown.totalPrice - depositAmount(breakdown.totalPrice))} before launch. Secure payment powered by Stripe.
+          </p>
 
           <div className="flex items-center gap-3 my-6">
             <div className="h-px flex-1 bg-white/10" />

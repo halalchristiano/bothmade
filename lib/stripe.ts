@@ -6,6 +6,8 @@ import {
   TIMELINES,
   calculatePrice,
   formatCents,
+  depositAmount,
+  DEPOSIT_PERCENT,
   type AddOnKey,
   type BaseService,
   type ClientType,
@@ -45,10 +47,20 @@ export async function createCheckoutSession(
 
     const serviceLabel = BASE_SERVICES[input.baseService].label;
     const addOnLabels = input.addOns.map((key) => ADD_ONS[key].label);
-    const description =
+    const detail =
       addOnLabels.length > 0
         ? `${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label} + ${addOnLabels.join(', ')}`
         : `${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label}`;
+
+    // Standard terms are a deposit to begin, balance due before launch — so
+    // charge the deposit here, not the full amount (the FAQ promises exactly
+    // this, and asking a stranger for the whole five-figure sum up front was
+    // both a conversion killer and a chargeback risk). The full total still
+    // goes into metadata so the webhook creates the project at its real price
+    // and leaves the balance outstanding for later collection.
+    const total = breakdown.totalPrice;
+    const deposit = depositAmount(total);
+    const description = `${DEPOSIT_PERCENT}% deposit toward ${formatCents(total)} total — ${detail}`;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -57,10 +69,10 @@ export async function createCheckoutSession(
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Bothmade ${serviceLabel} — ${input.company}`,
+              name: `Bothmade ${serviceLabel} — ${input.company} (deposit)`,
               description,
             },
-            unit_amount: breakdown.totalPrice,
+            unit_amount: deposit,
           },
           quantity: 1,
         },
@@ -79,7 +91,9 @@ export async function createCheckoutSession(
         clientType: input.clientType,
         timeline: input.timeline,
         basePrice: String(breakdown.basePrice),
-        totalPrice: String(breakdown.totalPrice),
+        totalPrice: String(total),
+        depositAmount: String(deposit),
+        paymentType: 'deposit',
       },
     });
 
