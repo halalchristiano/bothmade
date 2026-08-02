@@ -22,7 +22,7 @@ interface Project {
   updatedAt: string;
   messages: any[];
   updates: any[];
-  deliverables: Array<{ id: string; name: string; url: string; size?: string }>;
+  deliverables: Array<{ id: string; name: string; url: string; size?: string; addedAt?: string }>;
   contractUrl: string | null;
   client: any;
 }
@@ -40,6 +40,17 @@ const STAGE_EXPLANATIONS: Record<string, string> = {
     "We're testing everything end-to-end, fixing edge cases, and getting your product live — deployed to the web, or submitted to the App Store.",
   Complete:
     "Your project is live and delivered. We're here for any follow-up support you need.",
+};
+
+const STAGE_WHATS_NEXT: Record<string, string> = {
+  Discovery:
+    "Once requirements are locked in, we'll move into Design and start sharing layouts for your review.",
+  Design:
+    "Once you sign off on the designs, our engineers start building — you'll see progress land here as it happens.",
+  Build:
+    "Once the build is complete, we'll move into Launch for end-to-end testing before it goes live.",
+  Launch:
+    "We're in the final stretch — once testing wraps, your project goes live and moves to Complete.",
 };
 
 export default function ClientDashboard() {
@@ -68,13 +79,30 @@ export default function ClientDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const seenMessageCountRef = useRef<number | null>(null);
 
+  // "New" badges on updates/deliverables: remember the last time this client
+  // actually looked at the dashboard, so anything added since then stands out.
+  const [lastVisitAt, setLastVisitAt] = useState<number | null>(null);
+
   useEffect(() => {
+    const storageKey = `bothmade_last_visit_${projectId}`;
+    const stored = Number(localStorage.getItem(storageKey) || 0);
+    setLastVisitAt(stored || null);
+    localStorage.setItem(storageKey, String(Date.now()));
+
     loadProject();
     loadOnboarding();
     const interval = setInterval(loadProject, 20000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  const isNew = (dateStr: string) => !!lastVisitAt && new Date(dateStr).getTime() > lastVisitAt;
+
+  const NewBadge = () => (
+    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-400/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold uppercase tracking-wide align-middle">
+      New
+    </span>
+  );
 
   // Track unread messages across polls/visits (persisted per-project so a
   // page reload doesn't just forget what's already been seen).
@@ -254,6 +282,9 @@ export default function ClientDashboard() {
                     {unreadCount}
                   </span>
                 )}
+                {tab === 'timeline' && project.updates.some((u) => isNew(u.createdAt)) && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-400 border border-[#05030a]" />
+                )}
               </button>
             ))}
           </div>
@@ -300,6 +331,13 @@ export default function ClientDashboard() {
                 <p className="text-sm font-semibold text-sky-300 mb-1">What's happening in {currentStage}?</p>
                 <p className="text-sm text-white/60">{STAGE_EXPLANATIONS[currentStage]}</p>
               </div>
+
+              {STAGE_WHATS_NEXT[currentStage] && (
+                <div className="mt-3 rounded-lg bg-gradient-to-r from-sky-400/10 to-purple-500/10 border border-white/10 p-4">
+                  <p className="text-sm font-semibold text-white/80 mb-1">What's next</p>
+                  <p className="text-sm text-white/60">{STAGE_WHATS_NEXT[currentStage]}</p>
+                </div>
+              )}
             </div>
 
             {/* Project Details */}
@@ -375,7 +413,10 @@ export default function ClientDashboard() {
                       className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
                     >
                       <div>
-                        <p className="font-medium">{file.name}</p>
+                        <p className="font-medium flex items-center">
+                          {file.name}
+                          {file.addedAt && isNew(file.addedAt) && <NewBadge />}
+                        </p>
                         {file.size && <p className="text-xs text-white/40">{file.size}</p>}
                       </div>
                       <span className="text-sm font-semibold text-sky-300">Download</span>
@@ -393,7 +434,10 @@ export default function ClientDashboard() {
                 <div className="space-y-4">
                   {project.updates.slice(0, 3).map((update) => (
                     <div key={update.id} className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0">
-                      <h3 className="font-semibold mb-1">{update.title}</h3>
+                      <h3 className="font-semibold mb-1 flex items-center">
+                        {update.title}
+                        {isNew(update.createdAt) && <NewBadge />}
+                      </h3>
                       <p className="text-white/50 text-sm mb-2">{update.description}</p>
                       <p className="text-xs text-white/30">
                         {new Date(update.createdAt).toLocaleDateString()} by {update.user?.name || 'Bothmade'}
@@ -422,7 +466,10 @@ export default function ClientDashboard() {
                       )}
                     </div>
                     <div className="flex-1 pb-8">
-                      <h3 className="font-semibold mb-1">{update.title}</h3>
+                      <h3 className="font-semibold mb-1 flex items-center">
+                        {update.title}
+                        {isNew(update.createdAt) && <NewBadge />}
+                      </h3>
                       <p className="text-white/50 mb-2 text-sm">{update.description}</p>
                       <p className="text-xs text-white/30">
                         {new Date(update.createdAt).toLocaleDateString()}
