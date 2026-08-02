@@ -36,6 +36,8 @@ const DATA: ServicePageData = {
       desc: 'Simulation, visualization, and collaborative review for teams working with physical things.',
     },
   ],
+  stackIntro:
+    "Vision Pro is new enough that most of what's written about it is theory, not shipped software. We build in Apple's own frameworks rather than a cross-platform wrapper — because a wrapper is what makes an app feel like a port instead of something designed for the headset, and on a platform this new, that difference is the whole pitch to your users. The stack below is what actually gets a spatial app from a sketch to the App Store, not just a demo that looks good in a pitch.",
   stack: [
     {
       heading: 'Frameworks',
