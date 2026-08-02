@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
       where: { id: userId },
       data: {
         googleRefreshToken: encryptSecret(refreshToken),
+        gmailNeedsReconnect: false,
         gmailAddress: email,
         gmailConnectedAt: new Date(),
       },
