@@ -269,7 +269,67 @@ function BlockRenderer({
 
     case 'seamDemo':
       return <SeamDemo block={block} />;
+
+    case 'letterFlipDemo':
+      return <LetterFlipDemo word={block.word} />;
   }
+}
+
+/**
+ * Miniature replay of the footer's SeamWordmark: hovering/touching a
+ * letter flips it to the other world's treatment, then a timeout reverts
+ * it after a beat — same per-letter timer-map pattern as the real thing.
+ */
+function LetterFlipDemo({ word }: { word: string }) {
+  const [flipped, setFlipped] = useState<boolean[]>(() => word.split('').map(() => false));
+  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+
+  const toggle = (i: number) => {
+    setFlipped((prev) => prev.map((v, j) => (j === i ? true : v)));
+    clearTimeout(timers.current.get(i));
+    timers.current.set(
+      i,
+      setTimeout(() => {
+        setFlipped((prev) => prev.map((v, j) => (j === i ? false : v)));
+      }, 1200)
+    );
+  };
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach((t) => clearTimeout(t));
+  }, []);
+
+  return (
+    <div className="flex justify-center overflow-hidden py-12 select-none rounded-2xl border border-white/10 bg-white/[0.02]">
+      <p className="font-bold leading-none tracking-[-0.03em] whitespace-nowrap" style={{ fontSize: 'clamp(2rem, 8vw, 5rem)' }}>
+        {word.split('').map((ch, i) => (
+          <motion.span
+            key={i}
+            onPointerEnter={() => toggle(i)}
+            className="inline-block cursor-default"
+            whileHover={{ y: -8 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 14 }}
+            style={
+              flipped[i]
+                ? {
+                    color: 'transparent',
+                    backgroundImage: 'linear-gradient(180deg, #fff 30%, #d8b4fe)',
+                    backgroundClip: 'text',
+                    WebkitBackgroundClip: 'text',
+                  }
+                : {
+                    color: 'transparent',
+                    WebkitTextStroke: '1.5px rgba(125,211,252,0.8)',
+                  }
+            }
+          >
+            {ch}
+          </motion.span>
+        ))}
+      </p>
+    </div>
+  );
 }
 
 /**

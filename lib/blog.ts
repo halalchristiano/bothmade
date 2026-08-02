@@ -49,7 +49,13 @@ export type Block =
       rightLabel: string;
       leftColor: string;
       rightColor: string;
-    };
+    }
+  /**
+   * A miniature, actually-hoverable version of the footer's letter-flip
+   * wordmark — hover or tap a letter and it flips to the other world's
+   * treatment, then springs back after a beat.
+   */
+  | { type: 'letterFlipDemo'; word: string };
 
 export type BlogPost = {
   slug: string;
@@ -525,6 +531,47 @@ const clipPath = useMotionTemplate\`inset(0 \${
       {
         type: 'p',
         text: "A drag-only interaction that's also the site's primary way of expressing what the studio does can't be mouse-exclusive — that would hide the entire pitch from keyboard and switch-control users. The real handle carries role=\"slider\" with aria-valuenow, aria-valuemin, and aria-valuemax, and left/right arrow keys nudge the same target value the pointer drags. Screen readers announce it as what it structurally is — a slider — not as a mystery line in the middle of the screen.",
+      },
+    ],
+  },
+  {
+    slug: 'a-wordmark-that-plays-along',
+    title: 'A wordmark that plays along',
+    dek: "Every letter of our logo secretly knows which half of the name it belongs to. Hover one below and watch it switch sides.",
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2026-10-11',
+    readMinutes: 3,
+    body: [
+      {
+        type: 'p',
+        text: "Every page on the site ends the same way: the wordmark BOTHMADE sitting in the footer, half rendered as a sky-blue wireframe outline, half as a solid violet gradient — split exactly down the middle, BOTH from the web world and MADE from the native one. It would be a fine static logo left alone. Instead every single letter is listening for your cursor, and touching one flips it to the opposite treatment for a little over a second before it settles back.",
+      },
+      {
+        type: 'statement',
+        text: "Nobody is told to touch it. The letters just happen to react, and that's what makes people keep trying more of them.",
+      },
+      { type: 'heading', text: 'Try it' },
+      { type: 'letterFlipDemo', word: 'BOTHMADE' },
+      {
+        type: 'p',
+        text: "Under the hood it's one boolean per letter and a Map of timeouts, nothing more exotic than that. Hovering a letter flips its boolean to true and starts a 1200ms timer; hovering it again before the timer fires clears the old timeout and starts a fresh one, so quickly re-triggering a letter never causes it to flicker back early. When the timer finally fires, that one letter's boolean flips back to false — every letter's state and timer are independent, so you can have three letters mid-flip at once with no coordination between them.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `const toggle = (i: number) => {
+  setFlipped((prev) => prev.map((v, j) => (j === i ? true : v)));
+  clearTimeout(timers.current.get(i));
+  timers.current.set(i, setTimeout(() => {
+    setFlipped((prev) => prev.map((v, j) => (j === i ? false : v)));
+  }, 1200));
+};`,
+      },
+      { type: 'heading', text: "Why it's decorative, not the real heading" },
+      {
+        type: 'p',
+        text: `The animated version is marked aria-hidden="true" in the real footer. That's deliberate, not an oversight: a screen reader has no use for eight independently time-bombed spans, and forcing one to track which letters are "currently flipped" would be actively hostile. The actual accessible brand name sits right above it as a plain heading — "bothmade," rendered once, in ordinary text. The playful version is a bonus for people who can see it drag their cursor across; it was never meant to carry the only copy of the name.`,
       },
     ],
   },
