@@ -1254,7 +1254,7 @@ function OpsDashboard({
             title="Mockup Requests"
             subtitle="Evan's waiting on these"
             action={
-              <Link href="/admin/mockups" className="text-xs text-amber-300/70 hover:text-amber-300">
+              <Link href="/admin/mockup-queue" className="text-xs text-amber-300/70 hover:text-amber-300">
                 Full briefs →
               </Link>
             }
