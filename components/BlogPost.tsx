@@ -310,7 +310,275 @@ function BlockRenderer({
 
     case 'flyThroughDemo':
       return <FlyThroughDemo words={block.words} />;
+
+    case 'parallaxDemo':
+      return <ParallaxDemo />;
+
+    case 'supportTimelineDemo':
+      return <SupportTimelineDemo milestones={block.milestones} />;
+
+    case 'reducedMotionToggleDemo':
+      return <ReducedMotionToggleDemo />;
+
+    case 'kineticPlaygroundDemo':
+      return <KineticPlaygroundDemo />;
   }
+}
+
+/** Milestones arrive in sequence via whileInView stagger, with a connecting line drawing behind them via scaleX. */
+function SupportTimelineDemo({ milestones }: { milestones: { label: string; desc: string }[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={ref} className="rounded-2xl border border-white/10 p-6 md:p-10">
+      <div className="relative">
+        <div className="absolute top-[10px] left-0 right-0 h-px bg-white/10" />
+        <motion.div
+          className="absolute top-[10px] left-0 h-px bg-gradient-to-r from-sky-400 via-indigo-400 to-purple-400 origin-left"
+          initial={{ scaleX: 0 }}
+          whileInView={{ scaleX: 1 }}
+          viewport={{ once: true, margin: '-10% 0px' }}
+          transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
+        />
+        <div className="relative grid grid-cols-2 md:grid-cols-4 gap-6">
+          {milestones.map((m, i) => (
+            <motion.div
+              key={m.label}
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-10% 0px' }}
+              transition={{ delay: i * 0.15, duration: 0.5 }}
+            >
+              <span className="block w-[10px] h-[10px] rounded-full bg-white mb-4" />
+              <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/40 mb-1">
+                {m.label}
+              </p>
+              <p className="text-sm text-white/55 leading-relaxed">{m.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A toggle drives the same animated card two ways: full motion, or the plain instant-state fallback prefers-reduced-motion gets on the real site. */
+function ReducedMotionToggleDemo() {
+  const [simReduced, setSimReduced] = useState(false);
+  const [pulse, setPulse] = useState(0);
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="flex items-center justify-between mb-8">
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40">
+          {simReduced ? 'simulating: prefers-reduced-motion' : 'simulating: normal motion'}
+        </p>
+        <button
+          onClick={() => setSimReduced((v) => !v)}
+          className={`relative w-12 h-7 rounded-full border transition-colors duration-300 ${
+            simReduced ? 'bg-sky-400/30 border-sky-400/60' : 'bg-white/5 border-white/20'
+          }`}
+          aria-pressed={simReduced}
+          aria-label="Toggle simulated reduced motion"
+        >
+          <motion.span
+            className="absolute top-1 left-1 w-5 h-5 rounded-full bg-white"
+            animate={{ x: simReduced ? 20 : 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          />
+        </button>
+      </div>
+
+      <button
+        onClick={() => setPulse((p) => p + 1)}
+        className="w-full rounded-xl border border-white/10 py-8 text-sm text-white/60 hover:text-white transition-colors"
+      >
+        tap to trigger the card below
+      </button>
+
+      <div className="mt-6 h-20 grid place-items-center overflow-hidden">
+        {simReduced ? (
+          <div key={pulse} className="w-16 h-16 rounded-xl bg-gradient-to-br from-sky-400 to-purple-500 opacity-100" />
+        ) : (
+          <motion.div
+            key={pulse}
+            className="w-16 h-16 rounded-xl bg-gradient-to-br from-sky-400 to-purple-500"
+            initial={{ opacity: 0, scale: 0.4, rotate: -20 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 16 }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Same weight-follows-cursor mechanic as KineticWordDemo, but the word comes from a live text input instead of a fixed prop. */
+function KineticPlaygroundDemo() {
+  const [word, setWord] = useState('HELLO');
+  const ref = useRef<HTMLSpanElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const host = ref.current;
+    if (!host || reduceMotion) return;
+    const letters = Array.from(host.children) as HTMLSpanElement[];
+
+    let mx = -9999;
+    let my = -9999;
+    let live = false;
+    let lastMove = 0;
+
+    const onMove = (e: PointerEvent) => {
+      mx = e.clientX;
+      my = e.clientY;
+      live = true;
+      lastMove = performance.now();
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+
+    let frame: number;
+    const tick = (now: number) => {
+      const idle = !live || now - lastMove > 2600;
+      for (let i = 0; i < letters.length; i++) {
+        let t: number;
+        if (idle) {
+          t = Math.max(0, Math.sin(now / 650 - i * 0.5)) * 0.5;
+        } else {
+          const r = letters[i].getBoundingClientRect();
+          const d = Math.hypot(mx - (r.left + r.width / 2), my - (r.top + r.height / 2));
+          const raw = Math.max(0, 1 - d / 300);
+          t = raw * raw * (3 - 2 * raw);
+        }
+        letters[i].style.fontVariationSettings = `'wght' ${Math.round(260 + t * 640)}`;
+        letters[i].style.color = `rgba(${186 + t * 69}, ${230 + t * 25}, 252, ${0.2 + t * 0.8})`;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, [reduceMotion, word]);
+
+  const display = word.trim() === '' ? 'HELLO' : word.toUpperCase().slice(0, 16);
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-10">
+      <input
+        type="text"
+        value={word}
+        onChange={(e) => setWord(e.target.value)}
+        placeholder="Type a word…"
+        maxLength={16}
+        aria-label="Word to render with the kinetic weight effect"
+        className="w-full mb-8 bg-transparent border-0 border-b border-white/20 pb-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/50 transition-colors"
+      />
+
+      <div className="grid place-items-center min-h-24">
+        {reduceMotion ? (
+          <span className="font-bold text-sky-300" style={{ fontSize: 'clamp(1.75rem, 7vw, 3.5rem)' }}>
+            {display}
+          </span>
+        ) : (
+          <span
+            ref={ref}
+            aria-label={display}
+            className="block select-none font-bold leading-none tracking-[-0.03em] whitespace-nowrap"
+            style={{ fontSize: 'clamp(1.75rem, 7vw, 3.5rem)' }}
+          >
+            {display.split('').map((ch, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                className="inline-block"
+                style={{
+                  fontVariationSettings: "'wght' 260",
+                  color: 'rgba(186,230,252,0.2)',
+                  willChange: 'font-variation-settings, color',
+                }}
+              >
+                {ch === ' ' ? ' ' : ch}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Scaled replay of VisionHero's depth scene: pointer position within the
+ * bounded stage drives rotateX/rotateY on a transform-style: preserve-3d
+ * container; a few child elements sit at different translateZ depths so
+ * the whole thing tilts as one rigid 3D diorama, not flat layers sliding.
+ */
+function ParallaxDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const px = useMotionValue(0);
+  const py = useMotionValue(0);
+  const rx = useSpring(useTransform(py, [-0.5, 0.5], [9, -9]), { stiffness: 90, damping: 20 });
+  const ry = useSpring(useTransform(px, [-0.5, 0.5], [-14, 14]), { stiffness: 90, damping: 20 });
+
+  const onMove = (e: React.PointerEvent) => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    px.set((e.clientX - r.left) / r.width - 0.5);
+    py.set((e.clientY - r.top) / r.height - 0.5);
+  };
+  const reset = () => {
+    px.set(0);
+    py.set(0);
+  };
+
+  if (reduceMotion) {
+    return (
+      <div className="rounded-2xl border border-white/10 p-10 grid place-items-center h-64 md:h-80">
+        <p className="font-mono text-xs uppercase tracking-[0.3em] text-white/40">
+          motion reduced — static
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      onPointerMove={onMove}
+      onPointerLeave={reset}
+      className="relative h-64 md:h-80 rounded-2xl border border-white/10 overflow-hidden bg-[#05030a] grid place-items-center"
+      style={{ perspective: '1000px' }}
+    >
+      <motion.div
+        className="relative"
+        style={{ rotateX: rx, rotateY: ry, transformStyle: 'preserve-3d' }}
+      >
+        <div className="absolute" style={{ transform: 'translate3d(-90px, -50px, -80px)' }}>
+          <div className="w-20 h-14 rounded-xl border border-white/15" style={{ background: 'linear-gradient(140deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02))', backdropFilter: 'blur(10px)' }} />
+        </div>
+        <div className="absolute" style={{ transform: 'translate3d(70px, 40px, -40px)' }}>
+          <div className="w-16 h-24 rounded-xl border border-white/15" style={{ background: 'linear-gradient(140deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02))', backdropFilter: 'blur(10px)' }} />
+        </div>
+        <div
+          className="relative rounded-2xl border border-white/20 px-6 py-5"
+          style={{
+            transform: 'translateZ(50px)',
+            background: 'linear-gradient(150deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04))',
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 30px 90px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25)',
+          }}
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-purple-200/80">
+            move your cursor
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 /**

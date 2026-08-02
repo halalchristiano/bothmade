@@ -699,6 +699,11 @@ export default function LeadDetailPage() {
 
   const [showChecklistPains, setShowChecklistPains] = useState(false);
   const [showGlossary, setShowGlossary] = useState(false);
+  // The page serves three jobs at three different moments — read the brief
+  // before ringing, log what happened during and after, build a proposal at a
+  // desk days later. Stacked vertically that meant scrolling past a proposal
+  // builder to reach a note field mid-call.
+  const [tab, setTab] = useState<'brief' | 'call' | 'proposal'>('brief');
   const [showScript, setShowScript] = useState(false);
   const [scriptCopied, setScriptCopied] = useState(false);
 
@@ -1270,28 +1275,41 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {/* Mid-call, this page is a long scroll. These are the only three places
-          anyone needs to reach in a hurry, so they stay within one tap. */}
-      <div className="sticky top-14 lg:top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-2 mt-3 bg-[#050505]/90 backdrop-blur border-b border-white/[0.06]">
-        <div className="flex gap-2 overflow-x-auto">
-          {[
-            { href: '#call-script', label: 'Script', icon: Phone },
-            { href: '#objections', label: 'If they push back', icon: AlertTriangle },
-            { href: '#log-the-call', label: 'Log the call', icon: CheckCircle2 },
-          ].map(({ href, label, icon: Icon }) => (
-            <a
-              key={href}
-              href={href}
-              className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.1] hover:text-white transition-colors"
+      <div className="sticky top-14 lg:top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 pt-3 pb-0 mt-3 bg-[#050505]/90 backdrop-blur border-b border-white/[0.06]">
+        <div className="flex gap-1 overflow-x-auto">
+          {(
+            [
+              ['brief', 'Brief', 'Read this before you ring'],
+              ['call', 'The call', 'Log what happened'],
+              ['proposal', 'Proposal', 'Price it up and send'],
+            ] as Array<['brief' | 'call' | 'proposal', string, string]>
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`shrink-0 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                tab === key
+                  ? 'border-sky-400 text-white'
+                  : 'border-transparent text-white/45 hover:text-white/75'
+              }`}
             >
-              <Icon size={12} /> {label}
-            </a>
+              {label}
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Post-call wrap-up — sits directly under the action bar because this is
-          what the rep reaches for the second they hang up. */}
+      <p className="text-xs text-white/30 mt-3 mb-1">
+        {tab === 'brief'
+          ? "Everything about this business, and what to say. Read it, then switch to The call."
+          : tab === 'call'
+            ? 'Log the call, add notes, ask for a mockup.'
+            : 'Build the quote and send it. Usually done after the call, not during.'}
+      </p>
+
+      {/* Post-call wrap-up — first thing on the call tab, because this is what
+          the rep reaches for the second they hang up. */}
+      {tab === 'call' && (
       <div
         id="log-the-call"
         className="mt-4 scroll-mt-20 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5"
@@ -1442,6 +1460,8 @@ export default function LeadDetailPage() {
         })()}
       </div>
 
+      )}
+
       {composingEmail && (
         <EmailComposer
           recipientEmail={lead.email || ''}
@@ -1455,7 +1475,7 @@ export default function LeadDetailPage() {
         />
       )}
 
-      {(() => {
+      {tab === 'brief' && (() => {
         // Hand-written content from the research CSV always wins over the
         // generic heuristics — a human who actually looked at the business
         // beats a lookup table. The heuristics stay as the fallback (and, for
@@ -2080,7 +2100,7 @@ export default function LeadDetailPage() {
                 {!hasRange && (
                   <p className="text-[11px] text-white/30 leading-relaxed mt-3">
                     These are our standard list prices, added up from the items above. To build a real quote with
-                    discounts, timelines or a payment link, use the proposal builder further down this page.
+                    discounts, timelines or a payment link, open the Proposal tab.
                   </p>
                 )}
               </>
@@ -2089,6 +2109,7 @@ export default function LeadDetailPage() {
         );
       })()}
 
+      {tab === 'call' && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
         {/* LEFT: Lead info */}
         <div className="lg:col-span-1 space-y-6">
@@ -2172,7 +2193,7 @@ export default function LeadDetailPage() {
             <button
               type="button"
               onClick={() =>
-                document.getElementById('proposal-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                setTab('proposal')
               }
               className="w-full mb-4 flex items-center justify-center gap-2 text-sm font-bold px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
             >
@@ -2690,7 +2711,10 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
+      )}
+
       {/* Proposal builder — configure exactly what they want, then send a payment link or a contract */}
+      {tab === 'proposal' && (
       <div
         id="proposal-builder"
         className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-xl p-6 md:p-8 mt-6 shadow-[0_0_60px_-15px_rgba(56,189,248,0.15)]"
@@ -3136,6 +3160,8 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      )}
 
       {pendingLostStatus && lead && (
         <LostReasonModal
