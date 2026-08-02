@@ -1527,6 +1527,40 @@ export default function LeadDetailPage() {
 
         // Essentials add up to the low figure, upsells make up the rest to the
         // high figure, so the itemised column always agrees with the headline.
+        // The derived path used to render a stripped-down card with no plain
+        // English, no words to say and no note box — so any lead imported
+        // without dossier columns gave the rep none of the help. Same card
+        // for both now: where the playbook has no row for a catalogue add-on,
+        // one is built from the add-on's own copy, whose benefit line is
+        // already written addressed to the customer and reads as a pitch.
+        const asPricedItem = (
+          it: { key: AddOnKey; label: string; description: string; price: number; becauseOf: string[] },
+          kind: 'essential' | 'upsell'
+        ): PricedItem => {
+          const fromPlaybook = playbookMap.get(it.key.replace(/[^a-z0-9]/g, ''));
+          return {
+            point: it.label,
+            explanation: it.becauseOf.length
+              ? `${kind === 'essential' ? 'Needed because' : 'Worth pitching because'}: ${it.becauseOf
+                  .join(', ')
+                  .toLowerCase()}`
+              : null,
+            priceCents: it.price,
+            entry:
+              fromPlaybook ?? {
+                slug: it.key,
+                label: it.label,
+                kind,
+                priceCents: it.price,
+                whatItIs: it.description,
+                benefit: '',
+                pitch: ADD_ONS[it.key]?.benefit ?? '',
+                justification: '',
+                objection: null,
+              },
+          };
+        };
+
         const pricedNeeds = priceToTotal(writtenNeeds, playbookMap, hasRange ? low : null);
         const pricedUpsell = priceToTotal(writtenUpsell, playbookMap, hasRange ? Math.max(0, high - low) : null);
 
@@ -2027,24 +2061,7 @@ export default function LeadDetailPage() {
                         </p>
                       </div>
                       {recs.needs.map((item) => (
-                        <div
-                          key={item.key}
-                          className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] p-3.5 min-w-0"
-                        >
-                          <div className="flex items-start justify-between gap-3 mb-1">
-                            <p className="text-sm font-bold text-emerald-100 break-words">{item.label}</p>
-                            <p className="text-sm font-bold text-emerald-300 whitespace-nowrap">
-                              {formatCents(item.price)}
-                            </p>
-                          </div>
-                          <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">
-                            {item.description}
-                          </p>
-                          <p className="text-xs text-emerald-200/70 leading-relaxed break-words">
-                            <span className="font-semibold">Needed because: </span>
-                            {item.becauseOf.join(', ').toLowerCase()}
-                          </p>
-                        </div>
+                        <PricedCard key={item.key} i={asPricedItem(item, 'essential')} tone="green" />
                       ))}
                     </>
                   )}
@@ -2062,24 +2079,11 @@ export default function LeadDetailPage() {
                       {useWrittenUpsell
                         ? pricedUpsell.map((item, i) => <PricedCard key={i} i={item} tone="amber" />)
                         : recs.upsell.map((item) => (
-                            <div
+                            <PricedCard
                               key={item.key}
-                              className="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 min-w-0"
-                            >
-                              <div className="flex items-start justify-between gap-3 mb-1">
-                                <p className="text-sm font-bold text-amber-100 break-words">{item.label}</p>
-                                <p className="text-sm font-bold text-amber-300 whitespace-nowrap">
-                                  +{formatCents(item.price)}
-                                </p>
-                              </div>
-                              <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">
-                                {item.description}
-                              </p>
-                              <p className="text-xs text-amber-200/70 leading-relaxed break-words">
-                                <span className="font-semibold">Worth pitching because: </span>
-                                {item.becauseOf.join(', ').toLowerCase()}
-                              </p>
-                            </div>
+                              i={asPricedItem(item, 'upsell')}
+                              tone="amber"
+                            />
                           ))}
                     </div>
                   </>
