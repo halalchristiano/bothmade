@@ -2244,7 +2244,7 @@ export default function LeadDetailPage() {
                   placeholder="Custom item name"
                   value={draftCustomLabel}
                   onChange={(e) => setDraftCustomLabel(e.target.value)}
-                  className={`${inputClass} flex-1`}
+                  className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
                 />
                 <input
                   type="number"
@@ -2259,7 +2259,7 @@ export default function LeadDetailPage() {
                       addCustomItem();
                     }
                   }}
-                  className={`${inputClass} w-28`}
+                  className={`${inputClass.replace('w-full', '')} w-28 shrink-0`}
                 />
                 <button
                   onClick={addCustomItem}
