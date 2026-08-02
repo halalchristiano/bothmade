@@ -10,7 +10,6 @@ import { formatCents } from '@/lib/pricing';
 import { PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { KanbanSquare } from 'lucide-react';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
-import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 
 interface LeadCard {
@@ -28,6 +27,13 @@ interface LeadCard {
 }
 
 const COLUMN_STATUSES: LeadStatus[] = [...LEAD_STATUSES];
+
+// won and lost are terminal outcomes, not adjacent ladder rungs. Because they
+// sit last in COLUMN_STATUSES ([..., 'won', 'lost']), stepping by index made
+// the forward arrow on a Won card mark it Lost, and the back arrow on a Lost
+// card mark it Won. The board never moves a lead in or out of these — reopen a
+// closed deal from the lead's own page instead.
+const TERMINAL_STATUSES: LeadStatus[] = ['won', 'lost'];
 
 const COLUMN_ACCENT: Record<LeadStatus, string> = {
   new: 'border-t-white/30',
@@ -55,7 +61,6 @@ export default function PipelinePage() {
   const [search, setSearch] = useState('');
   const [movingId, setMovingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [pendingLostMove, setPendingLostMove] = useState<LeadCard | null>(null);
 
   const load = async () => {
     try {
@@ -95,14 +100,14 @@ export default function PipelinePage() {
     [columns]
   );
 
-  const applyStatusChange = async (leadId: string, status: LeadStatus, lostReason?: string) => {
+  const applyStatusChange = async (leadId: string, status: LeadStatus) => {
     setMovingId(leadId);
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status } : l)));
     try {
       await fetch(`/api/admin/leads/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, ...(lostReason ? { lostReason } : {}) }),
+        body: JSON.stringify({ status }),
       });
     } finally {
       setMovingId(null);
@@ -110,15 +115,14 @@ export default function PipelinePage() {
   };
 
   const handleMove = (lead: LeadCard, direction: 1 | -1) => {
+    if (TERMINAL_STATUSES.includes(lead.status)) return;
     const idx = COLUMN_STATUSES.indexOf(lead.status);
     const nextIdx = idx + direction;
     if (nextIdx < 0 || nextIdx >= COLUMN_STATUSES.length) return;
     const nextStatus = COLUMN_STATUSES[nextIdx];
-
-    if (nextStatus === 'lost') {
-      setPendingLostMove(lead);
-      return;
-    }
+    // Reaching 'lost' by advancing is the won→lost misclick — it is never a
+    // real forward step, so don't treat the arrow as a way into it.
+    if (nextStatus === 'lost') return;
     applyStatusChange(lead.id, nextStatus);
   };
 
@@ -205,7 +209,7 @@ export default function PipelinePage() {
                         <div className="flex items-center gap-0.5">
                           <button
                             onClick={() => handleMove(lead, -1)}
-                            disabled={COLUMN_STATUSES.indexOf(status) === 0}
+                            disabled={COLUMN_STATUSES.indexOf(status) === 0 || TERMINAL_STATUSES.includes(status)}
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                             aria-label="Move back"
                           >
@@ -213,7 +217,7 @@ export default function PipelinePage() {
                           </button>
                           <button
                             onClick={() => handleMove(lead, 1)}
-                            disabled={COLUMN_STATUSES.indexOf(status) === COLUMN_STATUSES.length - 1}
+                            disabled={TERMINAL_STATUSES.includes(status)}
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                             aria-label="Move forward"
                           >
@@ -253,17 +257,6 @@ export default function PipelinePage() {
             setShowAdd(false);
             if (leadId) router.push(`/admin/leads/${leadId}`);
             else load();
-          }}
-        />
-      )}
-
-      {pendingLostMove && (
-        <LostReasonModal
-          companyName={pendingLostMove.company}
-          onCancel={() => setPendingLostMove(null)}
-          onConfirm={(reason) => {
-            applyStatusChange(pendingLostMove.id, 'lost', reason);
-            setPendingLostMove(null);
           }}
         />
       )}
