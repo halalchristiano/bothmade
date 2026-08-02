@@ -51,6 +51,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       ],
       metadata: { existingProjectId: project.id, paymentType: 'balance' },
+      // Reusable-by-default Payment Links emailed to a client are a standing
+      // authorisation to charge the balance again. One completed session.
+      restrictions: { completed_sessions: { limit: 1 } },
     });
 
     const sent = await sendPaymentLinkEmail(

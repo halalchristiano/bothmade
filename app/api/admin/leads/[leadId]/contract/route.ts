@@ -13,6 +13,7 @@ import {
   TIMELINES,
   calculatePrice,
   customItemsTotal,
+  feeAdjustmentLines,
   depositAmount,
   formatCents,
   isAddOnKey,
@@ -49,7 +50,18 @@ export async function POST(
     }
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
-    const totalWithCustom = breakdown.totalPrice + customTotal;
+
+    // The proposal's total is frozen on the lead the moment it's prepared —
+    // including any negotiated discount, which recomputing from the
+    // catalogue silently throws away. A contract that quotes a number the
+    // rep never agreed to is worse than no contract, so the stored figure
+    // wins whenever there is one.
+    const computedTotal = breakdown.totalPrice + customTotal;
+    const totalWithCustom =
+      lead.proposalTotalPrice && lead.proposalTotalPrice > 0
+        ? lead.proposalTotalPrice
+        : computedTotal;
+
     const serviceLabel = BASE_SERVICES[baseService].label;
     const addOnLabels = [
       ...addOnKeys.map((k) => ADD_ONS[k].label),
@@ -75,6 +87,13 @@ export async function POST(
       depositAmount: formatCents(deposit),
       balanceAmount: formatCents(totalWithCustom - deposit),
       depositPercent: DEPOSIT_PERCENT,
+      feeAdjustments: feeAdjustmentLines({
+        breakdown,
+        clientTypeLabel: CLIENT_TYPES[clientType].label,
+        timelineLabel: TIMELINES[timeline].label,
+        customItems,
+        finalTotal: totalWithCustom,
+      }),
       effectiveDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',

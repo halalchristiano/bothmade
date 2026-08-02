@@ -58,6 +58,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       ],
       metadata: { existingProjectId: project.id, paymentType: 'balance' },
+      // Checkout Sessions default to a 24h life. An hour is plenty for
+      // "click pay, enter card", and it keeps a stale tab from charging a
+      // balance that has since been settled another way.
+      expires_at: Math.floor(Date.now() / 1000) + 60 * 60,
     });
 
     return NextResponse.json({ success: true, url: checkoutSession.url }, { status: 201 });

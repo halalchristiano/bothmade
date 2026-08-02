@@ -58,6 +58,12 @@ export async function POST(
         existingProjectId: project.id,
         paymentType: 'balance',
       },
+      // A Payment Link is reusable by default and never expires. Emailed to
+      // a client, that is a standing authorisation to charge the balance
+      // again — bookmark it, forward it, hit back on the receipt page, and
+      // the same link takes a second payment. One completed session is all
+      // a balance link should ever be good for.
+      restrictions: { completed_sessions: { limit: 1 } },
     });
 
     return NextResponse.json({ success: true, url: paymentLink.url, balanceDue }, { status: 201 });

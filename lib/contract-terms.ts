@@ -29,6 +29,37 @@ export interface ContractParams {
   balanceAmount: string;
   depositPercent: number;
   effectiveDate: string;
+  /**
+   * Every line between the base service and the total, in order — the
+   * organisation and timeline multipliers, bespoke items, any negotiated
+   * discount. Optional so existing callers keep working, but supplying it
+   * is what lets Section 7 actually add up.
+   */
+  feeAdjustments?: { label: string; detail: string }[];
+}
+
+/**
+ * The Fees clause used to read "the total fee is X, comprising Y for the
+ * base service and Z for the add-ons" — which is only true when every
+ * multiplier is 1.00 and there are no custom items or discount. With an
+ * enterprise multiplier and a rush timeline, Y + Z was routinely nowhere
+ * near X, in the one document where the arithmetic has to survive being
+ * read back to you. This builds a clause that reconciles: base, add-ons,
+ * each adjustment named, then the total.
+ */
+function buildFeeClause(p: ContractParams): string {
+  const parts = [
+    `${p.basePrice} for the base service`,
+    p.addOnsPrice === '$0' ? null : `${p.addOnsPrice} for the selected add-ons`,
+    ...(p.feeAdjustments ?? []).map((a) => `${a.label} (${a.detail})`),
+  ].filter(Boolean) as string[];
+
+  const itemised =
+    parts.length === 1
+      ? parts[0]
+      : `${parts.slice(0, -1).join('; ')}; and ${parts[parts.length - 1]}`;
+
+  return `The total fee for this engagement is ${p.totalPrice}, arrived at as follows: ${itemised}. Where the itemised components and the total differ, the total fee stated here governs.`;
 }
 
 export interface ContractSection {
@@ -115,7 +146,7 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
     {
       heading: '7. Fees and Payment Terms',
       paragraphs: [
-        `The total fee for this engagement is ${p.totalPrice}, comprising ${p.basePrice} for the base service and ${p.addOnsPrice === '$0' ? 'no additional add-on fees' : `${p.addOnsPrice} for the selected add-ons`}.`,
+        buildFeeClause(p),
         `A deposit of ${p.depositAmount} (${p.depositPercent}% of the Total Fee) is due before work begins. The remaining balance of ${p.balanceAmount} is due upon completion of the Build phase and prior to Launch, unless the Parties agree to a different schedule in writing (see Exhibit B).`,
         'All Fees are in USD, exclusive of applicable taxes, which are the Client\'s responsibility except where the Agency is legally required to collect them.',
         'Payments not received within seven (7) days of their due date are late. The Agency may pause work without penalty until payment is current, and may apply a late fee of 1.5% per month or the maximum rate permitted by law, whichever is lower.',

@@ -551,6 +551,65 @@ export function calculatePrice(selection: PricingSelection): PricingBreakdown {
   };
 }
 
+/**
+ * Every step between "base + add-ons" and the number actually being
+ * charged, named in plain words.
+ *
+ * The contract's Fees clause and the invoice both used to assert that the
+ * total was the base plus the add-ons, which stops being true the moment a
+ * client-type or timeline multiplier isn't 1.00, a bespoke item is added,
+ * or a discount is negotiated. This produces the missing lines so the
+ * arithmetic in a signed document reconciles.
+ */
+export function feeAdjustmentLines(opts: {
+  breakdown: PricingBreakdown;
+  clientTypeLabel: string;
+  timelineLabel: string;
+  customItems?: { label: string; priceCents: number }[];
+  /** What is actually being charged, after any manual override. */
+  finalTotal: number;
+}): { label: string; detail: string }[] {
+  const { breakdown, clientTypeLabel, timelineLabel, customItems = [], finalTotal } = opts;
+  const lines: { label: string; detail: string }[] = [];
+
+  if (breakdown.clientTypeMultiplier !== 1) {
+    lines.push({
+      label: `a ×${breakdown.clientTypeMultiplier} organisation adjustment`,
+      detail: clientTypeLabel,
+    });
+  }
+  if (breakdown.timelineMultiplier !== 1) {
+    lines.push({
+      label: `a ×${breakdown.timelineMultiplier} timeline adjustment`,
+      detail: timelineLabel,
+    });
+  }
+
+  const customTotal = customItems.reduce((sum, item) => sum + item.priceCents, 0);
+  if (customTotal > 0) {
+    lines.push({
+      label: `${formatCents(customTotal)} in bespoke items`,
+      detail: customItems.map((c) => c.label).join(', '),
+    });
+  }
+
+  // Whatever is left over is a negotiated adjustment. Naming it beats
+  // letting the reader discover the numbers don't add up.
+  const computed = breakdown.totalPrice + customTotal;
+  const delta = finalTotal - computed;
+  if (delta !== 0) {
+    lines.push({
+      label:
+        delta < 0
+          ? `a ${formatCents(Math.abs(delta))} discount`
+          : `${formatCents(delta)} in additional agreed work`,
+      detail: 'agreed with your Bothmade contact',
+    });
+  }
+
+  return lines;
+}
+
 /** Standard deposit percentage quoted in the contract template. */
 export const DEPOSIT_PERCENT = 50;
 

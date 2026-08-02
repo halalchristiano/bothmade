@@ -9,6 +9,7 @@ import {
   TIMELINES,
   calculatePrice,
   customItemsTotal,
+  feeAdjustmentLines,
   depositAmount,
   formatCents,
   isAddOnKey,
@@ -88,6 +89,13 @@ export async function GET(
       depositAmount: formatCents(deposit),
       balanceAmount: formatCents(totalPrice - deposit),
       depositPercent: DEPOSIT_PERCENT,
+      feeAdjustments: feeAdjustmentLines({
+        breakdown,
+        clientTypeLabel: CLIENT_TYPES[clientType].label,
+        timelineLabel: TIMELINES[timeline].label,
+        customItems,
+        finalTotal: totalPrice,
+      }),
       effectiveDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     });
 

@@ -16,6 +16,7 @@ import {
   TIMELINES,
   calculatePrice,
   customItemsTotal,
+  feeAdjustmentLines,
   depositAmount,
   formatCents,
   isAddOnKey,
@@ -102,6 +103,13 @@ export async function POST(
       depositAmount: formatCents(deposit),
       balanceAmount: formatCents(totalPrice - deposit),
       depositPercent: DEPOSIT_PERCENT,
+      feeAdjustments: feeAdjustmentLines({
+        breakdown,
+        clientTypeLabel: CLIENT_TYPES[clientType].label,
+        timelineLabel: TIMELINES[timeline].label,
+        customItems,
+        finalTotal: totalPrice,
+      }),
       effectiveDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     });
 
@@ -111,12 +119,33 @@ export async function POST(
       request.headers.get('x-real-ip') ||
       'unknown';
 
+    const signedAt = new Date();
+
+    // Claim the signing atomically before doing any of the expensive,
+    // externally-visible work. A double-click (or an impatient second tap on
+    // a slow phone) used to run this whole handler twice: two contract PDFs
+    // uploaded, two "contract signed" emails to the team, two activity rows,
+    // and two live Stripe sessions for the same deal. Only the request that
+    // wins this conditional update does the one-time work; the loser still
+    // gets a checkout URL, because the person is standing there waiting to
+    // pay and the webhook is idempotent per session.
+    const claim = await prisma.lead.updateMany({
+      where: { id: leadId, agreementSignedAt: null },
+      data: {
+        agreementSignedAt: signedAt,
+        agreementIp: ip,
+        agreementHash: contractHash,
+        contractStatus: 'signed',
+        ...(isFurtherAlong(lead.status, 'contract_signed') ? { status: 'contract_signed' } : {}),
+      },
+    });
+    const isFirstSigning = claim.count === 1;
+
     // Save a PDF copy of exactly what they agreed to — same sections that
     // were hashed above — so there's a real document backing the clickwrap,
     // not just a hash. Failure here shouldn't block the client from paying.
-    const signedAt = new Date();
     let signedContractUrl: string | null = null;
-    try {
+    if (isFirstSigning) try {
       const pdfBytes = await buildContractPdf({
         company: lead.company,
         contactName: lead.contactName,
@@ -140,33 +169,29 @@ export async function POST(
       console.error('Failed to save signed contract copy:', pdfError);
     }
 
-    const wasFurtherAlong = isFurtherAlong(lead.status, 'contract_signed');
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        agreementSignedAt: signedAt,
-        agreementIp: ip,
-        agreementHash: contractHash,
-        contractStatus: 'signed',
-        status: wasFurtherAlong ? 'contract_signed' : undefined,
-        signedContractUrl: signedContractUrl || undefined,
-      },
-    });
+    if (isFirstSigning) {
+      if (signedContractUrl) {
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: { signedContractUrl },
+        });
+      }
 
-    await prisma.leadActivity.create({
-      data: {
-        leadId,
-        type: 'proposal',
-        content: `Contract agreed to online (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
-        url: signedContractUrl || undefined,
-      },
-    });
+      await prisma.leadActivity.create({
+        data: {
+          leadId,
+          type: 'proposal',
+          content: `Contract agreed to online (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
+          url: signedContractUrl || undefined,
+        },
+      });
 
-    if (signedContractUrl) {
-      const teamEmails = await getAdminEmails();
-      await sendSignedContractCopyEmail(teamEmails, lead.company, signedContractUrl, formatCents(totalPrice)).catch(
-        (e) => console.error('Failed to email signed contract copy:', e)
-      );
+      if (signedContractUrl) {
+        const teamEmails = await getAdminEmails();
+        await sendSignedContractCopyEmail(teamEmails, lead.company, signedContractUrl, formatCents(totalPrice)).catch(
+          (e) => console.error('Failed to email signed contract copy:', e)
+        );
+      }
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
@@ -203,6 +228,8 @@ export async function POST(
         customItems: JSON.stringify(customItems),
         paymentType: lead.proposalDepositOnly ? 'deposit' : 'full',
       },
+      // Bound the window in which this exact quote can still be charged.
+      expires_at: Math.floor(Date.now() / 1000) + 60 * 60,
     });
 
     return NextResponse.json({ success: true, url: session.url }, { status: 200 });
