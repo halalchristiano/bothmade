@@ -15,7 +15,7 @@ import {
   ChevronDown,
   AlertTriangle,
 } from 'lucide-react';
-import { Card, CardHeader, PageIn, PageTitle } from '@/components/admin/ui';
+import { Card, CardHeader, PageIn, PageTitle, Badge } from '@/components/admin/ui';
 
 interface GmailStatus {
   connected: boolean;
@@ -83,10 +83,16 @@ export default function AdminSettingsPage() {
   const [oauthResult, setOauthResult] = useState<{ ok: boolean; reason?: string; bounceFolderFailed?: boolean } | null>(null);
   const [settingUpBounceFolder, setSettingUpBounceFolder] = useState(false);
   const [bounceFolderResult, setBounceFolderResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [oauthStartError, setOauthStartError] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const oauthStatus = params.get('gmailOauth');
+    if (params.get('gmailOAuthError') === 'not_configured') {
+      setOauthStartError(true);
+      setShowAppPasswordFallback(true);
+      window.history.replaceState(null, '', '/admin/settings');
+    }
     if (!oauthStatus) return;
     const bounceFolderFailed = params.get('bounceFolder') === 'failed';
     setOauthResult({ ok: oauthStatus === 'success', reason: params.get('reason') || undefined, bounceFolderFailed });
@@ -372,7 +378,26 @@ export default function AdminSettingsPage() {
         <CardHeader
           title="Email sending"
           subtitle="Connect your Gmail so client emails go out as you, and land in your own Sent folder."
+          action={
+            status.connected ? (
+              <Badge solid tone="emerald">Connected</Badge>
+            ) : status.willLandInGmailSent ? (
+              <Badge solid tone="emerald">Org-wide</Badge>
+            ) : (
+              <Badge solid tone="amber">Not connected</Badge>
+            )
+          }
         />
+
+        {oauthStartError && (
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2.5 text-xs text-amber-200">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <span>
+              Google sign-in isn't set up on this deployment yet, so that button couldn't continue. Use the App
+              Password steps below in the meantime — they're already open.
+            </span>
+          </div>
+        )}
 
         {oauthResult && (
           <div
