@@ -78,7 +78,13 @@ export type Block =
    * you scroll it — same technique as the site-wide ScrollSeamIndicator,
    * scoped locally via useScroll({ container }).
    */
-  | { type: 'seamIndicatorDemo' };
+  | { type: 'seamIndicatorDemo' }
+  /**
+   * A replayable, scoped version of the homepage's first-visit splash
+   * intro — the seam-line-expands-into-light timeline — with a button to
+   * trigger it again instead of the real one-per-session gate.
+   */
+  | { type: 'introDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -744,6 +750,55 @@ const tick = () => {
       {
         type: 'p',
         text: "The hero's seam is interactive and demands attention — it's the pitch. The footer's letter-flip is playful and rewards curiosity — it's the signature. This one asks nothing of you and is visible on literally every page you might land on, including ones with no hero and no footer visible yet — it's the ambient reminder that the idea isn't confined to the homepage. Three different implementations of the same four-pixel-wide concept, each doing a job the other two can't.",
+      },
+    ],
+  },
+  {
+    slug: 'a-splash-screen-that-only-shows-up-once',
+    title: 'A splash screen that only shows up once',
+    dek: "The homepage opens with a two-second title sequence — a line of light expanding into the wordmark — that almost nobody has actually seen twice. Replay it below.",
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2026-11-08',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "Load the homepage for the first time and, for about two seconds, you don't see the hero at all. You see a thin vertical line at the center of a black screen, and it grows — first a sliver, then it starts to glow, then the glow blooms into two colored washes spreading from either edge, and finally the wordmark fades up out of the light. Then it's gone, the real page underneath fades in, and it never happens again for the rest of your visit.",
+      },
+      {
+        type: 'statement',
+        text: "It's built to be seen exactly once. Show it on every page load and it stops being an entrance and becomes an obstacle.",
+      },
+      { type: 'heading', text: 'Replay it' },
+      { type: 'introDemo' },
+      {
+        type: 'p',
+        text: "That's the actual sequence, unlocked from its one-per-session limit so you can trigger it as many times as you want here. On the real homepage it checks sessionStorage on mount — if a key's already set, it skips straight to \"done\" and renders nothing; if not, it sets the key immediately and starts a 1.9-second timer before fading itself out. Navigate to another page and back within the same tab and it stays gone. Close the tab and reopen the site and it plays again, because sessionStorage cleared with it.",
+      },
+      { type: 'heading', text: 'One timeline, four keyframes' },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `animate={{
+  scaleY: [0.1, 0.5, 1, 2],
+  boxShadow: [
+    '0 0 0 rgba(255,255,255,0)',
+    '0 0 20px rgba(255,255,255,0.4)',
+    '0 0 60px rgba(255,255,255,0.6)',
+    '0 0 120px rgba(255,255,255,0.9)',
+  ],
+}}
+transition={{ duration: 1.4, times: [0, 0.3, 0.6, 1] }}`,
+      },
+      {
+        type: 'p',
+        text: "Both arrays — scaleY and boxShadow — share the same times array, so at 30% through the animation the line is exactly half-height and lightly glowing, at 60% it's full height with a strong glow, and by 100% it's overshot to twice its container height with the glow nearly maxed out, which is what actually reads as light overexposing the frame rather than a line just getting taller. The two side blooms and the wordmark are separate motion elements with their own delayed transitions, layered on top so they arrive after the line already has weight.",
+      },
+      { type: 'heading', text: "Why not skip it for return visitors entirely" },
+      {
+        type: 'p',
+        text: "sessionStorage was the deliberate middle ground between two worse options. A cookie or localStorage-based \"seen it once, ever\" would mean a visitor who leaves and comes back a week later never sees the studio's own entrance again — the thing exists to make a first impression, and a week is still a first impression if enough time has passed to forget it. Showing it on literally every page navigation within one visit would train people to wait it out or, worse, to bounce before it finishes. Once per browser session is the one setting where it functions as a title sequence instead of a tax.",
       },
     ],
   },

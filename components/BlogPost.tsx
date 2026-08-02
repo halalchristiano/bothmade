@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   motion,
+  AnimatePresence,
   useScroll,
   useSpring,
   useTransform,
@@ -284,7 +285,81 @@ function BlockRenderer({
 
     case 'seamIndicatorDemo':
       return <SeamIndicatorDemo />;
+
+    case 'introDemo':
+      return <IntroDemo />;
   }
+}
+
+/**
+ * Replayable version of the homepage's first-visit Intro splash — same
+ * keyframed seam-line + bloom + wordmark timeline, minus the sessionStorage
+ * gate, plus a button that remounts it (via a changing key) to play again.
+ */
+function IntroDemo() {
+  const [playKey, setPlayKey] = useState(0);
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div className="relative rounded-2xl border border-white/10 overflow-hidden">
+      <div className="relative h-64 md:h-80 bg-[#05030a] flex items-center justify-center overflow-hidden">
+        {reduceMotion ? (
+          <p className="font-bold text-white" style={{ fontSize: 'clamp(1.5rem, 6vw, 3rem)' }}>
+            both<span className="text-white/50">made</span>
+          </p>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div key={playKey} className="absolute inset-0 flex items-center justify-center">
+              <motion.div
+                className="absolute top-0 bottom-0 w-px bg-white"
+                initial={{ scaleY: 0.1, boxShadow: '0 0 0 rgba(255,255,255,0)' }}
+                animate={{
+                  scaleY: [0.1, 0.5, 1, 2],
+                  boxShadow: [
+                    '0 0 0 rgba(255,255,255,0)',
+                    '0 0 20px rgba(255,255,255,0.4)',
+                    '0 0 60px rgba(255,255,255,0.6)',
+                    '0 0 120px rgba(255,255,255,0.9)',
+                  ],
+                }}
+                transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1], times: [0, 0.3, 0.6, 1] }}
+                style={{ originY: 0.5 }}
+              />
+              <motion.div
+                className="absolute inset-0 pointer-events-none"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.15 }}
+                transition={{ delay: 0.3, duration: 0.8 }}
+                style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.7) 0%, transparent 50%)' }}
+              />
+              <motion.div
+                className="absolute inset-0 pointer-events-none"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.12 }}
+                transition={{ delay: 0.3, duration: 0.8 }}
+                style={{ background: 'linear-gradient(270deg, rgba(168,85,247,0.7) 0%, transparent 50%)' }}
+              />
+              <motion.p
+                className="relative z-10 font-bold tracking-tight text-white"
+                initial={{ opacity: 0, scale: 0.7, y: -20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                style={{ fontSize: 'clamp(1.5rem, 6vw, 3rem)' }}
+              >
+                both<span className="text-white/50">made</span>
+              </motion.p>
+            </motion.div>
+          </AnimatePresence>
+        )}
+      </div>
+      <button
+        onClick={() => setPlayKey((k) => k + 1)}
+        className="w-full py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-white/50 hover:text-white border-t border-white/10 transition-colors"
+      >
+        {reduceMotion ? 'motion reduced — static' : '↻ replay'}
+      </button>
+    </div>
+  );
 }
 
 /** Same technique as the site-wide ScrollSeamIndicator, scoped to a bounded box via useScroll({ container }). */
