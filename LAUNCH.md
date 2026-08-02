@@ -49,6 +49,18 @@ and Vercel — no amount of code changes fixes it.
 
 ## Required before running ads
 
+- [ ] **Set `NEXT_PUBLIC_BOOKING_URL`** in Vercel to the real Cal.com or
+      Calendly link. Until it's set, `lib/booking.ts` falls back to
+      `https://cal.com/bothmade/15min`, and every "book a call" button —
+      contact-form success state, acknowledgement email, checkout-success
+      page, pricing-recap email — points at a page that may not exist. This
+      is the single highest-intent click on the site; do not run traffic
+      without it.
+- [ ] **Add the first real testimonial** to `lib/testimonials.ts`. The file
+      is empty on purpose and `<SocialProof />` renders nothing while it is,
+      so the homepage currently ships with zero social proof. One real quote
+      from one real client, with permission, changes that — the section is
+      already built and needs no design work.
 - [ ] **Replace the sample case studies.** Everything in
       `lib/case-studies.ts` under the `SAMPLE CONTENT` banner is invented
       demo copy (Ridgeline / Cadence / Massing). Each is `status:

@@ -245,7 +245,7 @@ export function IOSHero() {
                 </p>
 
                 <div className="mt-10 flex flex-wrap gap-4">
-                  <PillCTA href="/#contact">Start your iOS project</PillCTA>
+                  <PillCTA href="/start?service=ios-app">Start your iOS project</PillCTA>
                   <PillCTA
                     muted
                     onClick={() => {

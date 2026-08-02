@@ -150,13 +150,26 @@ export function WorkIndex() {
             first case study?
           </h2>
           <p className="text-white/45 text-lg mb-12 max-w-lg">
-            Early clients get our full attention and honest pricing. Tell us what you&apos;re
-            building.
+            Early clients get our full attention and honest pricing. Configure what
+            you&apos;re building and see the number in about a minute — no call required
+            to find out what it costs.
           </p>
 
-          <PillCTA href="/#contact" size="lg">
-            Start a conversation
-          </PillCTA>
+          <div className="flex flex-wrap items-center gap-6">
+            <PillCTA href="/start" size="lg">
+              See pricing &amp; configure
+            </PillCTA>
+            <Link
+              href="/#contact"
+              className="text-sm text-white/45 hover:text-white transition-colors underline underline-offset-4 decoration-white/20 hover:decoration-white/60"
+            >
+              Or just tell us about it
+            </Link>
+          </div>
+
+          <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.25em] text-white/25">
+            Fixed price up front · You own the code on final payment
+          </p>
         </div>
       </section>
 

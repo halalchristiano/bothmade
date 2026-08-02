@@ -2,12 +2,25 @@
  * Single source of truth for /blog and /blog/[slug].
  *
  * ─────────────────────────────────────────────────────────────────────────
- *  EMPTY ON PURPOSE
+ *  EDITORIAL POLICY — WEIGHT NEW POSTS TOWARD BUYER INTENT
  *
- *  No posts yet — the studio is new and there's nothing worth publishing
- *  under a fabricated byline. Add real entries here one at a time; the
- *  index and post template already render correctly with zero, one, or
- *  many posts.
+ *  The back catalogue below is heavily "Engineering" and "Design": posts
+ *  about how the seam works, how the cursor eases, why the 404 is a pun.
+ *  They're honest and they're good, but almost nobody searches for them,
+ *  and the people who do find them are mostly other developers.
+ *
+ *  Buyer-intent posts are the ones a prospect types into Google with a
+ *  credit card in the next tab — "how much does a website cost", "website
+ *  vs web app", "how long does an app take to build", "do I own the code
+ *  my agency writes". Those readers arrive already trying to buy
+ *  something, which is why every post now ends on <EndCTA />.
+ *
+ *  The rule going forward: at least every other new post should be one a
+ *  potential client would search for, not one a developer would enjoy.
+ *  Craft posts are still welcome — they're the reason anyone believes the
+ *  buyer-intent ones — they just shouldn't be the whole shelf.
+ *
+ *  BUYER_INTENT_BACKLOG below is the running queue. Take from the top.
  * ─────────────────────────────────────────────────────────────────────────
  *
  * A post's body is a list of typed blocks rather than raw markdown/MDX —
@@ -17,6 +30,26 @@
  */
 
 export type Accent = 'sky' | 'indigo' | 'purple';
+
+/**
+ * The buyer-intent queue — questions real prospects ask before they buy,
+ * roughly in order of how often they come up on calls and in the /start
+ * FAQ. Not rendered anywhere; it exists so "what should I write next"
+ * has an answer that isn't "whatever animation I built last week".
+ *
+ * Delete a line when the post ships.
+ */
+export const BUYER_INTENT_BACKLOG: string[] = [
+  'How long does it actually take to build an app?',
+  'What does ongoing maintenance actually cost after launch?',
+  'Do I need an app, or is a mobile-friendly website enough?',
+  'What you actually have to provide as a client (and when)',
+  'Why agency quotes for the same project differ by 10x',
+  'What happens if we go over the timeline',
+  'Hiring a freelancer vs. an agency vs. building in-house',
+  'What "SEO included" should and should not mean',
+  'Should you use Squarespace/Wix instead? (an honest answer)',
+];
 
 export type Block =
   /** A normal paragraph. First paragraph in a post gets a drop cap. */
@@ -1660,6 +1693,124 @@ const created = await prisma.$transaction(
       {
         type: 'p',
         text: "Precisely because almost nobody sees it, it's low-stakes enough to take a genuine swing at — no client is reviewing the 404 page in a proposal meeting, so it's one of the few places on a site where a small joke is pure upside. It's also a real (if minor) signal: a studio that bothered to make its own error page on-brand is a studio that probably didn't skip the boring parts of your project either.",
+      },
+    ],
+  },
+  {
+    slug: 'what-a-website-actually-costs',
+    title: 'What a website actually costs',
+    dek: "Real numbers, what moves them, and why two agencies can quote 10x apart for the same brief. No form to fill in first.",
+    tag: 'Pricing',
+    accent: 'sky',
+    date: '2027-03-14',
+    readMinutes: 6,
+    body: [
+      {
+        type: 'p',
+        text: "Almost every agency site answers this question with \"it depends, let's hop on a call.\" That's not caution, it's a qualification filter — the number stays hidden until someone has spent thirty minutes on a call and feels awkward walking away. We'd rather you knew before you gave us your afternoon, so here is the actual answer, with actual numbers, and an explanation of what moves them.",
+      },
+      {
+        type: 'statement',
+        text: 'A price you can only get by booking a call is a price designed to be negotiated against you, not with you.',
+      },
+      { type: 'heading', text: 'The starting numbers' },
+      {
+        type: 'p',
+        text: "These are our real base prices, pulled live from the same file that drives our checkout — not a marketing range that turns into something else once you enquire. Tap through them:",
+      },
+      { type: 'pricingDemo' },
+      {
+        type: 'p',
+        text: "A base price covers the thing itself, built properly: design, build, responsive behaviour on every screen size, the performance and accessibility work that shouldn't be an upsell, and launch. What it doesn't cover is everything a specific business needs on top — a booking system, a shop, a CMS your team can actually use, migrating fifteen years of content off the old site. Those are priced individually and shown as individual line items, which is the whole reason our configurator exists.",
+      },
+      { type: 'heading', text: 'Why two quotes can differ by 10x' },
+      {
+        type: 'p',
+        text: "The same brief genuinely can be worth $2,000 or $200,000, and the gap usually isn't greed on either end. It's four things: who's doing the work, how much of it is bespoke, how many people have to approve each decision, and what happens after launch. A template dropped onto a page builder by one freelancer over a weekend and a custom-engineered product with a real backend, real tests, and a support agreement are both \"a website\" in the same way a bicycle and a truck are both \"a vehicle.\"",
+      },
+      {
+        type: 'p',
+        text: "The honest test isn't which quote is lowest — it's which quote is for the thing you actually need. If a site's job is to look credible and collect enquiries, paying for a bespoke design system and a headless CMS is money set on fire. If a site's job is to take bookings, process payments, and not fall over on a Friday night, the cheap quote is the expensive one, because you'll pay it twice.",
+      },
+      { type: 'heading', text: 'What actually moves the number' },
+      {
+        type: 'p',
+        text: "Four things, in roughly the order they matter. First: whether anyone logs in. That single question is usually the difference between the low band and the high band, because accounts drag in a database, sessions, permissions, password resets, and a security surface that has to be taken seriously. Second: how much of the content is bespoke versus repeatable — twelve unique layouts cost more than one layout used twelve times, and it's fine to want either. Third: integrations, because every third-party system you connect to is a system with its own quirks, its own outages, and its own opinions about your data. Fourth: timeline, because compressing a project doesn't reduce the work, it just means fewer things can happen in parallel.",
+      },
+      {
+        type: 'p',
+        text: "What barely moves it: page count. People expect it to be the main lever and it almost never is. Adding a fifteenth page that reuses an existing layout is close to free. Adding one page that does something no other page does is not.",
+      },
+      { type: 'heading', text: 'The part nobody quotes for' },
+      {
+        type: 'p',
+        text: "Ongoing costs are where a cheap build gets expensive. Hosting, domain, SSL, dependency updates, the security patches that arrive whether you're paying attention or not, and someone to call when something breaks. We quote these as an explicit monthly line rather than folding them into the build price and hoping you don't ask — partly because it's honest, and mostly because the alternative is a site that quietly rots eighteen months after launch and takes your search rankings with it.",
+      },
+      { type: 'heading', text: 'How to get your number' },
+      {
+        type: 'p',
+        text: "Our configurator takes about a minute and gives you a real total with every line item visible — no email gate before you see the number, no call required, no \"starting from\" asterisk. If you get to the end and the total surprises you in either direction, that's genuinely useful information, and you can send us the configuration to talk through without paying anything.",
+      },
+    ],
+  },
+  {
+    slug: 'website-or-web-app',
+    title: 'Website or web app? One question decides it',
+    dek: "The distinction that quietly sets the price, the timeline, and the whole architecture — and the one-line test that tells you which one you're buying.",
+    tag: 'Pricing',
+    accent: 'indigo',
+    date: '2027-03-21',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "This is the single most expensive misunderstanding in our inbox. Someone asks for \"a website\" with a members area, or \"just a simple app\" that turns out to be five pages of marketing copy, and by the time everyone realises they were describing different things, a quote has been given, a timeline has been agreed, and somebody has to have an awkward conversation. The distinction isn't pedantry. It's the fork in the road that sets the price, the timeline, and what gets built underneath.",
+      },
+      {
+        type: 'statement',
+        text: "The test is one sentence: does anyone ever log in? If yes, you're buying a web app. If no, you're buying a website.",
+      },
+      { type: 'heading', text: 'What each one actually is' },
+      {
+        type: 'p',
+        text: "A website is something people visit. They read it, look at it, and get in touch — a restaurant, a portfolio, a law firm, a landing page. Everyone who arrives sees the same thing. Nothing is remembered about them between visits, because there's nothing to remember.",
+      },
+      {
+        type: 'p',
+        text: "A web app is something people use. They have an account, their own data, and a reason to come back to it — a dashboard, a booking system, an internal tool, a client portal. The thing on screen is different for every person looking at it, because it's built out of their stuff.",
+      },
+      { type: 'heading', text: 'The objection: "but my site has a backend too"' },
+      {
+        type: 'p',
+        text: "Fair, and this is where the simple test earns its keep. Both can have a backend. A restaurant site that checks live table availability against a database and emails a confirmation is doing real server-side work, and no visitor ever logs in. That's a website with a custom backend — one shared experience, with logic running behind it.",
+      },
+      {
+        type: 'p',
+        text: "The line isn't \"does it have a backend.\" It's \"does anyone log in and get their own stuff.\" Backend without accounts is a website with a backend. Backend with accounts is a web app — because now the server is managing identities, sessions, permissions and per-person records that persist, which is a different and much larger job than processing one anonymous request at a time.",
+      },
+      { type: 'heading', text: 'Why the price gap is real' },
+      {
+        type: 'p',
+        text: "Accounts are not a feature you bolt on. The moment one exists, you inherit signup, login, logout, password reset, email verification, session expiry, \"who is allowed to see this record\", and the obligation to store personal data safely enough to survive both a breach and a regulator. Every screen after that has to answer \"which user is this, and what are they allowed to do here\" before it can render a single pixel. That's the gap — not that a web app has more pages, but that every page is doing more work.",
+      },
+      {
+        type: 'p',
+        text: "It's also why our Web App price includes the backend and user accounts rather than selling them as add-ons. Charging separately for the two things that are definitionally required would just be a way of making the headline number look smaller than the real one.",
+      },
+      { type: 'heading', text: 'How features pull each other in' },
+      {
+        type: 'p',
+        text: "The same logic applies further down the list: some features literally cannot function without another one underneath them. Selling online needs somewhere to store orders. Try it — pick a feature and watch what it drags in with it:",
+      },
+      { type: 'dependencyDemo' },
+      { type: 'heading', text: 'What to do if you still are not sure' },
+      {
+        type: 'p',
+        text: "Describe what the end user actually does with it, in one sentence, out loud. \"They look up our menu and book a table\" is a website. \"They log in and manage their bookings\" is a web app. If your sentence contains \"their\" — their orders, their dashboard, their history — you're on the web app side of the line.",
+      },
+      {
+        type: 'p',
+        text: "And if it's genuinely ambiguous, tell us what the user does rather than picking a category, and we'll confirm the right fit before you pay anything. Guessing wrong on this one is the mistake that gets re-scoped later, which is exactly the surprise a fixed price is supposed to prevent.",
       },
     ],
   },

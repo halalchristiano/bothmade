@@ -25,6 +25,13 @@ export interface CheckoutInput {
   company: string;
   contactName?: string;
   phone?: string;
+  /**
+   * CRM lead this checkout belongs to. The webhook reads it back off the
+   * session metadata and marks the lead won on payment — which is also what
+   * closes the loop on the "abandoned checkout" leads /api/checkout creates:
+   * they sit at "Awaiting Deposit" until this fires.
+   */
+  leadId?: string;
 }
 
 /**
@@ -80,6 +87,7 @@ export async function createCheckoutSession(
         timeline: input.timeline,
         basePrice: String(breakdown.basePrice),
         totalPrice: String(breakdown.totalPrice),
+        ...(input.leadId ? { leadId: input.leadId } : {}),
       },
     });
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { Intro } from '@/components/Intro';
 import { PillCTA, SectionTag, ScrubText } from '@/components/ui';
 import { Nav } from '@/components/Nav';
@@ -10,7 +10,18 @@ import { ServiceList } from '@/components/ServiceList';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ProcessTimeline } from '@/components/ProcessTimeline';
 import { WhyUs } from '@/components/WhyUs';
+import { Promises } from '@/components/Promises';
+import { SocialProof } from '@/components/SocialProof';
 import { Footer } from '@/components/Footer';
+import { BOOKING_LABEL, BOOKING_URL } from '@/lib/booking';
+
+/** Values the service picker accepts — anything else in ?service= is ignored. */
+const SERVICE_OPTIONS = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
+type ServiceOption = (typeof SERVICE_OPTIONS)[number];
+
+function isServiceOption(value: string): value is ServiceOption {
+  return (SERVICE_OPTIONS as readonly string[]).includes(value);
+}
 
 function ContactForm() {
   const [formData, setFormData] = useState({
@@ -24,6 +35,17 @@ function ContactForm() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Service pages link here as "/?service=ios#contact", so someone who
+  // arrived from the iOS page doesn't land on a picker that says "Web" and
+  // have to correct it. Read off location rather than useSearchParams so the
+  // homepage keeps its static prerender instead of bailing out to CSR.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('service');
+    if (requested && isServiceOption(requested)) {
+      setFormData((prev) => ({ ...prev, service: requested }));
+    }
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -54,7 +76,9 @@ function ContactForm() {
           service: 'web',
           website: '',
         });
-        setTimeout(() => setSubmitted(false), 4000);
+        // Deliberately not auto-cleared: the success state carries the
+        // "book a call" link, which is the highest-intent moment on the
+        // page. Yanking it away after four seconds threw that away.
       } else {
         const data = await response.json().catch(() => null);
         setError(data?.error ?? 'Failed to send message. Please try again.');
@@ -167,13 +191,27 @@ function ContactForm() {
           is announced unreliably. */}
       <div role="status" aria-live="polite" aria-atomic="true">
         {submitted && (
-          <motion.p
+          <motion.div
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
-            className="pt-4 font-mono text-xs uppercase tracking-[0.3em] text-emerald-700"
+            className="mt-8 rounded-xl border-2 border-black/10 bg-black/[0.03] p-6"
           >
-            Message received — we&apos;ll reply within 24h
-          </motion.p>
+            <p className="font-mono text-xs uppercase tracking-[0.3em] text-emerald-700">
+              Message received — we&apos;ll reply within 24h
+            </p>
+            <p className="mt-4 text-base text-black/70 leading-relaxed">
+              Don&apos;t want to wait on email? Grab a slot in our calendar and we&apos;ll
+              talk it through — no prep needed, no pitch deck.
+            </p>
+            <a
+              href={BOOKING_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-block bg-black px-7 py-4 text-white font-medium transition-colors hover:bg-black/85"
+            >
+              {BOOKING_LABEL} →
+            </a>
+          </motion.div>
         )}
 
         {error && (
@@ -258,7 +296,7 @@ export default function Home() {
                 One product, designed once, alive on every screen — no second agency, no
                 handoff tax, no drift between your web and your app.
               </p>
-              <PillCTA href="/#contact">Ask about the full build</PillCTA>
+              <PillCTA href="/start?service=multi">Price the full build</PillCTA>
             </div>
           </motion.div>
         </div>
@@ -269,6 +307,12 @@ export default function Home() {
 
       {/* Why bothmade — honest boutique-studio positioning, no invented stats */}
       <WhyUs />
+
+      {/* The two objections everyone arrives with, answered at headline size */}
+      <Promises />
+
+      {/* Real client quotes — renders nothing until there are any */}
+      <SocialProof />
 
       {/* Contact — inverted entirely. White field, dark text, form takes
           center stage. Sharp edges, generous space, no softness. */}

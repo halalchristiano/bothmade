@@ -106,11 +106,21 @@ export function Nav() {
                 </Link>
               );
             })}
+            {/* The pill is the site's single loudest link, so it belongs to
+                the people who haven't bought yet. Existing clients know where
+                their dashboard is; they get the quiet text link beside it. */}
             <Link
               href="/client/login"
-              className="text-sm rounded-full border border-white/20 px-4 py-1.5 text-white/70 hover:text-white hover:border-white/40 transition-colors"
+              className="text-xs text-white/35 hover:text-white/70 transition-colors"
             >
-              Client Login
+              Client login
+            </Link>
+            <Link
+              href="/start"
+              aria-current={pathname === '/start' ? 'page' : undefined}
+              className="text-sm rounded-full border border-white/25 bg-white/5 px-4 py-1.5 font-medium text-white hover:bg-white hover:text-black hover:border-white transition-colors"
+            >
+              Start a project
             </Link>
           </div>
 
@@ -178,11 +188,18 @@ export function Nav() {
                 transition={{ delay: LINKS.length * 0.07, duration: 0.3 }}
               >
                 <Link
+                  href="/start"
+                  onClick={() => setOpen(false)}
+                  className="block text-4xl font-bold py-3 bg-gradient-to-r from-sky-300 to-purple-300 bg-clip-text text-transparent"
+                >
+                  Start a project →
+                </Link>
+                <Link
                   href="/client/login"
                   onClick={() => setOpen(false)}
-                  className="block text-4xl font-bold py-3 text-gray-300 hover:text-sky-300 transition-colors"
+                  className="block text-base py-3 text-gray-500 hover:text-gray-300 transition-colors"
                 >
-                  Client Login
+                  Client login
                 </Link>
               </motion.div>
             </div>

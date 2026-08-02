@@ -4,8 +4,34 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 
 /**
+ * Params that mean "this visit was paid for". Anyone arriving on one of
+ * these clicked an ad or a campaign link with a specific thing in mind, and
+ * is measurably less patient than someone who typed the name in — a
+ * two-second curtain in front of the page is the fastest way to bounce
+ * traffic we just paid for.
+ */
+const CAMPAIGN_PARAMS = [
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'gclid', // Google Ads
+  'gbraid',
+  'wbraid',
+  'fbclid', // Meta
+  'msclkid', // Microsoft Ads
+  'ttclid', // TikTok
+  'li_fat_id', // LinkedIn
+  'ref',
+];
+
+/**
  * The seam expands from center outward, filling the screen with light.
  * One gesture: the brand concept. The threshold between both worlds.
+ *
+ * Skipped entirely for campaign traffic and anyone who's already seen it
+ * this session, and inert under reduced motion.
  */
 export function Intro() {
   const reduceMotion = useReducedMotion();
@@ -20,6 +46,17 @@ export function Intro() {
       setDone(true);
       return;
     }
+
+    // An ad click is a person with intent and a back button. Skip straight to
+    // the page — and mark it seen, so navigating on within the session
+    // doesn't hand them the splash they were just spared.
+    const params = new URLSearchParams(window.location.search);
+    if (CAMPAIGN_PARAMS.some((p) => params.has(p))) {
+      sessionStorage.setItem('bm-intro-seen', '1');
+      setDone(true);
+      return;
+    }
+
     sessionStorage.setItem('bm-intro-seen', '1');
 
     const timer = setTimeout(() => setDone(true), 1900);

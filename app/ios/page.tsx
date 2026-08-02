@@ -54,6 +54,8 @@ const DATA: ServicePageData = {
       items: ['Xcode Cloud', 'TestFlight', 'Fastlane', 'App Store Connect'],
     },
   ],
+  startService: 'ios-app',
+  contactService: 'ios',
   cta: {
     title: 'Ready to build your app?',
     sub: 'Tell us the idea. We’ll tell you honestly what it takes to ship it well.',

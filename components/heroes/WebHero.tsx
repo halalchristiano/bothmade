@@ -72,7 +72,7 @@ export function WebHero() {
             y: useTransform(progress, [0.78, 0.88], [24, 0]),
           }}
         >
-          <PillCTA href="/#contact" size="lg">
+          <PillCTA href="/start?service=website" size="lg">
             Start your web project
           </PillCTA>
         </motion.div>
@@ -246,7 +246,7 @@ function StaticHero() {
         Marketing sites, SaaS platforms, dashboards — built on React and Next.js.
       </p>
       <div className="mt-10">
-        <PillCTA href="/#contact" size="lg">
+        <PillCTA href="/start?service=website" size="lg">
           Start your web project
         </PillCTA>
       </div>

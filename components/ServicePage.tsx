@@ -1,10 +1,12 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { FocusRow, PillCTA, SectionTag } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
+import type { BaseService } from '@/lib/pricing';
 
 import type { ReactNode } from 'react';
 
@@ -12,6 +14,10 @@ export type ServicePageData = {
   accent: 'sky' | 'indigo' | 'purple';
   capabilities: { title: string; desc: string }[];
   stack: { heading: string; items: string[] }[];
+  /** Which base service /start should open pre-selected for this platform. */
+  startService: BaseService;
+  /** Which option the homepage contact picker should land on, via ?service=. */
+  contactService: 'web' | 'ios' | 'mac' | 'visionpro' | 'full-stack' | 'other';
   cta: { title: string; sub: string; label: string };
 };
 
@@ -128,9 +134,24 @@ export function ServicePage({
           </h2>
           <p className="text-white/45 text-lg mb-12 max-w-lg">{data.cta.sub}</p>
 
-          <PillCTA href="/#contact" size="lg">
-            {data.cta.label}
-          </PillCTA>
+          {/* Priced, self-serve path first; the conversation is the fallback
+              for people who aren't ready to configure anything yet. Both
+              carry the platform through, so neither lands on a blank picker. */}
+          <div className="flex flex-wrap items-center gap-6">
+            <PillCTA href={`/start?service=${data.startService}`} size="lg">
+              {data.cta.label}
+            </PillCTA>
+            <Link
+              href={`/?service=${data.contactService}#contact`}
+              className="text-sm text-white/45 hover:text-white transition-colors underline underline-offset-4 decoration-white/20 hover:decoration-white/60"
+            >
+              Or just tell us about it
+            </Link>
+          </div>
+
+          <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.25em] text-white/25">
+            Fixed price up front · You own the code on final payment
+          </p>
         </div>
       </section>
 

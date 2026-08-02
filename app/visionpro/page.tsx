@@ -50,6 +50,8 @@ const DATA: ServicePageData = {
       items: ['Vision Pro simulator', 'On-device profiling', 'TestFlight', 'App Store Connect'],
     },
   ],
+  startService: 'visionos',
+  contactService: 'visionpro',
   cta: {
     title: 'Plant your flag early.',
     sub: 'The studios that define this platform are building on it right now.',

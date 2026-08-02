@@ -8,6 +8,7 @@ import { Footer } from '@/components/Footer';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ACCENT_HEX, type CaseStudy, type Shot } from '@/lib/case-studies';
 import { CountUp, FocusRow, ScrubText } from '@/components/ui';
+import { EndCTA } from '@/components/EndCTA';
 
 export function CaseStudyPage({
   study,
@@ -215,6 +216,15 @@ export function CaseStudyPage({
           </div>
         </section>
       )}
+
+      {/* Somebody who read a whole case study is the warmest traffic on the
+          site. Before offering them the next project, offer them theirs. */}
+      <EndCTA
+        eyebrow="Want one of these?"
+        title="Let's build yours."
+        sub={`${study.title} started the same way every project here does — a scope, a fixed number, and a start date. Configure yours and see the price before you talk to anyone.`}
+        accent={accent}
+      />
 
       {/* Next study */}
       {next && (

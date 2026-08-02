@@ -146,7 +146,7 @@ export function VisionHero() {
           </p>
 
           <div className="mt-10">
-            <PillCTA href="/#contact">Build your Vision Pro app</PillCTA>
+            <PillCTA href="/start?service=visionos">Build your Vision Pro app</PillCTA>
           </div>
         </motion.div>
 

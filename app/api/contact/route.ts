@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { BOOKING_LABEL, BOOKING_URL } from '@/lib/booking';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://bothmade.studio';
 
 const SERVICES = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
 
@@ -155,6 +157,18 @@ export async function POST(request: NextRequest) {
            Hi ${safe.name},<br/><br/>
            We've received your message and will get back to you within 24 hours.
            You can reply directly to this email if you'd like to add anything.
+         </p>
+         <p style="color:#666;line-height:1.6;">
+           Don't want to wait on email? Pick a time that suits you and we'll talk it
+           through — 15 minutes, no prep needed, no pitch deck.
+         </p>
+         <p style="margin:24px 0;">
+           <a href="${BOOKING_URL}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:600;font-size:14px;">${BOOKING_LABEL} →</a>
+         </p>
+         <p style="color:#999;font-size:13px;line-height:1.6;">
+           Curious about cost in the meantime? Our pricing calculator gives you a real
+           number in about a minute, no call required:
+           <a href="${SITE_URL}/start" style="color:#000;">${SITE_URL}/start</a>
          </p>`
       ),
     });

@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
+import { BOOKING_LABEL, BOOKING_URL } from '@/lib/booking';
 import {
+  isBaseService,
   ADD_ON_CATEGORIES,
   ADD_ON_REQUIRES,
   ADD_ONS,
@@ -126,6 +128,20 @@ export default function StartPage() {
     setBaseServiceRaw(next);
     setAddOns((prev) => withBaseIncludes(next, prev));
   };
+  // Service pages and the homepage hero link here as "/start?service=ios-app",
+  // so somebody who already told us what they want doesn't land on "Website"
+  // selected and have to say it again. Read off location rather than
+  // useSearchParams so this page keeps its static prerender.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('service');
+    if (requested && isBaseService(requested)) {
+      setBaseServiceRaw(requested);
+      setAddOns((prev) => withBaseIncludes(requested, prev));
+    }
+    // Mount only, deliberately: re-running this later would overwrite picks
+    // the visitor has since made by hand.
+  }, []);
+
   const [clientType, setClientType] = useState<ClientType>('smb');
   const [timeline, setTimeline] = useState<TimelineKey>('standard');
 
@@ -503,6 +519,36 @@ export default function StartPage() {
 
           <p className="text-center text-sm text-white/40 mt-3">Secure payment powered by Stripe</p>
 
+          {/* The two things people are actually weighing at the moment their
+              card comes out. Both are already contract terms — they just used
+              to be buried ten questions deep in the FAQ above. */}
+          <ul className="mt-6 space-y-3 text-sm">
+            <li className="flex gap-3">
+              <span aria-hidden="true" className="text-emerald-300">✓</span>
+              <span className="text-white/60">
+                <span className="text-white/85 font-medium">You own the code.</span>{' '}
+                Full ownership of the code and designs transfers to you on final payment —
+                no license fee, no platform lock-in.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span aria-hidden="true" className="text-emerald-300">✓</span>
+              <span className="text-white/60">
+                <span className="text-white/85 font-medium">We don&apos;t go quiet.</span>{' '}
+                If we go dark on your project without explanation, that&apos;s grounds for a
+                refund — in writing, in the agreement you read before paying the balance.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span aria-hidden="true" className="text-emerald-300">✓</span>
+              <span className="text-white/60">
+                <span className="text-white/85 font-medium">Nothing locks in today.</span>{' '}
+                This is a 50% deposit to start Discovery. Scope changes become quoted
+                Change Orders, never silent charges.
+              </span>
+            </li>
+          </ul>
+
           <div className="flex items-center gap-3 my-6">
             <div className="h-px flex-1 bg-white/10" />
             <span className="text-xs text-white/30 uppercase tracking-wider">or</span>
@@ -510,8 +556,23 @@ export default function StartPage() {
           </div>
 
           {interestSent ? (
-            <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-300 text-sm text-center">
-              Got it — we've got your selections and will be in touch shortly.
+            <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-5 text-sm">
+              <p className="text-emerald-300 font-medium">
+                Got it — your configuration is with us.
+              </p>
+              <p className="text-white/60 mt-2 leading-relaxed">
+                We've emailed you a copy of exactly what you picked and what it came to,
+                so you have it in writing. We'll follow up shortly — or skip the wait and
+                grab a time now.
+              </p>
+              <a
+                href={BOOKING_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-block rounded-lg border border-emerald-400/40 px-5 py-2.5 font-semibold text-emerald-200 hover:bg-emerald-400/10 transition-colors"
+              >
+                {BOOKING_LABEL} →
+              </a>
             </div>
           ) : (
             <>

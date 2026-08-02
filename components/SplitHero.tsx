@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { PillCTA } from '@/components/ui';
 import {
   motion,
   useMotionValue,
@@ -199,6 +201,27 @@ export function SplitHero() {
         </button>
       </motion.div>
 
+      {/* The one thing to actually do here. The hero is otherwise pure
+          interaction, which is lovely and sells nothing — this gives an
+          interested visitor a priced, self-serve next step without having to
+          scroll to the bottom of the page to find one. */}
+      <motion.div
+        className="absolute bottom-20 md:bottom-24 inset-x-0 px-6 z-30 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <PillCTA href="/start" size="lg">
+          See pricing &amp; configure
+        </PillCTA>
+        <Link
+          href="/#contact"
+          className="text-sm text-white/45 hover:text-white transition-colors underline underline-offset-4 decoration-white/20 hover:decoration-white/60"
+        >
+          Or just tell us about it
+        </Link>
+      </motion.div>
+
       {/* scroll cue */}
       <motion.div
         className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 text-[10px] font-mono tracking-[0.35em] text-white/30"
@@ -237,7 +260,9 @@ function Wordmark({ variant }: { variant: 'web' | 'native' }) {
   );
 }
 
-/* Each world keeps its copy in its own corner; brightness follows the seam. */
+/* Each world keeps its copy in its own corner; brightness follows the seam.
+   It rides above the hero's CTA row rather than beside it — at narrower
+   desktop widths a centred CTA and two corner blocks would collide. */
 function Copy({
   side,
   kicker,
@@ -256,7 +281,7 @@ function Copy({
   return (
     <motion.div
       style={{ opacity: emphasis }}
-      className={`absolute bottom-28 hidden md:block max-w-xs ${
+      className={`absolute bottom-44 hidden md:block max-w-xs ${
         side === 'left' ? 'left-16 text-left' : 'right-16 text-right'
       }`}
     >

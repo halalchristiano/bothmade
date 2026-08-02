@@ -18,6 +18,7 @@ import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ScrollProgress } from '@/components/ScrollProgress';
+import { EndCTA } from '@/components/EndCTA';
 import { CountUp, FocusRow, ScrubText, GridBackdrop } from '@/components/ui';
 import { formatBlogDate, type BlogPost, type Block } from '@/lib/blog';
 import {
@@ -122,6 +123,16 @@ export function BlogPostPage({
           })}
         </div>
       </article>
+
+      {/* Every post ends on an offer, not just on the next post. Someone who
+          read this far has spent real minutes on us — sending them straight
+          sideways to another article was the single biggest leak on the site. */}
+      <EndCTA
+        eyebrow="Thanks for reading"
+        title="Now let's build yours."
+        sub="This is how we think about the work. If it sounds like the studio you want on your project, configure what you need and see the price — no call required to find out what it costs."
+        accent={accent}
+      />
 
       {/* Prev / next */}
       {(prev || next) && (
