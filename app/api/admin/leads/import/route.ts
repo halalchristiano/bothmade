@@ -136,7 +136,10 @@ export async function POST(request: NextRequest) {
           .filter(isPainPointKey)
           .join(',');
 
-        const dollars = parseFloat(row.estimatedvalue || '');
+        // Strip currency symbols/commas ("$15,313" -> "15313") before parsing —
+        // research CSVs format the value for human readability, not parseFloat.
+        const cleanedValue = (row.estimatedvalue || '').replace(/[^0-9.]/g, '');
+        const dollars = parseFloat(cleanedValue);
         const estimatedValue = !isNaN(dollars) && dollars > 0 ? Math.round(dollars * 100) : null;
 
         const status = isLeadStatus(row.status?.trim()) ? row.status.trim() : undefined;
