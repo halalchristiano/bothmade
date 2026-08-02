@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 export type ServicePageData = {
   accent: 'sky' | 'indigo' | 'purple';
   capabilities: { title: string; desc: string }[];
+  stackIntro: string;
   stack: { heading: string; items: string[] }[];
   cta: { title: string; sub: string; label: string };
 };
@@ -83,7 +84,8 @@ export function ServicePage({
       {/* Stack */}
       <section className="relative py-32 px-6 border-t border-white/10">
         <div className="max-w-6xl mx-auto">
-          <SectionTag className="mb-16">Stack</SectionTag>
+          <SectionTag className="mb-8">Stack</SectionTag>
+          <p className="text-white/45 max-w-2xl leading-relaxed mb-16">{data.stackIntro}</p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             {data.stack.map((col, idx) => (
