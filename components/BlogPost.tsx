@@ -304,7 +304,97 @@ function BlockRenderer({
 
     case 'springboardDemo':
       return <SpringboardDemo />;
+
+    case 'kineticWordDemo':
+      return <KineticWordDemo word={block.word} />;
   }
+}
+
+/**
+ * Miniature replay of WebHero's KineticWord: each letter's
+ * font-variation-settings weight and color track proximity to the
+ * pointer on an rAF loop; when the pointer's been still past a
+ * threshold, an idle sine wave takes over instead.
+ */
+function KineticWordDemo({ word }: { word: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const host = ref.current;
+    if (!host || reduceMotion) return;
+    const letters = Array.from(host.children) as HTMLSpanElement[];
+
+    let mx = -9999;
+    let my = -9999;
+    let live = false;
+    let lastMove = 0;
+
+    const onMove = (e: PointerEvent) => {
+      mx = e.clientX;
+      my = e.clientY;
+      live = true;
+      lastMove = performance.now();
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+
+    let frame: number;
+    const tick = (now: number) => {
+      const idle = !live || now - lastMove > 2600;
+      for (let i = 0; i < letters.length; i++) {
+        let t: number;
+        if (idle) {
+          t = Math.max(0, Math.sin(now / 650 - i * 0.5)) * 0.5;
+        } else {
+          const r = letters[i].getBoundingClientRect();
+          const d = Math.hypot(mx - (r.left + r.width / 2), my - (r.top + r.height / 2));
+          const raw = Math.max(0, 1 - d / 300);
+          t = raw * raw * (3 - 2 * raw);
+        }
+        letters[i].style.fontVariationSettings = `'wght' ${Math.round(260 + t * 640)}`;
+        letters[i].style.color = `rgba(${186 + t * 69}, ${230 + t * 25}, 252, ${0.2 + t * 0.8})`;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, [reduceMotion]);
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-10 md:p-16 grid place-items-center overflow-hidden">
+      {reduceMotion ? (
+        <span className="font-bold text-sky-300" style={{ fontSize: 'clamp(2rem, 8vw, 4rem)' }}>
+          {word}
+        </span>
+      ) : (
+        <span
+          ref={ref}
+          aria-label={word}
+          className="block select-none font-bold leading-none tracking-[-0.03em] whitespace-nowrap"
+          style={{ fontSize: 'clamp(2rem, 8vw, 4rem)' }}
+        >
+          {word.split('').map((ch, i) => (
+            <span
+              key={i}
+              aria-hidden="true"
+              className="inline-block"
+              style={{
+                fontVariationSettings: "'wght' 260",
+                color: 'rgba(186,230,252,0.2)',
+                willChange: 'font-variation-settings, color',
+              }}
+            >
+              {ch}
+            </span>
+          ))}
+        </span>
+      )}
+    </div>
+  );
 }
 
 type Rect = { top: number; left: number; width: number; height: number };

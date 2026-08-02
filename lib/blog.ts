@@ -115,7 +115,14 @@ export type Block =
    * container — the same rect-measurement + AnimatePresence technique as
    * the real app-launch transition, bounded to a small stage.
    */
-  | { type: 'springboardDemo' };
+  | { type: 'springboardDemo' }
+  /**
+   * A miniature replay of WebHero's KineticWord: letters morph
+   * font-variation-settings weight and color based on proximity to the
+   * pointer, with an idle sine-wave breathing fallback when the pointer
+   * has been still for a while.
+   */
+  | { type: 'kineticWordDemo'; word: string };
 
 export type BlogPost = {
   slug: string;
@@ -1104,6 +1111,52 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
       {
         type: 'p',
         text: "Framer Motion actually ships a purpose-built tool for exactly this — give two elements the same layoutId and it handles the FLIP measuring automatically, even across a conditional mount/unmount. We didn't reach for it here because the source and destination aren't really \"the same element in two states\" the way layoutId assumes — the icon stays a small square glyph forever, and the destination is a fully different fullscreen layout with its own content fading in on a delay. Manual rects gave more control over exactly when the icon fades versus when the panel's content arrives, at the cost of writing the coordinate math by hand instead of trusting a shared ID to infer it.",
+      },
+    ],
+  },
+  {
+    slug: 'type-that-reaches-toward-your-cursor',
+    title: 'Type that reaches toward your cursor',
+    dek: "Letters that get heavier and brighter the closer your mouse gets, using a variable font's weight axis instead of a swapped font file. Move your cursor near the word below.",
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-12-20',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "A variable font isn't one font file — it's a continuous range of one, with axes like weight or width you can dial to any value instead of picking from a fixed set of \"Regular / Medium / Bold\" cuts. Almost nobody uses that continuity for anything interactive; it mostly gets used the same way a normal font would, just picking a couple of fixed weights and calling it done. Our web service page hero does something with it that a static weight can't: each letter's weight tracks how close your cursor is to it, in real time.",
+      },
+      {
+        type: 'statement',
+        text: "Nothing is swapped, cropped, or cross-faded. One property — font-variation-settings — is just being set to a different number, sixty times a second, per letter.",
+      },
+      { type: 'heading', text: 'Move your cursor near this' },
+      { type: 'kineticWordDemo', word: 'REACH' },
+      {
+        type: 'p',
+        text: "Every letter measures its own distance to the cursor on every animation frame and maps that distance to a 0–1 value using smoothstep — the same t*t*(3-2*t) curve used to avoid a mechanical linear ramp — then uses that value to interpolate the weight axis between 260 (light) and 900 (heavy), and the color between a dim, desaturated blue and a bright, saturated one. Move away and the letters behind you cool back down on their own, because the calculation runs continuously — there's no explicit \"unhover\" event to write, just distance getting larger again.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `const r = letter.getBoundingClientRect();
+const d = Math.hypot(mx - (r.left + r.width / 2), my - (r.top + r.height / 2));
+const raw = Math.max(0, 1 - d / 300);       // 0 past 300px, 1 at the center
+const t = raw * raw * (3 - 2 * raw);        // smoothstep
+
+letter.style.fontVariationSettings = \`'wght' \${Math.round(260 + t * 640)}\`;
+letter.style.color = \`rgba(\${186 + t*69}, \${230 + t*25}, 252, \${0.2 + t*0.8})\`;`,
+      },
+      { type: 'heading', text: "It never actually sits still" },
+      {
+        type: 'p',
+        text: "If the pointer hasn't moved in 2.6 seconds, the loop switches from cursor-distance to a slow per-letter sine wave — each letter breathing between light and slightly heavier on its own gentle offset, so the word never looks frozen when nobody's touching it. That threshold matters more than it sounds like it should: without it, a word that hasn't been touched yet just sits at its lightest weight looking inert, which reads as broken rather than as \"waiting for you.\" The idle animation is what tells a first-time visitor there's something here to discover before they've found it themselves.",
+      },
+      { type: 'heading', text: 'Why raw style mutation instead of React state' },
+      {
+        type: 'p',
+        text: "Every letter's style is written directly via letter.style.fontVariationSettings, completely outside React's render cycle — not useState, not a Framer Motion value. At up to 60 updates per second across every letter in the word simultaneously, routing that through React re-renders would mean scheduling and diffing work the browser doesn't actually need, when a direct DOM mutation on an already-existing element is exactly what requestAnimationFrame loops are for. React owns mounting the spans once; after that, the animation loop owns them completely until the component unmounts and the loop is cancelled.",
       },
     ],
   },
