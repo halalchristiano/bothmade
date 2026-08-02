@@ -19,6 +19,9 @@ import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { findGlossaryTerms } from '@/lib/glossary';
 import { buildCallScript, callScriptToText, painPointPitch } from '@/lib/call-script';
 import { personalise, priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
+import { OBJECTIONS } from '@/lib/objections';
+import { CALL_OUTCOMES } from '@/lib/call-outcomes';
+import { leadLocalTime } from '@/lib/local-time';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
@@ -121,6 +124,14 @@ export default function LeadDetailPage() {
   const leadId = params.leadId as string;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
+  const [showObjections, setShowObjections] = useState(false);
+  const [loggingOutcome, setLoggingOutcome] = useState<string | null>(null);
+  const [outcomeNote, setOutcomeNote] = useState('');
+  const [outcomeDate, setOutcomeDate] = useState('');
+  const [savingOutcome, setSavingOutcome] = useState(false);
+  // Recomputed on a timer so the lead's local time doesn't silently go stale
+  // on a page left open between calls.
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
@@ -257,6 +268,35 @@ export default function LeadDetailPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleCallOutcome = async (key: string, needsDate: boolean) => {
+    if (needsDate && !outcomeDate) return;
+    setSavingOutcome(true);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/call-outcome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outcome: key,
+          note: outcomeNote,
+          followUpAt: outcomeDate || undefined,
+        }),
+      });
+      if (res.ok) {
+        setLoggingOutcome(null);
+        setOutcomeNote('');
+        setOutcomeDate('');
+        load();
+      }
+    } finally {
+      setSavingOutcome(false);
+    }
+  };
 
   const togglePainPoint = (key: PainPointKey) => {
     setPainPoints((prev) => (prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key]));
@@ -726,6 +766,84 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
+      {/* Post-call wrap-up — sits directly under the action bar because this is
+          what the rep reaches for the second they hang up. */}
+      <div className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5">
+        <p className="text-sm font-bold text-white/85">Just got off the phone?</p>
+        <p className="text-xs text-white/40 mt-0.5 mb-3.5">
+          Tap what happened. It writes the note, moves the status and books the next follow-up in one go.
+        </p>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {CALL_OUTCOMES.map((o) => {
+            const active = loggingOutcome === o.key;
+            const tone =
+              o.tone === 'good'
+                ? 'border-emerald-400/30 bg-emerald-400/[0.07] text-emerald-100 hover:bg-emerald-400/15'
+                : o.tone === 'bad'
+                  ? 'border-red-400/25 bg-red-400/[0.06] text-red-100 hover:bg-red-400/15'
+                  : 'border-white/12 bg-white/[0.04] text-white/80 hover:bg-white/[0.08]';
+            return (
+              <button
+                key={o.key}
+                onClick={() => {
+                  setLoggingOutcome(active ? null : o.key);
+                  setOutcomeNote('');
+                  setOutcomeDate('');
+                }}
+                className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${tone} ${
+                  active ? 'ring-2 ring-sky-400/60' : ''
+                }`}
+              >
+                <span className="block text-xs font-bold leading-snug">{o.label}</span>
+                <span className="block text-[10px] text-white/40 leading-snug mt-0.5">{o.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {loggingOutcome && (() => {
+          const o = CALL_OUTCOMES.find((x) => x.key === loggingOutcome)!;
+          const needsDate = !!o.askForDate;
+          return (
+            <div className="mt-3 rounded-xl border border-sky-400/25 bg-sky-400/[0.06] p-3.5">
+              <textarea
+                value={outcomeNote}
+                onChange={(e) => setOutcomeNote(e.target.value)}
+                placeholder="Anything worth remembering? What they said, what they care about, who to ask for next time..."
+                rows={2}
+                className={`${inputClass} resize-none text-sm`}
+              />
+              <div className="mt-2.5">
+                <label className="block text-[11px] uppercase tracking-wide text-sky-300/70 mb-1.5">
+                  {needsDate ? 'When? (required)' : 'Next follow-up'}
+                </label>
+                <input
+                  type="date"
+                  value={outcomeDate}
+                  onChange={(e) => setOutcomeDate(e.target.value)}
+                  className={`${inputClass} text-sm`}
+                />
+                {!needsDate && (
+                  <p className="text-[11px] text-white/35 mt-1">
+                    {o.followUpDays !== null
+                      ? `Leave blank and it'll set one for ${o.followUpDays} days' time.`
+                      : "Leave blank and no follow-up is set."}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => handleCallOutcome(o.key, needsDate)}
+                disabled={savingOutcome || (needsDate && !outcomeDate)}
+                className="w-full mt-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                {savingOutcome ? 'Saving...' : `Log it — ${o.label.toLowerCase()}`}
+              </button>
+            </div>
+          );
+        })()}
+      </div>
+
       {composingEmail && (
         <EmailComposer
           recipientEmail={lead.email || ''}
@@ -998,6 +1116,51 @@ export default function LeadDetailPage() {
                             {line}
                           </p>
                         ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {anything && (
+              <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+                <button
+                  onClick={() => setShowObjections((v) => !v)}
+                  className="w-full flex items-start justify-between gap-3 p-4 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm font-bold text-white/85">
+                      <AlertTriangle size={14} /> When they try to end the call
+                    </span>
+                    <span className="block text-xs text-white/40 mt-0.5">
+                      The {OBJECTIONS.length} things people say to get off the phone, what each one really means,
+                      and what to say back.
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-sky-300">
+                    {showObjections ? 'Hide' : 'Open'}
+                  </span>
+                </button>
+                {showObjections && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {OBJECTIONS.map((o) => (
+                      <div key={o.slug} className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3.5 min-w-0">
+                        <p className="text-sm font-bold text-white/85 break-words">{o.trigger}</p>
+                        <p className="text-xs text-white/45 leading-relaxed mt-1.5 break-words">
+                          <span className="text-amber-300/90 font-semibold">What it usually means: </span>
+                          {o.meaning}
+                        </p>
+                        <div className="mt-2.5 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                            Say this
+                          </p>
+                          <p className="text-xs text-white/80 italic leading-relaxed break-words">"{o.response}"</p>
+                        </div>
+                        <p className="text-xs text-white/45 leading-relaxed mt-2 break-words">
+                          <span className="text-sky-300/80 font-semibold">Then: </span>
+                          {o.thenWhat}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1454,17 +1617,35 @@ export default function LeadDetailPage() {
                       <span className="text-amber-300/80 italic">No email — call instead</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 px-3 py-3">
+                  <div className="flex items-start gap-3 px-3 py-3">
                     <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-amber-400/10 text-amber-300 shrink-0">
                       <Phone size={14} />
                     </span>
-                    {lead.phone ? (
-                      <a href={`tel:${lead.phone}`} className="hover:text-amber-300 transition-colors">
-                        {lead.phone}
-                      </a>
-                    ) : (
-                      <span className="text-white/30 italic">No phone on file</span>
-                    )}
+                    <div className="min-w-0">
+                      {lead.phone ? (
+                        <a href={`tel:${lead.phone}`} className="hover:text-amber-300 transition-colors break-all">
+                          {lead.phone}
+                        </a>
+                      ) : (
+                        <span className="text-white/30 italic">No phone on file</span>
+                      )}
+                      {(() => {
+                        const lt = leadLocalTime(lead.phone, new Date(nowTick));
+                        if (!lt) return null;
+                        const c =
+                          lt.callability === 'good'
+                            ? 'text-emerald-300'
+                            : lt.callability === 'okay'
+                              ? 'text-amber-300'
+                              : 'text-red-300';
+                        return (
+                          <p className="text-xs mt-1 leading-relaxed">
+                            {lt.time && <span className={`font-semibold ${c}`}>{lt.time} their time — </span>}
+                            <span className="text-white/40">{lt.advice}</span>
+                          </p>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 px-3 py-3">
                     <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-purple-400/10 text-purple-300 shrink-0">
