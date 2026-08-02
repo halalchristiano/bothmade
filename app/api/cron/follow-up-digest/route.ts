@@ -10,8 +10,9 @@ import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
  * dashboard; this reaches them either way.
  */
 export async function GET(request: NextRequest) {
+  // Fail closed: reject if CRON_SECRET is unset rather than running open.
   const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

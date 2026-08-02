@@ -1,9 +1,29 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'your-session-secret';
+const DEFAULT_JWT_SECRET = 'your-secret-key';
+
+/**
+ * Resolve the JWT signing secret. In production a missing secret — or the
+ * shipped placeholder — is fatal: with a known key anyone can forge an admin
+ * session, so we refuse to sign or verify rather than run wide open. The
+ * default is tolerated only outside production, for local-dev convenience.
+ */
+function getJwtSecret(): string {
+  const value = process.env.JWT_SECRET;
+  if (!value || value === DEFAULT_JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'JWT_SECRET is not set (or is the insecure default). Set a strong, unique JWT_SECRET before running in production.'
+      );
+    }
+    return DEFAULT_JWT_SECRET;
+  }
+  return value;
+}
+
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'auth_token';
 const AUTH_COOKIE_MAX_AGE = parseInt(
   process.env.AUTH_COOKIE_MAX_AGE || '604800'
@@ -44,7 +64,7 @@ export async function verifyPassword(
  * Create a JWT token for a user or client
  */
 export function createToken(payload: AuthPayload | ClientAuthPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
 /**
@@ -54,7 +74,7 @@ export function verifyToken(
   token: string
 ): (AuthPayload | ClientAuthPayload) | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     return decoded as AuthPayload | ClientAuthPayload;
   } catch (error) {
     return null;
@@ -68,12 +88,12 @@ export function verifyToken(
  * Google and back.
  */
 export function createOAuthState(userId: string): string {
-  return jwt.sign({ userId, purpose: 'gmail-oauth' }, JWT_SECRET, { expiresIn: '10m' });
+  return jwt.sign({ userId, purpose: 'gmail-oauth' }, getJwtSecret(), { expiresIn: '10m' });
 }
 
 export function verifyOAuthState(state: string): string | null {
   try {
-    const decoded = jwt.verify(state, JWT_SECRET) as { userId: string; purpose: string };
+    const decoded = jwt.verify(state, getJwtSecret()) as { userId: string; purpose: string };
     return decoded.purpose === 'gmail-oauth' ? decoded.userId : null;
   } catch {
     return null;
@@ -128,8 +148,11 @@ export function generateRandomPassword(): string {
   const chars =
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
   let password = '';
+  // crypto.randomInt is a CSPRNG — Math.random() is predictable from observed
+  // output, and this password is emailed to a paying client as their first
+  // credential, so it must not be guessable.
   for (let i = 0; i < 16; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+    password += chars.charAt(crypto.randomInt(chars.length));
   }
   return password;
 }
