@@ -17,9 +17,16 @@ export async function GET() {
       },
     });
 
+    // Mark direct messages to me read (read receipts) and stamp when I last
+    // opened the chat — the latter is what the unread badge keys off, so it
+    // clears for broadcasts too, not just direct messages.
     await prisma.teamMessage.updateMany({
       where: { toUserId: session.userId, readAt: null },
       data: { readAt: new Date() },
+    });
+    await prisma.user.update({
+      where: { id: session.userId },
+      data: { teamChatReadAt: new Date() },
     });
 
     return NextResponse.json({ success: true, messages }, { status: 200 });

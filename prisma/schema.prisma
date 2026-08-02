@@ -54,6 +54,13 @@ model User {
   // Opts out of the Friday weekly-digest email (everyone gets it by default).
   weeklyDigestOptOut Boolean @default(false)
 
+  // When this user last opened the team chat. Drives the unread badge — a
+  // message is unread if it arrived after this and wasn't sent by them. A
+  // single per-user timestamp works because the chat is one flat thread, and
+  // unlike TeamMessage.readAt it can represent per-user read state for
+  // broadcast messages (toUserId = null), which a shared readAt could not.
+  teamChatReadAt DateTime?
+
   // Relations
   clientMessages  ProjectMessage[] @relation("SentByUser")
   adminUpdates    ProjectUpdate[]  @relation("CreatedByAdmin")

@@ -8,11 +8,20 @@ export async function GET() {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
+    // Unread = messages not sent by me, addressed to me or broadcast, that
+    // arrived since I last opened the chat. Keying off the per-user
+    // teamChatReadAt (rather than the shared TeamMessage.readAt) is what lets
+    // broadcasts clear per-user instead of never clearing at all.
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { teamChatReadAt: true },
+    });
+
     const count = await prisma.teamMessage.count({
       where: {
-        readAt: null,
         fromUserId: { not: session.userId },
         OR: [{ toUserId: session.userId }, { toUserId: null }],
+        ...(user?.teamChatReadAt ? { createdAt: { gt: user.teamChatReadAt } } : {}),
       },
     });
 
