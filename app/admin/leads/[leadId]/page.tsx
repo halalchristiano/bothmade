@@ -17,6 +17,7 @@ import {
 } from '@/lib/leads';
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { findGlossaryTerms } from '@/lib/glossary';
+import { buildCallScript, callScriptToText, painPointPitch } from '@/lib/call-script';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
@@ -273,6 +274,8 @@ export default function LeadDetailPage() {
 
   const [showChecklistPains, setShowChecklistPains] = useState(false);
   const [showGlossary, setShowGlossary] = useState(false);
+  const [showScript, setShowScript] = useState(false);
+  const [scriptCopied, setScriptCopied] = useState(false);
 
   const [pendingLostStatus, setPendingLostStatus] = useState(false);
 
@@ -737,6 +740,28 @@ export default function LeadDetailPage() {
         const low = lead.estimateLowCents ?? recs.coreTotal;
         const high = lead.estimateHighCents ?? recs.maxTotal;
 
+        const callScript = buildCallScript({
+          company: lead.company,
+          contactName: lead.contactName,
+          repName: lead.assignedTo?.name ?? null,
+          writtenPains:
+            writtenPains.length > 0
+              ? writtenPains
+              : checklistPains.map((k) => ({
+                  point: PAIN_POINTS[k],
+                  explanation: PAIN_POINT_BRIEFS[k]?.problem ?? null,
+                })),
+          checklistPainKeys: checklistPains,
+          essentials: useWrittenNeeds
+            ? writtenNeeds
+            : recs.needs.map((n) => ({ point: n.label, explanation: n.description })),
+          upsells: useWrittenUpsell
+            ? writtenUpsell
+            : recs.upsell.map((n) => ({ point: n.label, explanation: n.description })),
+          low,
+          high,
+        });
+
         const Step = ({ n, title, hint }: { n: number; title: string; hint: string }) => (
           <div className="flex items-start gap-3 mb-3">
             <span className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-white/10 text-[11px] font-bold text-white/70">
@@ -825,6 +850,74 @@ export default function LeadDetailPage() {
               </div>
             )}
 
+            {anything && (
+              <div className="mb-6 rounded-xl border border-emerald-400/30 bg-emerald-400/[0.07] overflow-hidden">
+                <div className="flex items-start justify-between gap-3 p-4">
+                  <button onClick={() => setShowScript((v) => !v)} className="min-w-0 text-left">
+                    <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-100">
+                      <Phone size={14} /> Your call script
+                    </span>
+                    <span className="block text-xs text-emerald-200/60 mt-0.5">
+                      The whole call, written out in order. Green is what you say — grey is for you, never read it
+                      out.
+                    </span>
+                  </button>
+                  <div className="shrink-0 flex flex-col items-end gap-1.5">
+                    <button
+                      onClick={() => setShowScript((v) => !v)}
+                      className="text-xs font-semibold text-emerald-300 whitespace-nowrap"
+                    >
+                      {showScript ? 'Hide' : 'Open'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard?.writeText(callScriptToText(callScript, lead.company));
+                        setScriptCopied(true);
+                        setTimeout(() => setScriptCopied(false), 2000);
+                      }}
+                      className="text-[11px] text-emerald-200/60 hover:text-emerald-200 whitespace-nowrap transition-colors"
+                    >
+                      {scriptCopied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+
+                {showScript && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {callScript.map((block, i) => (
+                      <div
+                        key={i}
+                        className={`rounded-lg px-3.5 py-3 border-l-2 ${
+                          block.kind === 'spoken'
+                            ? 'border-emerald-400/60 bg-white/[0.04]'
+                            : 'border-white/20 bg-white/[0.02]'
+                        }`}
+                      >
+                        <p
+                          className={`text-[10px] uppercase tracking-wide font-semibold mb-1.5 ${
+                            block.kind === 'spoken' ? 'text-emerald-300/80' : 'text-white/35'
+                          }`}
+                        >
+                          {block.heading}
+                          {block.kind === 'guidance' && ' — for you, don\u2019t read out'}
+                        </p>
+                        {block.lines.map((line, j) => (
+                          <p
+                            key={j}
+                            className={`text-xs leading-relaxed break-words ${
+                              block.kind === 'spoken' ? 'text-white/85 italic' : 'text-white/50'
+                            } ${j > 0 ? 'mt-1.5' : ''}`}
+                          >
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {!anything ? (
               <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.07] p-4">
                 <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-200 mb-1">
@@ -860,21 +953,19 @@ export default function LeadDetailPage() {
                           </p>
                         )}
                         {brief && (
-                          <>
-                            <p className="text-xs text-white/50 leading-relaxed mt-2 break-words">
-                              <span className="text-amber-300/90 font-semibold">Why they should care: </span>
-                              {brief.costsThem}
-                            </p>
-                            <div className="mt-2.5 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
-                              <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
-                                Say something like this
-                              </p>
-                              <p className="text-xs text-white/80 italic leading-relaxed break-words">
-                                "{brief.sayThis}"
-                              </p>
-                            </div>
-                          </>
+                          <p className="text-xs text-white/50 leading-relaxed mt-2 break-words">
+                            <span className="text-amber-300/90 font-semibold">Why they should care: </span>
+                            {brief.costsThem}
+                          </p>
                         )}
+                        <div className="mt-2.5 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                            Say something like this
+                          </p>
+                          <p className="text-xs text-white/80 italic leading-relaxed break-words">
+                            "{painPointPitch(item, lead.company)}"
+                          </p>
+                        </div>
                       </div>
                     );
                   })}
