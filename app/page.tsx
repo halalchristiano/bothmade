@@ -282,7 +282,7 @@ export default function Home() {
             className="font-bold leading-[1.05] tracking-tight mb-20 text-black"
             style={{ fontSize: 'clamp(2.5rem, 8vw, 4.5rem)' }}
           >
-            Let's build something great.
+            Let's talk.
           </h2>
           <ContactForm />
         </div>

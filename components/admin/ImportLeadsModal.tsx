@@ -89,7 +89,9 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
   const [preview, setPreview] = useState<Array<Record<string, string>>>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ count: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{ count: number; skipped: number; duplicates: number } | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
 
   const handleText = (text: string) => {
@@ -125,7 +127,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
         setError(data.error || 'Import failed');
         return;
       }
-      setResult({ count: data.count, skipped: data.skipped });
+      setResult({ count: data.count, skipped: data.skipped, duplicates: data.duplicates ?? 0 });
       onImported();
     } finally {
       setImporting(false);
@@ -155,6 +157,12 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
               Imported <strong>{result.count}</strong> lead{result.count === 1 ? '' : 's'}
               {result.skipped > 0 ? ` (skipped ${result.skipped} row${result.skipped === 1 ? '' : 's'} missing a company name)` : ''}.
             </p>
+            {result.duplicates > 0 && (
+              <p className="text-xs text-amber-300/80 mt-2 leading-relaxed">
+                {result.duplicates} {result.duplicates === 1 ? 'business was' : 'businesses were'} already in your
+                leads and {result.duplicates === 1 ? 'was' : 'were'} left alone — so nobody gets called twice.
+              </p>
+            )}
             <button
               onClick={onClose}
               className="mt-4 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"

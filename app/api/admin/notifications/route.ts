@@ -105,6 +105,23 @@ export async function GET() {
       });
     }
 
+    const activeProjects = await prisma.project.findMany({
+      where: { status: { not: 'complete' } },
+      select: { id: true, totalPrice: true, client: { select: { company: true } }, payments: { select: { amount: true } } },
+      take: 40,
+    });
+    for (const p of activeProjects) {
+      const balanceDue = p.totalPrice - p.payments.reduce((sum, pay) => sum + pay.amount, 0);
+      if (balanceDue <= 0) continue;
+      items.push({
+        id: `overdue-${p.id}`,
+        label: `${p.client.company} has an outstanding balance`,
+        detail: `${(balanceDue / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' })} due`,
+        href: `/admin/projects/${p.id}`,
+        severity: 'urgent',
+      });
+    }
+
     return NextResponse.json({ success: true, items, count: items.length }, { status: 200 });
   } catch (error) {
     console.error('Get notifications error:', error);

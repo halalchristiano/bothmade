@@ -283,3 +283,74 @@ export async function scanBouncedAddresses(
     };
   }
 }
+
+export interface ReplyScanResult {
+  ok: boolean;
+  /** Lowercased addresses that have written to us. */
+  addresses: string[];
+  scanned: number;
+  needsReconnect?: boolean;
+  error?: string;
+}
+
+/**
+ * Reads recent inbox mail and returns who wrote in.
+ *
+ * A prospect replying to a cold email is the strongest buying signal there
+ * is, and nothing in the CRM knew about it — the reply sat in Gmail while the
+ * lead stayed "contacted", drifting down a list ordered by how long it had
+ * been ignored. Exactly backwards.
+ *
+ * Only From headers are fetched, not bodies: it's a fraction of the data, and
+ * all that's needed is who replied. What they said is in the mailbox where it
+ * already is.
+ */
+export async function scanReplyAddresses(
+  client: GmailOAuthClient,
+  opts: { maxMessages?: number; newerThanDays?: number } = {}
+): Promise<ReplyScanResult> {
+  const gmail = google.gmail({ version: 'v1', auth: client });
+  const maxMessages = opts.maxMessages ?? 100;
+  const days = opts.newerThanDays ?? 14;
+
+  try {
+    const { data: list } = await gmail.users.messages.list({
+      userId: 'me',
+      // Inbound only, and never our own sends or the bounce notices, which
+      // are already handled elsewhere and would otherwise look like replies.
+      q: `in:inbox newer_than:${days}d -from:me -from:(mailer-daemon OR postmaster OR mail-daemon)`,
+      maxResults: maxMessages,
+    });
+    const messages = list.messages ?? [];
+
+    const addresses = new Set<string>();
+    for (const msg of messages) {
+      if (!msg.id) continue;
+      const { data } = await gmail.users.messages.get({
+        userId: 'me',
+        id: msg.id,
+        format: 'metadata',
+        metadataHeaders: ['From'],
+      });
+      const from = data.payload?.headers?.find((h) => h.name?.toLowerCase() === 'from')?.value ?? '';
+      // "Dave Duran <dave@example.com>" -> dave@example.com
+      const match = from.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+      if (match) addresses.add(match[0].toLowerCase());
+    }
+
+    return { ok: true, addresses: Array.from(addresses), scanned: messages.length };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const needsReconnect = /insufficient|scope|forbidden|403/i.test(message);
+    console.error('Reply scan failed:', error);
+    return {
+      ok: false,
+      addresses: [],
+      scanned: 0,
+      needsReconnect,
+      error: needsReconnect
+        ? 'Google needs reconnecting to read your inbox — the current connection can send but not read.'
+        : message,
+    };
+  }
+}

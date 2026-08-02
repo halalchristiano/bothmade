@@ -299,6 +299,49 @@ export async function POST(request: NextRequest) {
       })
       .filter((row): row is NonNullable<typeof row> => row !== null);
 
+    // Two research CSVs overlapping is normal, and nothing stopped the same
+    // business being created twice — which ends with a rep ringing someone who
+    // was called yesterday. Match on email where there is one (exact, and the
+    // strongest signal), otherwise on the company name reduced to letters and
+    // digits so "A1 Duran Roofing" and "A1 Duran Roofing, Inc." don't slip
+    // past each other on punctuation alone.
+    const companyKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const existing = await prisma.lead.findMany({
+      select: { email: true, company: true },
+    });
+    const seenEmails = new Set(
+      existing.map((l) => l.email?.toLowerCase()).filter((e): e is string => !!e)
+    );
+    const seenCompanies = new Set(existing.map((l) => companyKey(l.company)));
+
+    let duplicates = 0;
+    const duplicateNames: string[] = [];
+    const deduped = toCreate.filter((row) => {
+      const email = row.email?.toLowerCase();
+      const key = companyKey(row.company);
+      const isDup = email ? seenEmails.has(email) : seenCompanies.has(key);
+      if (isDup) {
+        duplicates++;
+        if (duplicateNames.length < 5) duplicateNames.push(row.company);
+        return false;
+      }
+      // Guard against the same row appearing twice within this one file too.
+      if (email) seenEmails.add(email);
+      seenCompanies.add(key);
+      return true;
+    });
+
+    if (deduped.length === 0 && duplicates > 0) {
+      return NextResponse.json(
+        {
+          error: `Every row is already in your leads — nothing new to add. (${duplicates} duplicate${duplicates === 1 ? '' : 's'})`,
+          duplicates,
+          duplicateNames,
+        },
+        { status: 400 }
+      );
+    }
+
     if (toCreate.length === 0) {
       await prisma.csvImportLog.create({
         data: {
@@ -312,7 +355,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No valid rows — every row needs a company name' }, { status: 400 });
     }
 
-    const created = await prisma.$transaction(toCreate.map((data) => prisma.lead.create({ data })));
+    const created = await prisma.$transaction(deduped.map((data) => prisma.lead.create({ data })));
 
     await prisma.csvImportLog
       .create({
@@ -326,7 +369,10 @@ export async function POST(request: NextRequest) {
       })
       .catch((err) => console.error('Failed to record CSV import log:', err));
 
-    return NextResponse.json({ success: true, count: created.length, skipped }, { status: 201 });
+    return NextResponse.json(
+      { success: true, count: created.length, skipped, duplicates, duplicateNames },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Lead CSV import error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

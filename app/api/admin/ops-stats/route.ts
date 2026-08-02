@@ -2,24 +2,35 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
 
-export async function GET() {
+const RANGE_LABELS: Record<StatsRange, string> = {
+  week: 'This Week',
+  month: 'This Month',
+  quarter: 'This Quarter',
+};
+
+export async function GET(request: Request) {
   try {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
+    const { searchParams } = new URL(request.url);
+    const rangeParam = searchParams.get('range');
+    const range: StatsRange = rangeParam === 'week' || rangeParam === 'quarter' ? rangeParam : 'month';
+
     const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const staleThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const periodStart = getPeriodStart(range, now);
+    // Prior period of equal length, for the trend comparison.
+    const previousPeriodStart = new Date(periodStart.getTime() - (now.getTime() - periodStart.getTime()));
 
     const [
       activeProjects,
       newHandoffs,
-      newClientsThisWeek,
-      paymentsThisMonth,
-      paymentsLastMonth,
+      newClientsInPeriod,
+      paymentsInPeriod,
+      paymentsInPreviousPeriod,
       recentClientMessages,
       recentPayments,
       recentLeadWins,
@@ -32,31 +43,31 @@ export async function GET() {
         },
       }),
       prisma.project.findMany({
-        where: { createdAt: { gte: weekAgo } },
+        where: { createdAt: { gte: periodStart } },
         include: {
           client: { select: { company: true, contactName: true, email: true } },
           onboardingQuestions: { include: { response: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.client.count({ where: { createdAt: { gte: weekAgo } } }),
-      prisma.payment.findMany({ where: { createdAt: { gte: startOfThisMonth } } }),
-      prisma.payment.findMany({ where: { createdAt: { gte: startOfLastMonth, lt: startOfThisMonth } } }),
+      prisma.client.count({ where: { createdAt: { gte: periodStart } } }),
+      prisma.payment.findMany({ where: { createdAt: { gte: periodStart } } }),
+      prisma.payment.findMany({ where: { createdAt: { gte: previousPeriodStart, lt: periodStart } } }),
       prisma.projectMessage.findMany({
-        where: { isFromAdmin: false, createdAt: { gte: weekAgo } },
+        where: { isFromAdmin: false, createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
-        take: 10,
+        take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
       prisma.payment.findMany({
         orderBy: { createdAt: 'desc' },
-        take: 8,
+        take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
       prisma.leadActivity.findMany({
-        where: { type: 'proposal', createdAt: { gte: weekAgo } },
+        where: { type: 'proposal', createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
-        take: 8,
+        take: 25,
         include: { lead: { select: { id: true, company: true } } },
       }),
     ]);
@@ -70,7 +81,7 @@ export async function GET() {
     const revenueHistory = await Promise.all(
       monthStarts.map(async ({ start, end, label }) => {
         const payments = await prisma.payment.findMany({ where: { createdAt: { gte: start, lt: end } } });
-        return { label, value: payments.reduce((s, p) => s + p.amount, 0) };
+        return { label, value: payments.reduce((s, p) => s + p.amount, 0), year: start.getFullYear(), month: start.getMonth() };
       })
     );
 
@@ -113,15 +124,23 @@ export async function GET() {
     );
     const projectsAwaitingReply = activeProjects
       .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin)
-      .map((p) => ({ id: p.id, name: p.name, company: p.client.company }));
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        company: p.client.company,
+        waitHours: Math.floor((now.getTime() - p.messages[0].createdAt.getTime()) / (60 * 60 * 1000)),
+      }))
+      .sort((a, b) => b.waitHours - a.waitHours);
 
-    const revenueThisMonth = paymentsThisMonth.reduce((s, p) => s + p.amount, 0);
-    const revenueLastMonth = paymentsLastMonth.reduce((s, p) => s + p.amount, 0);
+    const revenueThisMonth = paymentsInPeriod.reduce((s, p) => s + p.amount, 0);
+    const revenueLastMonth = paymentsInPreviousPeriod.reduce((s, p) => s + p.amount, 0);
 
     return NextResponse.json(
       {
         success: true,
         stats: {
+          range,
+          periodLabel: RANGE_LABELS[range],
           newHandoffs: newHandoffs.map((p) => ({
             id: p.id,
             name: p.name,
@@ -131,9 +150,10 @@ export async function GET() {
             onboardingTotal: p.onboardingQuestions.length,
             onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
             handoffAcknowledgedAt: p.handoffAcknowledgedAt,
+            daysWaiting: Math.floor((now.getTime() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
           })),
-          newClientsThisWeek,
-          atRiskProjects: atRiskProjects.slice(0, 10),
+          newClientsThisWeek: newClientsInPeriod,
+          atRiskProjects: atRiskProjects.slice(0, 40),
           overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
@@ -168,7 +188,7 @@ export async function GET() {
               preview: a.content.slice(0, 120),
               createdAt: a.createdAt,
             })),
-          ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 12),
+          ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 40),
         },
       },
       { status: 200 }

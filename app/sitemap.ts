@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/ios', priority: 0.9 },
     { path: '/visionpro', priority: 0.9 },
     { path: '/work', priority: 0.7 },
+    { path: '/blog', priority: 0.7 },
   ];
 
   return routes.map(({ path, priority }) => ({

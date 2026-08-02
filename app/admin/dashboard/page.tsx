@@ -26,15 +26,87 @@ import {
   Palette,
   Phone,
   Mail,
+  RefreshCw,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
+import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 
+type StatsRange = 'week' | 'month' | 'quarter';
+
+const RANGE_OPTIONS: Array<{ value: StatsRange; label: string }> = [
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+  { value: 'quarter', label: 'Quarter' },
+];
+
+function formatRelativeTime(date: Date): string {
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 10) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return date.toLocaleDateString();
+}
+
+function RefreshIndicator({
+  lastUpdated,
+  refreshing,
+  onRefresh,
+}: {
+  lastUpdated: Date | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const [, forceTick] = useState(0);
+
+  // Re-render every 30s so the "Xm ago" label stays current without a refetch.
+  useEffect(() => {
+    const id = setInterval(() => forceTick((n) => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <button
+      onClick={onRefresh}
+      disabled={refreshing}
+      className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-60"
+      title="Refresh dashboard data"
+    >
+      <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+      {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
+    </button>
+  );
+}
+
+function RangePicker({ range, onChange }: { range: StatsRange; onChange: (r: StatsRange) => void }) {
+  return (
+    <div className="inline-flex gap-1 rounded-xl border border-white/10 p-1 bg-white/[0.02]">
+      {RANGE_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+            range === opt.value
+              ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black shadow-sm'
+              : 'text-white/40 hover:text-white/70'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface SalesStats {
+  periodLabel: string;
   pipeline: Array<{ status: string; count: number; value: number }>;
   weightedForecast: number;
   totalPipelineValue: number;
@@ -46,6 +118,15 @@ interface SalesStats {
   followUpsToday: Array<{ id: string; company: string; phone: string | null; email: string | null }>;
   followUpsOverdue: Array<{ id: string; company: string; nextFollowUpAt: string; phone: string | null; email: string | null }>;
   staleLeads: Array<{ id: string; company: string; updatedAt: string; phone: string | null; email: string | null }>;
+  stageAging: Array<{
+    id: string;
+    company: string;
+    estimatedValue: number | null;
+    phone: string | null;
+    email: string | null;
+    stageLabel: string;
+    daysIdle: number;
+  }>;
   sourcePerformance: Array<{ source: string; total: number; won: number }>;
   clientTypeBreakdown: Record<string, number>;
   wonDeals: Array<{ id: string; company: string; value: number; wonAt: string }>;
@@ -53,6 +134,7 @@ interface SalesStats {
 }
 
 interface OpsStats {
+  periodLabel: string;
   newHandoffs: Array<{
     id: string;
     name: string;
@@ -62,16 +144,17 @@ interface OpsStats {
     onboardingTotal: number;
     onboardingAnswered: number;
     handoffAcknowledgedAt: string | null;
+    daysWaiting: number;
   }>;
   newClientsThisWeek: number;
   atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
   overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
-  projectsAwaitingReply: Array<{ id: string; name: string; company: string }>;
+  projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
   pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
   revenueThisMonth: number;
   revenueLastMonth: number;
-  revenueHistory: Array<{ label: string; value: number }>;
+  revenueHistory: Array<{ label: string; value: number; year: number; month: number }>;
   activeProjectCount: number;
   activityFeed: Array<{
     type: 'message' | 'payment' | 'proposal';
@@ -107,28 +190,34 @@ interface NextAction {
 }
 
 function NextActionsCard({ stats }: { stats: SalesStats }) {
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const seen = new Set<string>();
   const actions: NextAction[] = [];
 
   for (const l of stats.followUpsOverdue) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email });
   }
   for (const l of stats.followUpsToday) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email });
   }
   for (const l of stats.hotLeads) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
   }
   for (const l of stats.staleLeads) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email });
+  }
+  for (const l of stats.stageAging) {
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
   }
 
   return (
@@ -173,6 +262,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                     </a>
                   )}
                   <LogTouchPopover leadId={a.id} />
+                  <SnoozeButton leadId={a.id} onSnoozed={() => setDismissed((prev) => new Set(prev).add(a.id))} />
                 </div>
               }
             />
@@ -193,14 +283,23 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
 
   return (
     <Card className="p-6">
-      <CardHeader icon={Radio} tone="purple" title="Insights" subtitle="Why deals win, lose, and where they come from" />
+      <CardHeader
+        icon={Radio}
+        tone="purple"
+        title="Insights"
+        subtitle={
+          tab === 'tier'
+            ? 'Current active pipeline, by estimated deal size'
+            : `Lost reasons and sources, ${stats.periodLabel.toLowerCase()}`
+        }
+      />
       <div className="flex gap-1.5 mb-4">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
-              tab === t.key ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+            className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-colors ${
+              tab === t.key ? 'bg-purple-500/25 text-purple-200 ring-1 ring-purple-400/40' : 'text-white/40 hover:text-white/70'
             }`}
           >
             {t.label}
@@ -210,7 +309,7 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
 
       {tab === 'lost' &&
         (Object.keys(stats.lostReasonCounts).length === 0 ? (
-          <EmptyState icon={XCircle} text="No lost deals recorded yet." />
+          <EmptyState icon={XCircle} text={`No deals lost ${stats.periodLabel.toLowerCase()}.`} />
         ) : (
           <div className="space-y-2">
             {Object.entries(stats.lostReasonCounts)
@@ -224,18 +323,21 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
           </div>
         ))}
 
-      {tab === 'source' && (
-        <div className="space-y-2">
-          {stats.sourcePerformance.map((s) => (
-            <div key={s.source} className="flex justify-between text-sm px-1">
-              <span className="text-white/70">{s.source}</span>
-              <span className="text-white/40">
-                {s.won}/{s.total} won
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {tab === 'source' &&
+        (stats.sourcePerformance.length === 0 ? (
+          <EmptyState icon={Radio} text={`No new leads ${stats.periodLabel.toLowerCase()}.`} />
+        ) : (
+          <div className="space-y-2">
+            {stats.sourcePerformance.map((s) => (
+              <div key={s.source} className="flex justify-between text-sm px-1">
+                <span className="text-white/70">{s.source}</span>
+                <span className="text-white/40">
+                  {s.won}/{s.total} won
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
 
       {tab === 'tier' &&
         (Object.keys(stats.clientTypeBreakdown).length === 0 ? (
@@ -254,6 +356,81 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
   );
 }
 
+type WonDealsSort = 'recent' | 'value';
+
+function WonDealsCard({ stats }: { stats: SalesStats }) {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<WonDealsSort>('recent');
+
+  const deals = stats.wonDeals
+    .filter((d) => d.company.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => (sort === 'value' ? b.value - a.value : new Date(b.wonAt).getTime() - new Date(a.wonAt).getTime()));
+
+  return (
+    <Card className="p-6" glow="emerald">
+      <CardHeader
+        icon={DollarSign}
+        tone="emerald"
+        title="Won Deals"
+        subtitle={`Your commission log · ${Math.round(COMMISSION_RATE * 100)}% of closed value`}
+        action={
+          <span className="text-sm text-emerald-300 font-semibold">
+            {formatCents(Math.round(stats.totalWonValue * COMMISSION_RATE))}
+          </span>
+        }
+      />
+      {stats.wonDeals.length === 0 ? (
+        <EmptyState icon={DollarSign} text="No deals closed yet." />
+      ) : (
+        <>
+          <div className="flex gap-2 mb-3">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search company..."
+              className="flex-1 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            />
+            <div className="flex gap-1 rounded-lg border border-white/10 p-1 bg-white/[0.02] shrink-0">
+              {(['recent', 'value'] as WonDealsSort[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSort(s)}
+                  className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                    sort === s ? 'bg-emerald-500/25 text-emerald-200 ring-1 ring-emerald-400/40' : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  {s === 'recent' ? 'Recent' : 'Value'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {deals.length === 0 ? (
+            <p className="text-sm text-white/30 py-4 text-center">No deals match "{query}".</p>
+          ) : (
+            <div className="space-y-0.5 max-h-64 overflow-y-auto">
+              {deals.map((d) => (
+                <ListRow
+                  key={d.id}
+                  href={`/admin/leads/${d.id}`}
+                  title={d.company}
+                  subtitle={`Deal value ${formatCents(d.value)}`}
+                  trailing={
+                    <span className="text-white/40 text-xs whitespace-nowrap">
+                      <span className="text-emerald-300/80 font-medium">
+                        {formatCents(Math.round(d.value * COMMISSION_RATE))}
+                      </span>{' '}
+                      · {new Date(d.wonAt).toLocaleDateString()}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
 
 /**
  * The first thing a rep should see: how many businesses are waiting on a
@@ -333,15 +510,37 @@ function CallListBanner() {
   );
 }
 
-function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
+function SalesDashboard({
+  stats,
+  name,
+  range,
+  onRangeChange,
+  lastUpdated,
+  refreshing,
+  onRefresh,
+}: {
+  stats: SalesStats;
+  name: string;
+  range: StatsRange;
+  onRangeChange: (r: StatsRange) => void;
+  lastUpdated: Date | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
   const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="mb-8">
-        <p className="text-sm text-sky-300/70 font-medium mb-1">Sales</p>
-        <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
-        <p className="text-white/40">Here's where your pipeline stands.</p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
+        <div>
+          <p className="text-sm text-sky-300/70 font-medium mb-1">Sales</p>
+          <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
+          <p className="text-white/40">Here's where your pipeline stands.</p>
+        </div>
+        <RangePicker range={range} onChange={onRangeChange} />
+      </div>
+      <div className="flex justify-end mb-6">
+        <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
       </div>
 
       <CallListBanner />
@@ -351,7 +550,7 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
           items={[
             { icon: TrendingUp, label: 'Pipeline Value', value: formatCents(stats.totalPipelineValue), tone: 'sky' },
             { icon: Target, label: 'Weighted Forecast', value: formatCents(stats.weightedForecast), tone: 'purple', accent: true },
-            { icon: Trophy, label: 'Won This Week', value: formatCents(stats.thisWeek.revenue), tone: 'emerald' },
+            { icon: Trophy, label: `Won ${stats.periodLabel}`, value: formatCents(stats.thisWeek.revenue), tone: 'emerald' },
             { icon: Percent, label: 'Conversion Rate', value: `${Math.round(stats.conversionRate * 100)}%`, tone: 'amber' },
           ]}
         />
@@ -393,7 +592,7 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
               <p className="font-semibold">{formatCents(stats.avgDealSize)}</p>
             </div>
             <div>
-              <p className="text-white/40 text-xs mb-1">New Leads This Week</p>
+              <p className="text-white/40 text-xs mb-1">New Leads {stats.periodLabel}</p>
               <p className="font-semibold">{stats.thisWeek.newLeads}</p>
             </div>
             <div>
@@ -413,41 +612,7 @@ function SalesDashboard({ stats, name }: { stats: SalesStats; name: string }) {
       <div className="grid lg:grid-cols-2 gap-5 mb-8">
         <InsightsCard stats={stats} />
 
-        <Card className="p-6" glow="emerald">
-          <CardHeader
-            icon={DollarSign}
-            tone="emerald"
-            title="Won Deals"
-            subtitle={`Your commission log · ${Math.round(COMMISSION_RATE * 100)}% of closed value`}
-            action={
-              <span className="text-sm text-emerald-300 font-semibold">
-                {formatCents(Math.round(stats.totalWonValue * COMMISSION_RATE))}
-              </span>
-            }
-          />
-          {stats.wonDeals.length === 0 ? (
-            <EmptyState icon={DollarSign} text="No deals closed yet." />
-          ) : (
-            <div className="space-y-0.5 max-h-64 overflow-y-auto">
-              {stats.wonDeals.map((d) => (
-                <ListRow
-                  key={d.id}
-                  href={`/admin/leads/${d.id}`}
-                  title={d.company}
-                  subtitle={`Deal value ${formatCents(d.value)}`}
-                  trailing={
-                    <span className="text-white/40 text-xs whitespace-nowrap">
-                      <span className="text-emerald-300/80 font-medium">
-                        {formatCents(Math.round(d.value * COMMISSION_RATE))}
-                      </span>{' '}
-                      · {new Date(d.wonAt).toLocaleDateString()}
-                    </span>
-                  }
-                />
-              ))}
-            </div>
-          )}
-        </Card>
+        <WonDealsCard stats={stats} />
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -639,13 +804,20 @@ function HandoffRow({
           {handoff.handoffAcknowledgedAt ? (
             <Badge tone="emerald">Picked up</Badge>
           ) : (
-            <button
-              onClick={handleAcknowledge}
-              disabled={saving}
-              className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
-            >
-              {saving ? 'Saving...' : "I've got this"}
-            </button>
+            <>
+              {handoff.daysWaiting >= 2 && (
+                <Badge tone={handoff.daysWaiting >= 4 ? 'red' : 'amber'} solid>
+                  Waiting {handoff.daysWaiting}d
+                </Badge>
+              )}
+              <button
+                onClick={handleAcknowledge}
+                disabled={saving}
+                className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                {saving ? 'Saving...' : "I've got this"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -654,7 +826,268 @@ function HandoffRow({
   );
 }
 
-function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; name: string; showLeadsSpreadsheet: boolean }) {
+interface RevenueBreakdownPayment {
+  id: string;
+  amount: number;
+  type: string;
+  createdAt: string;
+  projectId: string;
+  projectName: string;
+  company: string;
+}
+
+function RevenueChartCard({ revenueHistory }: { revenueHistory: OpsStats['revenueHistory'] }) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [payments, setPayments] = useState<RevenueBreakdownPayment[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBarClick = async (index: number) => {
+    if (selectedIndex === index) {
+      setSelectedIndex(null);
+      setPayments(null);
+      return;
+    }
+    setSelectedIndex(index);
+    setPayments(null);
+    setError(null);
+    setLoading(true);
+    const bar = revenueHistory[index];
+    try {
+      const res = await fetch(`/api/admin/revenue-breakdown?year=${bar.year}&month=${bar.month}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load breakdown.');
+      setPayments(data.payments);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load breakdown.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="p-6 mb-5">
+      <CardHeader icon={TrendingUp} tone="emerald" title="Revenue — Last 6 Months" subtitle="Click a bar to see what made up that month" />
+      <MiniBarChart data={revenueHistory} formatValue={(v) => formatCents(v)} onBarClick={handleBarClick} selectedIndex={selectedIndex} />
+
+      {selectedIndex !== null && (
+        <div className="mt-5 pt-5 border-t border-white/[0.07]">
+          <p className="text-xs text-white/40 mb-3">{revenueHistory[selectedIndex].label} payments</p>
+          {loading && <p className="text-sm text-white/30 py-2">Loading...</p>}
+          {error && (
+            <div className="flex items-center gap-2 text-sm text-red-300/80">
+              <AlertTriangle size={14} /> {error}
+            </div>
+          )}
+          {payments && payments.length === 0 && <p className="text-sm text-white/30 py-2">No payments that month.</p>}
+          {payments && payments.length > 0 && (
+            <div className="space-y-0.5 max-h-56 overflow-y-auto">
+              {payments.map((p) => (
+                <ListRow
+                  key={p.id}
+                  href={`/admin/projects/${p.projectId}`}
+                  title={p.company}
+                  subtitle={`${p.projectName} · ${p.type}`}
+                  trailing={
+                    <span className="text-white/40 text-xs whitespace-nowrap">
+                      <span className="text-emerald-300/80 font-medium">{formatCents(p.amount)}</span> ·{' '}
+                      {new Date(p.createdAt).toLocaleDateString()}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+type OverdueSort = 'amount' | 'name';
+
+function RemindButton({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  if (state === 'sent') return <span className="text-[11px] text-emerald-300/80 whitespace-nowrap">Reminder sent</span>;
+
+  return (
+    <button
+      onClick={async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setState('sending');
+        try {
+          const res = await fetch(`/api/admin/projects/${projectId}/payment-reminder`, { method: 'POST' });
+          setState(res.ok ? 'sent' : 'error');
+        } catch {
+          setState('error');
+        }
+      }}
+      disabled={state === 'sending'}
+      className={`text-[11px] px-2 py-1 rounded-md border font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
+        state === 'error'
+          ? 'border-red-400/30 text-red-300 hover:bg-red-400/10'
+          : 'border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-400/30 hover:bg-amber-400/10'
+      }`}
+    >
+      {state === 'sending' ? 'Sending…' : state === 'error' ? 'Failed — retry' : 'Remind'}
+    </button>
+  );
+}
+
+function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<OverdueSort>('amount');
+
+  const filtered = balances
+    .filter((p) => p.company.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => (sort === 'amount' ? b.balanceDue - a.balanceDue : a.company.localeCompare(b.company)));
+
+  return (
+    <Card className="p-6">
+      <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
+      {balances.length === 0 ? (
+        <EmptyState icon={Wallet} text="Nothing outstanding." />
+      ) : (
+        <>
+          <div className="flex gap-2 mb-3">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search company..."
+              className="flex-1 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            />
+            <div className="flex gap-1 rounded-lg border border-white/10 p-1 bg-white/[0.02] shrink-0">
+              {(['amount', 'name'] as OverdueSort[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSort(s)}
+                  className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                    sort === s ? 'bg-amber-500/25 text-amber-200 ring-1 ring-amber-400/40' : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  {s === 'amount' ? 'Amount' : 'Name'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {filtered.length === 0 ? (
+            <p className="text-sm text-white/30 py-4 text-center">No matches for "{query}".</p>
+          ) : (
+            <div className="space-y-0.5">
+              {filtered.map((p) => (
+                <ListRow
+                  key={p.id}
+                  href={`/admin/projects/${p.id}`}
+                  title={p.company}
+                  trailing={
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Badge tone="amber">{formatCents(p.balanceDue)}</Badge>
+                      <RemindButton projectId={p.id} />
+                    </div>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+const PAGE_SIZE = 10;
+
+function ShowMoreButton({ remaining, onClick }: { remaining: number; onClick: () => void }) {
+  if (remaining <= 0) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="w-full mt-2 text-xs text-white/40 hover:text-white/70 font-medium py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors"
+    >
+      Show {Math.min(remaining, PAGE_SIZE)} more ({remaining} left)
+    </button>
+  );
+}
+
+function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = projects.slice(0, visible);
+
+  return (
+    <Card className="p-6" glow="red">
+      <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
+      {projects.length === 0 ? (
+        <EmptyState icon={AlertTriangle} text="Everything's current." />
+      ) : (
+        <>
+          <div className="space-y-0.5">
+            {shown.map((p) => (
+              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
+            ))}
+          </div>
+          <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function ActivityFeedCard({ activity }: { activity: OpsStats['activityFeed'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = activity.slice(0, visible);
+
+  return (
+    <Card className="lg:col-span-2 p-6">
+      <CardHeader icon={Activity} tone="sky" title="Activity Feed" />
+      {activity.length === 0 ? (
+        <EmptyState icon={Activity} text="Nothing new." />
+      ) : (
+        <>
+          <div className="space-y-1 max-h-96 overflow-y-auto">
+            {shown.map((a) => (
+              <Link
+                key={`${a.type}-${a.id}`}
+                href={a.projectId ? `/admin/projects/${a.projectId}` : a.leadId ? `/admin/leads/${a.leadId}` : '#'}
+                className="block px-3 py-2.5 rounded-xl hover:bg-white/[0.05] border-l-2 border-sky-400/40 transition-colors"
+              >
+                <div className="flex justify-between items-start gap-2">
+                  <p className="text-sm font-medium">{a.label}</p>
+                  <span className="text-[10px] text-white/30 whitespace-nowrap">
+                    {new Date(a.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-xs text-white/40 mt-0.5">{a.preview}</p>
+              </Link>
+            ))}
+          </div>
+          <ShowMoreButton remaining={activity.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function OpsDashboard({
+  stats,
+  name,
+  showLeadsSpreadsheet,
+  range,
+  onRangeChange,
+  lastUpdated,
+  refreshing,
+  onRefresh,
+}: {
+  stats: OpsStats;
+  name: string;
+  showLeadsSpreadsheet: boolean;
+  range: StatsRange;
+  onRangeChange: (r: StatsRange) => void;
+  lastUpdated: Date | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
   const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
   const [newHandoffs, setNewHandoffs] = useState(stats.newHandoffs);
   const revenueTrend =
@@ -664,13 +1097,19 @@ function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; 
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
         <div>
           <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
           <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
           <p className="text-white/40">Here's what needs you today.</p>
         </div>
-        <BroadcastComposer />
+        <div className="flex items-center gap-3">
+          <RangePicker range={range} onChange={onRangeChange} />
+          <BroadcastComposer />
+        </div>
+      </div>
+      <div className="flex justify-end mb-6">
+        <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
       </div>
 
       {pendingMockups.length > 0 && (
@@ -694,23 +1133,20 @@ function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; 
             { icon: FolderKanban, label: 'Active Projects', value: String(stats.activeProjectCount), tone: 'sky' },
             {
               icon: DollarSign,
-              label: 'Revenue This Month',
+              label: `Revenue ${stats.periodLabel}`,
               value: formatCents(stats.revenueThisMonth),
               tone: 'emerald',
               accent: true,
               trend: revenueTrend !== undefined ? { value: revenueTrend } : undefined,
               note: `Your cut (${Math.round(COMMISSION_RATE * 100)}%): ${formatCents(Math.round(stats.revenueThisMonth * COMMISSION_RATE))}`,
             },
-            { icon: UserPlus, label: 'New Clients This Week', value: String(stats.newClientsThisWeek), tone: 'purple' },
+            { icon: UserPlus, label: `New Clients ${stats.periodLabel}`, value: String(stats.newClientsThisWeek), tone: 'purple' },
             { icon: FileSignature, label: 'Awaiting Signature', value: String(stats.awaitingSignature.length), tone: 'amber' },
           ]}
         />
       </div>
 
-      <Card className="p-6 mb-5">
-        <CardHeader icon={TrendingUp} tone="emerald" title="Revenue — Last 6 Months" />
-        <MiniBarChart data={stats.revenueHistory} formatValue={(v) => formatCents(v)} />
-      </Card>
+      <RevenueChartCard revenueHistory={stats.revenueHistory} />
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
         <Card className="p-6" glow="emerald">
@@ -734,68 +1170,33 @@ function OpsDashboard({ stats, name, showLeadsSpreadsheet }: { stats: OpsStats; 
           )}
         </Card>
 
-        <Card className="p-6" glow="red">
-          <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
-          {stats.atRiskProjects.length === 0 ? (
-            <EmptyState icon={AlertTriangle} text="Everything's current." />
-          ) : (
-            <div className="space-y-0.5">
-              {stats.atRiskProjects.map((p) => (
-                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
-              ))}
-            </div>
-          )}
-        </Card>
+        <AtRiskProjectsCard projects={stats.atRiskProjects} />
 
-        <Card className="p-6">
-          <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
-          {stats.overdueBalances.length === 0 ? (
-            <EmptyState icon={Wallet} text="Nothing outstanding." />
-          ) : (
-            <div className="space-y-0.5">
-              {stats.overdueBalances.map((p) => (
-                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="amber">{formatCents(p.balanceDue)}</Badge>} />
-              ))}
-            </div>
-          )}
-        </Card>
+        <OverdueBalancesCard balances={stats.overdueBalances} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
-        <Card className="lg:col-span-2 p-6">
-          <CardHeader icon={Activity} tone="sky" title="Activity Feed" />
-          {stats.activityFeed.length === 0 ? (
-            <EmptyState icon={Activity} text="Nothing new." />
-          ) : (
-            <div className="space-y-1 max-h-96 overflow-y-auto">
-              {stats.activityFeed.map((a) => (
-                <Link
-                  key={`${a.type}-${a.id}`}
-                  href={a.projectId ? `/admin/projects/${a.projectId}` : a.leadId ? `/admin/leads/${a.leadId}` : '#'}
-                  className="block px-3 py-2.5 rounded-xl hover:bg-white/[0.05] border-l-2 border-sky-400/40 transition-colors"
-                >
-                  <div className="flex justify-between items-start gap-2">
-                    <p className="text-sm font-medium">{a.label}</p>
-                    <span className="text-[10px] text-white/30 whitespace-nowrap">
-                      {new Date(a.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <p className="text-xs text-white/40 mt-0.5">{a.preview}</p>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
+        <ActivityFeedCard activity={stats.activityFeed} />
 
         <TasksWidget />
       </div>
 
       {stats.projectsAwaitingReply.length > 0 && (
         <Card className="p-6 mb-5" glow="sky">
-          <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last" />
+          <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last, longest wait first" />
           <div className="grid sm:grid-cols-2 gap-1">
             {stats.projectsAwaitingReply.map((p) => (
-              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} subtitle={p.name} />
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                subtitle={p.name}
+                trailing={
+                  <Badge tone={p.waitHours >= 48 ? 'red' : p.waitHours >= 12 ? 'amber' : 'neutral'}>
+                    {p.waitHours < 24 ? `${p.waitHours}h` : `${Math.floor(p.waitHours / 24)}d`}
+                  </Badge>
+                }
+              />
             ))}
           </div>
         </Card>
@@ -848,35 +1249,65 @@ export default function AdminDashboardPage() {
   const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
   const [opsStats, setOpsStats] = useState<OpsStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [range, setRange] = useState<StatsRange>('week');
 
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
+      if (hasLoadedOnce) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
       try {
         const meResponse = await fetch('/api/auth/me');
         if (meResponse.status === 401) {
           router.push('/admin/login');
           return;
         }
+        if (!meResponse.ok) throw new Error(`Failed to load your session (${meResponse.status}).`);
         const me = await meResponse.json();
         const userRole = me.user?.role || 'admin';
+
+        const statsUrl = userRole === 'sales' ? '/api/admin/sales-stats' : '/api/admin/ops-stats';
+        const res = await fetch(`${statsUrl}?range=${range}`);
+        if (!res.ok) throw new Error(`Failed to load dashboard data (${res.status}).`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Failed to load dashboard data.');
+
+        if (cancelled) return;
         setRole(userRole);
         setName(me.user?.name || '');
-
         if (userRole === 'sales') {
-          const res = await fetch('/api/admin/sales-stats');
-          const data = await res.json();
-          if (data.success) setSalesStats(data.stats);
+          setSalesStats(data.stats);
         } else {
-          const res = await fetch('/api/admin/ops-stats');
-          const data = await res.json();
-          if (data.success) setOpsStats(data.stats);
+          setOpsStats(data.stats);
         }
+        setLastUpdated(new Date());
+        setHasLoadedOnce(true);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Something went wrong loading your dashboard.');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
     load();
-  }, [router]);
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, retryCount, range]);
 
   if (loading) {
     return (
@@ -886,12 +1317,53 @@ export default function AdminDashboardPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 h-[calc(100vh-56px)] lg:h-screen px-4 text-center">
+        <AlertTriangle className="text-red-400" size={32} />
+        <div>
+          <p className="font-semibold mb-1">Couldn't load your dashboard</p>
+          <p className="text-white/40 text-sm">{error}</p>
+        </div>
+        <button
+          onClick={() => setRetryCount((c) => c + 1)}
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  const onRefresh = () => setRetryCount((c) => c + 1);
+
   if (role === 'sales' && salesStats) {
-    return <SalesDashboard stats={salesStats} name={name} />;
+    return (
+      <SalesDashboard
+        stats={salesStats}
+        name={name}
+        range={range}
+        onRangeChange={setRange}
+        lastUpdated={lastUpdated}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      />
+    );
   }
 
   if (opsStats) {
-    return <OpsDashboard stats={opsStats} name={name} showLeadsSpreadsheet={role !== 'sales'} />;
+    return (
+      <OpsDashboard
+        stats={opsStats}
+        name={name}
+        showLeadsSpreadsheet={role !== 'sales'}
+        range={range}
+        onRangeChange={setRange}
+        lastUpdated={lastUpdated}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      />
+    );
   }
 
   return null;

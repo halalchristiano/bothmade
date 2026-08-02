@@ -97,6 +97,15 @@ export function SplitHero() {
         macOS software, and Vision Pro experiences built by one team.
       </h1>
 
+      {/* The one plain sentence on an otherwise all-interaction hero — says
+          who this is and what it's for before anyone has to drag anything. */}
+      <p
+        aria-hidden="true"
+        className="absolute top-24 md:top-28 left-1/2 -translate-x-1/2 z-20 max-w-xs md:max-w-sm text-center text-xs md:text-sm text-white/45 leading-relaxed px-6"
+      >
+        Web and native Apple development, one small team, start to finish.
+      </p>
+
       {/* ---------- LAYER A : NATIVE (base, right side) ---------- */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_40%,#1a0b2e_0%,#05030a_60%)]" />

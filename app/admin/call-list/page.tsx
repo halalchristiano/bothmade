@@ -12,13 +12,22 @@ import {
   AlertTriangle,
   ChevronRight,
   HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
+import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 
-type CallReason = 'bounced' | 'overdue' | 'today' | 'no-follow-up' | 'never-contacted' | 'scheduled';
+type CallReason =
+  | 'replied'
+  | 'bounced'
+  | 'overdue'
+  | 'today'
+  | 'no-follow-up'
+  | 'never-contacted'
+  | 'scheduled';
 
 interface CallRow {
   id: string;
@@ -38,6 +47,13 @@ interface CallRow {
 }
 
 const REASONS: Record<CallReason, { label: string; short: string; blurb: string; classes: string }> = {
+  replied: {
+    label: 'They wrote back — ring these first',
+    short: 'They replied to you',
+    blurb:
+      "Someone at these businesses answered your email. They are the warmest leads you have and they go cold fastest — call them before anything else on this page.",
+    classes: 'border-emerald-400/40 bg-emerald-400/[0.12] text-emerald-100',
+  },
   bounced: {
     label: 'Email bounced — phone is the only way in',
     short: "Their email is dead — must call",
@@ -76,7 +92,7 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
   },
 };
 
-const ORDER: CallReason[] = ['bounced', 'overdue', 'today', 'no-follow-up', 'never-contacted'];
+const ORDER: CallReason[] = ['replied', 'bounced', 'overdue', 'today', 'no-follow-up', 'never-contacted'];
 
 export default function CallListPage() {
   const router = useRouter();
@@ -84,6 +100,7 @@ export default function CallListPage() {
   const [noPhone, setNoPhone] = useState<CallRow[]>([]);
   const [meta, setMeta] = useState<{
     totalOpen: number;
+    callsToday: number;
     breakdown: Partial<Record<CallReason, number>>;
     noPhoneCount: number;
     truncated: boolean;
@@ -99,6 +116,12 @@ export default function CallListPage() {
   const [readyNow, setReadyNow] = useState(false);
   const [sortBy, setSortBy] = useState<'urgent' | 'value' | 'time'>('urgent');
   const [nowTick, setNowTick] = useState(() => Date.now());
+  // Tapping a tel: link is the one moment we genuinely know a call was
+  // started — a browser cannot read the phone's call history, on any OS. So
+  // we remember who was dialled and ask on the way back, rather than relying
+  // on him to come and log it unprompted.
+  const [pendingCall, setPendingCall] = useState<{ id: string; company: string; at: number } | null>(null);
+  const [savingQuick, setSavingQuick] = useState(false);
 
   const load = async () => {
     try {
@@ -113,6 +136,7 @@ export default function CallListPage() {
         setNoPhone(data.noPhone);
         setMeta({
           totalOpen: data.totalOpen ?? 0,
+          callsToday: data.callsToday ?? 0,
           breakdown: data.breakdown ?? {},
           noPhoneCount: data.noPhoneCount ?? 0,
           truncated: !!data.truncated,
@@ -133,6 +157,68 @@ export default function CallListPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Survives the page being backgrounded while the dialler is open, which is
+  // exactly what happens on a phone.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('pendingCall');
+      if (raw) setPendingCall(JSON.parse(raw));
+    } catch {
+      /* a corrupt entry just means no prompt */
+    }
+  }, []);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const raw = sessionStorage.getItem('pendingCall');
+        if (raw) setPendingCall(JSON.parse(raw));
+      } catch {
+        /* ignore */
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  const startCall = (row: CallRow) => {
+    const entry = { id: row.id, company: row.company, at: Date.now() };
+    try {
+      sessionStorage.setItem('pendingCall', JSON.stringify(entry));
+    } catch {
+      /* private mode — the prompt just won't survive a reload */
+    }
+    setPendingCall(entry);
+  };
+
+  const clearPendingCall = () => {
+    try {
+      sessionStorage.removeItem('pendingCall');
+    } catch {
+      /* ignore */
+    }
+    setPendingCall(null);
+  };
+
+  const logQuickOutcome = async (key: string) => {
+    if (!pendingCall) return;
+    setSavingQuick(true);
+    try {
+      const res = await fetch(`/api/admin/leads/${pendingCall.id}/call-outcome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: key }),
+      });
+      if (res.ok) {
+        clearPendingCall();
+        load();
+      }
+    } finally {
+      setSavingQuick(false);
+    }
+  };
+
   const syncBounces = async () => {
     setSyncing(true);
     setSyncMessage(null);
@@ -143,12 +229,16 @@ export default function CallListPage() {
         setSyncMessage(data.error || 'Could not check for bounces.');
         return;
       }
+      const parts = [
+        data.repliesFlagged > 0 &&
+          `${data.repliesFlagged} ${data.repliesFlagged === 1 ? 'business has' : 'businesses have'} written back — they're at the top of your list`,
+        data.flagged > 0 &&
+          `${data.flagged} ${data.flagged === 1 ? 'address' : 'addresses'} bounced — call those instead of emailing`,
+      ].filter(Boolean);
       setSyncMessage(
-        data.flagged > 0
-          ? `Found ${data.flagged} bounced ${data.flagged === 1 ? 'address' : 'addresses'} — moved to the top of your list.`
-          : `Checked ${data.scanned} bounce ${data.scanned === 1 ? 'notice' : 'notices'} — nothing new.`
+        parts.length > 0 ? `${parts.join('. ')}.` : 'Checked your inbox — nothing new.'
       );
-      if (data.flagged > 0) load();
+      if (data.flagged > 0 || data.repliesFlagged > 0) load();
     } finally {
       setSyncing(false);
     }
@@ -209,6 +299,13 @@ export default function CallListPage() {
           <p className="text-xs text-white/35 mt-1">
             Start at the top and work down. Every business says why it's here.
           </p>
+          {/* Progress. The list only ever shows what's left, which makes a
+              long day feel like no progress at all. */}
+          {meta && meta.callsToday > 0 && (
+            <p className="text-xs text-emerald-300/80 font-semibold mt-1.5">
+              {meta.callsToday} {meta.callsToday === 1 ? 'call' : 'calls'} logged today — nice one.
+            </p>
+          )}
           <p className="text-sm text-white/45 mt-1">
             {total === 0
               ? 'Nothing waiting on a call right now.'
@@ -232,7 +329,7 @@ export default function CallListPage() {
           className="shrink-0 flex items-center gap-1.5 rounded-xl border border-white/15 px-3.5 py-2 text-xs font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors"
         >
           <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Checking...' : 'Check for bounced emails'}
+          {syncing ? 'Checking...' : 'Check my inbox'}
         </button>
       </div>
 
@@ -244,6 +341,7 @@ export default function CallListPage() {
           <div className="space-y-1.5 text-xs">
             {(
               [
+                ['replied', REASONS.replied.label],
                 ['bounced', REASONS.bounced.label],
                 ['overdue', REASONS.overdue.label],
                 ['today', REASONS.today.label],
@@ -329,6 +427,7 @@ export default function CallListPage() {
           <div className="flex gap-2 mt-3">
             <a
               href={`tel:${nextUp.phone}`}
+              onClick={() => startCall(nextUp)}
               className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
             >
               <Phone size={14} /> Call {nextUp.company}
@@ -348,6 +447,51 @@ export default function CallListPage() {
           You have more open leads than this page loads at once. The most urgent are shown — clear some down and
           the rest will appear.
         </p>
+      )}
+
+      {pendingCall && (
+        <div className="mb-5 rounded-2xl border border-sky-400/30 bg-sky-400/[0.1] p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white/90 break-words">
+                You called {pendingCall.company} — how did it go?
+              </p>
+              <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
+                One tap logs it, moves them along and books the next follow-up.
+              </p>
+            </div>
+            <button
+              onClick={clearPendingCall}
+              className="shrink-0 text-xs text-white/40 hover:text-white transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {CALL_OUTCOMES.filter((o) => !o.askForDate).map((o) => (
+              <button
+                key={o.key}
+                onClick={() => logQuickOutcome(o.key)}
+                disabled={savingQuick}
+                className={`rounded-xl border px-3 py-2 text-left text-xs font-bold disabled:opacity-40 transition-colors ${
+                  o.tone === 'good'
+                    ? 'border-emerald-400/30 bg-emerald-400/[0.08] text-emerald-100 hover:bg-emerald-400/15'
+                    : o.tone === 'bad'
+                      ? 'border-red-400/25 bg-red-400/[0.06] text-red-100 hover:bg-red-400/15'
+                      : 'border-white/12 bg-white/[0.04] text-white/80 hover:bg-white/[0.08]'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <Link
+            href={`/admin/leads/${pendingCall.id}`}
+            className="block text-center text-xs text-sky-300 hover:text-sky-200 mt-2.5 transition-colors"
+          >
+            Or open their page to add a note
+          </Link>
+        </div>
       )}
 
       {syncMessage && (
@@ -465,6 +609,7 @@ export default function CallListPage() {
                       <div className="flex gap-2 mt-3">
                         <a
                           href={`tel:${row.phone}`}
+                          onClick={() => startCall(row)}
                           className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-400/15 border border-emerald-400/30 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-400/25 transition-colors"
                         >
                           <Phone size={13} /> Call {row.phone}

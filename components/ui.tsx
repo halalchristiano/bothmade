@@ -19,6 +19,55 @@ import type { ReactNode, ComponentProps } from 'react';
  * truth: change the house style here and the whole site follows.
  */
 
+/**
+ * Magnetic offset — while the pointer is within `reach` of the element's
+ * center, the element drifts a fraction of the way toward it; a spring
+ * pulls it back to rest the instant the pointer leaves. Fine-pointer only
+ * and inert under reduced motion, so it never fights touch or a11y.
+ */
+function useMagnetic(reach = 70, pull = 0.35) {
+  const ref = useRef<HTMLElement>(null);
+  const reduceMotion = useReducedMotion();
+  const x = useSpring(0, { stiffness: 300, damping: 20, mass: 0.5 });
+  const y = useSpring(0, { stiffness: 300, damping: 20, mass: 0.5 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || reduceMotion) return;
+    const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
+    if (!fine.matches) return;
+
+    const onMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist < reach) {
+        x.set(dx * pull);
+        y.set(dy * pull);
+      } else {
+        x.set(0);
+        y.set(0);
+      }
+    };
+    const onLeave = () => {
+      x.set(0);
+      y.set(0);
+    };
+
+    window.addEventListener('mousemove', onMove, { passive: true });
+    el.addEventListener('mouseleave', onLeave);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      el.removeEventListener('mouseleave', onLeave);
+    };
+  }, [reach, pull, reduceMotion, x, y]);
+
+  return { ref, x, y };
+}
+
 /** Pill CTA with the bottom-fill hover. Renders a Link, or a button when `type` is set. */
 export function PillCTA({
   href,
@@ -45,6 +94,7 @@ export function PillCTA({
 }) {
   const pad = size === 'lg' ? 'px-10 py-4 text-sm' : 'px-8 py-3.5 text-sm';
   const onLight = tone === 'light';
+  const { ref, x, y } = useMagnetic();
 
   const className = muted
     ? onLight
@@ -75,21 +125,28 @@ export function PillCTA({
 
   if (href) {
     return (
-      <Link href={href} onClick={onClick} className={className}>
-        {inner}
-      </Link>
+      <motion.div
+        ref={ref as React.RefObject<HTMLDivElement>}
+        style={{ x, y, display: 'inline-block' }}
+      >
+        <Link href={href} onClick={onClick} className={className}>
+          {inner}
+        </Link>
+      </motion.div>
     );
   }
   return (
-    <button
+    <motion.button
+      ref={ref as React.RefObject<HTMLButtonElement>}
       type={type ?? 'button'}
       disabled={disabled}
       aria-busy={busy}
       onClick={onClick}
       className={className}
+      style={{ x, y }}
     >
       {inner}
-    </button>
+    </motion.button>
   );
 }
 

@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
-import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
+import { ACTIVE_LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
+
+// Late-funnel stages where a stall is expensive — worth a tighter SLA than
+// the generic 5-day "stale" threshold that covers every active stage.
+const LATE_FUNNEL_STATUSES = ['proposal_sent', 'verbal_yes', 'contract_sent', 'deposit_pending'];
+const LATE_FUNNEL_STALL_DAYS = 3;
 
 // Rough probability-to-close per stage, used only for the weighted forecast.
 const STAGE_WEIGHT: Record<string, number> = {
@@ -23,27 +28,45 @@ const STAGE_WEIGHT: Record<string, number> = {
 };
 const ACTIVE_STATUSES: string[] = [...ACTIVE_LEAD_STATUSES];
 
-export async function GET() {
+export type StatsRange = 'week' | 'month' | 'quarter';
+
+const RANGE_LABELS: Record<StatsRange, string> = {
+  week: 'This Week',
+  month: 'This Month',
+  quarter: 'This Quarter',
+};
+
+export function getPeriodStart(range: StatsRange, now: Date): Date {
+  if (range === 'month') return new Date(now.getFullYear(), now.getMonth(), 1);
+  if (range === 'quarter') return new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+  return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+}
+
+export async function GET(request: Request) {
   try {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
+    const { searchParams } = new URL(request.url);
+    const rangeParam = searchParams.get('range');
+    const range: StatsRange = rangeParam === 'month' || rangeParam === 'quarter' ? rangeParam : 'week';
+
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart = getPeriodStart(range, now);
     const staleThreshold = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 
     // "My" leads: assigned to me, or unassigned (so nothing falls through the cracks).
     const mine = { OR: [{ assignedToId: session.userId }, { assignedToId: null }] };
 
-    const [allMine, wonAllTime, lostAllTime, newThisWeek, activityThisWeek] = await Promise.all([
+    const [allMine, wonAllTime, lostAllTime, newInPeriod, activityInPeriod] = await Promise.all([
       prisma.lead.findMany({ where: mine }),
       prisma.lead.findMany({ where: { ...mine, status: 'won' } }),
       prisma.lead.findMany({ where: { ...mine, status: 'lost' } }),
-      prisma.lead.count({ where: { ...mine, createdAt: { gte: weekAgo } } }),
+      prisma.lead.count({ where: { ...mine, createdAt: { gte: periodStart } } }),
       prisma.leadActivity.count({
-        where: { createdAt: { gte: weekAgo }, createdById: session.userId },
+        where: { createdAt: { gte: periodStart }, createdById: session.userId },
       }),
     ]);
 
@@ -58,8 +81,8 @@ export async function GET() {
       0
     );
 
-    const wonThisWeek = wonAllTime.filter((l) => l.updatedAt >= weekAgo);
-    const revenueThisWeek = wonThisWeek.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+    const wonInPeriod = wonAllTime.filter((l) => l.updatedAt >= periodStart);
+    const revenueInPeriod = wonInPeriod.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
 
     const closedTotal = wonAllTime.length + lostAllTime.length;
     const conversionRate = closedTotal > 0 ? wonAllTime.length / closedTotal : 0;
@@ -68,8 +91,9 @@ export async function GET() {
         ? Math.round(wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0) / wonAllTime.length)
         : 0;
 
+    const lostInPeriod = lostAllTime.filter((l) => l.updatedAt >= periodStart);
     const lostReasonCounts: Record<string, number> = {};
-    for (const l of lostAllTime) {
+    for (const l of lostInPeriod) {
       const reason = l.lostReason?.trim() || 'No reason recorded';
       lostReasonCounts[reason] = (lostReasonCounts[reason] || 0) + 1;
     }
@@ -82,8 +106,14 @@ export async function GET() {
     const followUpsOverdue = active.filter((l) => l.nextFollowUpAt && l.nextFollowUpAt < startOfToday);
     const staleLeads = active.filter((l) => l.updatedAt < staleThreshold);
 
+    const lateFunnelStallThreshold = new Date(now.getTime() - LATE_FUNNEL_STALL_DAYS * 24 * 60 * 60 * 1000);
+    const stageAging = active.filter(
+      (l) => LATE_FUNNEL_STATUSES.includes(l.status) && l.updatedAt < lateFunnelStallThreshold
+    );
+
+    const leadsInPeriod = allMine.filter((l) => l.createdAt >= periodStart);
     const sourceMap: Record<string, { total: number; won: number }> = {};
-    for (const l of allMine) {
+    for (const l of leadsInPeriod) {
       const source = l.source?.trim() || 'Unknown';
       if (!sourceMap[source]) sourceMap[source] = { total: 0, won: 0 };
       sourceMap[source].total += 1;
@@ -113,11 +143,13 @@ export async function GET() {
           pipeline,
           weightedForecast,
           totalPipelineValue: pipeline.reduce((s, p) => s + p.value, 0),
+          range,
+          periodLabel: RANGE_LABELS[range],
           thisWeek: {
-            newLeads: newThisWeek,
-            activityLogged: activityThisWeek,
-            won: wonThisWeek.length,
-            revenue: revenueThisWeek,
+            newLeads: newInPeriod,
+            activityLogged: activityInPeriod,
+            won: wonInPeriod.length,
+            revenue: revenueInPeriod,
           },
           conversionRate,
           avgDealSize,
@@ -126,11 +158,20 @@ export async function GET() {
           followUpsToday: followUpsToday.map((l) => ({ id: l.id, company: l.company, phone: l.phone, email: l.email })),
           followUpsOverdue: followUpsOverdue.map((l) => ({ id: l.id, company: l.company, nextFollowUpAt: l.nextFollowUpAt, phone: l.phone, email: l.email })),
           staleLeads: staleLeads.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt, phone: l.phone, email: l.email })),
+          stageAging: stageAging.map((l) => ({
+            id: l.id,
+            company: l.company,
+            estimatedValue: l.estimatedValue,
+            phone: l.phone,
+            email: l.email,
+            stageLabel: LEAD_STATUS_SHORT_LABELS[l.status as keyof typeof LEAD_STATUS_SHORT_LABELS] || l.status,
+            daysIdle: Math.floor((now.getTime() - l.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          })),
           sourcePerformance,
           clientTypeBreakdown,
           wonDeals: wonAllTime
             .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-            .slice(0, 15)
+            .slice(0, 50)
             .map((l) => ({ id: l.id, company: l.company, value: l.estimatedValue || 0, wonAt: l.updatedAt })),
           totalWonValue: wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0),
         },
