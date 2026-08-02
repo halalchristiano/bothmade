@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Phone, MailX, Clock, CalendarClock, RefreshCw, AlertTriangle, ChevronRight } from 'lucide-react';
-import { PageIn } from '@/components/admin/ui';
+import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
@@ -65,6 +65,7 @@ export default function CallListPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const load = async () => {
@@ -123,10 +124,13 @@ export default function CallListPage() {
     );
   }
 
-  const grouped = ORDER.map((r) => ({ reason: r, rows: callable.filter((c) => c.reason === r) })).filter(
+  const match = (r: CallRow) => matchesSearch(search, r.company, r.contactName, r.phone, r.email);
+  const visible = callable.filter(match);
+  const visibleNoPhone = noPhone.filter(match);
+  const grouped = ORDER.map((r) => ({ reason: r, rows: visible.filter((c) => c.reason === r) })).filter(
     (g) => g.rows.length > 0
   );
-  const total = callable.length;
+  const total = visible.length;
 
   return (
     <PageIn className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-10">
@@ -149,13 +153,23 @@ export default function CallListPage() {
         </button>
       </div>
 
+      <div className="mt-5">
+        <SearchFilter
+          value={search}
+          onChange={setSearch}
+          placeholder="Find a business in your call list..."
+          count={visible.length + visibleNoPhone.length}
+          total={callable.length + noPhone.length}
+        />
+      </div>
+
       {syncMessage && (
         <p className="text-xs text-sky-300 bg-sky-400/10 border border-sky-400/20 rounded-lg px-3 py-2 mt-3">
           {syncMessage}
         </p>
       )}
 
-      {total === 0 && noPhone.length === 0 && (
+      {total === 0 && visibleNoPhone.length === 0 && !search && (
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
           <Phone size={26} className="text-white/25 mx-auto mb-3" />
           <p className="text-sm text-white/60">
@@ -272,19 +286,19 @@ export default function CallListPage() {
         })}
       </div>
 
-      {noPhone.length > 0 && (
+      {visibleNoPhone.length > 0 && (
         <section className="mt-8">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 mb-3">
             <p className="text-sm font-bold text-white/70 flex items-center gap-1.5">
               <CalendarClock size={14} /> No phone number on file
-              <span className="ml-1 opacity-60">({noPhone.length})</span>
+              <span className="ml-1 opacity-60">({visibleNoPhone.length})</span>
             </p>
             <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
               These are due a contact but there is nothing to ring. Find a number, or email them instead.
             </p>
           </div>
           <div className="space-y-2">
-            {noPhone.map((row) => (
+            {visibleNoPhone.map((row) => (
               <Link
                 key={row.id}
                 href={`/admin/leads/${row.id}`}
