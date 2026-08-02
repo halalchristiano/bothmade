@@ -66,7 +66,8 @@ function renderShell(opts: {
           <table role="presentation" width="100%" style="max-width:560px;" cellpadding="0" cellspacing="0">
             <tr>
               <td style="padding-bottom:28px; text-align:center;">
-                <span style="font-size:22px; font-weight:800; letter-spacing:-0.02em;">
+                <img src="${SITE_URL}/api/email-logo" width="36" height="36" alt="" style="display:inline-block; vertical-align:middle; border-radius:9px; margin-right:10px;" />
+                <span style="font-size:22px; font-weight:800; letter-spacing:-0.02em; vertical-align:middle;">
                   <span style="color:#7dd3fc;">both</span><span style="color:#ffffff;">made</span>
                 </span>
               </td>
