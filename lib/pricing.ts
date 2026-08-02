@@ -510,6 +510,39 @@ export function depositAmount(totalPrice: number): number {
   return Math.round((totalPrice * DEPOSIT_PERCENT) / 100);
 }
 
+/** An ad-hoc line item Evan adds beyond the fixed catalogue — his own label and price. */
+export interface CustomItem {
+  label: string;
+  priceCents: number;
+}
+
+/**
+ * Validates and normalizes whatever shape came in over the wire (or out of
+ * the Lead.proposalCustomItems JSON column) into a safe CustomItem[] — never
+ * trusts client input for the price directly without checking it's a sane
+ * positive integer, and drops anything malformed rather than throwing, since
+ * a bad item shouldn't block sending the rest of the proposal.
+ */
+export function sanitizeCustomItems(input: unknown): CustomItem[] {
+  if (!Array.isArray(input)) return [];
+  const items: CustomItem[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue;
+    const label = 'label' in raw && typeof raw.label === 'string' ? raw.label.trim().slice(0, 200) : '';
+    const priceCents =
+      'priceCents' in raw && typeof raw.priceCents === 'number' && Number.isFinite(raw.priceCents)
+        ? Math.round(raw.priceCents)
+        : NaN;
+    if (!label || !Number.isFinite(priceCents) || priceCents <= 0) continue;
+    items.push({ label, priceCents });
+  }
+  return items.slice(0, 20); // a runaway list on a proposal is a mistake, not a use case
+}
+
+export function customItemsTotal(items: CustomItem[]): number {
+  return items.reduce((sum, i) => sum + i.priceCents, 0);
+}
+
 export function formatCents(cents: number): string {
   return (cents / 100).toLocaleString('en-US', {
     style: 'currency',

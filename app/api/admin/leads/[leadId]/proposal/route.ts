@@ -8,6 +8,7 @@ import {
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  customItemsTotal,
   depositAmount,
   formatCents,
   isAddOnKey,
@@ -16,16 +17,17 @@ import {
   isIncludedInBase,
   isTimelineKey,
   minAllowedPrice,
+  sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
 import { sendSignAndPayEmail } from '@/lib/email';
 import { buildInvoicePdf } from '@/lib/invoice-pdf';
 
 /**
- * Saves the proposal Evan just built (service/add-ons/client type/timeline)
- * onto the lead so the public sign-and-pay page can reconstruct the exact
- * same pricing and contract without him re-entering anything, and returns
- * the link to send the client.
+ * Saves the proposal Evan just built (service/add-ons/client type/timeline,
+ * plus any custom items he added by hand) onto the lead so the public
+ * sign-and-pay page can reconstruct the exact same pricing and contract
+ * without him re-entering anything, and returns the link to send the client.
  */
 export async function POST(
   request: NextRequest,
@@ -46,12 +48,15 @@ export async function POST(
       depositOnly = false,
       totalPriceOverride,
       sendEmail = false,
+      customItems: rawCustomItems = [],
     } = await request.json();
 
     if (!isBaseService(baseService) || !isClientType(clientType) || !isTimelineKey(timeline)) {
       return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
     }
     const addOnKeys: AddOnKey[] = Array.isArray(addOns) ? addOns.filter(isAddOnKey) : [];
+    const customItems = sanitizeCustomItems(rawCustomItems);
+    const customTotal = customItemsTotal(customItems);
 
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!lead) {
@@ -59,18 +64,19 @@ export async function POST(
     }
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
+    const calculatedTotal = breakdown.totalPrice + customTotal;
 
     if (
       typeof totalPriceOverride === 'number' &&
       totalPriceOverride > 0 &&
       session.role === 'sales' &&
-      Math.round(totalPriceOverride) < minAllowedPrice(breakdown.totalPrice)
+      Math.round(totalPriceOverride) < minAllowedPrice(calculatedTotal)
     ) {
       return NextResponse.json(
         {
           error: `That's below what you're authorized to quote for this scope. Minimum is ${formatCents(
-            minAllowedPrice(breakdown.totalPrice)
-          )} (calculated: ${formatCents(breakdown.totalPrice)}). Ask Kiana if this deal needs a deeper discount.`,
+            minAllowedPrice(calculatedTotal)
+          )} (calculated: ${formatCents(calculatedTotal)}). Ask Kiana if this deal needs a deeper discount.`,
         },
         { status: 403 }
       );
@@ -79,7 +85,7 @@ export async function POST(
     const totalPrice =
       typeof totalPriceOverride === 'number' && totalPriceOverride > 0
         ? Math.round(totalPriceOverride)
-        : breakdown.totalPrice;
+        : calculatedTotal;
 
     await prisma.lead.update({
       where: { id: leadId },
@@ -90,6 +96,7 @@ export async function POST(
         proposalTimeline: timeline,
         proposalTotalPrice: totalPrice,
         proposalDepositOnly: Boolean(depositOnly),
+        proposalCustomItems: customItems,
         // A new proposal supersedes any prior agreement — the client needs
         // to re-agree if Evan changes the scope or price after they signed.
         agreementSignedAt: null,
@@ -102,7 +109,7 @@ export async function POST(
       data: {
         leadId,
         type: 'proposal',
-        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''} — $${(totalPrice / 100).toLocaleString()}${depositOnly ? ' (deposit)' : ''}`,
+        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''}${customItems.length ? ` + ${customItems.map((c) => c.label).join(', ')}` : ''} — $${(totalPrice / 100).toLocaleString()}${depositOnly ? ' (deposit)' : ''}`,
         createdById: session.userId,
       },
     });
@@ -120,6 +127,7 @@ export async function POST(
           label: ADD_ONS[key].label,
           amount: isIncludedInBase(baseService, key) ? 'Included' : formatCents(ADD_ONS[key].price),
         })),
+        ...customItems.map((item) => ({ label: item.label, amount: formatCents(item.priceCents) })),
       ];
       const adjustments: { label: string; amount: string }[] = [];
       if (breakdown.clientTypeMultiplier !== 1) {
@@ -134,10 +142,10 @@ export async function POST(
           amount: formatCents(breakdown.totalPrice - Math.round(breakdown.subtotal * breakdown.clientTypeMultiplier)),
         });
       }
-      if (totalPrice !== breakdown.totalPrice) {
+      if (totalPrice !== calculatedTotal) {
         adjustments.push({
           label: 'Negotiated adjustment',
-          amount: formatCents(totalPrice - breakdown.totalPrice),
+          amount: formatCents(totalPrice - calculatedTotal),
         });
       }
 
@@ -148,7 +156,7 @@ export async function POST(
         contactName: lead.contactName,
         lineItems,
         adjustments,
-        subtotal: formatCents(breakdown.subtotal),
+        subtotal: formatCents(breakdown.subtotal + customTotal),
         total: formatCents(totalPrice),
         amountDue: formatCents(chargeAmount),
         isDeposit: Boolean(depositOnly),
