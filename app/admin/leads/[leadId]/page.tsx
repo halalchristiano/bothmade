@@ -1636,6 +1636,25 @@ export default function LeadDetailPage() {
           );
         };
 
+        // Detail for a heuristic add-on card: the rich playbook prose when the
+        // item is in the playbook, otherwise the catalogue's own rep-facing
+        // benefit line, so the card still says how it helps — not just what it
+        // is — even for a lead with no bespoke research.
+        const renderItemDetail = (itemKey: string, itemLabel: string) => {
+          const entry = playbookMap.get(playbookSlug(itemLabel));
+          if (entry) return renderPlaybookDetail(entry, lead.company);
+          const benefit = ADD_ONS[itemKey as AddOnKey]?.benefit;
+          if (!benefit) return null;
+          return (
+            <div className="mt-2 rounded-lg bg-white/[0.03] px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wide text-sky-300/80 font-semibold mb-1">
+                How it helps {lead.company}
+              </p>
+              <p className="text-xs text-white/70 leading-relaxed break-words">{benefit}</p>
+            </div>
+          );
+        };
+
         // A priced line item: their bespoke wording, then everything a rep
         // needs if the customer pushes back on it — cost, what it actually
         // is, the words to sell it, and why the price is fair.
@@ -2078,10 +2097,7 @@ export default function LeadDetailPage() {
                             <span className="font-semibold">Needed because: </span>
                             {item.becauseOf.join(', ').toLowerCase()}
                           </p>
-                          {(() => {
-                            const entry = playbookMap.get(playbookSlug(item.label));
-                            return entry ? renderPlaybookDetail(entry, lead.company) : null;
-                          })()}
+                          {renderItemDetail(item.key, item.label)}
                           {renderSectionNote(item.label)}
                         </div>
                       ))}
@@ -2118,10 +2134,7 @@ export default function LeadDetailPage() {
                                 <span className="font-semibold">Worth pitching because: </span>
                                 {item.becauseOf.join(', ').toLowerCase()}
                               </p>
-                              {(() => {
-                                const entry = playbookMap.get(playbookSlug(item.label));
-                                return entry ? renderPlaybookDetail(entry, lead.company) : null;
-                              })()}
+                              {renderItemDetail(item.key, item.label)}
                               {renderSectionNote(item.label)}
                             </div>
                           ))}
