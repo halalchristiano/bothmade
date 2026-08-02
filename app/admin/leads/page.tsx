@@ -670,6 +670,8 @@ export default function AdminLeadsPage() {
             contactName: l.contactName,
             email: l.email,
             personalizedObservation: l.personalizedObservation,
+            coldEmailDraft: l.coldEmailDraft,
+            painPoints: l.painPoints,
           }))}
           onClose={() => setShowBulkEmail(false)}
           onSent={() => {

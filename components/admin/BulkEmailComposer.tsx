@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Send, Loader2, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
 import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
+import { buildFallbackColdEmailDraft } from '@/lib/leads';
 
 export interface BulkRecipient {
   id: string;
@@ -10,6 +11,14 @@ export interface BulkRecipient {
   contactName: string | null;
   email: string | null;
   personalizedObservation?: string | null;
+  coldEmailDraft?: string | null;
+  painPoints?: string;
+}
+
+/** Pulls just the body out of a "Subject: ...\n\n<body>" draft — the subject isn't usable here since this composer sends one shared subject to everyone. */
+function draftBodyOnly(draft: string): string {
+  const match = draft.match(/^Subject:\s*.+?\r?\n+([\s\S]*)$/i);
+  return (match ? match[1] : draft).trim();
 }
 
 // Sales-facing templates make sense to blast to a list; ops templates
@@ -42,6 +51,7 @@ export function BulkEmailComposer({
   const template = getTemplate(templateId)!;
   const emailable = useMemo(() => recipients.filter((r) => r.email), [recipients]);
   const missingEmail = recipients.length - emailable.length;
+  const withOwnDraft = useMemo(() => emailable.filter((r) => r.coldEmailDraft).length, [emailable]);
 
   // Fields that require genuine per-recipient personalization (like the
   // observation line) get their own input per lead. Everything else — a
@@ -62,18 +72,39 @@ export function BulkEmailComposer({
     if (!previewFor && emailable.length > 0) setPreviewFor(emailable[0].id);
   }, [emailable, previewFor]);
 
-  // Seed the per-recipient "observation" field from research already stored
-  // on the lead, so it's never blank if that work has already been done —
+  // Seed per-recipient personalize fields from research already stored on
+  // the lead, so they're never blank if that work has already been done —
   // but never overwrite something the user already typed in this session.
+  // "observation" comes from the researched one-liner; "body" (the "Write
+  // your own" template) falls back to that lead's own cold-email draft, or
+  // a generic one built the same way "Send all now" would, so this composer
+  // is never just a wall of empty boxes even when it's not the ideal tool
+  // for a batch that already has bespoke per-lead drafts (those keep their
+  // own subject line too, which this shared-subject composer can't send —
+  // "Send prepared cold emails" is the right button for that case).
   useEffect(() => {
     const observationField = personalizeFields.find((f) => f.key === 'observation');
-    if (!observationField) return;
+    const bodyField = personalizeFields.find((f) => f.key === 'body');
+    if (!observationField && !bodyField) return;
     setPerLead((p) => {
       let changed = false;
       const next = { ...p };
       for (const r of emailable) {
-        if (r.personalizedObservation && !next[r.id]?.observation) {
+        if (observationField && r.personalizedObservation && !next[r.id]?.observation) {
           next[r.id] = { ...(next[r.id] || {}), observation: r.personalizedObservation };
+          changed = true;
+        }
+        if (bodyField && !next[r.id]?.body) {
+          const draft =
+            r.coldEmailDraft ||
+            buildFallbackColdEmailDraft({
+              company: r.company,
+              painPoints: r.painPoints || '',
+              personalizedObservation: r.personalizedObservation || null,
+            });
+          const firstName = r.contactName?.split(' ')[0] || 'there';
+          const body = draftBodyOnly(draft).replace(/\[First Name\]/gi, firstName);
+          next[r.id] = { ...(next[r.id] || {}), body };
           changed = true;
         }
       }
@@ -226,6 +257,18 @@ export function BulkEmailComposer({
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {withOwnDraft > 0 && (
+                <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/5 px-3 py-2.5 mb-3">
+                  <AlertTriangle size={14} className="text-sky-300 shrink-0 mt-0.5" />
+                  <p className="text-xs text-sky-200/80">
+                    {withOwnDraft} of these already {withOwnDraft === 1 ? 'has' : 'have'} its own complete
+                    drafted email with its own subject line — this composer can only send one shared subject
+                    to everyone. Cancel and use "Send prepared cold emails" back on the leads list instead to
+                    send each one's actual draft, not a shared template.
+                  </p>
                 </div>
               )}
 
