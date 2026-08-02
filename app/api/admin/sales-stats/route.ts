@@ -111,6 +111,13 @@ export async function GET(request: Request) {
       (l) => LATE_FUNNEL_STATUSES.includes(l.status) && l.updatedAt < lateFunnelStallThreshold
     );
 
+    // Contracts sitting with the client, unsigned — the one thing on a
+    // closer's own deals that needs chasing but wouldn't otherwise surface
+    // until it's already gone stale by the generic 5-day check.
+    const awaitingSignature = active
+      .filter((l) => l.contractStatus === 'sent')
+      .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime());
+
     const leadsInPeriod = allMine.filter((l) => l.createdAt >= periodStart);
     const sourceMap: Record<string, { total: number; won: number }> = {};
     for (const l of leadsInPeriod) {
@@ -166,6 +173,13 @@ export async function GET(request: Request) {
             email: l.email,
             stageLabel: LEAD_STATUS_SHORT_LABELS[l.status as keyof typeof LEAD_STATUS_SHORT_LABELS] || l.status,
             daysIdle: Math.floor((now.getTime() - l.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          })),
+          awaitingSignature: awaitingSignature.map((l) => ({
+            id: l.id,
+            company: l.company,
+            phone: l.phone,
+            email: l.email,
+            daysWaiting: Math.floor((now.getTime() - l.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
           })),
           sourcePerformance,
           clientTypeBreakdown,

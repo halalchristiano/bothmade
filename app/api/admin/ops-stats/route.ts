@@ -119,7 +119,14 @@ export async function GET(request: Request) {
         });
         const amountPaid = paid._sum.amount || 0;
         const balanceDue = p.totalPrice - amountPaid;
-        return { id: p.id, name: p.name, company: p.client.company, balanceDue, statusStage: p.statusStage };
+        return {
+          id: p.id,
+          name: p.name,
+          company: p.client.company,
+          balanceDue,
+          statusStage: p.statusStage,
+          lastPaymentReminderSentAt: p.lastPaymentReminderSentAt,
+        };
       })
     );
     const projectsAwaitingReply = activeProjects

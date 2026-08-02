@@ -144,6 +144,11 @@ model Project {
   // from the Lead so the client can always find it in their own dashboard.
   contractUrl String?
 
+  // When a payment reminder was last emailed for this project's balance —
+  // shown on the dashboard so a reminder can't be fired off twice in a row
+  // by accident after a page reload forgets the button was already used.
+  lastPaymentReminderSentAt DateTime?
+
   // Metadata
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
