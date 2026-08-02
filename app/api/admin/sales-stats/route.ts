@@ -150,7 +150,7 @@ export async function GET(request: Request) {
           clientTypeBreakdown,
           wonDeals: wonAllTime
             .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-            .slice(0, 15)
+            .slice(0, 50)
             .map((l) => ({ id: l.id, company: l.company, value: l.estimatedValue || 0, wonAt: l.updatedAt })),
           totalWonValue: wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0),
         },

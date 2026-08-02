@@ -282,6 +282,82 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
   );
 }
 
+type WonDealsSort = 'recent' | 'value';
+
+function WonDealsCard({ stats }: { stats: SalesStats }) {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<WonDealsSort>('recent');
+
+  const deals = stats.wonDeals
+    .filter((d) => d.company.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => (sort === 'value' ? b.value - a.value : new Date(b.wonAt).getTime() - new Date(a.wonAt).getTime()));
+
+  return (
+    <Card className="p-6" glow="emerald">
+      <CardHeader
+        icon={DollarSign}
+        tone="emerald"
+        title="Won Deals"
+        subtitle={`Your commission log · ${Math.round(COMMISSION_RATE * 100)}% of closed value`}
+        action={
+          <span className="text-sm text-emerald-300 font-semibold">
+            {formatCents(Math.round(stats.totalWonValue * COMMISSION_RATE))}
+          </span>
+        }
+      />
+      {stats.wonDeals.length === 0 ? (
+        <EmptyState icon={DollarSign} text="No deals closed yet." />
+      ) : (
+        <>
+          <div className="flex gap-2 mb-3">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search company..."
+              className="flex-1 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            />
+            <div className="flex gap-1 rounded-lg border border-white/10 p-1 bg-white/[0.02] shrink-0">
+              {(['recent', 'value'] as WonDealsSort[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSort(s)}
+                  className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+                    sort === s ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  {s === 'recent' ? 'Recent' : 'Value'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {deals.length === 0 ? (
+            <p className="text-sm text-white/30 py-4 text-center">No deals match "{query}".</p>
+          ) : (
+            <div className="space-y-0.5 max-h-64 overflow-y-auto">
+              {deals.map((d) => (
+                <ListRow
+                  key={d.id}
+                  href={`/admin/leads/${d.id}`}
+                  title={d.company}
+                  subtitle={`Deal value ${formatCents(d.value)}`}
+                  trailing={
+                    <span className="text-white/40 text-xs whitespace-nowrap">
+                      <span className="text-emerald-300/80 font-medium">
+                        {formatCents(Math.round(d.value * COMMISSION_RATE))}
+                      </span>{' '}
+                      · {new Date(d.wonAt).toLocaleDateString()}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 function SalesDashboard({
   stats,
   name,
@@ -373,41 +449,7 @@ function SalesDashboard({
       <div className="grid lg:grid-cols-2 gap-5 mb-8">
         <InsightsCard stats={stats} />
 
-        <Card className="p-6" glow="emerald">
-          <CardHeader
-            icon={DollarSign}
-            tone="emerald"
-            title="Won Deals"
-            subtitle={`Your commission log · ${Math.round(COMMISSION_RATE * 100)}% of closed value`}
-            action={
-              <span className="text-sm text-emerald-300 font-semibold">
-                {formatCents(Math.round(stats.totalWonValue * COMMISSION_RATE))}
-              </span>
-            }
-          />
-          {stats.wonDeals.length === 0 ? (
-            <EmptyState icon={DollarSign} text="No deals closed yet." />
-          ) : (
-            <div className="space-y-0.5 max-h-64 overflow-y-auto">
-              {stats.wonDeals.map((d) => (
-                <ListRow
-                  key={d.id}
-                  href={`/admin/leads/${d.id}`}
-                  title={d.company}
-                  subtitle={`Deal value ${formatCents(d.value)}`}
-                  trailing={
-                    <span className="text-white/40 text-xs whitespace-nowrap">
-                      <span className="text-emerald-300/80 font-medium">
-                        {formatCents(Math.round(d.value * COMMISSION_RATE))}
-                      </span>{' '}
-                      · {new Date(d.wonAt).toLocaleDateString()}
-                    </span>
-                  }
-                />
-              ))}
-            </div>
-          )}
-        </Card>
+        <WonDealsCard stats={stats} />
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -614,6 +656,59 @@ function HandoffRow({
   );
 }
 
+type OverdueSort = 'amount' | 'name';
+
+function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<OverdueSort>('amount');
+
+  const filtered = balances
+    .filter((p) => p.company.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => (sort === 'amount' ? b.balanceDue - a.balanceDue : a.company.localeCompare(b.company)));
+
+  return (
+    <Card className="p-6">
+      <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
+      {balances.length === 0 ? (
+        <EmptyState icon={Wallet} text="Nothing outstanding." />
+      ) : (
+        <>
+          <div className="flex gap-2 mb-3">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search company..."
+              className="flex-1 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            />
+            <div className="flex gap-1 rounded-lg border border-white/10 p-1 bg-white/[0.02] shrink-0">
+              {(['amount', 'name'] as OverdueSort[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSort(s)}
+                  className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+                    sort === s ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  {s === 'amount' ? 'Amount' : 'Name'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {filtered.length === 0 ? (
+            <p className="text-sm text-white/30 py-4 text-center">No matches for "{query}".</p>
+          ) : (
+            <div className="space-y-0.5">
+              {filtered.map((p) => (
+                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="amber">{formatCents(p.balanceDue)}</Badge>} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 function OpsDashboard({
   stats,
   name,
@@ -722,18 +817,7 @@ function OpsDashboard({
           )}
         </Card>
 
-        <Card className="p-6">
-          <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
-          {stats.overdueBalances.length === 0 ? (
-            <EmptyState icon={Wallet} text="Nothing outstanding." />
-          ) : (
-            <div className="space-y-0.5">
-              {stats.overdueBalances.map((p) => (
-                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="amber">{formatCents(p.balanceDue)}</Badge>} />
-              ))}
-            </div>
-          )}
-        </Card>
+        <OverdueBalancesCard balances={stats.overdueBalances} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
