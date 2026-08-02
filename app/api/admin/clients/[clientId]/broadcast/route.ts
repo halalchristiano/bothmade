@@ -44,17 +44,23 @@ export async function POST(
       )
     );
 
-    if (client.emailPreferences?.notificationsEnabled && client.emailPreferences?.messages) {
+    if (
+      client.emailPreferences?.notificationsEnabled &&
+      client.emailPreferences?.messages &&
+      client.projects.length > 0
+    ) {
+      // One email per broadcast, not one per project — the same message posted
+      // to every thread shouldn't land in the client's inbox N times. Deep-link
+      // the first project; the others carry the identical message.
       const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
-      for (const project of client.projects) {
-        await sendMessageNotificationEmail(
-          client.email,
-          client.company,
-          project.name,
-          preview,
-          project.id
-        );
-      }
+      const primary = client.projects[0];
+      await sendMessageNotificationEmail(
+        client.email,
+        client.company,
+        primary.name,
+        preview,
+        primary.id
+      );
     }
 
     return NextResponse.json(
