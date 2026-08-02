@@ -102,6 +102,7 @@ export function Footer() {
                 { label: 'iOS & iPad Apps', href: '/ios' },
                 { label: 'Vision Pro', href: '/visionpro' },
                 { label: 'Work', href: '/work' },
+                { label: 'Blog', href: '/blog' },
               ].map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className="hover:text-sky-300 transition">
