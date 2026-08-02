@@ -1,8 +1,9 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { X, Upload, CheckCircle2, Loader2 } from 'lucide-react';
+import { Upload, CheckCircle2, Loader2 } from 'lucide-react';
 import { parseCsvWithHeaders } from '@/lib/csv';
+import { Modal } from './Modal';
 
 const COLUMNS: Array<{ header: string; required: boolean; description: string; example: string }> = [
   { header: 'company', required: true, description: 'Business name', example: 'Linpotia Cafe' },
@@ -135,21 +136,16 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0812] p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h2 className="text-lg font-bold">Import leads from CSV</h2>
-            <p className="text-xs text-white/40 mt-0.5">Bulk-add companies from a spreadsheet export.</p>
-          </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-
+    <Modal
+      title="Import leads from CSV"
+      subtitle="Bulk-add companies from a spreadsheet export."
+      onClose={onClose}
+      size="max-w-2xl"
+      panelClassName="max-h-[88vh] overflow-y-auto"
+      // A pasted CSV and a mapped preview is real work to redo.
+      closeOnBackdrop={false}
+    >
+      <>
         {result ? (
           <div className="py-8 text-center">
             <CheckCircle2 size={28} className="text-emerald-400 mx-auto mb-3" />
@@ -238,7 +234,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
             </div>
           </>
         )}
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

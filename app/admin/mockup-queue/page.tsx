@@ -7,6 +7,7 @@ import { ImageIcon, ExternalLink, Compass, Clock } from 'lucide-react';
 import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { PAIN_POINTS, parseSalesPoints, type PainPointKey } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
+import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
 
 interface QueueRow {
   id: string;
@@ -143,9 +144,6 @@ export default function MockupQueuePage() {
   const [leads, setLeads] = useState<QueueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [urlDrafts, setUrlDrafts] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-
   const load = async () => {
     try {
       const res = await fetch('/api/admin/leads/mockup-queue');
@@ -164,24 +162,6 @@ export default function MockupQueuePage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleDeliver = async (leadId: string) => {
-    const url = (urlDrafts[leadId] || '').trim();
-    if (!url) return;
-    setSaving((prev) => ({ ...prev, [leadId]: true }));
-    try {
-      const res = await fetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mockupUrl: url }),
-      });
-      if (res.ok) {
-        setLeads((prev) => prev.filter((l) => l.id !== leadId));
-      }
-    } finally {
-      setSaving((prev) => ({ ...prev, [leadId]: false }));
-    }
-  };
 
   if (loading) {
     return (
@@ -263,20 +243,12 @@ export default function MockupQueuePage() {
 
               <MockupBrief lead={lead} />
 
-              <div className="flex gap-2 mt-4 pt-4 border-t border-white/[0.08]">
-                <input
-                  value={urlDrafts[lead.id] || ''}
-                  onChange={(e) => setUrlDrafts((prev) => ({ ...prev, [lead.id]: e.target.value }))}
+              <div className="mt-4 pt-4 border-t border-white/[0.08]">
+                <MockupDeliveryForm
+                  leadId={lead.id}
+                  onDelivered={() => setLeads((prev) => prev.filter((l) => l.id !== lead.id))}
                   placeholder="Paste the mockup link..."
-                  className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-black/20 border border-white/15 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                 />
-                <button
-                  onClick={() => handleDeliver(lead.id)}
-                  disabled={saving[lead.id] || !(urlDrafts[lead.id] || '').trim()}
-                  className="shrink-0 px-4 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
-                >
-                  {saving[lead.id] ? 'Sending...' : 'Mark Delivered'}
-                </button>
               </div>
             </div>
           );

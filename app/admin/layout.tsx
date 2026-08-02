@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   LayoutDashboard,
   Users,
@@ -68,6 +68,9 @@ function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; autoFoc
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [open, setOpen] = useState(false);
+  /** Which result the arrow keys have landed on; -1 means "still in the field". */
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const listboxId = useId();
 
   useEffect(() => {
     if (query.trim().length < 2) {
@@ -85,33 +88,84 @@ function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; autoFoc
     return () => clearTimeout(timeout);
   }, [query]);
 
+  // A fresh query invalidates whatever was highlighted.
+  useEffect(() => setActiveIndex(-1), [results]);
+
+  const go = (result: SearchResult) => {
+    setOpen(false);
+    router.push(result.href);
+    onNavigate?.();
+  };
+
+  const showList = open && query.trim().length >= 2;
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      return;
+    }
+    if (!showList || results.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % results.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? results.length - 1 : i - 1));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      go(results[activeIndex]);
+    }
+  };
+
   return (
-    <div className="relative w-full">
+    <div
+      className="relative w-full"
+      // The results used to close on the input's own blur, which meant Tab
+      // into a result closed the menu before the result could be reached.
+      // Closing only when focus leaves the whole widget fixes that.
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" aria-hidden="true" />
         <input
           value={query}
           autoFocus={autoFocus}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={onKeyDown}
           placeholder="Search..."
+          aria-label="Search leads, clients and projects"
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined}
           className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all"
         />
       </div>
-      {open && query.trim().length >= 2 && (
-        <div className="absolute top-full mt-2 w-full min-w-[280px] max-h-96 overflow-y-auto rounded-xl border border-white/10 bg-[#0a0812] shadow-2xl z-50">
+      {showList && (
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="Search results"
+          className="absolute top-full mt-2 w-full min-w-[280px] max-h-96 overflow-y-auto rounded-xl border border-white/10 bg-[#0a0812] shadow-2xl z-50"
+        >
           {results.length === 0 ? (
             <p className="text-white/30 text-sm p-4">No matches.</p>
           ) : (
-            results.map((r) => (
+            results.map((r, i) => (
               <button
                 key={`${r.type}-${r.id}`}
-                onMouseDown={() => {
-                  router.push(r.href);
-                  onNavigate?.();
-                }}
-                className="w-full text-left px-4 py-3 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                id={`${listboxId}-${i}`}
+                role="option"
+                aria-selected={activeIndex === i}
+                type="button"
+                onClick={() => go(r)}
+                className={`w-full text-left px-4 py-3 transition-colors border-b border-white/5 last:border-0 ${
+                  activeIndex === i ? 'bg-white/10' : 'hover:bg-white/5'
+                }`}
               >
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">{r.title}</span>
@@ -143,8 +197,11 @@ const SEVERITY_DOT: Record<NotificationItem['severity'], string> = {
 
 function NotificationBell() {
   const router = useRouter();
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const load = () => {
@@ -160,17 +217,41 @@ function NotificationBell() {
     return () => clearInterval(interval);
   }, []);
 
+  const close = (returnFocus = false) => {
+    setOpen(false);
+    if (returnFocus) buttonRef.current?.focus();
+  };
+
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      // Closing on the trigger's own blur made every item in the menu
+      // unreachable by Tab — the menu vanished on the way in.
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) {
+          e.stopPropagation();
+          close(true);
+        }
+      }}
+    >
       <button
+        ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
         className="relative flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/[0.06] transition-colors text-white/60 hover:text-white"
-        aria-label="Notifications"
+        aria-label={items.length > 0 ? `Notifications (${items.length})` : 'Notifications'}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
       >
-        <Bell size={17} />
+        <Bell size={17} aria-hidden="true" />
         {items.length > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-[9px] font-bold text-black px-1">
+          <span
+            aria-hidden="true"
+            className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-[9px] font-bold text-black px-1"
+          >
             {items.length}
           </span>
         )}
@@ -178,10 +259,13 @@ function NotificationBell() {
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            id={menuId}
+            role="menu"
+            aria-label="Notifications"
+            initial={reduceMotion ? false : { opacity: 0, y: -4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
-            transition={{ duration: 0.15 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: reduceMotion ? 0 : 0.15 }}
             className="absolute top-full right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-white/10 bg-[#0a0812] shadow-2xl z-50"
           >
             {items.length === 0 ? (
@@ -190,10 +274,18 @@ function NotificationBell() {
               items.map((item) => (
                 <button
                   key={item.id}
-                  onMouseDown={() => router.push(item.href)}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push(item.href);
+                  }}
                   className="w-full text-left px-4 py-3 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 flex gap-2.5"
                 >
-                  <span className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${SEVERITY_DOT[item.severity]}`} />
+                  <span
+                    aria-hidden="true"
+                    className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${SEVERITY_DOT[item.severity]}`}
+                  />
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{item.label}</p>
                     <p className="text-xs text-white/40 mt-0.5 truncate">{item.detail}</p>
@@ -211,6 +303,7 @@ function NotificationBell() {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
@@ -354,10 +447,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AnimatePresence>
           {mobileSearchOpen && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
+              initial={reduceMotion ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              exit={reduceMotion ? { opacity: 1 } : { height: 0, opacity: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.15 }}
               className="overflow-hidden border-t border-white/10"
             >
               <div className="px-4 py-3">
@@ -370,10 +463,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AnimatePresence>
           {mobileOpen && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
+              initial={reduceMotion ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              exit={reduceMotion ? { opacity: 1 } : { height: 0, opacity: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
               className="overflow-hidden border-t border-white/10"
             >
               <div className="px-4 py-4 space-y-4">

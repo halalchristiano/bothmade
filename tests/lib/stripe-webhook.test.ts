@@ -1,0 +1,320 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * The webhook is the only place a payment turns into a project, a client
+ * login, and a Payment row. The two things that must never break: an
+ * unverified body is never processed, and a redelivered event never creates
+ * a second project or double-counts the money.
+ */
+
+const constructWebhookEvent = vi.fn();
+
+const prisma = {
+  project: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
+  client: { findUnique: vi.fn(), create: vi.fn() },
+  emailPreferences: { create: vi.fn() },
+  projectUpdate: { create: vi.fn() },
+  payment: { create: vi.fn(), findUnique: vi.fn() },
+  lead: { update: vi.fn() },
+  teamMessage: { create: vi.fn() },
+  user: { findFirst: vi.fn() },
+};
+
+vi.mock('@/lib/stripe', () => ({
+  constructWebhookEvent: (...args: unknown[]) => constructWebhookEvent(...args),
+}));
+vi.mock('@/lib/prisma', () => ({ prisma }));
+vi.mock('@/lib/auth', () => ({
+  generateRandomPassword: () => 'generated-password',
+  hashPassword: async () => 'hashed-password',
+}));
+vi.mock('@/lib/email', () => ({ sendWelcomeEmail: vi.fn() }));
+vi.mock('@/lib/notify', () => ({ notifyAdminsPaymentReceived: vi.fn() }));
+
+const { POST } = await import('@/app/api/webhooks/stripe/route');
+const { sendWelcomeEmail } = await import('@/lib/email');
+const { notifyAdminsPaymentReceived } = await import('@/lib/notify');
+
+function request(body = '{}', signature = 'sig') {
+  return {
+    text: async () => body,
+    headers: { get: (name: string) => (name === 'stripe-signature' ? signature : null) },
+  } as unknown as Parameters<typeof POST>[0];
+}
+
+function completedSession(metadata: Record<string, string>, amountTotal: number | null = 450000) {
+  return {
+    type: 'checkout.session.completed',
+    data: {
+      object: { id: 'cs_test_1', metadata, amount_total: amountTotal, customer: 'cus_1' },
+    },
+  };
+}
+
+const NEW_SALE_METADATA = {
+  clientEmail: 'frell@linpotia.com',
+  company: 'Linpotia Cafe',
+  contactName: 'Frell Handa',
+  baseService: 'website',
+  addOns: 'seo,analytics',
+  timeline: 'rush',
+  basePrice: '300000',
+  totalPrice: '450000',
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  prisma.project.findFirst.mockResolvedValue(null);
+  prisma.project.create.mockResolvedValue({ id: 'proj_1' });
+  prisma.project.update.mockResolvedValue({ id: 'proj_1' });
+  prisma.client.findUnique.mockResolvedValue(null);
+  prisma.client.create.mockResolvedValue({ id: 'client_1' });
+  prisma.emailPreferences.create.mockResolvedValue({});
+  prisma.projectUpdate.create.mockResolvedValue({});
+  prisma.payment.create.mockResolvedValue({});
+  prisma.payment.findUnique.mockResolvedValue(null);
+  prisma.lead.update.mockResolvedValue({ id: 'lead_1', assignedToId: 'user_1', signedContractUrl: null });
+  prisma.teamMessage.create.mockResolvedValue({});
+  prisma.user.findFirst.mockResolvedValue({ id: 'user_1' });
+});
+
+describe('signature verification', () => {
+  it('refuses a body whose signature does not verify', async () => {
+    constructWebhookEvent.mockReturnValue(null);
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(400);
+    // Nothing at all may touch the database on an unverified payload.
+    expect(prisma.project.create).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('verifies against the raw body text, not a parsed object', async () => {
+    constructWebhookEvent.mockReturnValue(null);
+    await POST(request('{"raw":"body"}', 'sig_abc'));
+
+    expect(constructWebhookEvent).toHaveBeenCalledWith('{"raw":"body"}', 'sig_abc');
+  });
+
+  it('ignores event types it does not handle', async () => {
+    constructWebhookEvent.mockReturnValue({ type: 'invoice.paid', data: { object: {} } });
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('a new sale', () => {
+  it('creates the client, project, update and payment', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(prisma.client.create).toHaveBeenCalledOnce();
+    expect(prisma.project.create).toHaveBeenCalledOnce();
+    expect(prisma.payment.create).toHaveBeenCalledOnce();
+
+    expect(prisma.project.create.mock.calls[0][0].data).toMatchObject({
+      clientId: 'client_1',
+      baseService: 'website',
+      addOns: 'seo,analytics',
+      basePrice: 300000,
+      totalPrice: 450000,
+      stripeSessionId: 'cs_test_1',
+      status: 'discovery',
+    });
+  });
+
+  it('records the amount Stripe actually collected, not the quoted total', async () => {
+    // If they paid a deposit, the Payment row is the deposit — not the quote.
+    constructWebhookEvent.mockReturnValue(
+      completedSession({ ...NEW_SALE_METADATA, paymentType: 'deposit' }, 225000)
+    );
+
+    await POST(request());
+
+    expect(prisma.payment.create.mock.calls[0][0].data).toMatchObject({
+      amount: 225000,
+      type: 'deposit',
+      stripeSessionId: 'cs_test_1',
+    });
+  });
+
+  it('falls back to the quoted total when Stripe reports no amount', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA, null));
+
+    await POST(request());
+
+    expect(prisma.payment.create.mock.calls[0][0].data.amount).toBe(450000);
+  });
+
+  it('files anything that is not a deposit as a full payment', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
+    await POST(request());
+    expect(prisma.payment.create.mock.calls[0][0].data.type).toBe('full');
+  });
+
+  it('is idempotent — a redelivered event creates nothing twice', async () => {
+    prisma.project.findFirst.mockResolvedValue({ id: 'proj_existing' });
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(prisma.project.create).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(prisma.client.create).not.toHaveBeenCalled();
+    expect(sendWelcomeEmail).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing client instead of creating a duplicate account', async () => {
+    prisma.client.findUnique.mockResolvedValue({ id: 'client_existing' });
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
+
+    await POST(request());
+
+    expect(prisma.client.create).not.toHaveBeenCalled();
+    expect(prisma.emailPreferences.create).not.toHaveBeenCalled();
+    expect(prisma.project.create.mock.calls[0][0].data.clientId).toBe('client_existing');
+    // No new password was generated, so none may be emailed out.
+    expect(vi.mocked(sendWelcomeEmail).mock.calls[0][2]).toMatch(/existing account/i);
+  });
+
+  it('sends the generated password to a brand-new client', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
+    await POST(request());
+    expect(vi.mocked(sendWelcomeEmail).mock.calls[0][2]).toBe('generated-password');
+  });
+
+  it('marks the originating lead won and tells the team', async () => {
+    constructWebhookEvent.mockReturnValue(
+      completedSession({ ...NEW_SALE_METADATA, leadId: 'lead_1' })
+    );
+
+    await POST(request());
+
+    expect(prisma.lead.update).toHaveBeenCalledWith({ where: { id: 'lead_1' }, data: { status: 'won' } });
+    expect(prisma.teamMessage.create).toHaveBeenCalledOnce();
+  });
+
+  it('carries a signed contract across to the client-visible project', async () => {
+    prisma.lead.update.mockResolvedValue({
+      id: 'lead_1',
+      assignedToId: 'user_1',
+      signedContractUrl: 'https://blob.test/contract.pdf',
+    });
+    constructWebhookEvent.mockReturnValue(
+      completedSession({ ...NEW_SALE_METADATA, leadId: 'lead_1' })
+    );
+
+    await POST(request());
+
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: 'proj_1' },
+      data: { contractUrl: 'https://blob.test/contract.pdf' },
+    });
+  });
+
+  it('does not touch a lead when the sale came from the public form', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
+    await POST(request());
+    expect(prisma.lead.update).not.toHaveBeenCalled();
+  });
+
+  it('drops junk add-on keys instead of storing them on the project', async () => {
+    constructWebhookEvent.mockReturnValue(
+      completedSession({ ...NEW_SALE_METADATA, addOns: 'seo, not-real ,toString,analytics' })
+    );
+
+    await POST(request());
+
+    expect(prisma.project.create.mock.calls[0][0].data.addOns).toBe('seo,analytics');
+  });
+
+  it('falls back to sane defaults when the metadata is partly missing', async () => {
+    constructWebhookEvent.mockReturnValue(
+      completedSession({ clientEmail: 'a@b.com', company: 'Acme' })
+    );
+
+    await POST(request());
+
+    const data = prisma.project.create.mock.calls[0][0].data;
+    expect(data.baseService).toBe('website');
+    expect(data.basePrice).toBe(300000); // the website list price
+    expect(data.totalPrice).toBe(300000);
+  });
+
+  it('reports a failure so Stripe retries, rather than swallowing it', async () => {
+    prisma.project.create.mockRejectedValue(new Error('db down'));
+    constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(500);
+  });
+
+  it('rejects a completed session carrying no metadata at all', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(null as unknown as Record<string, string>));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(500);
+    expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('a payment against an existing project', () => {
+  const BALANCE_METADATA = { existingProjectId: 'proj_9', paymentType: 'balance' };
+
+  beforeEach(() => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_9',
+      name: 'Acme — Website',
+      status: 'build',
+      client: { company: 'Acme' },
+    });
+  });
+
+  it('records the payment without creating another project', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 150000));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(prisma.project.create).not.toHaveBeenCalled();
+    expect(prisma.payment.create.mock.calls[0][0].data).toMatchObject({
+      projectId: 'proj_9',
+      amount: 150000,
+      type: 'balance',
+    });
+    expect(notifyAdminsPaymentReceived).toHaveBeenCalledOnce();
+  });
+
+  it('is idempotent on the payment, keyed by the Stripe session', async () => {
+    prisma.payment.findUnique.mockResolvedValue({ id: 'pay_existing' });
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 150000));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(notifyAdminsPaymentReceived).not.toHaveBeenCalled();
+  });
+
+  it('fails loudly when the project the payment names does not exist', async () => {
+    prisma.project.findUnique.mockResolvedValue(null);
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 150000));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(500);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+});

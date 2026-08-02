@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
 import { QUICK_ADD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
+import { Modal } from './Modal';
 
 /**
  * Adding a company isn't always "brand new lead" — Evan is often backfilling
@@ -85,18 +85,15 @@ export function QuickAddLeadModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0a0812] p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-start mb-4">
-          <h2 className="text-lg font-bold">Add Companies</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-
+    <Modal
+      title="Add Companies"
+      onClose={onClose}
+      size="max-w-lg"
+      panelClassName="max-h-[85vh] overflow-y-auto"
+      // Typed-in company details shouldn't vanish on a stray backdrop click.
+      closeOnBackdrop={false}
+    >
+      <>
         <div className="flex gap-1 p-1 rounded-xl border border-white/10 bg-white/[0.03] mb-5 w-fit">
           <button
             onClick={() => setMode('single')}
@@ -195,7 +192,7 @@ export function QuickAddLeadModal({
             </button>
           </div>
         )}
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

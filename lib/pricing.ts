@@ -512,20 +512,31 @@ export interface PricingBreakdown {
   totalPrice: number;
 }
 
+/**
+ * `value in CATALOGUE` walks the prototype chain, so "toString",
+ * "constructor" and friends passed every one of these guards — and these
+ * guards are the only validation between a POST body and a Stripe line
+ * item. `ADD_ONS['toString'].price` is `undefined`, which turns the whole
+ * subtotal into NaN. An own-property check is the fix.
+ */
+function isCatalogueKey(catalogue: object, value: string): boolean {
+  return Object.prototype.hasOwnProperty.call(catalogue, value);
+}
+
 export function isBaseService(value: string): value is BaseService {
-  return value in BASE_SERVICES;
+  return isCatalogueKey(BASE_SERVICES, value);
 }
 
 export function isAddOnKey(value: string): value is AddOnKey {
-  return value in ADD_ONS;
+  return isCatalogueKey(ADD_ONS, value);
 }
 
 export function isClientType(value: string): value is ClientType {
-  return value in CLIENT_TYPES;
+  return isCatalogueKey(CLIENT_TYPES, value);
 }
 
 export function isTimelineKey(value: string): value is TimelineKey {
-  return value in TIMELINES;
+  return isCatalogueKey(TIMELINES, value);
 }
 
 export function calculatePrice(selection: PricingSelection): PricingBreakdown {
