@@ -7,7 +7,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: '/api/',
+      // Keep private and transactional areas out of the index — the admin and
+      // client portals, checkout, the per-lead sign page, and status links.
+      disallow: ['/api/', '/admin/', '/client/', '/checkout/', '/sign/', '/status/'],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
   };
