@@ -133,6 +133,35 @@ export type Project = {
       },
     ],
   },
+  {
+    slug: 'no-account-manager',
+    title: "There's no account manager",
+    dek: "Why every message you send reaches whoever is actually writing the code — and what that means when something goes wrong.",
+    tag: 'Process',
+    accent: 'purple',
+    date: '2026-08-16',
+    readMinutes: 3,
+    body: [
+      {
+        type: 'p',
+        text: "Most studios put a person between you and the work — someone whose job is to relay your notes to a team you never talk to directly. It's not malicious; it's how you staff a large org without every client pinging every engineer. But it has a cost you pay on every single request: a question gets summarized before it reaches the person who can actually answer it, and the answer gets summarized again on the way back. Nuance dies in both directions.",
+      },
+      {
+        type: 'statement',
+        text: "When you write to us, you're writing to the person who will open the file five minutes later.",
+      },
+      { type: 'heading', text: 'What this is not' },
+      {
+        type: 'p',
+        text: "This isn't a promise of instant replies at all hours — we're two people, not a support desk. It's a promise that there is no lossy hop in between. If a request is ambiguous, the person building it asks you directly, in the moment they hit the ambiguity, instead of guessing and finding out three weeks later in a review call that it wasn't what you meant.",
+      },
+      { type: 'heading', text: "The failure mode we're avoiding" },
+      {
+        type: 'p',
+        text: "The account-manager model fails quietly. Nobody lies to you — the manager genuinely believes they relayed your feedback accurately, and the engineer genuinely believes they built what was described to them. The gap only becomes visible once the wrong thing ships. Direct access doesn't make us better listeners than anyone else. It just removes the step where a good-faith summary can drift from what you actually said.",
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
