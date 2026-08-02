@@ -61,6 +61,15 @@ export async function POST(
       nextFollowUpAt = null; // stop it appearing in anyone's follow-up queue
     }
 
+    // Captured before the write so a mis-tap can be put back exactly as it
+    // was. A wrong "not interested" marks the lead lost, wipes its follow-up
+    // and drops it off every list — the single most damaging mis-tap here.
+    const previous = {
+      status: lead.status,
+      nextFollowUpAt: lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null,
+      lostReason: lead.lostReason,
+    };
+
     const [activity, updated] = await prisma.$transaction([
       prisma.leadActivity.create({
         data: { leadId, type: 'call', content, createdById: session.userId },
@@ -77,7 +86,10 @@ export async function POST(
       }),
     ]);
 
-    return NextResponse.json({ success: true, activity, lead: updated }, { status: 201 });
+    return NextResponse.json(
+      { success: true, activity, lead: updated, previous, activityId: activity.id },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Call outcome error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

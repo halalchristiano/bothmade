@@ -133,6 +133,14 @@ export default function LeadDetailPage() {
   const [outcomeNote, setOutcomeNote] = useState('');
   const [outcomeDate, setOutcomeDate] = useState('');
   const [savingOutcome, setSavingOutcome] = useState(false);
+  // What just happened, and enough to put it back. Cleared once he moves on.
+  const [lastOutcome, setLastOutcome] = useState<{
+    label: string;
+    summary: string;
+    activityId: string;
+    previous: { status: string; nextFollowUpAt: string | null; lostReason: string | null };
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
   // The drafted follow-up, shown after an outcome is logged. Editable — it's
   // a starting point, not something to fire off unread.
   const [followUp, setFollowUp] = useState<{ subject: string; body: string; why: string } | null>(null);
@@ -406,6 +414,26 @@ export default function LeadDetailPage() {
     }
   };
 
+  const undoLastOutcome = async () => {
+    if (!lastOutcome) return;
+    setUndoing(true);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/call-outcome/undo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activityId: lastOutcome.activityId, previous: lastOutcome.previous }),
+      });
+      if (res.ok) {
+        setLastOutcome(null);
+        setFollowUp(null);
+        setFollowUpResult(null);
+        load();
+      }
+    } finally {
+      setUndoing(false);
+    }
+  };
+
   const handleCallOutcome = async (key: string, needsDate: boolean) => {
     if (needsDate && !outcomeDate) return;
     setSavingOutcome(true);
@@ -419,7 +447,29 @@ export default function LeadDetailPage() {
           followUpAt: outcomeDate || undefined,
         }),
       });
+      const data = await res.json().catch(() => null);
       if (res.ok) {
+        const o = CALL_OUTCOMES.find((x) => x.key === key);
+        if (data?.previous && data?.activityId && o) {
+          const when = data.lead?.nextFollowUpAt
+            ? new Date(data.lead.nextFollowUpAt).toLocaleDateString(undefined, {
+                day: 'numeric',
+                month: 'short',
+              })
+            : null;
+          setLastOutcome({
+            label: o.label,
+            summary: [
+              o.status === 'lost' ? 'marked lost' : data.lead?.status ? `moved to ${LEAD_STATUS_LABELS[data.lead.status as LeadStatus]}` : null,
+              when ? `follow-up set for ${when}` : 'no follow-up set',
+              'note saved',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            activityId: data.activityId,
+            previous: data.previous,
+          });
+        }
         setLoggingOutcome(null);
         setOutcomeNote('');
         setOutcomeDate('');
@@ -965,6 +1015,31 @@ export default function LeadDetailPage() {
             );
           })}
         </div>
+
+        {lastOutcome && (
+          <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.08] p-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-emerald-100 break-words">
+                  Logged: {lastOutcome.label}
+                </p>
+                <p className="text-xs text-emerald-200/70 mt-0.5 leading-relaxed break-words">
+                  {lastOutcome.summary}
+                </p>
+              </div>
+              <button
+                onClick={undoLastOutcome}
+                disabled={undoing}
+                className="shrink-0 rounded-lg border border-white/20 px-3 py-1.5 text-xs font-bold hover:bg-white/10 disabled:opacity-50 transition-colors"
+              >
+                {undoing ? 'Undoing...' : 'Undo'}
+              </button>
+            </div>
+            <p className="text-[11px] text-emerald-200/45 mt-2 leading-relaxed">
+              Tapped the wrong one? Undo puts everything back exactly as it was.
+            </p>
+          </div>
+        )}
 
         {followUpResult && (
           <p className="mt-3 text-xs text-emerald-300 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-3 py-2">
