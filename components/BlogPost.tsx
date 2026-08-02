@@ -310,7 +310,82 @@ function BlockRenderer({
 
     case 'flyThroughDemo':
       return <FlyThroughDemo words={block.words} />;
+
+    case 'parallaxDemo':
+      return <ParallaxDemo />;
   }
+}
+
+/**
+ * Scaled replay of VisionHero's depth scene: pointer position within the
+ * bounded stage drives rotateX/rotateY on a transform-style: preserve-3d
+ * container; a few child elements sit at different translateZ depths so
+ * the whole thing tilts as one rigid 3D diorama, not flat layers sliding.
+ */
+function ParallaxDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const px = useMotionValue(0);
+  const py = useMotionValue(0);
+  const rx = useSpring(useTransform(py, [-0.5, 0.5], [9, -9]), { stiffness: 90, damping: 20 });
+  const ry = useSpring(useTransform(px, [-0.5, 0.5], [-14, 14]), { stiffness: 90, damping: 20 });
+
+  const onMove = (e: React.PointerEvent) => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    px.set((e.clientX - r.left) / r.width - 0.5);
+    py.set((e.clientY - r.top) / r.height - 0.5);
+  };
+  const reset = () => {
+    px.set(0);
+    py.set(0);
+  };
+
+  if (reduceMotion) {
+    return (
+      <div className="rounded-2xl border border-white/10 p-10 grid place-items-center h-64 md:h-80">
+        <p className="font-mono text-xs uppercase tracking-[0.3em] text-white/40">
+          motion reduced — static
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      onPointerMove={onMove}
+      onPointerLeave={reset}
+      className="relative h-64 md:h-80 rounded-2xl border border-white/10 overflow-hidden bg-[#05030a] grid place-items-center"
+      style={{ perspective: '1000px' }}
+    >
+      <motion.div
+        className="relative"
+        style={{ rotateX: rx, rotateY: ry, transformStyle: 'preserve-3d' }}
+      >
+        <div className="absolute" style={{ transform: 'translate3d(-90px, -50px, -80px)' }}>
+          <div className="w-20 h-14 rounded-xl border border-white/15" style={{ background: 'linear-gradient(140deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02))', backdropFilter: 'blur(10px)' }} />
+        </div>
+        <div className="absolute" style={{ transform: 'translate3d(70px, 40px, -40px)' }}>
+          <div className="w-16 h-24 rounded-xl border border-white/15" style={{ background: 'linear-gradient(140deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02))', backdropFilter: 'blur(10px)' }} />
+        </div>
+        <div
+          className="relative rounded-2xl border border-white/20 px-6 py-5"
+          style={{
+            transform: 'translateZ(50px)',
+            background: 'linear-gradient(150deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04))',
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 30px 90px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25)',
+          }}
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-purple-200/80">
+            move your cursor
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 /**

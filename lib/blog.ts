@@ -128,7 +128,14 @@ export type Block =
    * scale up ~9x and fade as you scroll past each one's slot, so scrolling
    * reads as flying through one word into the next.
    */
-  | { type: 'flyThroughDemo'; words: string[] };
+  | { type: 'flyThroughDemo'; words: string[] }
+  /**
+   * Scaled replay of VisionHero's pointer-driven 3D depth scene: a
+   * transform-style: preserve-3d container whose rotateX/rotateY track
+   * pointer position, with child elements at different translateZ depths
+   * so the whole scene tilts as one rigid diorama.
+   */
+  | { type: 'parallaxDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -1214,6 +1221,55 @@ const opacity = useTransform(
       {
         type: 'p',
         text: "scrollYProgress itself is not smoothed — it's an exact, sometimes-jittery reflection of scroll position, especially on a trackpad sending rapid small deltas. Every transform in this sequence reads from a useSpring-wrapped copy of that value instead of the raw one, which is what keeps a giant word's scale from visibly stepping instead of gliding when your scroll input isn't perfectly smooth. It's a small addition — one extra hook — for a section where any stutter in a 9x scale-up would be the first thing anyone noticed.",
+      },
+    ],
+  },
+  {
+    slug: 'a-css-3d-scene-that-tilts-toward-your-cursor',
+    title: 'A CSS 3D scene that tilts toward your cursor',
+    dek: "How our Vision Pro page fakes headset parallax with rotateX/rotateY and a handful of translateZ values — real CSS 3D, no library. Move your cursor over the demo below.",
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2027-01-03',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "Screenshots can't show what a Vision Pro app feels like, because the entire point of the platform is that content sits at different depths in physical space around you — move your head and closer things shift more than far things, the way real objects do. Our Vision Pro service page fakes a version of that on a flat screen: move your pointer over the hero and the whole scene tilts, with UI cards floating at different simulated depths, using nothing but CSS 3D transforms.",
+      },
+      {
+        type: 'statement',
+        text: 'transform-style: preserve-3d turns a flat stack of divs into a rigid object — rotate the parent, and every child keeps its position in 3D space relative to the others, not just visually layered on top.',
+      },
+      { type: 'heading', text: 'Move your cursor over this' },
+      { type: 'parallaxDemo' },
+      {
+        type: 'p',
+        text: "Pointer position inside the container maps to two rotation values — how far left/right you are becomes rotateY, how far up/down becomes rotateX — both run through a spring so the tilt settles rather than snapping to the cursor. The container carries perspective on its parent and transform-style: preserve-3d on itself; without that second property, child elements with their own translateZ would just render flat, because the browser wouldn't treat them as sharing one 3D space with their parent's rotation.",
+      },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `<div style={{ perspective: '1000px' }}>
+  <motion.div style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }}>
+    <div style={{ transform: 'translate3d(-90px, -50px, -80px)' }}>
+      {/* a card sitting further away */}
+    </div>
+    <div style={{ transform: 'translateZ(50px)' }}>
+      {/* the near card, closest to the viewer */}
+    </div>
+  </motion.div>
+</div>`,
+      },
+      { type: 'heading', text: 'Why depth instead of just parallax scroll speeds' },
+      {
+        type: 'p',
+        text: "A cheaper version of \"depth\" just moves background layers slower than foreground layers on scroll — real parallax, but along one axis, and it doesn't respond to anything but scroll position. This scene responds to pointer position on two axes simultaneously, and because it's genuine 3D transforms rather than simulated offsets, every element's perceived movement is mathematically consistent with its actual translateZ — a card 80px \"deeper\" moves a specific, correct amount less than a card at 50px, the same way it would if you were actually looking at a physical diorama and shifted your head.",
+      },
+      { type: 'heading', text: "Why it's the one hero with no scroll-pinned sequence" },
+      {
+        type: 'p',
+        text: "Every other platform page on the site (web, iOS) opens with a scroll-driven sequence — the sheet stack, the fly-through words. Vision Pro's hero doesn't scroll-pin at all; it responds to the pointer sitting still and moving around inside a fixed viewport. That's deliberate, not an oversight: a headset doesn't have a scrollbar, and the platform's whole interaction model is about your position and gaze in a space rather than a linear feed you move through. The hero's mechanic matches the platform's actual interaction language instead of reusing the site's own default pattern out of habit.",
       },
     ],
   },
