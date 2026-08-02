@@ -3,9 +3,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import { upload } from '@vercel/blob/client';
+import {
+  CheckCircle2,
+  Circle,
+  Download,
+  Paperclip,
+  Sparkles,
+  ArrowRight,
+  ShieldCheck,
+} from 'lucide-react';
 import { ClientHeader } from '@/components/portal/ClientHeader';
-import { GridBackdrop } from '@/components/ui';
+import { GridBackdrop, CountUp } from '@/components/ui';
+
+// The one motion signature carried over from the marketing site — the same
+// ease-out-expo curve used there, so the dashboard a client lives in every
+// day doesn't feel like a different, lesser product than the one that sold
+// them.
+const EASE = [0.16, 1, 0.3, 1] as const;
+
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: EASE } },
+};
+
+const stagger: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } },
+};
 
 interface Project {
   id: string;
@@ -60,6 +86,7 @@ export default function ClientDashboard() {
   const router = useRouter();
   const params = useParams();
   const projectId = params.projectId as string;
+  const reduceMotion = useReducedMotion();
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -322,32 +349,58 @@ export default function ClientDashboard() {
         <ClientHeader />
 
         {/* Project header */}
-        <div className="border-b border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent">
-          <div className="max-w-6xl mx-auto px-6 py-10 flex justify-between items-start gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-sky-300/80 mb-2">
-                {project.client.company}
-              </p>
-              <h1 className="text-3xl md:text-4xl font-bold">{project.name}</h1>
-              <p className="text-white/40 text-sm mt-1">
-                Created {new Date(project.createdAt).toLocaleDateString()}
-              </p>
+        <div className="relative border-b border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent overflow-hidden">
+          <motion.div
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 1.1, ease: EASE }}
+            style={{ originX: 0 }}
+            className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-sky-400 via-purple-400 to-transparent"
+          />
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: EASE }}
+            className="max-w-6xl mx-auto px-6 py-10 flex flex-wrap justify-between items-start gap-6"
+          >
+            <div className="flex items-start gap-4 min-w-0">
+              <span className="shrink-0 hidden sm:flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-400/25 to-purple-500/25 border border-white/10 text-xl font-bold text-white/90">
+                {project.client.company.charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300/80 mb-2">
+                  {project.client.company}
+                </p>
+                <h1 className="text-3xl md:text-[2.75rem] md:leading-[1.05] font-bold tracking-tight break-words">
+                  {project.name}
+                </h1>
+                <p className="text-white/40 text-sm mt-2 flex items-center gap-1.5">
+                  <ShieldCheck size={13} className="text-emerald-400/70" />
+                  Under active management since {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                </p>
+              </div>
             </div>
             <div className="shrink-0 flex gap-2">
-              <button
+              <motion.button
                 onClick={handleCopyShareLink}
-                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 transition-colors whitespace-nowrap"
+                whileHover={{ scale: 1.03, y: -1 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors whitespace-nowrap"
               >
                 {linkCopied ? 'Copied ✓' : 'Share status link'}
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={handleCopySummary}
-                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 transition-colors whitespace-nowrap"
+                whileHover={{ scale: 1.03, y: -1 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors whitespace-nowrap"
               >
                 {summaryCopied ? 'Copied ✓' : 'Copy status summary'}
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         </div>
 
         <div className="max-w-6xl mx-auto px-6 py-8">
@@ -358,12 +411,17 @@ export default function ClientDashboard() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`relative px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black'
-                    : 'text-white/50 hover:text-white'
+                  activeTab === tab ? 'text-black' : 'text-white/50 hover:text-white'
                 }`}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {activeTab === tab && (
+                  <motion.span
+                    layoutId="clientTabIndicator"
+                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                    className="absolute inset-0 rounded-full bg-gradient-to-r from-sky-400 to-purple-500"
+                  />
+                )}
+                <span className="relative">{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
                 {tab === 'messages' && unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
                     {unreadCount}
@@ -383,10 +441,13 @@ export default function ClientDashboard() {
 
         {/* Overview Tab */}
         {activeTab === 'overview' && (
-          <div className="space-y-6">
+          <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
             {/* Onboarding nudge */}
             {questions.some((q) => !q.response) && (
-              <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 backdrop-blur-xl p-6 flex justify-between items-center gap-4">
+              <motion.div
+                variants={fadeUp}
+                className="rounded-2xl border border-amber-400/30 bg-amber-400/10 backdrop-blur-xl p-6 flex justify-between items-center gap-4"
+              >
                 <div>
                   <p className="font-semibold text-amber-200">
                     {questions.filter((q) => !q.response).length === 1
@@ -403,24 +464,44 @@ export default function ClientDashboard() {
                 >
                   Answer now
                 </button>
-              </div>
+              </motion.div>
             )}
 
             {/* Current Status */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
-              <h2 className="text-xl font-bold mb-6">Project Status</h2>
+            <motion.div
+              variants={fadeUp}
+              className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 overflow-hidden"
+            >
+              <div
+                className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full blur-[100px] opacity-[0.15]"
+                style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.8), transparent 70%)' }}
+              />
+              <div className="relative flex items-center gap-2 mb-6">
+                <Sparkles size={16} className="text-sky-300" />
+                <h2 className="text-xl font-bold">Project Status</h2>
+              </div>
 
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold">{currentStage}</span>
-                <span className="text-sm text-white/50">
-                  {Math.min(project.statusStage + 1, 5)}/5
+              <div className="relative flex justify-between items-center mb-3">
+                <span className="font-semibold text-lg">{currentStage}</span>
+                <span className="text-sm text-white/50 tabular-nums">
+                  Stage {Math.min(project.statusStage + 1, 5)} of 5
                 </span>
               </div>
-              <div className="w-full bg-white/10 rounded-full h-2 mb-2">
-                <div
-                  className="bg-gradient-to-r from-sky-400 to-purple-500 h-2 rounded-full transition-all"
-                  style={{ width: `${progressPct}%` }}
-                />
+              <div className="relative w-full bg-white/10 rounded-full h-2.5 mb-2 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPct}%` }}
+                  transition={{ duration: 1, ease: EASE, delay: 0.2 }}
+                  className="relative h-2.5 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 overflow-hidden"
+                >
+                  {!reduceMotion && (
+                    <motion.div
+                      animate={{ x: ['-100%', '220%'] }}
+                      transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1.4 }}
+                      className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                    />
+                  )}
+                </motion.div>
               </div>
               {project.estimatedCompletionDate && (
                 <p className="text-xs text-white/40 mb-6">
@@ -436,39 +517,55 @@ export default function ClientDashboard() {
               )}
               {!project.estimatedCompletionDate && <div className="mb-6" />}
 
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="relative grid grid-cols-2 md:grid-cols-5 gap-3">
                 {STATUS_STAGES.map((stage, idx) => {
                   const reached = idx <= Math.min(project.statusStage, 4);
+                  const isCurrent = idx === Math.min(project.statusStage, 4);
                   return (
-                    <div
+                    <motion.div
                       key={stage}
-                      className={`p-3 rounded-lg text-center text-sm font-medium transition-colors ${
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4, ease: EASE, delay: 0.5 + idx * 0.06 }}
+                      className={`relative p-3 rounded-lg text-center text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
                         reached
                           ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border border-sky-400/30 text-white'
                           : 'bg-white/5 border border-white/10 text-white/30'
                       }`}
                     >
-                      {stage}
-                    </div>
+                      {isCurrent && !reduceMotion && (
+                        <motion.span
+                          animate={{ opacity: [0.5, 0, 0.5], scale: [1, 1.15, 1] }}
+                          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                          className="absolute inset-0 rounded-lg border border-sky-400/50"
+                        />
+                      )}
+                      {reached ? (
+                        <CheckCircle2 size={13} className="text-sky-300 shrink-0" />
+                      ) : (
+                        <Circle size={13} className="text-white/20 shrink-0" />
+                      )}
+                      <span>{stage}</span>
+                    </motion.div>
                   );
                 })}
               </div>
 
-              <div className="mt-6 rounded-lg bg-white/5 border border-white/10 p-4">
+              <div className="relative mt-6 rounded-lg bg-white/5 border border-white/10 p-4">
                 <p className="text-sm font-semibold text-sky-300 mb-1">What's happening in {currentStage}?</p>
                 <p className="text-sm text-white/60">{STAGE_EXPLANATIONS[currentStage]}</p>
               </div>
 
               {STAGE_WHATS_NEXT[currentStage] && (
-                <div className="mt-3 rounded-lg bg-gradient-to-r from-sky-400/10 to-purple-500/10 border border-white/10 p-4">
+                <div className="relative mt-3 rounded-lg bg-gradient-to-r from-sky-400/10 to-purple-500/10 border border-white/10 p-4">
                   <p className="text-sm font-semibold text-white/80 mb-1">What's next</p>
                   <p className="text-sm text-white/60">{STAGE_WHATS_NEXT[currentStage]}</p>
                 </div>
               )}
-            </div>
+            </motion.div>
 
             {/* Project Details */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+            <motion.div variants={fadeUp} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
               <h2 className="text-xl font-bold mb-6">Project Details</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -484,7 +581,9 @@ export default function ClientDashboard() {
 
                 <div>
                   <h3 className="text-sm text-white/40 mb-1">Project Value</h3>
-                  <p className="text-lg font-semibold">${(project.totalPrice / 100).toLocaleString()}</p>
+                  <p className="text-lg font-semibold">
+                    <CountUp value={`$${(project.totalPrice / 100).toLocaleString()}`} />
+                  </p>
                 </div>
 
                 {project.addOns.length > 0 && (
@@ -505,16 +604,16 @@ export default function ClientDashboard() {
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
 
             {/* Payments */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+            <motion.div variants={fadeUp} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
               <h2 className="text-xl font-bold mb-6">Payments</h2>
 
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-white/40">Paid</span>
                 <span className="text-emerald-300 font-medium">
-                  ${(project.amountPaid / 100).toLocaleString()}
+                  <CountUp value={`$${(project.amountPaid / 100).toLocaleString()}`} />
                 </span>
               </div>
               <div className="flex justify-between text-sm mb-3">
@@ -523,24 +622,41 @@ export default function ClientDashboard() {
                   ${(project.balanceDue / 100).toLocaleString()}
                 </span>
               </div>
-              <div className="w-full bg-white/10 rounded-full h-1.5 mb-6">
-                <div
-                  className="bg-gradient-to-r from-emerald-400 to-sky-400 h-1.5 rounded-full transition-all"
-                  style={{ width: `${Math.min(100, (project.amountPaid / project.totalPrice) * 100)}%` }}
+              <div className="w-full bg-white/10 rounded-full h-1.5 mb-6 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, (project.amountPaid / project.totalPrice) * 100)}%` }}
+                  transition={{ duration: 1, ease: EASE, delay: 0.3 }}
+                  className="bg-gradient-to-r from-emerald-400 to-sky-400 h-1.5 rounded-full"
                 />
               </div>
 
               {project.balanceDue > 0 && (
                 <div className="mb-6">
-                  <button
+                  <motion.button
                     onClick={handlePayBalance}
                     disabled={payingBalance}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
+                    whileHover={{ scale: 1.015, y: -1 }}
+                    whileTap={{ scale: 0.985 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                    className="relative w-full py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold disabled:opacity-50 overflow-hidden shadow-[0_0_30px_-10px_rgba(56,189,248,0.6)]"
                   >
-                    {payingBalance ? 'Redirecting to checkout…' : `Pay Balance — $${(project.balanceDue / 100).toLocaleString()}`}
-                  </button>
+                    <span className="relative z-10">
+                      {payingBalance ? 'Redirecting to checkout…' : `Pay Balance — $${(project.balanceDue / 100).toLocaleString()}`}
+                    </span>
+                    {!payingBalance && !reduceMotion && (
+                      <motion.span
+                        animate={{ x: ['-120%', '220%'] }}
+                        transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', repeatDelay: 2 }}
+                        className="absolute inset-y-0 w-1/4 bg-gradient-to-r from-transparent via-white/50 to-transparent"
+                      />
+                    )}
+                  </motion.button>
                   {payBalanceError && <p className="text-red-400 text-xs mt-2">{payBalanceError}</p>}
-                  <p className="text-white/30 text-[11px] mt-2">Secure checkout by Stripe — we never see or store your card details.</p>
+                  <p className="text-white/30 text-[11px] mt-2 flex items-center gap-1">
+                    <ShieldCheck size={11} className="text-emerald-400/60" />
+                    Secure checkout by Stripe — we never see or store your card details.
+                  </p>
                 </div>
               )}
 
@@ -566,39 +682,45 @@ export default function ClientDashboard() {
               ) : (
                 <p className="text-sm text-white/40">No payments recorded yet.</p>
               )}
-            </div>
+            </motion.div>
 
             {/* Signed Agreement */}
             {project.contractUrl && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+              <motion.div variants={fadeUp} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
                 <h2 className="text-xl font-bold mb-6">Your Agreement</h2>
-                <a
+                <motion.a
                   href={project.contractUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
+                  whileHover={{ x: 3 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 hover:bg-white/[0.03] transition-colors"
                 >
                   <div>
                     <p className="font-medium">Signed project agreement</p>
                     <p className="text-xs text-white/40">A copy of the contract you agreed to</p>
                   </div>
-                  <span className="text-sm font-semibold text-sky-300">Download</span>
-                </a>
-              </div>
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-sky-300">
+                    <Download size={14} /> Download
+                  </span>
+                </motion.a>
+              </motion.div>
             )}
 
             {/* Deliverables */}
             {project.deliverables.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+              <motion.div variants={fadeUp} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
                 <h2 className="text-xl font-bold mb-6">Deliverables</h2>
                 <div className="space-y-3">
                   {project.deliverables.map((file) => (
-                    <a
+                    <motion.a
                       key={file.id}
                       href={file.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 transition-colors"
+                      whileHover={{ x: 3 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                      className="flex justify-between items-center p-4 rounded-lg border border-white/10 hover:border-white/25 hover:bg-white/[0.03] transition-colors"
                     >
                       <div>
                         <p className="font-medium flex items-center">
@@ -607,23 +729,26 @@ export default function ClientDashboard() {
                         </p>
                         {file.size && <p className="text-xs text-white/40">{file.size}</p>}
                       </div>
-                      <span className="text-sm font-semibold text-sky-300">Download</span>
-                    </a>
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-sky-300">
+                        <Download size={14} /> Download
+                      </span>
+                    </motion.a>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* Latest Updates */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+            <motion.div variants={fadeUp} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold">Latest Updates</h2>
                 {project.updates.length > 0 && (
                   <button
                     onClick={() => setActiveTab('timeline')}
-                    className="text-sm font-semibold text-sky-300 hover:underline"
+                    className="group flex items-center gap-1 text-sm font-semibold text-sky-300 hover:underline"
                   >
-                    View full timeline →
+                    View full timeline
+                    <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
                   </button>
                 )}
               </div>
@@ -651,21 +776,34 @@ export default function ClientDashboard() {
                   ))}
                 </div>
               )}
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
 
         {/* Timeline Tab */}
         {activeTab === 'timeline' && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8"
+          >
             <h2 className="text-xl font-bold mb-6">Project Timeline</h2>
 
-            <div className="space-y-4">
+            <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-4">
               {project.updates.length > 0 ? (
                 project.updates.map((update, idx) => (
-                  <div key={update.id} className="flex gap-4">
+                  <motion.div variants={fadeUp} key={update.id} className="flex gap-4">
                     <div className="flex flex-col items-center">
-                      <div className="w-3 h-3 rounded-full bg-gradient-to-r from-sky-400 to-purple-500"></div>
+                      <div className="relative w-3 h-3 rounded-full bg-gradient-to-r from-sky-400 to-purple-500">
+                        {idx === 0 && !reduceMotion && (
+                          <motion.span
+                            animate={{ opacity: [0.6, 0, 0.6], scale: [1, 2.2, 1] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                            className="absolute inset-0 rounded-full bg-sky-400"
+                          />
+                        )}
+                      </div>
                       {idx < project.updates.length - 1 && (
                         <div className="w-px h-16 bg-white/10 mt-1"></div>
                       )}
@@ -680,18 +818,23 @@ export default function ClientDashboard() {
                         {new Date(update.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                  </div>
+                  </motion.div>
                 ))
               ) : (
                 <p className="text-white/50">No updates yet. Check back soon!</p>
               )}
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
 
         {/* Messages Tab */}
         {activeTab === 'messages' && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8"
+          >
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold">Project Messages</h2>
               <p className="text-xs text-white/40">Our team typically replies within one business day</p>
@@ -730,7 +873,7 @@ export default function ClientDashboard() {
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1.5 text-xs text-sky-300 hover:underline"
                               >
-                                📎 {f.name}
+                                <Paperclip size={11} /> {f.name}
                               </a>
                             ));
                           } catch {
@@ -761,22 +904,30 @@ export default function ClientDashboard() {
                   onChange={handleFileChange}
                   className="text-xs text-white/50 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:text-xs"
                 />
-                <button
+                <motion.button
                   type="submit"
                   disabled={sendingMessage || (!messageContent.trim() && !fileToAttach)}
-                  className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-6 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+                  whileHover={{ scale: 1.02, y: -1 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                  className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-6 py-3 font-semibold text-black disabled:opacity-50 whitespace-nowrap"
                 >
                   {sendingMessage ? 'Sending...' : 'Send Message'}
-                </button>
+                </motion.button>
               </div>
               {messageError && <p className="text-sm text-red-300">{messageError}</p>}
             </form>
-          </div>
+          </motion.div>
         )}
 
         {/* Onboarding Tab */}
         {activeTab === 'onboarding' && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8"
+          >
             <h2 className="text-xl font-bold mb-2">Onboarding</h2>
             <p className="text-white/50 text-sm mb-6">
               A few questions from the team to help kick your project off right.
@@ -833,7 +984,7 @@ export default function ClientDashboard() {
                 })}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
         </div>
       </div>
