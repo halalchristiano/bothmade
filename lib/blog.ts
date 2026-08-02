@@ -312,6 +312,53 @@ export type Project = {
       },
     ],
   },
+  {
+    slug: 'text-that-develops-like-film',
+    title: 'Text that develops like film',
+    dek: "The scroll-scrubbed paragraph on our homepage, and why it's driven by scroll position instead of time.",
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-09-13',
+    readMinutes: 3,
+    body: [
+      {
+        type: 'p',
+        text: "The easy version of a text reveal fades a paragraph in once, on a timer, the moment it enters the viewport. It looks fine the first time and wrong every time after — scroll back up past it and the words are just sitting there, already finished, because a setTimeout doesn't know or care where your scroll position actually is. We wanted something that replays correctly no matter which direction you're moving.",
+      },
+      {
+        type: 'statement',
+        text: "Keyed to scroll position instead of a clock, scrubbing up and down replays the reveal like rewinding film.",
+      },
+      { type: 'heading', text: 'One motion value per word' },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `const { scrollYProgress } = useScroll({
+  target: ref,
+  offset: ['start 0.9', 'start 0.35'],
+});
+
+const words = text.split(' ');
+// each word gets its own slice of the 0→1 scroll range
+words.map((word, i) => (
+  <ScrubWord
+    word={word}
+    progress={scrollYProgress}
+    range={[i / words.length, (i + 1) / words.length]}
+  />
+));`,
+      },
+      {
+        type: 'p',
+        text: "Each word is handed the same scroll-position value but a different slice of it to react to — word one finishes sharpening well before word ten even starts. useTransform maps that slice onto opacity, a small blur, and a few pixels of upward drift, so the sentence reads as focusing into clarity rather than just fading in. Because it's all derived from scrollYProgress and nothing else, scrolling back up runs the whole thing in reverse for free — there's no separate 'exit' animation to write.",
+      },
+      { type: 'heading', text: 'The one branch that matters' },
+      {
+        type: 'p',
+        text: "None of this runs for anyone with reduced motion turned on. The component checks useReducedMotion() once and, if it's set, renders the words as plain static text with none of the motion wiring attached — not just skipped visually, actually never subscribed to scroll events in the first place. An animation nobody asked for is a worse experience than no animation at all.",
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
