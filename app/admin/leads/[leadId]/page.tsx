@@ -670,7 +670,7 @@ export default function LeadDetailPage() {
                   type="date"
                   defaultValue={lead.nextFollowUpAt ? lead.nextFollowUpAt.slice(0, 10) : ''}
                   onChange={(e) => handleSetFollowUp(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} overflow-hidden [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:mr-0`}
                 />
               </div>
             </div>
