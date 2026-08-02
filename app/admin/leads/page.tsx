@@ -143,6 +143,10 @@ export default function AdminLeadsPage() {
   const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[]; sentViaResend: number } | null>(null);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [listError, setListError] = useState('');
+  const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
+  const [reassignTargetId, setReassignTargetId] = useState('');
+  const [reassigning, setReassigning] = useState(false);
   const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
   const [previewingBatch, setPreviewingBatch] = useState<LeadRow[] | null>(null);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
@@ -172,6 +176,10 @@ export default function AdminLeadsPage() {
       .then((r) => r.json())
       .then((data) => setGmailConnected(!!data.willLandInGmailSent))
       .catch(() => setGmailConnected(null));
+    fetch('/api/admin/users')
+      .then((r) => r.json())
+      .then((data) => setTeamUsers(data.users || []))
+      .catch(() => setTeamUsers([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -222,24 +230,46 @@ export default function AdminLeadsPage() {
       setLostTarget(lead);
       return;
     }
+    const previousStatus = lead.status;
+    setListError('');
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status } : l)));
-    await fetch(`/api/admin/leads/${lead.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
+    try {
+      const res = await fetch(`/api/admin/leads/${lead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status: previousStatus } : l)));
+        setListError(`Couldn't update ${lead.company} — the change didn't save. Try again.`);
+      }
+    } catch {
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status: previousStatus } : l)));
+      setListError('Could not reach the server — check your connection and try again.');
+    }
   };
 
   const handleConfirmLost = async (reason: string) => {
     if (!lostTarget) return;
     const id = lostTarget.id;
+    const previousStatus = lostTarget.status;
+    setListError('');
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: 'lost' } : l)));
     setLostTarget(null);
-    await fetch(`/api/admin/leads/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'lost', lostReason: reason }),
-    });
+    try {
+      const res = await fetch(`/api/admin/leads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'lost', lostReason: reason }),
+      });
+      if (!res.ok) {
+        setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: previousStatus } : l)));
+        setListError("Couldn't mark that lead lost — the change didn't save. Try again.");
+      }
+    } catch {
+      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: previousStatus } : l)));
+      setListError('Could not reach the server — check your connection and try again.');
+    }
   };
 
   const toggleSelected = (id: string) => {
@@ -331,6 +361,7 @@ export default function AdminLeadsPage() {
   const handleBulkDelete = async () => {
     if (selected.size === 0) return;
     setBulkDeleting(true);
+    setListError('');
     try {
       const res = await fetch('/api/admin/leads/bulk-delete', {
         method: 'POST',
@@ -341,9 +372,39 @@ export default function AdminLeadsPage() {
         setSelected(new Set());
         setConfirmingBulkDelete(false);
         load();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setListError(data.error || "Couldn't delete those leads — try again.");
       }
+    } catch {
+      setListError('Could not reach the server — check your connection and try again.');
     } finally {
       setBulkDeleting(false);
+    }
+  };
+
+  const handleBulkReassign = async () => {
+    if (selected.size === 0) return;
+    setReassigning(true);
+    setListError('');
+    try {
+      const res = await fetch('/api/admin/leads/bulk-reassign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: Array.from(selected), assignedToId: reassignTargetId || null }),
+      });
+      if (res.ok) {
+        setSelected(new Set());
+        setReassignTargetId('');
+        load();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setListError(data.error || "Couldn't reassign those leads — try again.");
+      }
+    } catch {
+      setListError('Could not reach the server — check your connection and try again.');
+    } finally {
+      setReassigning(false);
     }
   };
 
@@ -482,6 +543,12 @@ export default function AdminLeadsPage() {
         </Card>
       )}
 
+      {listError && (
+        <p className="text-sm text-red-300 mb-4" role="alert">
+          {listError}
+        </p>
+      )}
+
       {selected.size > 0 && (
         <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 px-5 py-3 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -518,6 +585,29 @@ export default function AdminLeadsPage() {
                 <Send size={14} />
                 Compose cold email
               </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={reassignTargetId}
+                  onChange={(e) => setReassignTargetId(e.target.value)}
+                  className="text-sm bg-white/5 border border-white/15 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-400/60"
+                >
+                  <option value="" className="bg-[#05030a]">
+                    Unassign
+                  </option>
+                  {teamUsers.map((u) => (
+                    <option key={u.id} value={u.id} className="bg-[#05030a]">
+                      {u.name || u.email}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBulkReassign}
+                  disabled={reassigning}
+                  className="px-3 py-2 rounded-xl border border-white/15 text-sm font-medium hover:bg-white/5 transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  {reassigning ? 'Reassigning...' : 'Reassign'}
+                </button>
+              </div>
               {confirmingBulkDelete ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-white/50">Delete {selected.size}?</span>

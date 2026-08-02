@@ -115,8 +115,42 @@ export default function CallListPage() {
   // business to actually ring now — which the order alone can't, because the
   // most urgent lead is often one where it's the middle of the night.
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const [readyNow, setReadyNow] = useState(false);
-  const [sortBy, setSortBy] = useState<'urgent' | 'value' | 'time'>('urgent');
+  // Restored from last session so switching to "biggest deal first" sticks
+  // around instead of quietly resetting every time the page is left and
+  // come back to.
+  const [readyNow, setReadyNow] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('bothmade_call_list_ready_now') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [sortBy, setSortBy] = useState<'urgent' | 'value' | 'time'>(() => {
+    if (typeof window === 'undefined') return 'urgent';
+    try {
+      const stored = localStorage.getItem('bothmade_call_list_sort');
+      return stored === 'value' || stored === 'time' ? stored : 'urgent';
+    } catch {
+      return 'urgent';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bothmade_call_list_ready_now', String(readyNow));
+    } catch {
+      /* ignore */
+    }
+  }, [readyNow]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bothmade_call_list_sort', sortBy);
+    } catch {
+      /* ignore */
+    }
+  }, [sortBy]);
   const [nowTick, setNowTick] = useState(() => Date.now());
   // Tapping a tel: link is the one moment we genuinely know a call was
   // started — a browser cannot read the phone's call history, on any OS. So
@@ -124,6 +158,7 @@ export default function CallListPage() {
   // on him to come and log it unprompted.
   const [pendingCall, setPendingCall] = useState<{ id: string; company: string; at: number } | null>(null);
   const [savingQuick, setSavingQuick] = useState(false);
+  const [quickOutcomeError, setQuickOutcomeError] = useState('');
 
   const load = async () => {
     try {
@@ -193,6 +228,7 @@ export default function CallListPage() {
     } catch {
       /* private mode — the prompt just won't survive a reload */
     }
+    setQuickOutcomeError('');
     setPendingCall(entry);
   };
 
@@ -208,6 +244,7 @@ export default function CallListPage() {
   const logQuickOutcome = async (key: string) => {
     if (!pendingCall) return;
     setSavingQuick(true);
+    setQuickOutcomeError('');
     try {
       const res = await fetch(`/api/admin/leads/${pendingCall.id}/call-outcome`, {
         method: 'POST',
@@ -217,7 +254,12 @@ export default function CallListPage() {
       if (res.ok) {
         clearPendingCall();
         load();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setQuickOutcomeError(data.error || "Couldn't log that outcome — try again.");
       }
+    } catch {
+      setQuickOutcomeError('Could not reach the server — check your connection and try again.');
     } finally {
       setSavingQuick(false);
     }
@@ -515,6 +557,11 @@ export default function CallListPage() {
               </button>
             ))}
           </div>
+          {quickOutcomeError && (
+            <p className="text-xs text-red-300 mt-2.5" role="alert">
+              {quickOutcomeError}
+            </p>
+          )}
           <Link
             href={`/admin/leads/${pendingCall.id}`}
             className="block text-center text-xs text-sky-300 hover:text-sky-200 mt-2.5 transition-colors"
