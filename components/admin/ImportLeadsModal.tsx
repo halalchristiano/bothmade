@@ -48,6 +48,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [csvText, setCsvText] = useState('');
   const [preview, setPreview] = useState<Array<Record<string, string>>>([]);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ count: number; skipped: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
   };
 
   const handleFile = (file: File) => {
+    setFileName(file.name);
     const reader = new FileReader();
     reader.onload = () => handleText(String(reader.result || ''));
     reader.readAsText(file);
@@ -77,7 +79,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
       const res = await fetch('/api/admin/leads/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: preview }),
+        body: JSON.stringify({ rows: preview, fileName }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -153,7 +155,10 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
             <p className="text-xs text-white/30 mb-1.5">...or paste CSV text directly:</p>
             <textarea
               value={csvText}
-              onChange={(e) => handleText(e.target.value)}
+              onChange={(e) => {
+                setFileName(null);
+                handleText(e.target.value);
+              }}
               placeholder="company,contactName,email,phone,source,estimatedValue,painPoints,notes,status"
               rows={5}
               className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-mono placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-sky-400/50 mb-3"

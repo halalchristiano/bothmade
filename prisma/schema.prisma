@@ -59,6 +59,7 @@ model User {
   createdTasks    Task[]           @relation("TaskCreator")
   sentTeamMessages     TeamMessage[] @relation("TeamMessageSender")
   receivedTeamMessages TeamMessage[] @relation("TeamMessageRecipient")
+  csvImportLogs        CsvImportLog[]
 
   @@map("users")
 }
@@ -284,6 +285,24 @@ model Lead {
   activities LeadActivity[]
 
   @@map("leads")
+}
+
+// A permanent receipt of every CSV lead import — who ran it, what file,
+// how many rows landed vs. got skipped. Exists so "did I already import
+// this batch" and "who imported these 800 leads" have an actual answer
+// instead of relying on memory or reverse-engineering it from lead
+// createdAt timestamps.
+model CsvImportLog {
+  id             String   @id @default(cuid())
+  fileName       String?
+  rowCount       Int
+  importedCount  Int
+  skippedCount   Int
+  importedById   String?
+  importedBy     User?    @relation(fields: [importedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@map("csv_import_logs")
 }
 
 // Timeline of outreach on a lead: notes, logged emails, calls, Loom links

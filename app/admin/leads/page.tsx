@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2 } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
@@ -10,6 +10,7 @@ import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { ImportLeadsModal } from '@/components/admin/ImportLeadsModal';
+import { ImportHistoryModal } from '@/components/admin/ImportHistoryModal';
 import { BulkEmailComposer } from '@/components/admin/BulkEmailComposer';
 import { ColdEmailPreviewModal } from '@/components/admin/ColdEmailPreviewModal';
 
@@ -152,6 +153,7 @@ export default function AdminLeadsPage() {
   const [statusFilter, setStatusFilter] = useState<Filter>('all');
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showImportHistory, setShowImportHistory] = useState(false);
   const [showBulkEmail, setShowBulkEmail] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
@@ -389,6 +391,13 @@ export default function AdminLeadsPage() {
           >
             <Upload size={16} />
             Import CSV
+          </button>
+          <button
+            onClick={() => setShowImportHistory(true)}
+            title="View past CSV imports"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-white/50 hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap"
+          >
+            <FileClock size={16} />
           </button>
           <button
             onClick={() => setShowAdd(true)}
@@ -768,6 +777,8 @@ export default function AdminLeadsPage() {
           onImported={load}
         />
       )}
+
+      {showImportHistory && <ImportHistoryModal onClose={() => setShowImportHistory(false)} />}
 
       {showBulkEmail && (
         <BulkEmailComposer

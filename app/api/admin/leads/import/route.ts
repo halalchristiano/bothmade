@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
-    const { rows } = await request.json();
+    const { rows, fileName } = await request.json();
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
     }
@@ -176,10 +176,31 @@ export async function POST(request: NextRequest) {
       .filter((row): row is NonNullable<typeof row> => row !== null);
 
     if (toCreate.length === 0) {
+      await prisma.csvImportLog.create({
+        data: {
+          fileName: typeof fileName === 'string' ? fileName.slice(0, 255) : null,
+          rowCount: rows.length,
+          importedCount: 0,
+          skippedCount: skipped,
+          importedById: session.userId,
+        },
+      });
       return NextResponse.json({ error: 'No valid rows — every row needs a company name' }, { status: 400 });
     }
 
     const created = await prisma.$transaction(toCreate.map((data) => prisma.lead.create({ data })));
+
+    await prisma.csvImportLog
+      .create({
+        data: {
+          fileName: typeof fileName === 'string' ? fileName.slice(0, 255) : null,
+          rowCount: rows.length,
+          importedCount: created.length,
+          skippedCount: skipped,
+          importedById: session.userId,
+        },
+      })
+      .catch((err) => console.error('Failed to record CSV import log:', err));
 
     return NextResponse.json({ success: true, count: created.length, skipped }, { status: 201 });
   } catch (error) {
