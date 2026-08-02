@@ -49,7 +49,15 @@ export async function POST(
     }
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
-    const totalWithCustom = breakdown.totalPrice + customTotal;
+    const computedTotal = breakdown.totalPrice + customTotal;
+    // Match what the client is actually charged: agree-and-pay charges the
+    // frozen proposalTotalPrice when set, so the downloadable contract must
+    // show the same total (and deposit) — not a fresh recomputation that a
+    // negotiated override or a later catalogue price change would diverge from.
+    const totalWithCustom =
+      lead.proposalTotalPrice && lead.proposalTotalPrice > 0
+        ? lead.proposalTotalPrice
+        : computedTotal;
     const serviceLabel = BASE_SERVICES[baseService].label;
     const addOnLabels = [
       ...addOnKeys.map((k) => ADD_ONS[k].label),
