@@ -13,8 +13,19 @@ export async function DELETE(
       return unauthorizedResponse();
     }
 
-    const { questionId } = await params;
-    await prisma.onboardingQuestion.delete({ where: { id: questionId } });
+    const { projectId, questionId } = await params;
+    // Scope the delete to the project in the URL so a question id can't be
+    // deleted out from under a different project.
+    const result = await prisma.onboardingQuestion.deleteMany({
+      where: { id: questionId, projectId },
+    });
+
+    if (result.count === 0) {
+      return NextResponse.json(
+        { error: 'Question not found for this project' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
