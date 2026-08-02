@@ -86,8 +86,9 @@ export async function GET(request: Request) {
         ? Math.round(wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0) / wonAllTime.length)
         : 0;
 
+    const lostInPeriod = lostAllTime.filter((l) => l.updatedAt >= periodStart);
     const lostReasonCounts: Record<string, number> = {};
-    for (const l of lostAllTime) {
+    for (const l of lostInPeriod) {
       const reason = l.lostReason?.trim() || 'No reason recorded';
       lostReasonCounts[reason] = (lostReasonCounts[reason] || 0) + 1;
     }
@@ -100,8 +101,9 @@ export async function GET(request: Request) {
     const followUpsOverdue = active.filter((l) => l.nextFollowUpAt && l.nextFollowUpAt < startOfToday);
     const staleLeads = active.filter((l) => l.updatedAt < staleThreshold);
 
+    const leadsInPeriod = allMine.filter((l) => l.createdAt >= periodStart);
     const sourceMap: Record<string, { total: number; won: number }> = {};
-    for (const l of allMine) {
+    for (const l of leadsInPeriod) {
       const source = l.source?.trim() || 'Unknown';
       if (!sourceMap[source]) sourceMap[source] = { total: 0, won: 0 };
       sourceMap[source].total += 1;
