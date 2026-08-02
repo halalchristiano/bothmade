@@ -109,7 +109,7 @@ async function handleCheckoutSessionCompleted(
     })()
   );
 
-  // Idempotency: Stripe may redeliver the same event
+  // Idempotency: Stripe may redeliver the same event.
   const existingProjectForSession = await prisma.project.findFirst({
     where: { stripeSessionId: session.id },
   });
@@ -117,102 +117,130 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
-  let client = await prisma.client.findUnique({ where: { email } });
+  const existingClient = await prisma.client.findUnique({ where: { email } });
+
+  // Hash the generated password up front (bcrypt is slow) so it stays out of
+  // the transaction below.
   let generatedPassword: string | null = null;
-
-  if (!client) {
+  let hashedPassword: string | null = null;
+  if (!existingClient) {
     generatedPassword = generateRandomPassword();
-    const hashedPassword = await hashPassword(generatedPassword);
-
-    client = await prisma.client.create({
-      data: {
-        email,
-        password: hashedPassword,
-        company,
-        contactName: contactName || null,
-        phone: phone || null,
-        stripeCustomerId: (session.customer as string) || null,
-      },
-    });
-
-    await prisma.emailPreferences.create({
-      data: {
-        clientId: client.id,
-        notificationsEnabled: true,
-        digestFrequency: 'daily',
-        statusUpdates: true,
-        messages: true,
-      },
-    });
+    hashedPassword = await hashPassword(generatedPassword);
   }
 
   const timelineLabel = TIMELINES[timeline].weeks;
   const addOnsCsv = addOnKeys.join(',');
   const projectName = `${company} — ${BASE_SERVICES[baseService].label}`;
+  const amountPaid = session.amount_total ?? totalPrice;
+  const paymentType = metadata.paymentType === 'deposit' ? 'deposit' : 'full';
 
-  const project = await prisma.project.create({
-    data: {
-      clientId: client.id,
-      name: projectName,
-      baseService,
-      addOns: addOnsCsv,
-      status: 'discovery',
-      statusStage: 0,
-      timeline: timelineLabel,
-      basePrice,
-      totalPrice,
-      customItems: customItems as unknown as Prisma.InputJsonValue,
-      stripeSessionId: session.id,
-      convertedFromLeadId: leadId || null,
-    },
-  });
-
-  // This checkout was closed from a lead's payment link (rather than the
-  // public /start form) — this is the moment the deal is actually won, so
-  // mark it in the CRM automatically instead of leaving it stuck until
-  // someone remembers to update it by hand.
-  if (leadId) {
-    const lead = await prisma.lead.update({ where: { id: leadId }, data: { status: 'won' } }).catch(() => null);
-    if (lead?.signedContractUrl) {
-      // Carry the signed copy over so the client can find it on their own
-      // project — leads aren't visible to clients, but projects are.
-      await prisma.project.update({ where: { id: project.id }, data: { contractUrl: lead.signedContractUrl } });
-    }
-    const notifier = lead?.assignedToId || (await prisma.user.findFirst({ select: { id: true } }))?.id;
-    if (lead && notifier) {
-      await prisma.teamMessage.create({
+  // Provision the whole thing atomically. Previously these were separate
+  // top-level writes: a transient failure after project.create but before
+  // payment.create returned a 500, Stripe retried, the retry short-circuited
+  // at the idempotency check above (the project now existed), and the Payment
+  // row was never written — leaving a paid project whose balance read as the
+  // full price, so the client got invoiced the whole amount again. If any
+  // write fails now, the whole thing rolls back and Stripe's retry re-runs it
+  // cleanly (the unique stripeSessionId still backstops double-processing).
+  const { clientId, projectId } = await prisma.$transaction(async (tx) => {
+    const client =
+      existingClient ??
+      (await tx.client.create({
         data: {
-          content: `🎉 ${company} paid and their project is live — deposit/payment cleared via payment link.`,
-          fromUserId: notifier,
-          relatedLeadId: leadId,
-          relatedProjectId: project.id,
+          email,
+          password: hashedPassword as string,
+          company,
+          contactName: contactName || null,
+          phone: phone || null,
+          stripeCustomerId: (session.customer as string) || null,
+        },
+      }));
+
+    if (!existingClient) {
+      await tx.emailPreferences.create({
+        data: {
+          clientId: client.id,
+          notificationsEnabled: true,
+          digestFrequency: 'daily',
+          statusUpdates: true,
+          messages: true,
         },
       });
     }
-  }
 
-  await prisma.projectUpdate.create({
-    data: {
-      projectId: project.id,
-      title: 'Project Created',
-      description: 'Your project has been created and is awaiting onboarding. We will be in touch shortly to kick off the discovery phase.',
-      statusStage: 'discovery',
-      userId: null,
-    },
+    const project = await tx.project.create({
+      data: {
+        clientId: client.id,
+        name: projectName,
+        baseService,
+        addOns: addOnsCsv,
+        status: 'discovery',
+        statusStage: 0,
+        timeline: timelineLabel,
+        basePrice,
+        totalPrice,
+        customItems: customItems as unknown as Prisma.InputJsonValue,
+        stripeSessionId: session.id,
+        convertedFromLeadId: leadId || null,
+      },
+    });
+
+    // This checkout was closed from a lead's payment link (rather than the
+    // public /start form) — this is the moment the deal is actually won, so
+    // mark it in the CRM automatically instead of leaving it stuck until
+    // someone remembers to update it by hand.
+    if (leadId) {
+      const lead = await tx.lead
+        .update({ where: { id: leadId }, data: { status: 'won' } })
+        .catch(() => null);
+      if (lead?.signedContractUrl) {
+        // Carry the signed copy over so the client can find it on their own
+        // project — leads aren't visible to clients, but projects are.
+        await tx.project.update({
+          where: { id: project.id },
+          data: { contractUrl: lead.signedContractUrl },
+        });
+      }
+      const notifier =
+        lead?.assignedToId || (await tx.user.findFirst({ select: { id: true } }))?.id;
+      if (lead && notifier) {
+        await tx.teamMessage.create({
+          data: {
+            content: `🎉 ${company} paid and their project is live — deposit/payment cleared via payment link.`,
+            fromUserId: notifier,
+            relatedLeadId: leadId,
+            relatedProjectId: project.id,
+          },
+        });
+      }
+    }
+
+    await tx.projectUpdate.create({
+      data: {
+        projectId: project.id,
+        title: 'Project Created',
+        description:
+          'Your project has been created and is awaiting onboarding. We will be in touch shortly to kick off the discovery phase.',
+        statusStage: 'discovery',
+        userId: null,
+      },
+    });
+
+    await tx.payment.create({
+      data: {
+        projectId: project.id,
+        amount: amountPaid,
+        type: paymentType,
+        stripeSessionId: session.id,
+      },
+    });
+
+    return { clientId: client.id, projectId: project.id };
   });
 
-  const amountPaid = session.amount_total ?? totalPrice;
-  await prisma.payment.create({
-    data: {
-      projectId: project.id,
-      amount: amountPaid,
-      type: metadata.paymentType === 'deposit' ? 'deposit' : 'full',
-      stripeSessionId: session.id,
-    },
-  });
-
+  // Side effects run only after the data is safely committed.
   await notifyAdminsPaymentReceived({
-    projectId: project.id,
+    projectId,
     projectName,
     clientCompany: company,
     amountLabel: formatCents(amountPaid),
@@ -227,7 +255,7 @@ async function handleCheckoutSessionCompleted(
     timelineLabel
   );
 
-  console.log(`Checkout completed: client=${client.id} project=${project.id}`);
+  console.log(`Checkout completed: client=${clientId} project=${projectId}`);
 }
 
 async function handleExistingProjectPayment(
