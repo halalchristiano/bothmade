@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
+import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
 
 export async function GET(
   request: NextRequest,
@@ -30,6 +31,13 @@ export async function GET(
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
+
+    // Fills in any new PLAYBOOK_SEED items the database doesn't have yet, so
+    // adding content to the seed file is enough — nobody has to run a
+    // migration script by hand for it to show up on a lead's page.
+    await ensurePlaybookSeeded(prisma).catch((err) => {
+      console.error('Playbook seed failed, serving existing rows:', err);
+    });
 
     // Sent alongside the lead so the brief can price and justify every line
     // item in one round trip — a second request could leave the page showing
