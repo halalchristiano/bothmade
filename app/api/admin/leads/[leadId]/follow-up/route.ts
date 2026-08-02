@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
-import { decryptSecret } from '@/lib/crypto';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
@@ -64,8 +63,12 @@ export async function POST(
         name: sender.name,
         email: sender.email,
         gmailAddress: sender.gmailAddress,
-        gmailAppPassword: sender.gmailAppPassword ? decryptSecret(sender.gmailAppPassword) : null,
-        googleRefreshToken: sender.googleRefreshToken ? decryptSecret(sender.googleRefreshToken) : null,
+        // sendAsUser expects the secrets still encrypted — it decrypts them
+        // itself. Pre-decrypting here made it decrypt plaintext, throw on the
+        // auth-tag check, and silently fall back to the shared Resend sender,
+        // so every follow-up went out from the wrong address.
+        gmailAppPassword: sender.gmailAppPassword,
+        googleRefreshToken: sender.googleRefreshToken,
       },
       {
         to: lead.email,
