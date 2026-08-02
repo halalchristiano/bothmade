@@ -624,7 +624,11 @@ export default function AdminLeadsPage() {
               <div
                 key={lead.id}
                 onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                className="rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-4 hover:border-white/20 transition-colors cursor-pointer"
+                className={`rounded-xl border backdrop-blur-xl p-4 transition-colors cursor-pointer ${
+                  lead.emailDeliveryFailedAt
+                    ? 'border-red-400/40 bg-red-400/[0.06] hover:border-red-400/60'
+                    : 'border-white/[0.08] bg-white/[0.04] hover:border-white/20'
+                }`}
               >
                 <div className="flex justify-between items-start mb-2 gap-2">
                   <p className="font-semibold flex items-center gap-2">
@@ -641,6 +645,11 @@ export default function AdminLeadsPage() {
                   <StatusSelect lead={lead} onChange={handleStatusChange} />
                 </div>
                 <p className="text-sm text-white/50 mb-2">{lead.contactName || lead.email || '—'}</p>
+                {lead.emailDeliveryFailedAt && (
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-red-300 bg-red-400/10 border border-red-400/20 rounded-lg px-2.5 py-1.5 mb-2">
+                    <MailX size={12} /> Email failed — call instead
+                  </p>
+                )}
                 <div className="flex justify-between items-center text-xs text-white/40">
                   <span>{lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}</span>
                   <QuickActions lead={lead} />
@@ -687,7 +696,11 @@ export default function AdminLeadsPage() {
                     <tr
                       key={lead.id}
                       onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                      className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer"
+                      className={`border-b last:border-0 transition-colors cursor-pointer ${
+                        lead.emailDeliveryFailedAt
+                          ? 'border-white/5 bg-red-400/[0.06] hover:bg-red-400/10'
+                          : 'border-white/5 hover:bg-white/5'
+                      }`}
                     >
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <input
@@ -703,7 +716,14 @@ export default function AdminLeadsPage() {
                           {lead.company}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-white/50">{lead.contactName || lead.email || '—'}</td>
+                      <td className="px-6 py-4 text-white/50">
+                        {lead.contactName || lead.email || '—'}
+                        {lead.emailDeliveryFailedAt && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold text-red-300 bg-red-400/10 border border-red-400/20 rounded-full px-2 py-0.5 whitespace-nowrap">
+                            <MailX size={10} /> Email failed
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4">
                         <StatusSelect lead={lead} onChange={handleStatusChange} />
                       </td>
