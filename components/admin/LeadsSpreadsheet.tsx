@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, RefreshCw } from 'lucide-react';
-import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
+import { Search, RefreshCw, Download, Users, DollarSign, Trophy, Sparkles } from 'lucide-react';
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 
 interface SpreadsheetLead {
@@ -36,6 +36,12 @@ const COLUMNS: Array<{ key: SortKey | 'contact' | 'email' | 'phone' | 'source' |
   { key: 'updatedAt', label: 'Updated', sortable: true },
 ];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function csvEscape(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 /**
  * A live, searchable, spreadsheet-style view of every lead — every CSV
  * Evan imports lands here automatically since it reads the same lead data
@@ -51,6 +57,7 @@ export function LeadsSpreadsheet() {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('updatedAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -75,6 +82,28 @@ export function LeadsSpreadsheet() {
       setSortDir('asc');
     }
   };
+
+  const handleStatusChange = async (leadId: string, status: LeadStatus) => {
+    setSavingStatusId(leadId);
+    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status, updatedAt: new Date().toISOString() } : l)));
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } finally {
+      setSavingStatusId(null);
+    }
+  };
+
+  const stats = useMemo(() => {
+    const now = Date.now();
+    const totalValue = leads.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+    const won = leads.filter((l) => l.status === 'won').length;
+    const newThisWeek = leads.filter((l) => now - new Date(l.createdAt).getTime() < 7 * DAY_MS).length;
+    return { total: leads.length, totalValue, won, newThisWeek };
+  }, [leads]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -109,8 +138,61 @@ export function LeadsSpreadsheet() {
     return sorted;
   }, [leads, search, sortKey, sortDir]);
 
+  const handleExport = () => {
+    const headers = ['Company', 'Contact', 'Email', 'Phone', 'Status', 'Value', 'Source', 'Assigned', 'Added', 'Updated'];
+    const rows = filtered.map((l) => [
+      l.company,
+      l.contactName || '',
+      l.email || '',
+      l.phone || '',
+      LEAD_STATUS_LABELS[l.status],
+      l.estimatedValue ? (l.estimatedValue / 100).toFixed(2) : '',
+      l.source || '',
+      l.assignedTo?.name || '',
+      new Date(l.createdAt).toLocaleDateString(),
+      new Date(l.updatedAt).toLocaleDateString(),
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map((cell) => csvEscape(String(cell))).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bothmade-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl overflow-hidden shadow-[0_0_60px_-15px_rgba(56,189,248,0.1)]">
+      <div className="p-4 pb-0">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/35 mb-1">
+              <Users size={11} /> Total Leads
+            </p>
+            <p className="text-xl font-bold">{stats.total}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-emerald-300/70 mb-1">
+              <DollarSign size={11} /> Pipeline Value
+            </p>
+            <p className="text-xl font-bold text-emerald-300">{formatCents(stats.totalValue)}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-amber-300/70 mb-1">
+              <Trophy size={11} /> Won
+            </p>
+            <p className="text-xl font-bold text-amber-300">{stats.won}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-sky-300/70 mb-1">
+              <Sparkles size={11} /> New This Week
+            </p>
+            <p className="text-xl font-bold text-sky-300">{stats.newThisWeek}</p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-b border-white/[0.08]">
         <div>
           <h2 className="text-lg font-bold">All Leads — Master Sheet</h2>
@@ -129,6 +211,13 @@ export function LeadsSpreadsheet() {
             />
           </div>
           <button
+            onClick={handleExport}
+            title="Export current view as CSV"
+            className="p-2 rounded-xl border border-white/10 hover:bg-white/5 transition-colors"
+          >
+            <Download size={14} />
+          </button>
+          <button
             onClick={load}
             disabled={loading}
             title="Refresh"
@@ -141,15 +230,15 @@ export function LeadsSpreadsheet() {
 
       <div className="overflow-x-auto max-h-[600px]">
         <table className="w-full text-left text-sm border-collapse">
-          <thead className="sticky top-0 bg-[#0d0a17] z-10">
+          <thead className="sticky top-0 bg-[#0d0a17] z-20">
             <tr>
-              {COLUMNS.map((col) => (
+              {COLUMNS.map((col, i) => (
                 <th
                   key={col.key}
                   onClick={col.sortable ? () => toggleSort(col.key as SortKey) : undefined}
                   className={`px-3 py-2.5 text-xs font-semibold text-white/50 border-b border-r border-white/10 last:border-r-0 whitespace-nowrap ${
                     col.sortable ? 'cursor-pointer hover:text-white select-none' : ''
-                  }`}
+                  } ${i === 0 ? 'sticky left-0 bg-[#0d0a17] z-30' : ''}`}
                 >
                   {col.label}
                   {col.sortable && sortKey === col.key && (sortDir === 'asc' ? ' ▲' : ' ▼')}
@@ -158,44 +247,68 @@ export function LeadsSpreadsheet() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((lead, i) => (
-              <tr
-                key={lead.id}
-                onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                className={`cursor-pointer hover:bg-sky-400/[0.06] transition-colors ${i % 2 === 0 ? 'bg-white/[0.015]' : ''}`}
-              >
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] font-medium whitespace-nowrap">{lead.company}</td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
-                  {lead.contactName || '—'}
-                </td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
-                  {lead.email || '—'}
-                </td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
-                  {lead.phone || '—'}
-                </td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                  <span className={`text-xs px-2 py-1 rounded-full ${LEAD_STATUS_COLORS[lead.status]}`}>
-                    {LEAD_STATUS_LABELS[lead.status]}
-                  </span>
-                </td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
-                  {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
-                </td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
-                  {lead.source || '—'}
-                </td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
-                  {lead.assignedTo?.name || '—'}
-                </td>
-                <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/40 whitespace-nowrap">
-                  {new Date(lead.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-3 py-2 border-b border-white/[0.06] text-white/40 whitespace-nowrap">
-                  {new Date(lead.updatedAt).toLocaleDateString()}
-                </td>
-              </tr>
-            ))}
+            {filtered.map((lead, i) => {
+              const rowBg = i % 2 === 0 ? '#0d0a17' : '#100c1c';
+              const recentlyTouched = Date.now() - new Date(lead.updatedAt).getTime() < DAY_MS;
+              return (
+                <tr
+                  key={lead.id}
+                  onClick={() => router.push(`/admin/leads/${lead.id}`)}
+                  className="cursor-pointer hover:bg-sky-400/[0.06] transition-colors group"
+                  style={{ backgroundColor: rowBg }}
+                >
+                  <td
+                    className="px-3 py-2 border-b border-r border-white/[0.06] font-medium whitespace-nowrap sticky left-0 z-10 group-hover:!bg-[#12213a]"
+                    style={{ backgroundColor: rowBg }}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {recentlyTouched && (
+                        <span title="Updated in the last 24 hours" className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+                      )}
+                      {lead.company}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
+                    {lead.contactName || '—'}
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
+                    {lead.email || '—'}
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
+                    {lead.phone || '—'}
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={lead.status}
+                      onChange={(e) => handleStatusChange(lead.id, e.target.value as LeadStatus)}
+                      disabled={savingStatusId === lead.id}
+                      className={`text-xs px-2 py-1 rounded-full border-none cursor-pointer disabled:opacity-50 ${LEAD_STATUS_COLORS[lead.status]}`}
+                    >
+                      {LEAD_STATUSES.map((s) => (
+                        <option key={s} value={s} className="bg-[#05030a] text-white">
+                          {LEAD_STATUS_LABELS[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
+                    {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
+                    {lead.source || '—'}
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/60 whitespace-nowrap">
+                    {lead.assignedTo?.name || '—'}
+                  </td>
+                  <td className="px-3 py-2 border-b border-r border-white/[0.06] text-white/40 whitespace-nowrap">
+                    {new Date(lead.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-3 py-2 border-b border-white/[0.06] text-white/40 whitespace-nowrap">
+                    {new Date(lead.updatedAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              );
+            })}
             {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length} className="px-3 py-8 text-center text-white/40">
