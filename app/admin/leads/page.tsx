@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, Trash2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
@@ -147,6 +147,8 @@ export default function AdminLeadsPage() {
   const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
   const [sendingColdDrafts, setSendingColdDrafts] = useState(false);
   const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[] } | null>(null);
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
   const [previewingBatch, setPreviewingBatch] = useState<LeadRow[] | null>(null);
 
@@ -288,6 +290,25 @@ export default function AdminLeadsPage() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch('/api/admin/leads/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: Array.from(selected) }),
+      });
+      if (res.ok) {
+        setSelected(new Set());
+        setConfirmingBulkDelete(false);
+        load();
+      }
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const inputClass =
     'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
 
@@ -390,7 +411,13 @@ export default function AdminLeadsPage() {
               )}
             </span>
             <div className="flex items-center gap-3">
-              <button onClick={() => setSelected(new Set())} className="text-xs text-white/40 hover:text-white transition-colors">
+              <button
+                onClick={() => {
+                  setSelected(new Set());
+                  setConfirmingBulkDelete(false);
+                }}
+                className="text-xs text-white/40 hover:text-white transition-colors"
+              >
                 Clear
               </button>
               {selectedReadyToSend.length > 0 && (
@@ -410,6 +437,32 @@ export default function AdminLeadsPage() {
                 <Send size={14} />
                 Compose cold email
               </button>
+              {confirmingBulkDelete ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/50">Delete {selected.size}?</span>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleting}
+                    className="px-3 py-2 rounded-xl bg-red-500/90 text-white text-sm font-semibold disabled:opacity-50 hover:bg-red-500 transition-colors"
+                  >
+                    {bulkDeleting ? 'Deleting...' : 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmingBulkDelete(false)}
+                    className="px-3 py-2 rounded-xl border border-white/15 text-sm hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmingBulkDelete(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-red-400/25 text-red-300/80 px-4 py-2 text-sm font-semibold hover:bg-red-400/10 hover:text-red-300 transition-colors"
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
