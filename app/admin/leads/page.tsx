@@ -514,6 +514,18 @@ export default function AdminLeadsPage() {
         <>
           {/* Mobile: card list */}
           <div className="md:hidden space-y-3">
+            <button
+              onClick={toggleSelectAllVisible}
+              className="flex items-center gap-2 text-xs text-white/50 hover:text-white transition-colors mb-1"
+            >
+              <input
+                type="checkbox"
+                checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))}
+                readOnly
+                className="accent-sky-400 pointer-events-none"
+              />
+              Select all {filtered.length}
+            </button>
             {filtered.map((lead) => (
               <div
                 key={lead.id}
