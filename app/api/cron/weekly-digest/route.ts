@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const [newLeadsThisWeek, wonThisWeek, paymentsThisMonth, overdueFollowUps, activeProjects] = await Promise.all([
       prisma.lead.count({ where: { createdAt: { gte: weekAgo } } }),
-      prisma.lead.findMany({ where: { status: 'won', updatedAt: { gte: weekAgo } }, select: { estimatedValue: true } }),
+      prisma.lead.findMany({ where: { status: 'won', updatedAt: { gte: weekAgo } }, select: { estimatedValue: true, proposalTotalPrice: true } }),
       prisma.payment.findMany({ where: { createdAt: { gte: startOfMonth } }, select: { amount: true } }),
       prisma.lead.count({
         where: { status: { notIn: ['won', 'lost'] }, nextFollowUpAt: { lt: now } },
@@ -35,7 +35,12 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    const wonValueThisWeek = wonThisWeek.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+    // Prefer the frozen proposal total (what actually closed) over the optional
+    // manual estimate, so a funnel-closed deal with no typed estimate isn't $0.
+    const wonValueThisWeek = wonThisWeek.reduce(
+      (sum, l) => sum + (l.proposalTotalPrice && l.proposalTotalPrice > 0 ? l.proposalTotalPrice : l.estimatedValue || 0),
+      0
+    );
     const revenueThisMonth = paymentsThisMonth.reduce((sum, p) => sum + p.amount, 0);
     const atRiskProjects = activeProjects.filter((p) => p.updatedAt < staleThreshold).length;
     const overdueBalances = activeProjects.filter(

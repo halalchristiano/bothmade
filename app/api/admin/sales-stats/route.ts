@@ -60,6 +60,13 @@ export async function GET(request: Request) {
     // "My" leads: assigned to me, or unassigned (so nothing falls through the cracks).
     const mine = { OR: [{ assignedToId: session.userId }, { assignedToId: null }] };
 
+    // The realized/quoted value of a deal: the frozen proposal total once a
+    // proposal exists, else the rep's manual estimate. Without this, a deal
+    // that closed through the proposal funnel (real proposalTotalPrice, real
+    // payments) but never got a manually-typed estimate reported as $0 won.
+    const dealValue = (l: { proposalTotalPrice: number | null; estimatedValue: number | null }) =>
+      l.proposalTotalPrice && l.proposalTotalPrice > 0 ? l.proposalTotalPrice : l.estimatedValue || 0;
+
     const [allMine, wonAllTime, lostAllTime, newInPeriod, activityInPeriod] = await Promise.all([
       prisma.lead.findMany({ where: mine }),
       prisma.lead.findMany({ where: { ...mine, status: 'won' } }),
@@ -72,7 +79,7 @@ export async function GET(request: Request) {
 
     const pipeline = ACTIVE_STATUSES.map((status) => {
       const leads = allMine.filter((l) => l.status === status);
-      const value = leads.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+      const value = leads.reduce((sum, l) => sum + dealValue(l), 0);
       return { status, count: leads.length, value };
     });
 
@@ -82,13 +89,13 @@ export async function GET(request: Request) {
     );
 
     const wonInPeriod = wonAllTime.filter((l) => l.updatedAt >= periodStart);
-    const revenueInPeriod = wonInPeriod.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+    const revenueInPeriod = wonInPeriod.reduce((sum, l) => sum + dealValue(l), 0);
 
     const closedTotal = wonAllTime.length + lostAllTime.length;
     const conversionRate = closedTotal > 0 ? wonAllTime.length / closedTotal : 0;
     const avgDealSize =
       wonAllTime.length > 0
-        ? Math.round(wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0) / wonAllTime.length)
+        ? Math.round(wonAllTime.reduce((s, l) => s + dealValue(l), 0) / wonAllTime.length)
         : 0;
 
     const lostInPeriod = lostAllTime.filter((l) => l.updatedAt >= periodStart);
@@ -172,8 +179,8 @@ export async function GET(request: Request) {
           wonDeals: wonAllTime
             .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
             .slice(0, 50)
-            .map((l) => ({ id: l.id, company: l.company, value: l.estimatedValue || 0, wonAt: l.updatedAt })),
-          totalWonValue: wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0),
+            .map((l) => ({ id: l.id, company: l.company, value: dealValue(l), wonAt: l.updatedAt })),
+          totalWonValue: wonAllTime.reduce((s, l) => s + dealValue(l), 0),
         },
       },
       { status: 200 }
