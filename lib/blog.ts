@@ -55,7 +55,12 @@ export type Block =
    * wordmark — hover or tap a letter and it flips to the other world's
    * treatment, then springs back after a beat.
    */
-  | { type: 'letterFlipDemo'; word: string };
+  | { type: 'letterFlipDemo'; word: string }
+  /**
+   * A miniature, self-contained replay of the site's custom cursor + easing
+   * trail, scoped to a small box instead of the whole viewport.
+   */
+  | { type: 'cursorDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -572,6 +577,56 @@ const clipPath = useMotionTemplate\`inset(0 \${
       {
         type: 'p',
         text: `The animated version is marked aria-hidden="true" in the real footer. That's deliberate, not an oversight: a screen reader has no use for eight independently time-bombed spans, and forcing one to track which letters are "currently flipped" would be actively hostile. The actual accessible brand name sits right above it as a plain heading — "bothmade," rendered once, in ordinary text. The playful version is a bonus for people who can see it drag their cursor across; it was never meant to carry the only copy of the name.`,
+      },
+    ],
+  },
+  {
+    slug: 'a-cursor-with-a-half-second-memory',
+    title: 'A cursor with a half-second memory',
+    dek: "The dot and the ring that follow your pointer around the site aren't the same speed on purpose. Move your mouse in the box below.",
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-10-18',
+    readMinutes: 3,
+    body: [
+      {
+        type: 'p',
+        text: 'Every page on the site replaces your system cursor with two small shapes: a tight dot that sits exactly where your pointer is, and a larger ring trailing a half-beat behind it. They\'re not decorative in the "looks nice" sense — the gap between them is the entire effect. A cursor that just is your pointer, one-to-one, is invisible. A second element trailing slightly behind reads as physical weight, the way a compass needle overshoots and settles rather than snapping straight to north.',
+      },
+      {
+        type: 'statement',
+        text: "The trail isn't drawn from your mouse events. It's drawn from a clock — that distinction is the entire trick.",
+      },
+      { type: 'heading', text: 'Try it' },
+      { type: 'cursorDemo' },
+      {
+        type: 'p',
+        text: "The dot's position is set directly from the pointer coordinates on every mousemove — no delay, no smoothing. The ring is different: its position is recomputed every animation frame by nudging it 18% of the remaining distance toward wherever the dot currently is, whether or not the mouse actually moved that frame. That's a classic lerp — linear interpolation — running off requestAnimationFrame, completely decoupled from how often mousemove events actually fire.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `let mouseX = 0, mouseY = 0;
+let trailX = 0, trailY = 0;
+
+const tick = () => {
+  trailX += (mouseX - trailX) * 0.18;
+  trailY += (mouseY - trailY) * 0.18;
+
+  dot.style.transform = \`translate3d(\${mouseX}px, \${mouseY}px, 0)\`;
+  trail.style.transform = \`translate3d(\${trailX}px, \${trailY}px, 0)\`;
+
+  requestAnimationFrame(tick);
+};`,
+      },
+      { type: 'heading', text: 'Why not just animate it with CSS transitions' },
+      {
+        type: 'p',
+        text: "A CSS transition on the ring's position would look similar at a glance and cost nothing to write. It also can't be interrupted cleanly — retarget a transitioning element mid-flight and browsers handle the velocity discontinuity differently, which shows up as a visible stutter on fast, direction-changing mouse movement. The lerp has no such problem: every frame it just asks \"where am I, where should I be,\" and closes 18% of that gap. Change direction mid-frame and the math doesn't care — it was never animating toward a fixed target in the first place, just continuously chasing a moving one.",
+      },
+      {
+        type: 'p',
+        text: "It also only runs at all behind a matchMedia('(hover: hover) and (pointer: fine)') check, same as the magnetic buttons — a touch device has no persistent pointer position for a trailing ring to chase, so the whole thing never initializes there. No cursor replacement, no dead code paying a battery cost for an effect nobody on that device could ever see.",
       },
     ],
   },

@@ -272,7 +272,101 @@ function BlockRenderer({
 
     case 'letterFlipDemo':
       return <LetterFlipDemo word={block.word} />;
+
+    case 'cursorDemo':
+      return <CursorDemo />;
   }
+}
+
+/**
+ * Miniature replay of LuxuryCursor: the same requestAnimationFrame easing
+ * loop and lerp trail, but tracking mouse position relative to a bounded
+ * box instead of the window, and only rendering while the pointer is
+ * actually inside it.
+ */
+function CursorDemo() {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dotRef = useRef<HTMLDivElement>(null);
+  const trailRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const box = boxRef.current;
+    const dot = dotRef.current;
+    const trail = trailRef.current;
+    if (!box || !dot || !trail) return;
+
+    const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
+    if (!fine.matches) return;
+
+    let mouseX = 0;
+    let mouseY = 0;
+    let trailX = 0;
+    let trailY = 0;
+    let inside = false;
+
+    const onMove = (e: PointerEvent) => {
+      const rect = box.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+      if (!inside) {
+        inside = true;
+        trailX = mouseX;
+        trailY = mouseY;
+        dot.style.opacity = '1';
+        trail.style.opacity = '1';
+      }
+    };
+    const onLeave = () => {
+      inside = false;
+      dot.style.opacity = '0';
+      trail.style.opacity = '0';
+    };
+
+    let frame: number;
+    const tick = () => {
+      trailX += (mouseX - trailX) * 0.18;
+      trailY += (mouseY - trailY) * 0.18;
+      dot.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0) translate(-50%, -50%)`;
+      trail.style.transform = `translate3d(${trailX}px, ${trailY}px, 0) translate(-50%, -50%)`;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+
+    box.addEventListener('pointermove', onMove);
+    box.addEventListener('pointerleave', onLeave);
+    return () => {
+      cancelAnimationFrame(frame);
+      box.removeEventListener('pointermove', onMove);
+      box.removeEventListener('pointerleave', onLeave);
+    };
+  }, [reduceMotion]);
+
+  return (
+    <div
+      ref={boxRef}
+      className="relative h-56 md:h-72 rounded-2xl border border-white/10 bg-white/[0.02] grid place-items-center overflow-hidden cursor-none"
+    >
+      <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30 pointer-events-none">
+        {reduceMotion ? 'motion reduced — demo disabled' : 'move your cursor in here'}
+      </p>
+      {!reduceMotion && (
+        <>
+          <div
+            ref={dotRef}
+            aria-hidden="true"
+            className="absolute top-0 left-0 pointer-events-none z-20 w-1.5 h-1.5 rounded-full bg-sky-300 opacity-0"
+          />
+          <div
+            ref={trailRef}
+            aria-hidden="true"
+            className="absolute top-0 left-0 pointer-events-none z-10 w-9 h-9 rounded-full border border-sky-300/35 opacity-0"
+          />
+        </>
+      )}
+    </div>
+  );
 }
 
 /**
