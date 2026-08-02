@@ -16,6 +16,19 @@ interface ProjectSummary {
   baseService: string;
   totalPrice: number;
   createdAt: string;
+  updates: Array<{ createdAt: string }>;
+  _count: { messages: number };
+}
+
+function hasUnseenActivity(project: ProjectSummary): boolean {
+  const lastVisit = Number(localStorage.getItem(`bothmade_last_visit_${project.id}`) || 0);
+  const latestUpdateAt = project.updates[0] ? new Date(project.updates[0].createdAt).getTime() : 0;
+  const hasNewUpdate = lastVisit > 0 && latestUpdateAt > lastVisit;
+
+  const seenMessages = Number(localStorage.getItem(`bothmade_seen_messages_${project.id}`) || 0);
+  const hasNewMessage = project._count.messages > seenMessages;
+
+  return hasNewUpdate || hasNewMessage;
 }
 
 const STATUS_STAGES = ['Discovery', 'Design', 'Build', 'Launch', 'Complete'];
@@ -26,6 +39,7 @@ export default function ClientProjectsPage() {
   const [company, setCompany] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [unseenIds, setUnseenIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -41,6 +55,13 @@ export default function ClientProjectsPage() {
         const data = await projectsRes.json();
         if (data.success) {
           setProjects(data.projects);
+          setUnseenIds(
+            new Set(
+              data.projects
+                .filter((p: ProjectSummary) => hasUnseenActivity(p))
+                .map((p: ProjectSummary) => p.id)
+            )
+          );
         } else {
           setError(data.error || 'Failed to load projects');
         }
@@ -110,9 +131,18 @@ export default function ClientProjectsPage() {
                           {project.baseService.replace('-', ' ')} · {formatCents(project.totalPrice)}
                         </p>
                       </div>
-                      <span className="px-3 py-1 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-xs font-semibold whitespace-nowrap">
-                        {STATUS_STAGES[stageIndex]}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {unseenIds.has(project.id) && (
+                          <span
+                            className="h-2 w-2 rounded-full bg-emerald-400"
+                            title="New activity"
+                            aria-label="New activity"
+                          />
+                        )}
+                        <span className="px-3 py-1 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-xs font-semibold whitespace-nowrap">
+                          {STATUS_STAGES[stageIndex]}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mb-2">

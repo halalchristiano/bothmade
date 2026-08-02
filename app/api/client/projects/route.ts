@@ -18,6 +18,9 @@ export async function GET(request: NextRequest) {
           take: 1,
           orderBy: { createdAt: 'desc' },
         },
+        _count: {
+          select: { messages: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
