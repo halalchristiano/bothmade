@@ -37,7 +37,19 @@ export type Block =
    * described in the surrounding prose, scoped to a small local scroll
    * region rather than the full page. Show, don't just tell.
    */
-  | { type: 'stackDemo'; panels: { label: string; from: string; to: string }[] };
+  | { type: 'stackDemo'; panels: { label: string; from: string; to: string }[] }
+  /**
+   * A miniature, actually-draggable version of the homepage hero's split
+   * seam — two labelled worlds clipped against each other, dragged by a
+   * spring-driven handle. Same clip-path + spring technique, small scale.
+   */
+  | {
+      type: 'seamDemo';
+      leftLabel: string;
+      rightLabel: string;
+      leftColor: string;
+      rightColor: string;
+    };
 
 export type BlogPost = {
   slug: string;
@@ -458,6 +470,61 @@ words.map((word, i) => (
       {
         type: 'p',
         text: "None of the four panels animate on a timer, and none of them know what the others are doing — they all just react independently to the same shared number. That's what makes scrolling backward feel correct instantly, with no special-case code for reverse: run the same math with a smaller progress value and the whole stack unwinds exactly as it built.",
+      },
+    ],
+  },
+  {
+    slug: 'the-seam-is-the-whole-idea',
+    title: 'The seam is the whole idea',
+    dek: "The draggable line down the middle of our homepage isn't decoration — it's the entire pitch, made touchable. Drag it below.",
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2026-10-04',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "Bothmade means both made — web and native, made by the same team. We could have said that in a sentence and moved on. Instead the homepage hero is a single line you can physically drag: pull it right and you're looking at the web world, pull it left and you're in the native one, and the wordmark itself morphs letter by letter as the line crosses it. The name of the studio is a description of what the interaction does.",
+      },
+      {
+        type: 'statement',
+        text: "It's not an animation that plays. It's a value you control, with your hand, that everything else on screen reacts to.",
+      },
+      { type: 'heading', text: 'Drag it' },
+      {
+        type: 'seamDemo',
+        leftLabel: 'Web',
+        rightLabel: 'Native',
+        leftColor: '#0c2f52',
+        rightColor: '#1e1b4b',
+      },
+      {
+        type: 'p',
+        text: "That's the actual mechanic from the homepage, scaled down: a target position, a spring that chases it, and a CSS clip-path that reveals the left world up to wherever the spring currently sits. Nothing about the two worlds underneath ever moves — only the boundary between them does, and everything downstream (the label opacity, the wordmark treatment) reads its position off that one number.",
+      },
+      { type: 'heading', text: 'Why a spring and not the raw pointer position' },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `const target = useMotionValue(50);           // where you're dragging to
+const seam = useSpring(target, {              // where the line actually is
+  stiffness: 340,
+  damping: 34,
+  mass: 0.6,
+});
+
+const clipPath = useMotionTemplate\`inset(0 \${
+  useTransform(seam, (v) => 100 - v)
+}% 0 0)\`;`,
+      },
+      {
+        type: 'p',
+        text: "Setting the clip-path straight from the pointer's x-coordinate would work, but it would feel like dragging a window shade — dead, mechanical, exactly as fast as your hand and no faster or slower. Routing the pointer through a spring instead gives the line weight: it chases your finger with a slight, physical lag, and when you let go it settles rather than stopping dead. That half-second of settling is doing almost all of the emotional work — it's the difference between moving a slider and pushing a real object.",
+      },
+      { type: 'heading', text: 'It has to work without a mouse' },
+      {
+        type: 'p',
+        text: "A drag-only interaction that's also the site's primary way of expressing what the studio does can't be mouse-exclusive — that would hide the entire pitch from keyboard and switch-control users. The real handle carries role=\"slider\" with aria-valuenow, aria-valuemin, and aria-valuemax, and left/right arrow keys nudge the same target value the pointer drags. Screen readers announce it as what it structurally is — a slider — not as a mystery line in the middle of the screen.",
       },
     ],
   },

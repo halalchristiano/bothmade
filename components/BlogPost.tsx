@@ -1,11 +1,14 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   motion,
   useScroll,
   useSpring,
   useTransform,
+  useMotionValue,
+  useMotionTemplate,
+  useMotionValueEvent,
   useReducedMotion,
   type MotionValue,
 } from 'framer-motion';
@@ -263,7 +266,124 @@ function BlockRenderer({
 
     case 'stackDemo':
       return <StackDemo panels={block.panels} accent={accent} />;
+
+    case 'seamDemo':
+      return <SeamDemo block={block} />;
   }
+}
+
+/**
+ * Miniature replay of SplitHero's draggable seam: a spring chases a target
+ * position, a clip-path reveals the left world up to that position, and
+ * dragging (pointer or arrow keys) moves the target. Same mechanic, smaller
+ * stage — genuinely draggable, not a canned animation.
+ */
+function SeamDemo({
+  block,
+}: {
+  block: Extract<Block, { type: 'seamDemo' }>;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const reduceMotion = useReducedMotion();
+
+  const target = useMotionValue(50);
+  const seam = useSpring(target, { stiffness: 340, damping: 34, mass: 0.6 });
+  const clipPath = useMotionTemplate`inset(0 ${useTransform(seam, (v) => 100 - v)}% 0 0)`;
+  const seamLeft = useMotionTemplate`${seam}%`;
+
+  // Mirrored into React state so aria-valuenow actually updates — motion
+  // values bypass render, and a slider that always announces "50" is worse
+  // than no slider at all.
+  const [ariaNow, setAriaNow] = useState(50);
+  useMotionValueEvent(seam, 'change', (v) => {
+    const rounded = Math.round(v);
+    if (rounded !== ariaNow) setAriaNow(rounded);
+  });
+
+  const setFromClientX = useCallback((clientX: number) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pct = ((clientX - rect.left) / rect.width) * 100;
+    target.set(Math.min(88, Math.max(12, pct)));
+  }, [target]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => setFromClientX(e.clientX);
+    const onUp = () => setDragging(false);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [dragging, setFromClientX]);
+
+  const nudge = (delta: number) => target.set(Math.min(88, Math.max(12, target.get() + delta)));
+
+  if (reduceMotion) {
+    return (
+      <div className="rounded-2xl border border-white/10 overflow-hidden grid grid-cols-2">
+        <div className="p-10 text-center font-mono text-sm uppercase tracking-[0.3em]" style={{ background: block.leftColor, color: 'white' }}>
+          {block.leftLabel}
+        </div>
+        <div className="p-10 text-center font-mono text-sm uppercase tracking-[0.3em]" style={{ background: block.rightColor, color: 'white' }}>
+          {block.rightLabel}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative h-64 md:h-80 rounded-2xl overflow-hidden border border-white/10 select-none touch-none"
+    >
+      {/* right world, base layer */}
+      <div
+        className="absolute inset-0 grid place-items-center"
+        style={{ background: block.rightColor }}
+      >
+        <p className="font-mono text-sm md:text-base uppercase tracking-[0.4em] text-white/90">
+          {block.rightLabel}
+        </p>
+      </div>
+
+      {/* left world, clipped */}
+      <motion.div className="absolute inset-0 grid place-items-center" style={{ clipPath, background: block.leftColor }}>
+        <p className="font-mono text-sm md:text-base uppercase tracking-[0.4em] text-white/90">
+          {block.leftLabel}
+        </p>
+      </motion.div>
+
+      {/* handle */}
+      <motion.div className="absolute top-0 bottom-0 z-30 w-px bg-white/70" style={{ left: seamLeft }}>
+        <button
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.currentTarget.focus();
+            setDragging(true);
+          }}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 12 : 4;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(-step); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(step); }
+          }}
+          role="slider"
+          aria-label={`Reveal ${block.leftLabel} or ${block.rightLabel}`}
+          aria-valuemin={12}
+          aria-valuemax={88}
+          aria-valuenow={ariaNow}
+          aria-valuetext={`${ariaNow}% ${block.leftLabel}, ${100 - ariaNow}% ${block.rightLabel}`}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full border border-white/30 bg-black/60 backdrop-blur-md grid place-items-center cursor-ew-resize touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+        >
+          <span className="text-white/70 text-[10px] tracking-[0.2em] font-mono">↔</span>
+        </button>
+      </motion.div>
+    </div>
+  );
 }
 
 /**
