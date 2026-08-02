@@ -13,8 +13,23 @@ export async function DELETE(
       return unauthorizedResponse();
     }
 
-    const { questionId } = await params;
-    await prisma.onboardingQuestion.delete({ where: { id: questionId } });
+    const { projectId, questionId } = await params;
+
+    // The projectId in the path was decorative: a DELETE on
+    // /projects/<anything>/onboarding/<questionId> deleted that question
+    // regardless of which project it belonged to. Scope the write to the
+    // path so the URL means what it says, and a stale tab or a mistyped id
+    // can't reach across into another project's form.
+    const { count } = await prisma.onboardingQuestion.deleteMany({
+      where: { id: questionId, projectId },
+    });
+
+    if (count === 0) {
+      return NextResponse.json(
+        { error: 'Question not found on this project' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { escapeHtml, escapeHtmlMultiline } from '@/lib/html';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
@@ -123,39 +124,57 @@ function renderShell(opts: {
 /**
  * Send welcome email to new client
  */
+/**
+ * Welcome a client to a newly created project.
+ *
+ * `password` is the generated temporary one, or null when this client
+ * already had an account. Passing a placeholder string used to put
+ * "Temporary password: (existing account — use your current password)"
+ * into a monospace credentials box for returning clients, which reads as a
+ * broken template at best and as "your password is that literal string" at
+ * worst. Null gets a different block instead of a fake credential.
+ */
 export async function sendWelcomeEmail(
   clientEmail: string,
   clientName: string,
-  password: string,
+  password: string | null,
   projectName: string,
   serviceType?: string,
   timeline?: string
 ): Promise<boolean> {
   const loginUrl = `${SITE_URL}/client/login`;
   const projectDetails = [
-    serviceType ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Service:</strong> ${serviceType}</li>` : '',
-    timeline ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Timeline:</strong> ${timeline}</li>` : '',
+    serviceType ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Service:</strong> ${escapeHtml(serviceType)}</li>` : '',
+    timeline ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Timeline:</strong> ${escapeHtml(timeline)}</li>` : '',
   ]
     .filter(Boolean)
     .join('');
 
   const bodyHtml = `
-    <p>Hi ${clientName},</p>
-    <p>Your project <strong style="color:#fff;">${projectName}</strong> has been created and we're ready to get started.</p>
+    <p>Hi ${escapeHtml(clientName)},</p>
+    <p>Your project <strong style="color:#fff;">${escapeHtml(projectName)}</strong> has been created and we're ready to get started.</p>
     ${projectDetails ? `<ul style="padding-left:18px; margin:16px 0;">${projectDetails}</ul>` : ''}
-    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0; font-family:monospace; font-size:14px;">
-      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Email:</span> <span style="color:#fff;">${clientEmail}</span></p>
-      <p style="margin:0;"><span style="color:rgba(255,255,255,0.4);">Temporary password:</span> <span style="color:#fff;">${password}</span></p>
+    ${
+      password
+        ? `<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0; font-family:monospace; font-size:14px;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Email:</span> <span style="color:#fff;">${escapeHtml(clientEmail)}</span></p>
+      <p style="margin:0;"><span style="color:rgba(255,255,255,0.4);">Temporary password:</span> <span style="color:#fff;">${escapeHtml(password)}</span></p>
     </div>
-    <p style="font-size:13px; color:rgba(255,255,255,0.5);">You'll be asked to set your own password the first time you log in.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">You'll be asked to set your own password the first time you log in.</p>`
+        : `<p style="font-size:13px; color:rgba(255,255,255,0.5);">This has been added to your existing Bothmade account (${escapeHtml(
+            clientEmail
+          )}) — sign in with the password you already use. Forgotten it? Use "Forgot password?" on the sign-in page.</p>`
+    }
   `;
 
   return sendEmail({
     to: clientEmail,
-    subject: `Welcome to Bothmade — your project is ready`,
+    subject: password
+      ? 'Welcome to Bothmade — your project is ready'
+      : `Your new project is ready — ${projectName}`,
     html: renderShell({
-      eyebrow: 'Project created',
-      title: 'Welcome to Bothmade',
+      eyebrow: password ? 'Project created' : 'New project added',
+      title: password ? 'Welcome to Bothmade' : 'Your new project is ready',
       bodyHtml,
       ctaLabel: 'Access your dashboard',
       ctaUrl: loginUrl,
@@ -177,11 +196,11 @@ export async function sendStatusUpdateEmail(
   const dashboardUrl = `${SITE_URL}/client/${projectId}`;
 
   const bodyHtml = `
-    <p>Hi ${clientName},</p>
-    <p>There's a new update on <strong style="color:#fff;">${projectName}</strong>.</p>
+    <p>Hi ${escapeHtml(clientName)},</p>
+    <p>There's a new update on <strong style="color:#fff;">${escapeHtml(projectName)}</strong>.</p>
     <div style="background:rgba(255,255,255,0.05); border-left:3px solid #38bdf8; border-radius:8px; padding:16px 18px; margin:20px 0;">
-      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${updateTitle}</p>
-      <p style="margin:0; color:rgba(255,255,255,0.7);">${updateDescription}</p>
+      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${escapeHtml(updateTitle)}</p>
+      <p style="margin:0; color:rgba(255,255,255,0.7);">${escapeHtmlMultiline(updateDescription)}</p>
     </div>
   `;
 
@@ -190,7 +209,7 @@ export async function sendStatusUpdateEmail(
     subject: `${projectName}: ${updateTitle}`,
     html: renderShell({
       eyebrow: 'Project update',
-      title: projectName,
+      title: escapeHtml(projectName),
       bodyHtml,
       ctaLabel: 'View in dashboard',
       ctaUrl: dashboardUrl,
@@ -211,10 +230,10 @@ export async function sendMessageNotificationEmail(
   const dashboardUrl = `${SITE_URL}/client/${projectId}`;
 
   const bodyHtml = `
-    <p>Hi ${clientName},</p>
-    <p>You have a new message from the Bothmade team on <strong style="color:#fff;">${projectName}</strong>.</p>
+    <p>Hi ${escapeHtml(clientName)},</p>
+    <p>You have a new message from the Bothmade team on <strong style="color:#fff;">${escapeHtml(projectName)}</strong>.</p>
     <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:16px 18px; margin:20px 0; color:rgba(255,255,255,0.75);">
-      ${messagePreview}
+      ${escapeHtmlMultiline(messagePreview)}
     </div>
   `;
 
@@ -223,7 +242,7 @@ export async function sendMessageNotificationEmail(
     subject: `New message on ${projectName}`,
     html: renderShell({
       eyebrow: 'New message',
-      title: projectName,
+      title: escapeHtml(projectName),
       bodyHtml,
       ctaLabel: 'View full conversation',
       ctaUrl: dashboardUrl,
@@ -244,11 +263,11 @@ export async function sendPaymentLinkEmail(
   isDeposit: boolean
 ): Promise<boolean> {
   const bodyHtml = `
-    <p>Hi ${contactName || 'there'},</p>
-    <p>Thanks for choosing Bothmade for ${company}'s project. ${
+    <p>Hi ${escapeHtml(contactName || 'there')},</p>
+    <p>Thanks for choosing Bothmade for ${escapeHtml(company)}'s project. ${
       isDeposit
-        ? `Here's a secure link to pay your deposit of <strong style="color:#fff;">${amountLabel}</strong> and get started.`
-        : `Here's a secure link to complete your payment of <strong style="color:#fff;">${amountLabel}</strong>.`
+        ? `Here's a secure link to pay your deposit of <strong style="color:#fff;">${escapeHtml(amountLabel)}</strong> and get started.`
+        : `Here's a secure link to complete your payment of <strong style="color:#fff;">${escapeHtml(amountLabel)}</strong>.`
     }</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">This link is hosted securely by Stripe — we never see or store your card details.</p>
   `;
@@ -258,7 +277,7 @@ export async function sendPaymentLinkEmail(
     subject: `Your Bothmade payment link${isDeposit ? ' — deposit to get started' : ''}`,
     html: renderShell({
       eyebrow: isDeposit ? 'Deposit due' : 'Payment due',
-      title: `${company} — Payment Link`,
+      title: `${escapeHtml(company)} — Payment Link`,
       bodyHtml,
       ctaLabel: 'Pay securely',
       ctaUrl: paymentUrl,
@@ -281,9 +300,9 @@ export async function sendSignAndPayEmail(
   invoicePdf?: Buffer
 ): Promise<boolean> {
   const bodyHtml = `
-    <p>Hi ${contactName || 'there'},</p>
-    <p>Here's everything to get ${company}'s project moving — the agreement to review and a secure place to pay ${
-      isDeposit ? `your deposit of <strong style="color:#fff;">${amountLabel}</strong>` : `<strong style="color:#fff;">${amountLabel}</strong>`
+    <p>Hi ${escapeHtml(contactName || 'there')},</p>
+    <p>Here's everything to get ${escapeHtml(company)}'s project moving — the agreement to review and a secure place to pay ${
+      isDeposit ? `your deposit of <strong style="color:#fff;">${escapeHtml(amountLabel)}</strong>` : `<strong style="color:#fff;">${escapeHtml(amountLabel)}</strong>`
     }, all on one page.</p>
     ${invoicePdf ? '<p style="font-size:13px; color:rgba(255,255,255,0.5);">The itemized invoice is attached to this email as a PDF.</p>' : ''}
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
@@ -294,7 +313,7 @@ export async function sendSignAndPayEmail(
     subject: `Review & confirm your Bothmade project — ${company}`,
     html: renderShell({
       eyebrow: 'Ready to start',
-      title: `${company} — Review & Pay`,
+      title: `${escapeHtml(company)} — Review &amp; Pay`,
       bodyHtml,
       ctaLabel: 'Review & Pay',
       ctaUrl: signUrl,
@@ -318,10 +337,10 @@ export async function sendInvoiceOnlyEmail(
   isSelfCopy: boolean
 ): Promise<boolean> {
   const bodyHtml = isSelfCopy
-    ? `<p>Here's a copy of the current invoice for ${company}, attached as a PDF.</p>`
+    ? `<p>Here's a copy of the current invoice for ${escapeHtml(company)}, attached as a PDF.</p>`
     : `
-      <p>Hi ${contactName || 'there'},</p>
-      <p>Here's a copy of your invoice for ${company}'s project, attached as a PDF.</p>
+      <p>Hi ${escapeHtml(contactName || 'there')},</p>
+      <p>Here's a copy of your invoice for ${escapeHtml(company)}'s project, attached as a PDF.</p>
     `;
 
   return sendEmail({
@@ -329,7 +348,7 @@ export async function sendInvoiceOnlyEmail(
     subject: isSelfCopy ? `Invoice copy — ${company}` : `Your invoice — ${company}`,
     html: renderShell({
       eyebrow: 'Invoice',
-      title: `${company} — Invoice`,
+      title: `${escapeHtml(company)} — Invoice`,
       bodyHtml,
     }),
     attachments: [{ filename: `${company.replace(/[^a-z0-9]/gi, '-')}-invoice.pdf`, content: invoicePdf }],
@@ -358,7 +377,7 @@ export async function sendSignedContractCopyEmail(
 ): Promise<boolean> {
   const recipients = Array.from(new Set([...toEmails, ...SIGNED_CONTRACT_ALWAYS_TO]));
   const bodyHtml = `
-    <p><strong style="color:#fff;">${company}</strong> just agreed to their project agreement online (total: ${totalPriceLabel}).</p>
+    <p><strong style="color:#fff;">${escapeHtml(company)}</strong> just agreed to their project agreement online (total: ${escapeHtml(totalPriceLabel)}).</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">A copy is saved below and will also show up on the project once payment clears.</p>
   `;
 
@@ -367,7 +386,7 @@ export async function sendSignedContractCopyEmail(
     subject: `Signed: ${company}'s project agreement`,
     html: renderShell({
       eyebrow: 'Contract signed',
-      title: `${company} agreed online`,
+      title: `${escapeHtml(company)} agreed online`,
       bodyHtml,
       ctaLabel: 'View signed copy',
       ctaUrl: contractUrl,

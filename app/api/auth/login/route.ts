@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, createToken } from '@/lib/auth';
+import {
+  LOGIN_LIMITS,
+  checkRateLimit,
+  clearRateLimit,
+  clientKey,
+} from '@/lib/rate-limit';
+
+function tooManyAttempts(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { error: 'Too many sign-in attempts. Please try again in a few minutes.' },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +26,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Two windows, because they catch different attacks: one host spraying
+    // many accounts trips the IP limit, many hosts targeting one account
+    // trip the account limit. Both are checked before a single bcrypt
+    // comparison runs, so an attacker can't use this endpoint as a CPU sink
+    // either. Cleared on success so an honest typo streak costs nothing.
+    const ip = clientKey(request);
+    const account = `${userType}:${String(email).trim().toLowerCase()}`;
+
+    const byIp = checkRateLimit('login-ip', ip, LOGIN_LIMITS.perIp);
+    if (byIp.limited) return tooManyAttempts(byIp.retryAfterSeconds);
+
+    const byAccount = checkRateLimit('login-account', account, LOGIN_LIMITS.perAccount);
+    if (byAccount.limited) return tooManyAttempts(byAccount.retryAfterSeconds);
 
     if (userType === 'client') {
       // Client login
@@ -47,6 +74,9 @@ export async function POST(request: NextRequest) {
         where: { id: client.id },
         data: { lastLoginAt: new Date() },
       });
+
+      clearRateLimit('login-ip', ip);
+      clearRateLimit('login-account', account);
 
       // Create auth token
       const token = createToken({
@@ -89,6 +119,9 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         );
       }
+
+      clearRateLimit('login-ip', ip);
+      clearRateLimit('login-account', account);
 
       // Create auth token
       const token = createToken({

@@ -1,7 +1,62 @@
 import { prisma } from './prisma';
 import { sendEmail } from './email';
+import { escapeHtml } from './html';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+/**
+ * A money-path email that did not send.
+ *
+ * `sendEmail` returns false rather than throwing, which is the right call
+ * for a newsletter and the wrong one for a welcome email carrying the only
+ * copy of a client's temporary password. Those failures were being
+ * discarded at the call site — the client never got their login, and
+ * nobody found out until they emailed asking why. This escalates to the
+ * team instead, with enough detail to send it again by hand.
+ *
+ * Deliberately best-effort and never throwing: it is called from inside
+ * webhook handlers, where an exception means Stripe retries a delivery
+ * that already succeeded.
+ */
+export async function alertEmailDeliveryFailure(params: {
+  /** What failed to send, in plain words: "welcome email", "payment receipt". */
+  kind: string;
+  recipient: string;
+  /** Anything needed to resend it — project name, amount, company. */
+  context: Record<string, string | number | null | undefined>;
+}): Promise<void> {
+  try {
+    console.error(
+      `[email-failure] ${params.kind} → ${params.recipient}`,
+      JSON.stringify(params.context)
+    );
+
+    const admins = await getAdminEmails();
+    if (admins.length === 0) return;
+
+    const rows = Object.entries(params.context)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:4px 12px 4px 0; color:#666;">${escapeHtml(k)}</td><td style="padding:4px 0;"><strong>${escapeHtml(v)}</strong></td></tr>`
+      )
+      .join('');
+
+    await sendEmail({
+      to: admins,
+      subject: `⚠️ Failed to send ${params.kind} to ${params.recipient}`,
+      html: wrap(
+        'An email on the money path did not send',
+        `<p>A <strong>${escapeHtml(params.kind)}</strong> to <strong>${escapeHtml(params.recipient)}</strong> failed to deliver. The underlying action (payment, project creation) still went through — only the email did not.</p>
+         <p><strong>Send this one by hand.</strong> Details:</p>
+         <table cellpadding="0" cellspacing="0">${rows}</table>`
+      ),
+    });
+  } catch (error) {
+    // If the alert itself can't send, the console line above is the record.
+    console.error('Failed to raise email-delivery alert:', error);
+  }
+}
 
 /** Every admin/team account's email — the audience for internal alerts. */
 export async function getAdminEmails(): Promise<string[]> {

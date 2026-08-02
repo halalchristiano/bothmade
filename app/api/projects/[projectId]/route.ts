@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { forbiddenResponse, unauthorizedResponse } from '@/lib/middleware';
+import { toClientRef, toClientSelfView } from '@/lib/serialize';
+import { PROJECT_STAGES, stageIndexFor, isProjectStatus } from '@/lib/project-status';
 
 export async function GET(
   request: NextRequest,
@@ -59,16 +61,15 @@ export async function GET(
       }
     }
 
-    // Filter sensitive data
+    // Both branches go through a whitelist. The client branch used to hand
+    // back `project.client` whole — every column Prisma loaded, `password`
+    // (a bcrypt hash) included — to the client's own browser. "It's their
+    // own row" is not a defence: it lands in the network tab, in any proxy
+    // on the path, and in whatever the page serialises its state into.
     const clientData =
       session.type === 'client'
-        ? project.client
-        : {
-            id: project.client.id,
-            email: project.client.email,
-            company: project.client.company,
-            contactName: project.client.contactName,
-          };
+        ? toClientSelfView(project.client)
+        : toClientRef(project.client);
 
     const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -149,13 +150,25 @@ export async function PUT(
       );
     }
 
+    // status and statusStage describe the same fact twice. Accepting both
+    // from the request let a caller send status:'build' with statusStage:0
+    // and produce a project whose label and progress bar disagree forever.
+    // Take the name, derive the index.
+    if (body.status !== undefined && !isProjectStatus(body.status)) {
+      return NextResponse.json(
+        { error: `status must be one of: ${PROJECT_STAGES.join(', ')}` },
+        { status: 400 }
+      );
+    }
+    const nextStatus = body.status !== undefined ? body.status : undefined;
+
     const updatedProject = await prisma.project.update({
       where: { id: projectId },
       data: {
         name: body.name,
         description: body.description,
-        status: body.status,
-        statusStage: body.statusStage,
+        status: nextStatus,
+        statusStage: nextStatus !== undefined ? stageIndexFor(nextStatus) : undefined,
         baseService: body.baseService,
         addOns: Array.isArray(body.addOns)
           ? body.addOns.join(',')
@@ -173,28 +186,13 @@ export async function PUT(
         deliverables: body.deliverables
           ? JSON.stringify(body.deliverables)
           : undefined,
-        handoffAcknowledgedAt:
-          body.acknowledgeHandoff === true && !project.handoffAcknowledgedAt
-            ? new Date()
-            : body.acknowledgeHandoff === false
-            ? null
-            : undefined,
+        // Handoff acknowledgement lives at
+        // /api/admin/projects/[projectId]/handoff. It is a team-only
+        // workflow action with its own side effect (a team message), and it
+        // has no business riding along on the shared project-edit route
+        // that clients also read from.
       },
     });
-
-    if (body.acknowledgeHandoff === true && !project.handoffAcknowledgedAt && project.convertedFromLeadId) {
-      const lead = await prisma.lead.findUnique({ where: { id: project.convertedFromLeadId } });
-      if (lead) {
-        await prisma.teamMessage.create({
-          data: {
-            content: `👍 Picked up the handoff for ${lead.company} — starting Discovery.`,
-            fromUserId: session.userId,
-            relatedLeadId: lead.id,
-            relatedProjectId: projectId,
-          },
-        });
-      }
-    }
 
     return NextResponse.json(
       { success: true, project: updatedProject },

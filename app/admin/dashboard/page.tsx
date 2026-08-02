@@ -902,11 +902,11 @@ function HandoffRow({
   const [error, setError] = useState('');
   const [showUndo, setShowUndo] = useState(false);
 
-  const setAcknowledged = async (acknowledgeHandoff: boolean) => {
-    const res = await fetch(`/api/projects/${handoff.id}`, {
-      method: 'PUT',
+  const setAcknowledged = async (acknowledged: boolean) => {
+    const res = await fetch(`/api/admin/projects/${handoff.id}/handoff`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acknowledgeHandoff }),
+      body: JSON.stringify({ acknowledged }),
     });
     return res.ok;
   };

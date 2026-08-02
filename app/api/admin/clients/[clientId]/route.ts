@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { toClientAdminView } from '@/lib/serialize';
 
 export async function GET(
   request: NextRequest,
@@ -86,7 +87,13 @@ export async function PATCH(
       });
     }
 
-    return NextResponse.json({ success: true, client }, { status: 200 });
+    // `client` here is a raw Prisma row — password hash and all. The GET on
+    // this route already whitelists; the PATCH response was handing back
+    // everything.
+    return NextResponse.json(
+      { success: true, client: toClientAdminView(client) },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Update client error:', error);
     return NextResponse.json(
