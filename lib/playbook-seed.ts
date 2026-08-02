@@ -414,6 +414,7 @@ export interface PlaybookEntry {
   kind: string;
   priceCents: number;
   whatItIs: string;
+  benefit: string;
   pitch: string;
   justification: string;
   objection: string | null;
@@ -477,4 +478,104 @@ export function priceToTotal(
   biggest.priceCents = (biggest.priceCents ?? 0) + drift;
 
   return items;
+}
+
+/**
+ * "How does this help MY business?" — the question every line item gets on a
+ * call, and the one a generic catalogue description never answers.
+ *
+ * `{company}` is substituted with the lead's actual name at render time, so
+ * the answer names the business back to them instead of describing a
+ * category. Written per item against the kind of business that item appears
+ * for in the dossiers: the local-service items assume a trades or
+ * home-services operator, the industrial ones assume a technical buyer with
+ * a long purchase cycle.
+ */
+export const PLAYBOOK_BENEFITS: Record<string, string> = {
+  // --- local service ---
+  websiteredesign:
+    "More of the people already finding {company} turn into actual enquiries. Same marketing, same traffic, more jobs — which is why it comes before spending a penny more on getting found.",
+  mobileoptimisation:
+    "The customers reaching {company} from a phone — which will be most of them — can actually get in touch without pinching and zooming. It also stops Google quietly ranking {company} lower for a bad phone experience.",
+  servicepagestructure:
+    "Each thing {company} does gets its own page, so someone searching for that exact job finds {company} instead of a competitor who happens to have a page for it.",
+  qualifiedenquiryform:
+    "Enquiries arrive at {company} ready to quote instead of as 'call me'. That's a couple of phone calls saved on every single job, and quotes going out same-day rather than three days later.",
+  bookingorestimateworkflow:
+    "{company} stops losing the evening and weekend enquiries entirely. Those people aren't waiting until Monday — they're ringing the next name on the list tonight.",
+  localseo:
+    "{company} shows up in the map results when someone nearby searches. That's the readiest-to-buy customer there is, and right now they're finding somebody else.",
+  analyticssetup:
+    "{company} finally knows which marketing actually produces work. That usually means cutting something that was never paying and putting the money where it does.",
+  crmleadrouting:
+    "No enquiry to {company} gets lost in somebody's inbox again. Following up stops depending on whoever happens to remember.",
+  professionalcopywriting:
+    "The words speak to what {company}'s customers are actually worried about, so a bigger share of the same visitors get in touch. It lifts every other thing on this list.",
+  trustandproofsystem:
+    "{company}'s reviews, guarantees and real job photos appear exactly where someone hesitates. The reputation already exists — this just stops it being invisible at the deciding moment.",
+  customerportal:
+    "{company}'s customers can check their own quote, job and paperwork instead of ringing to ask. It removes a whole category of unpaid admin, and makes {company} look considerably bigger than the competition.",
+  reviewautomation:
+    "Every completed job for {company} turns into a review request automatically, and unhappy customers get routed privately first. More reviews means better ranking and an easier sell on every future job.",
+  smsfollowup:
+    "Fewer no-shows for {company}, and quotes that went quiet get a nudge without anyone remembering to send it. Texts get read in minutes; emails often don't get read at all.",
+  onlinepayments:
+    "{company} takes the deposit the moment someone says yes, rather than invoicing and waiting. Better cash flow, and far fewer people going cold between agreeing and paying.",
+  recurringserviceplans:
+    "Some of {company}'s one-off customers become monthly income. That's what makes a quiet month survivable and what makes the business worth more if it's ever sold.",
+  emailnurture:
+    "The enquiries {company} didn't win aren't written off — they hear from {company} occasionally, so a slice of them come back later at no extra cost to acquire.",
+  paidsearchlandingpages:
+    "If {company} runs ads, more of that budget turns into enquiries instead of bouncing off a general page. It makes money already being spent work harder.",
+  photoanddocumentuploads:
+    "Customers send photos of the problem with the enquiry, so {company} can often quote without driving out. Every avoided site visit is hours back.",
+  referralworkflow:
+    "{company}'s happy customers become a steady source of new ones. Referred work costs nothing to win and closes far more easily than cold enquiries.",
+  ongoinggrowthplan:
+    "{company}'s site keeps improving rather than slowly falling behind, and there's a monthly report showing what changed and what it did.",
+
+  // --- industrial / B2B ---
+  productledwebsiteredesign:
+    "{company}'s buyers can work out what they need themselves, the way technical buyers actually prefer to. Right now the ones who can't figure it out just leave, and {company} never even knows they existed.",
+  guidedselectionsystem:
+    "The sizing conversation {company}'s engineers currently have over email happens automatically. Buyers reach the right product with confidence, and engineering time goes to real opportunities instead of tyre-kickers.",
+  structuredrfqwebapp:
+    "Quote requests reach {company} complete — specifications, quantities, deadlines, drawings — so quoting starts immediately instead of after a week of chasing. Faster quotes win more of them.",
+  securefileupload:
+    "Drawings and parts lists arrive with the enquiry rather than in a chain of emails, so {company} can start quoting the same day. Handling them properly also matters to bigger buyers doing due diligence.",
+  crmintegration:
+    "Every enquiry becomes a tracked opportunity for {company} automatically, with the product interest attached. {company} can finally see conversion by product line instead of guessing at it.",
+  analyticsandfunneltracking:
+    "{company} sees which products get attention, where buyers give up, and which enquiries become orders — so marketing spend follows the lines that actually sell.",
+  technicalseo:
+    "{company} gets found for the specific technical terms buyers search. It's a small number of visitors, but in this industry one of them can be worth more than the entire project.",
+  cmsanddatamigration:
+    "{company}'s team can keep product information current without paying a developer for every change. It's the item that stops the site going stale in six months.",
+  coreintegrations:
+    "{company}'s systems stop needing the same information typed into them twice, and the numbers stop disagreeing between them. Less admin, and figures people can actually trust.",
+  accessibilityandprivacy:
+    "{company} meets the standards larger and public-sector buyers increasingly ask about in procurement. Cheap now, expensive to retrofit, and it protects deals rather than just reducing risk.",
+  quotestatusdashboard:
+    "{company}'s customers can see where their quote is without ringing to ask. It removes the chasing calls and makes {company} look far more organised than competitors who can't offer it.",
+  distributororrepportal:
+    "{company}'s distributors and reps get what they need themselves instead of emailing head office. Better-equipped partners sell more, and the internal interruptions stop.",
+  savedprojectsandboms:
+    "Engineers buying from {company} can save a configuration and come back to it. Technical purchases take weeks — losing their work between visits is a common reason they end up buying elsewhere.",
+  partsandrepeatordering:
+    "{company}'s existing customers reorder parts themselves. That's the highest-margin revenue there is, and it stops being capped by how many calls the team can answer.",
+  serviceandsupportdashboard:
+    "Service requests to {company} get logged and tracked rather than lost in email, and {company} gets data on which products generate the most support load.",
+  erporinventoryintegration:
+    "What {company}'s customers see reflects what's actually available, so quotes stop going out on stock that isn't there. It's what makes everything else on the site trustworthy.",
+  trainingandresourceplatform:
+    "{company}'s buyers can get themselves up to speed without hand-holding, which shortens the sale and cuts the same technical questions being answered over and over.",
+  automatedlifecyclemessaging:
+    "{company} gets prompted in front of customers at the moments that matter — a quote gone quiet, a service due, parts likely needing reordering. This is revenue {company} has already earned the right to.",
+  nativeormultiplatformapp:
+    "Only worth it if {company}'s people or customers work somewhere a browser struggles — on site, offline, in a workshop. Where that's true it changes how they work; where it isn't, that budget belongs in the core build.",
+};
+
+/** Fills {company} into a playbook line so it names the business back to them. */
+export function personalise(text: string, company: string): string {
+  return text.replace(/\{company\}/g, company);
 }

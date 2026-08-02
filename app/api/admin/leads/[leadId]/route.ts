@@ -41,6 +41,7 @@ export async function GET(
         kind: true,
         priceCents: true,
         whatItIs: true,
+        benefit: true,
         pitch: true,
         justification: true,
         objection: true,

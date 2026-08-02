@@ -356,6 +356,7 @@ model SalesPlaybookItem {
   kind          String  @default("essential") // "essential" | "upsell"
   priceCents    Int
   whatItIs      String  @db.Text // plain English — assumes no technical background
+  benefit       String  @default("") @db.Text // how THIS business gains; {company} is substituted at render time
   pitch         String  @db.Text // said to the customer, close to verbatim
   justification String  @db.Text // why the price is fair, in business terms
   objection     String? @db.Text // the pushback this attracts, and the answer

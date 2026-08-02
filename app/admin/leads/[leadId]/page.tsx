@@ -18,7 +18,7 @@ import {
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
 import { findGlossaryTerms } from '@/lib/glossary';
 import { buildCallScript, callScriptToText, painPointPitch } from '@/lib/call-script';
-import { priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
+import { personalise, priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
@@ -807,18 +807,30 @@ export default function LeadDetailPage() {
               )}
               {i.entry && (
                 <>
-                  <p className="text-xs text-white/45 leading-relaxed mt-2 break-words">
-                    <span className="text-white/70 font-semibold">What this actually is: </span>
-                    {i.entry.whatItIs}
-                  </p>
-                  <div className="mt-2.5 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+                  <div className="mt-2.5 rounded-lg bg-white/[0.03] px-3 py-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-white/40 font-semibold mb-1">
+                      In plain English
+                    </p>
+                    <p className="text-xs text-white/70 leading-relaxed break-words">{i.entry.whatItIs}</p>
+                  </div>
+                  {i.entry.benefit && (
+                    <div className="mt-2 rounded-lg bg-white/[0.03] px-3 py-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-sky-300/80 font-semibold mb-1">
+                        How it helps {lead.company}
+                      </p>
+                      <p className="text-xs text-white/70 leading-relaxed break-words">
+                        {personalise(i.entry.benefit, lead.company)}
+                      </p>
+                    </div>
+                  )}
+                  <div className="mt-2 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
                       Say something like this
                     </p>
                     <p className="text-xs text-white/80 italic leading-relaxed break-words">"{i.entry.pitch}"</p>
                   </div>
                   <p className="text-xs text-white/50 leading-relaxed mt-2.5 break-words">
-                    <span className="text-amber-300/90 font-semibold">Why it's worth the money: </span>
+                    <span className="text-amber-300/90 font-semibold">If they ask why it costs that: </span>
                     {i.entry.justification}
                   </p>
                   {i.entry.objection && (
