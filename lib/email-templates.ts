@@ -115,6 +115,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
     build: ({ recipientName, senderName, fields }) => {
       const headline = fields.headline === '__custom__' ? fields.headlineCustom || 'A note from Bothmade' : fields.headline || 'A note from Bothmade';
       const first = senderName ? senderName.split(' ')[0] : 'The Bothmade team';
+      const full = senderName || 'The Bothmade Team';
       return {
         subject: fields.subject || headline,
         title: headline,
@@ -124,7 +125,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
               .split('\n\n')
               .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
               .join('') +
-            `<p style="margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.08);">Best,<br/><strong style="color:#fff;">${first}</strong>${
+            `<p style="margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.08);">Best,<br/><strong style="color:#fff;">${full}</strong>${
               fields.senderTitle ? `<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">${fields.senderTitle}</span>` : ''
             }<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">Bothmade Studio</span></p>`,
           fields.loomUrl
@@ -165,6 +166,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
     ],
     build: ({ recipientName, company, senderName, fields }) => {
       const first = senderName ? senderName.split(' ')[0] : 'Evan';
+      const full = senderName || 'Evan';
       const title = fields.senderTitle || 'Director of Sales';
       return {
         subject: `Thoughts on ${company}'s website`,
@@ -179,7 +181,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>We'll research your company, your customers and your competitors, then walk you through our thinking on a short call. There's no obligation — we simply believe it's the best way to demonstrate how we work.</p>` +
           `<p>If you like the direction, we can discuss taking it further. If not, you'll still leave with ideas you can use.</p>` +
           `<p>Would you be open to a quick 15-minute conversation next week?</p>` +
-          `<p>Kind regards,<br/>${first}<br/>${title}<br/>Bothmade Studio</p>`,
+          `<p>Kind regards,<br/>${full}<br/>${title}<br/>Bothmade Studio</p>`,
       };
     },
   },
@@ -207,6 +209,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
     ],
     build: ({ recipientName, company, senderName, fields }) => {
       const first = senderName ? senderName.split(' ')[0] : 'Evan';
+      const full = senderName || 'Evan';
       const title = fields.senderTitle || 'Director of Sales';
       return {
         subject: `Thoughts on ${company}'s website`,
@@ -221,7 +224,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>No templates. No obligation. Just a genuine demonstration of how we'd approach your business if we were fortunate enough to work together.</p>` +
           `<p>If it isn't for you, that's absolutely fine. At the very least, you'll leave with ideas you can use.</p>` +
           `<p>Would ${fields.callDays || 'next week'} work for a brief 15-minute conversation?</p>` +
-          `<p>Kind regards,<br/>${first}<br/>${title}<br/>Bothmade Studio</p>`,
+          `<p>Kind regards,<br/>${full}<br/>${title}<br/>Bothmade Studio</p>`,
       };
     },
   },

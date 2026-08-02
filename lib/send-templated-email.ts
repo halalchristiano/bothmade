@@ -42,7 +42,7 @@ export async function buildTemplatedEmail(
 
   const sender = await prisma.user.findUnique({
     where: { id: senderId },
-    select: { name: true },
+    select: { name: true, avatarUrl: true },
   });
   if (!sender) return { ok: false, error: 'Sender not found' };
 
@@ -60,6 +60,7 @@ export async function buildTemplatedEmail(
     ctaLabel: built.ctaLabel,
     ctaUrl: built.ctaUrl,
     footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
+    footerAvatarUrl: sender.avatarUrl,
   });
 
   return { ok: true, subject: built.subject, html };
@@ -84,7 +85,7 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
 
   const sender = await prisma.user.findUnique({
     where: { id: senderId },
-    select: { name: true, email: true, gmailAddress: true, gmailAppPassword: true },
+    select: { name: true, email: true, gmailAddress: true, gmailAppPassword: true, avatarUrl: true },
   });
   if (!sender) return { ok: false, error: 'Sender not found' };
 
@@ -102,6 +103,7 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     ctaLabel: built.ctaLabel,
     ctaUrl: built.ctaUrl,
     footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
+    footerAvatarUrl: sender.avatarUrl,
   });
 
   const sent = await sendAsUser(

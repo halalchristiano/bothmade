@@ -28,6 +28,9 @@ model User {
   gmailAppPassword String?
   gmailConnectedAt DateTime?
 
+  // Headshot shown in the outbound-email footer next to the sender's name.
+  avatarUrl String?
+
   // When true (default), bulk cold-email sends show a preview of every
   // recipient's subject/body before anything actually goes out.
   previewBeforeBulkSend Boolean @default(true)

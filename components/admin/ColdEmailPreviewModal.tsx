@@ -33,14 +33,14 @@ export function ColdEmailPreviewModal({
   onConfirm: (leadIds: string[]) => void;
 }) {
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [senderFirstName, setSenderFirstName] = useState('The Bothmade Team');
+  const [senderFullName, setSenderFullName] = useState('The Bothmade Team');
 
   useEffect(() => {
     fetch('/api/auth/me')
       .then((r) => r.json())
       .then((data) => {
         const name = data?.user?.name as string | undefined;
-        if (name) setSenderFirstName(name.split(' ')[0]);
+        if (name) setSenderFullName(name);
       })
       .catch(() => {});
   }, []);
@@ -86,7 +86,7 @@ export function ColdEmailPreviewModal({
             const firstName = lead.contactName?.split(' ')[0] || 'there';
             const personalizedBody = body
               .replace(/\[First Name\]/gi, firstName)
-              .replace(/\[Sender Name\]/gi, senderFirstName);
+              .replace(/\[Sender Name\]/gi, senderFullName);
 
             return (
               <div

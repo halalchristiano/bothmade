@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Mail, CheckCircle2, ExternalLink, Loader2, Eye } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { upload } from '@vercel/blob/client';
+import { Mail, CheckCircle2, ExternalLink, Loader2, Eye, User, Camera } from 'lucide-react';
 import { Card, CardHeader, PageIn, PageTitle } from '@/components/admin/ui';
 
 interface GmailStatus {
@@ -21,6 +22,13 @@ export default function AdminSettingsPage() {
   const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
   const [savingPreview, setSavingPreview] = useState(false);
 
+  const [name, setName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [savingName, setSavingName] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
   const load = () => {
     fetch('/api/admin/settings/gmail')
       .then((r) => r.json())
@@ -28,9 +36,60 @@ export default function AdminSettingsPage() {
     fetch('/api/admin/settings/preferences')
       .then((r) => r.json())
       .then((data) => setPreviewBeforeBulkSend(data.previewBeforeBulkSend));
+    fetch('/api/admin/settings/profile')
+      .then((r) => r.json())
+      .then((data) => {
+        setName(data.name || '');
+        setAvatarUrl(data.avatarUrl || null);
+      });
   };
 
   useEffect(load, []);
+
+  const handleSaveName = async () => {
+    if (!name.trim()) return;
+    setSavingName(true);
+    setProfileError(null);
+    try {
+      const res = await fetch('/api/admin/settings/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setProfileError(data.error || 'Failed to save name');
+      }
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleAvatarSelected = async (file: File) => {
+    setUploadingAvatar(true);
+    setProfileError(null);
+    try {
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/admin/settings/avatar-upload',
+      });
+      const res = await fetch('/api/admin/settings/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatarUrl: blob.url }),
+      });
+      if (res.ok) {
+        setAvatarUrl(blob.url);
+      } else {
+        const data = await res.json();
+        setProfileError(data.error || 'Failed to save photo');
+      }
+    } catch {
+      setProfileError('Failed to upload photo');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleTogglePreview = async () => {
     if (previewBeforeBulkSend === null) return;
@@ -91,6 +150,54 @@ export default function AdminSettingsPage() {
   return (
     <PageIn className="max-w-2xl mx-auto px-4 md:px-8 py-6 md:py-10 space-y-6">
       <PageTitle icon={Mail} title="Settings" />
+
+      <Card className="p-6">
+        <CardHeader
+          title="Profile"
+          subtitle="Your name and photo, shown in the footer of every email you send."
+        />
+        <div className="mt-4 flex items-center gap-4">
+          <button
+            onClick={() => avatarInputRef.current?.click()}
+            disabled={uploadingAvatar}
+            title="Change photo"
+            className="relative shrink-0 w-16 h-16 rounded-full overflow-hidden border border-white/15 bg-white/5 flex items-center justify-center group disabled:opacity-50"
+          >
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <User size={24} className="text-white/30" />
+            )}
+            <span className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+              {uploadingAvatar ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+            </span>
+          </button>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && handleAvatarSelected(e.target.files[0])}
+          />
+          <div className="flex-1 flex items-center gap-2">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your full name"
+              className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            />
+            <button
+              onClick={handleSaveName}
+              disabled={savingName || !name.trim()}
+              className="shrink-0 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+            >
+              {savingName ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+        {profileError && <p className="text-xs text-red-400 mt-2">{profileError}</p>}
+      </Card>
 
       <Card className="p-6">
         <CardHeader

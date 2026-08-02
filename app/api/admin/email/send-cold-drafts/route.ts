@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const sender = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { name: true, email: true, gmailAddress: true, gmailAppPassword: true },
+      select: { name: true, email: true, gmailAddress: true, gmailAppPassword: true, avatarUrl: true },
     });
     if (!sender) return unauthorizedResponse();
 
@@ -68,10 +68,10 @@ export async function POST(request: NextRequest) {
 
       const { subject, body } = splitDraft(draft, lead.company);
       const firstName = lead.contactName?.split(' ')[0] || 'there';
-      const senderFirstName = sender.name?.split(' ')[0] || 'The Bothmade Team';
+      const senderFullName = sender.name || 'The Bothmade Team';
       const personalizedBody = body
         .replace(/\[First Name\]/gi, firstName)
-        .replace(/\[Sender Name\]/gi, senderFirstName);
+        .replace(/\[Sender Name\]/gi, senderFullName);
 
       const bodyHtml = personalizedBody
         .split(/\n{2,}/)
@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
         title: subject,
         bodyHtml,
         footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
+        footerAvatarUrl: sender.avatarUrl,
       });
 
       const sent = await sendAsUser(

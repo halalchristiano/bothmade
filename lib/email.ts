@@ -49,8 +49,9 @@ function renderShell(opts: {
   ctaLabel?: string;
   ctaUrl?: string;
   footerNote?: string;
+  footerAvatarUrl?: string | null;
 }): string {
-  const { eyebrow, title, bodyHtml, ctaLabel, ctaUrl, footerNote } = opts;
+  const { eyebrow, title, bodyHtml, ctaLabel, ctaUrl, footerNote, footerAvatarUrl } = opts;
   return `
 <!DOCTYPE html>
 <html>
@@ -97,9 +98,10 @@ function renderShell(opts: {
             </tr>
             <tr>
               <td style="padding:24px 12px 0 12px; text-align:center;">
-                <p style="margin:0; font-size:12px; color:rgba(255,255,255,0.3);">
+                ${footerAvatarUrl ? `<img src="${footerAvatarUrl}" width="28" height="28" alt="" style="display:inline-block; vertical-align:middle; border-radius:50%; margin-right:8px; object-fit:cover;" />` : ''}
+                <span style="font-size:12px; color:rgba(255,255,255,0.3); vertical-align:middle;">
                   ${footerNote || 'Bothmade — bothmade.studio'}
-                </p>
+                </span>
               </td>
             </tr>
           </table>
