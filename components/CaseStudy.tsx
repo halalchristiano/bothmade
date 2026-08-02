@@ -57,6 +57,14 @@ export function CaseStudyPage({
             >
               {study.discipline} · {study.year}
             </span>
+            {/* Said outright, at the top, before any of the write-up. A reader
+                should never work out halfway down that this wasn't commissioned. */}
+            {study.origin === 'self-initiated' && (
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-sky-400/30 text-sky-300/70">
+                studio project
+              </span>
+            )}
+
             {study.status === 'in-progress' && (
               <span className="font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-white/15 text-white/35">
                 in progress

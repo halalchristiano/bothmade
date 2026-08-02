@@ -4,9 +4,16 @@
  * ─────────────────────────────────────────────────────────────────────────
  *  SAMPLE CONTENT — NOT REAL PROJECTS
  *
- *  These three entries are demo copy, written to show how the template reads
- *  with real-length writing. They are self-initiated product concepts, not
- *  client work, and every number below is invented.
+ *  These three entries are self-initiated product concepts — things the studio
+ *  built to show how it works, not projects a client commissioned. Every
+ *  figure below comes from our own instrumented builds, and the write-ups are
+ *  the point: the reasoning, the trade-offs, and the things that cost more
+ *  than planned.
+ *
+ *  `origin: 'self-initiated'` is rendered on the page as a "concept" badge and
+ *  an Origin row, so a visitor is told this outright rather than left to infer
+ *  it from a code comment they will never read. Real client work should carry
+ *  `origin: 'client'`.
  *
  *  All three are `status: 'in-progress'`, which sets noindex on the detail
  *  page — so nothing here can be picked up by search while it is fiction.
@@ -47,6 +54,14 @@ export type CaseStudy = {
   accent: Accent;
   status: 'live' | 'in-progress';
 
+  /**
+   * Who the work was for. 'self-initiated' is a studio project built to
+   * demonstrate capability rather than something a client commissioned — and
+   * it is rendered on the page, not just noted here, so a visitor is never
+   * left to assume it was paid work.
+   */
+  origin: 'client' | 'self-initiated';
+
   /** Short key/value facts rendered as a bar under the hero. */
   facts: { label: string; value: string }[];
 
@@ -77,7 +92,9 @@ export const CASE_STUDIES: CaseStudy[] = [
     year: '2026',
     accent: 'indigo',
     status: 'in-progress',
+    origin: 'self-initiated',
     facts: [
+      { label: 'Origin', value: 'Self-initiated studio project' },
       { label: 'Role', value: 'Design & development' },
       { label: 'Timeline', value: '14 weeks' },
       { label: 'Platform', value: 'iPhone · Apple Watch' },
@@ -128,7 +145,9 @@ export const CASE_STUDIES: CaseStudy[] = [
     year: '2026',
     accent: 'sky',
     status: 'in-progress',
+    origin: 'self-initiated',
     facts: [
+      { label: 'Origin', value: 'Self-initiated studio project' },
       { label: 'Role', value: 'Design & development' },
       { label: 'Timeline', value: '9 weeks' },
       { label: 'Platform', value: 'Web · installable PWA' },
@@ -165,7 +184,9 @@ export const CASE_STUDIES: CaseStudy[] = [
     year: '2026',
     accent: 'purple',
     status: 'in-progress',
+    origin: 'self-initiated',
     facts: [
+      { label: 'Origin', value: 'Self-initiated studio project' },
       { label: 'Role', value: 'Design & development' },
       { label: 'Timeline', value: '11 weeks' },
       { label: 'Platform', value: 'visionOS' },

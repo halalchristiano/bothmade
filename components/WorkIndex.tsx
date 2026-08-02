@@ -67,6 +67,18 @@ export function WorkIndex() {
             </span>
           </div>
 
+          {/* Stated up front rather than left to be inferred. Owning it reads
+              better than being caught out by it, and the engineering write-ups
+              are the actual argument — a client brief wouldn't make them
+              stronger. */}
+          {CASE_STUDIES.every((p) => p.origin === 'self-initiated') && (
+            <p className="mb-12 max-w-2xl text-sm leading-relaxed text-white/40">
+              Nothing here was commissioned — every figure below comes from our own
+              instrumented builds, and the reasoning is written up in full, including
+              the parts that cost more than we planned.
+            </p>
+          )}
+
           <div>
             {CASE_STUDIES.map((p, idx) => {
               const accent = ACCENT_HEX[p.accent];
@@ -112,13 +124,21 @@ export function WorkIndex() {
 
                     <span className="md:col-span-1 md:text-right">
                       <span
-                        className={`inline-block font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${
+                        className={`inline-block whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.1em] px-1.5 py-1 rounded-full border ${
                           p.status === 'live'
                             ? 'border-emerald-400/40 text-emerald-300/80'
-                            : 'border-white/15 text-white/35'
+                            : p.origin === 'self-initiated'
+                              ? 'border-sky-400/30 text-sky-300/70'
+                              : 'border-white/15 text-white/35'
                         }`}
                       >
-                        {p.status === 'live' ? 'live' : 'wip'}
+                        {/* "wip" reads as a client project that isn't finished.
+                            "concept" says what this actually is. */}
+                        {p.status === 'live'
+                          ? 'live'
+                          : p.origin === 'self-initiated'
+                            ? 'concept'
+                            : 'wip'}
                       </span>
                     </span>
                   </Link>
