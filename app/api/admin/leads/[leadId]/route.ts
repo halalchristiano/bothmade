@@ -34,19 +34,27 @@ export async function GET(
     // Sent alongside the lead so the brief can price and justify every line
     // item in one round trip — a second request could leave the page showing
     // items with no answer beside them while it resolved.
-    const playbook = await prisma.salesPlaybookItem.findMany({
-      select: {
-        slug: true,
-        label: true,
-        kind: true,
-        priceCents: true,
-        whatItIs: true,
-        benefit: true,
-        pitch: true,
-        justification: true,
-        objection: true,
-      },
-    });
+    // Supplementary content: if the table or a column isn't there yet (a
+    // deploy landing before its migration, a migration that failed), the rep
+    // should lose the pitch notes, not the entire lead page.
+    const playbook = await prisma.salesPlaybookItem
+      .findMany({
+        select: {
+          slug: true,
+          label: true,
+          kind: true,
+          priceCents: true,
+          whatItIs: true,
+          benefit: true,
+          pitch: true,
+          justification: true,
+          objection: true,
+        },
+      })
+      .catch((err) => {
+        console.error('Playbook unavailable, serving lead without it:', err);
+        return [];
+      });
 
     return NextResponse.json({ success: true, lead, playbook }, { status: 200 });
   } catch (error) {

@@ -122,6 +122,7 @@ export default function LeadDetailPage() {
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
   const [sendingColdDraft, setSendingColdDraft] = useState(false);
   const [coldDraftSent, setColdDraftSent] = useState(false);
@@ -209,7 +210,19 @@ export default function LeadDetailPage() {
         router.push('/admin/login');
         return;
       }
-      const data = await response.json();
+      setLoadError(null);
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        // Anything other than success used to leave `lead` null, and the
+        // component renders a spinner whenever that's true — so a deleted
+        // lead or a server error span forever with nothing to act on.
+        setLoadError(
+          response.status === 404
+            ? "This lead no longer exists — it was probably deleted or re-imported."
+            : data?.error || 'Could not load this lead. Try again in a moment.'
+        );
+        return;
+      }
       if (data.success) {
         const l: LeadDetail = data.lead;
         setLead(l);
@@ -589,6 +602,32 @@ export default function LeadDetailPage() {
     setConvertingToProject(true);
     router.push(`/admin/projects/new?${query.toString()}`);
   };
+
+  if (!loading && loadError) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <AlertTriangle size={26} className="text-amber-400 mx-auto mb-3" />
+        <p className="text-sm text-white/70 leading-relaxed">{loadError}</p>
+        <div className="flex items-center justify-center gap-2 mt-5">
+          <button
+            onClick={() => {
+              setLoading(true);
+              load();
+            }}
+            className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium hover:bg-white/5 transition-colors"
+          >
+            Try again
+          </button>
+          <Link
+            href="/admin/leads"
+            className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+          >
+            Back to Leads
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !lead) {
     return (
