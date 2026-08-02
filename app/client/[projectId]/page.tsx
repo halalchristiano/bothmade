@@ -13,6 +13,9 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
+  Rocket,
+  ExternalLink,
+  PartyPopper,
 } from 'lucide-react';
 import { ClientHeader } from '@/components/portal/ClientHeader';
 import { GridBackdrop, CountUp } from '@/components/ui';
@@ -47,6 +50,7 @@ interface Project {
   balanceDue: number;
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
   estimatedCompletionDate: string | null;
+  liveUrl: string | null;
   createdAt: string;
   updatedAt: string;
   messages: any[];
@@ -81,6 +85,39 @@ const STAGE_WHATS_NEXT: Record<string, string> = {
   Launch:
     "We're in the final stretch — once testing wraps, your project goes live and moves to Complete.",
 };
+
+const CONFETTI_COLORS = ['#38bdf8', '#a855f7', '#34d399', '#fbbf24', '#f472b6'];
+
+/** A one-time radial burst on mount — the single biggest milestone in the
+ * relationship deserves more than a status pill turning green. */
+function ConfettiBurst() {
+  const pieces = Array.from({ length: 16 }, (_, i) => {
+    const angle = (i / 16) * Math.PI * 2 + Math.random() * 0.3;
+    const distance = 90 + Math.random() * 70;
+    return {
+      id: i,
+      x: Math.cos(angle) * distance,
+      y: Math.sin(angle) * distance,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      delay: Math.random() * 0.15,
+    };
+  });
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {pieces.map((p) => (
+        <motion.span
+          key={p.id}
+          initial={{ opacity: 1, x: 0, y: 0, scale: 0 }}
+          animate={{ opacity: 0, x: p.x, y: p.y, scale: 1, rotate: 180 }}
+          transition={{ duration: 1.4, delay: p.delay, ease: [0.16, 1, 0.3, 1] }}
+          className="absolute left-1/2 top-8 h-2 w-2 rounded-sm"
+          style={{ backgroundColor: p.color }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function ClientDashboard() {
   const router = useRouter();
@@ -442,6 +479,66 @@ export default function ClientDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+            {/* Delivery moment — the actual "you're done" beat, not just
+                another line inside the routine status card. */}
+            {project.statusStage >= 4 && (
+              <motion.div
+                variants={fadeUp}
+                className="relative rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-400/10 via-sky-400/5 to-purple-500/10 backdrop-blur-xl p-8 md:p-10 overflow-hidden text-center"
+              >
+                {!reduceMotion && <ConfettiBurst />}
+                <div
+                  className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full blur-[100px] opacity-30"
+                  style={{ background: 'radial-gradient(circle, rgba(52,211,153,0.6), transparent 70%)' }}
+                />
+                <div className="relative">
+                  <motion.div
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 14, delay: 0.1 }}
+                    className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-sky-400 mb-5 shadow-[0_0_40px_-8px_rgba(52,211,153,0.7)]"
+                  >
+                    <PartyPopper size={28} className="text-black" />
+                  </motion.div>
+                  <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-2">
+                    Your project is live 🎉
+                  </h2>
+                  <p className="text-white/60 max-w-md mx-auto mb-7">
+                    {project.name} is finished, shipped, and ready. It's been a pleasure building this with you.
+                  </p>
+
+                  {project.liveUrl && (
+                    <motion.a
+                      href={project.liveUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                      className="relative inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-400 to-sky-400 text-black font-semibold px-8 py-3.5 overflow-hidden shadow-[0_0_40px_-10px_rgba(52,211,153,0.7)]"
+                    >
+                      <span className="relative z-10 flex items-center gap-2">
+                        <Rocket size={16} /> Visit Your Live Site <ExternalLink size={14} />
+                      </span>
+                      {!reduceMotion && (
+                        <motion.span
+                          animate={{ x: ['-120%', '220%'] }}
+                          transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut', repeatDelay: 2.5 }}
+                          className="absolute inset-y-0 w-1/4 bg-gradient-to-r from-transparent via-white/50 to-transparent"
+                        />
+                      )}
+                    </motion.a>
+                  )}
+
+                  {(project.deliverables.length > 0 || project.contractUrl) && (
+                    <p className="text-xs text-white/35 mt-5">
+                      Everything you need — deliverables and your signed agreement — is below.
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
             {/* Onboarding nudge */}
             {questions.some((q) => !q.response) && (
               <motion.div

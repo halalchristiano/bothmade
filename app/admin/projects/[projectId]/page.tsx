@@ -34,6 +34,7 @@ interface ProjectDetail {
   basePrice: number;
   totalPrice: number;
   estimatedCompletionDate: string | null;
+  liveUrl: string | null;
   amountPaid: number;
   balanceDue: number;
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
@@ -105,6 +106,8 @@ export default function AdminProjectDetailPage() {
   const [statusSaving, setStatusSaving] = useState(false);
 
   const [estimatedDateDraft, setEstimatedDateDraft] = useState('');
+  const [liveUrlDraft, setLiveUrlDraft] = useState('');
+  const [liveUrlSaving, setLiveUrlSaving] = useState(false);
   const [estimatedDateSaving, setEstimatedDateSaving] = useState(false);
 
   const [messageContent, setMessageContent] = useState('');
@@ -257,6 +260,7 @@ export default function AdminProjectDetailPage() {
             ? data.project.estimatedCompletionDate.slice(0, 10)
             : ''
         );
+        setLiveUrlDraft(data.project.liveUrl || '');
       }
     } finally {
       setLoading(false);
@@ -296,6 +300,20 @@ export default function AdminProjectDetailPage() {
       loadProject();
     } finally {
       setEstimatedDateSaving(false);
+    }
+  };
+
+  const handleSaveLiveUrl = async () => {
+    setLiveUrlSaving(true);
+    try {
+      await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ liveUrl: liveUrlDraft || null }),
+      });
+      loadProject();
+    } finally {
+      setLiveUrlSaving(false);
     }
   };
 
@@ -570,6 +588,30 @@ export default function AdminProjectDetailPage() {
                   className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
                 >
                   {estimatedDateSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <p className="text-sm font-semibold mb-3">🚀 Live Site</p>
+              <p className="text-xs text-white/40 mb-3">
+                Set this once it's actually shipped — turns the client's dashboard into a
+                proper "your project is live" moment instead of just another status update.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  placeholder="https://theirclient.com"
+                  value={liveUrlDraft}
+                  onChange={(e) => setLiveUrlDraft(e.target.value)}
+                  className={`${inputClass} flex-1`}
+                />
+                <button
+                  onClick={handleSaveLiveUrl}
+                  disabled={liveUrlSaving}
+                  className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  {liveUrlSaving ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>

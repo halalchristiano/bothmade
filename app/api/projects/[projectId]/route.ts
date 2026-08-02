@@ -96,6 +96,7 @@ export async function GET(
           basePrice: project.basePrice,
           totalPrice: project.totalPrice,
           estimatedCompletionDate: project.estimatedCompletionDate,
+          liveUrl: project.liveUrl,
           amountPaid,
           balanceDue: project.totalPrice - amountPaid,
           payments: project.payments,
@@ -168,6 +169,7 @@ export async function PUT(
               ? new Date(body.estimatedCompletionDate)
               : null
             : undefined,
+        liveUrl: body.liveUrl !== undefined ? body.liveUrl || null : undefined,
         deliverables: body.deliverables
           ? JSON.stringify(body.deliverables)
           : undefined,
