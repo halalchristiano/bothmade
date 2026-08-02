@@ -251,6 +251,31 @@ export default function AdminLeadsPage() {
     });
   };
 
+  const SELECT_BATCH_SIZE = 50;
+
+  // Adds the next N not-yet-selected leads (in list order) to the current
+  // selection — repeated clicks work through a big list in manageable
+  // chunks instead of selecting all several hundred at once.
+  const handleSelectNextBatch = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      let added = 0;
+      for (const lead of filtered) {
+        if (added >= SELECT_BATCH_SIZE) break;
+        if (!next.has(lead.id)) {
+          next.add(lead.id);
+          added++;
+        }
+      }
+      return next;
+    });
+  };
+
+  const remainingUnselectedCount = useMemo(
+    () => filtered.filter((l) => !selected.has(l.id)).length,
+    [filtered, selected]
+  );
+
   const selectedLeads = useMemo(() => leads.filter((l) => selected.has(l.id)), [leads, selected]);
   const selectedReadyToSend = useMemo(
     () => selectedLeads.filter((l) => l.email),
@@ -531,18 +556,28 @@ export default function AdminLeadsPage() {
         <>
           {/* Mobile: card list */}
           <div className="md:hidden space-y-3">
-            <button
-              onClick={toggleSelectAllVisible}
-              className="flex items-center gap-2 text-xs text-white/50 hover:text-white transition-colors mb-1"
-            >
-              <input
-                type="checkbox"
-                checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))}
-                readOnly
-                className="accent-sky-400 pointer-events-none"
-              />
-              Select all {filtered.length}
-            </button>
+            <div className="flex items-center gap-4 mb-1">
+              <button
+                onClick={toggleSelectAllVisible}
+                className="flex items-center gap-2 text-xs text-white/50 hover:text-white transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))}
+                  readOnly
+                  className="accent-sky-400 pointer-events-none"
+                />
+                Select all {filtered.length}
+              </button>
+              {remainingUnselectedCount > 0 && (
+                <button
+                  onClick={handleSelectNextBatch}
+                  className="text-xs text-sky-300 hover:text-sky-200 transition-colors"
+                >
+                  Select next {Math.min(SELECT_BATCH_SIZE, remainingUnselectedCount)}
+                </button>
+              )}
+            </div>
             {filtered.map((lead) => (
               <div
                 key={lead.id}
@@ -573,6 +608,16 @@ export default function AdminLeadsPage() {
           </div>
 
           {/* Desktop: table */}
+          {remainingUnselectedCount > 0 && (
+            <div className="hidden md:flex justify-end mb-2">
+              <button
+                onClick={handleSelectNextBatch}
+                className="text-xs text-sky-300 hover:text-sky-200 transition-colors"
+              >
+                Select next {Math.min(SELECT_BATCH_SIZE, remainingUnselectedCount)}
+              </button>
+            </div>
+          )}
           <Card className="hidden md:block overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
