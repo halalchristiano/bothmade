@@ -98,6 +98,7 @@ export default function CallListPage() {
   const router = useRouter();
   const [callable, setCallable] = useState<CallRow[]>([]);
   const [noPhone, setNoPhone] = useState<CallRow[]>([]);
+  const [scheduledHot, setScheduledHot] = useState<CallRow[]>([]);
   const [meta, setMeta] = useState<{
     totalOpen: number;
     callsToday: number;
@@ -134,6 +135,7 @@ export default function CallListPage() {
       if (data.success) {
         setCallable(data.callable);
         setNoPhone(data.noPhone);
+        setScheduledHot(data.scheduledHot ?? []);
         setMeta({
           totalOpen: data.totalOpen ?? 0,
           callsToday: data.callsToday ?? 0,
@@ -263,6 +265,7 @@ export default function CallListPage() {
   const readyCount = searched.filter(callableNow).length;
   const visible = readyNow ? searched.filter(callableNow) : searched;
   const visibleNoPhone = noPhone.filter(match);
+  const visibleScheduledHot = scheduledHot.filter(match);
 
   const RANK = { good: 0, okay: 1, bad: 2 } as const;
   const sortRows = (rows: CallRow[]) => {
@@ -629,6 +632,39 @@ export default function CallListPage() {
           );
         })}
       </div>
+
+      {visibleScheduledHot.length > 0 && (
+        <section className="mt-8">
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-3.5 py-2.5 mb-3">
+            <p className="text-sm font-bold text-amber-200 flex items-center gap-1.5">
+              🔥 Hot, booked for later
+              <span className="ml-1 opacity-60">({visibleScheduledHot.length})</span>
+            </p>
+            <p className="text-xs text-amber-200/50 mt-0.5 leading-relaxed">
+              Not due today, but worth knowing they're coming up.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {visibleScheduledHot.map((row) => (
+              <Link
+                key={row.id}
+                href={`/admin/leads/${row.id}`}
+                className="block rounded-xl border border-amber-400/10 bg-white/[0.02] p-3 hover:bg-white/[0.05] transition-colors min-w-0"
+              >
+                <p className="text-sm font-semibold text-white/80 break-words">{row.company}</p>
+                <p className="text-xs text-white/35 mt-0.5">
+                  {row.nextFollowUpAt &&
+                    `Booked for ${new Date(row.nextFollowUpAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}`}
+                  {row.estimatedValue ? ` · ${formatCents(row.estimatedValue)}` : ''}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {visibleNoPhone.length > 0 && (
         <section className="mt-8">
