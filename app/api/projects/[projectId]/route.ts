@@ -172,7 +172,11 @@ export async function PUT(
           ? JSON.stringify(body.deliverables)
           : undefined,
         handoffAcknowledgedAt:
-          body.acknowledgeHandoff === true && !project.handoffAcknowledgedAt ? new Date() : undefined,
+          body.acknowledgeHandoff === true && !project.handoffAcknowledgedAt
+            ? new Date()
+            : body.acknowledgeHandoff === false
+            ? null
+            : undefined,
       },
     });
 

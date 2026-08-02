@@ -531,15 +531,18 @@ export default function ClientDashboard() {
               </div>
 
               {project.balanceDue > 0 && (
-                <button
-                  onClick={handlePayBalance}
-                  disabled={payingBalance}
-                  className="w-full mb-6 rounded-xl bg-gradient-to-r from-emerald-400 to-sky-400 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-                >
-                  {payingBalance ? 'Opening secure checkout…' : `Pay ${(project.balanceDue / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} Now`}
-                </button>
+                <div className="mb-6">
+                  <button
+                    onClick={handlePayBalance}
+                    disabled={payingBalance}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    {payingBalance ? 'Redirecting to checkout…' : `Pay Balance — $${(project.balanceDue / 100).toLocaleString()}`}
+                  </button>
+                  {payBalanceError && <p className="text-red-400 text-xs mt-2">{payBalanceError}</p>}
+                  <p className="text-white/30 text-[11px] mt-2">Secure checkout by Stripe — we never see or store your card details.</p>
+                </div>
               )}
-              {payBalanceError && <p className="text-sm text-red-300 -mt-4 mb-6">{payBalanceError}</p>}
 
               {project.payments.length > 0 ? (
                 <div className="space-y-2">
