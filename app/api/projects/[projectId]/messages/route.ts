@@ -131,6 +131,13 @@ export async function POST(
       },
     });
 
+    // A message is real activity — keep updatedAt fresh so an actively-messaged
+    // project isn't flagged "gone quiet" (updatedAt drives the at-risk signals).
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { updatedAt: new Date() },
+    });
+
     // Send notification email if from admin to client
     if (session.type === 'user' && project.client) {
       const prefs = await prisma.emailPreferences.findUnique({
