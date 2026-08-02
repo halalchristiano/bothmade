@@ -44,12 +44,16 @@ export async function GET(request: NextRequest) {
       console.error('Reply sync failed during nightly job:', error);
     }
 
-    const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - STALE_DAYS * 24 * 60 * 60 * 1000);
 
     const staleLeads = await prisma.lead.findMany({
       where: {
         status: { notIn: ['won', 'lost'] },
         updatedAt: { lt: cutoff },
+        // A lead with a follow-up deliberately scheduled for later isn't going
+        // cold — it's parked on purpose. Only flag ones with no upcoming touch.
+        OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }],
       },
       select: { id: true, company: true, updatedAt: true },
     });
