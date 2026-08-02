@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
-import { syncBouncesForUser } from '@/lib/bounce-sync';
+import { syncBouncesForUser, syncRepliesForUser } from '@/lib/bounce-sync';
 
 /**
  * On-demand bounce check for the signed-in user's mailbox — the button on the
@@ -13,7 +13,10 @@ export async function POST() {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
-    const result = await syncBouncesForUser(session.userId);
+    const [result, replies] = await Promise.all([
+      syncBouncesForUser(session.userId),
+      syncRepliesForUser(session.userId).catch(() => null),
+    ]);
     if (!result.ok) {
       return NextResponse.json(
         {
@@ -27,7 +30,14 @@ export async function POST() {
     }
 
     return NextResponse.json(
-      { success: true, scanned: result.scanned, flagged: result.flagged, companies: result.companies },
+      {
+        success: true,
+        scanned: result.scanned + (replies?.scanned ?? 0),
+        flagged: result.flagged,
+        companies: result.companies,
+        repliesFlagged: replies?.flagged ?? 0,
+        repliedCompanies: replies?.companies ?? [],
+      },
       { status: 200 }
     );
   } catch (error) {

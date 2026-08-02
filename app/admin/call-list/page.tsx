@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   ChevronRight,
   HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
@@ -19,7 +20,14 @@ import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
 import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 
-type CallReason = 'bounced' | 'overdue' | 'today' | 'no-follow-up' | 'never-contacted' | 'scheduled';
+type CallReason =
+  | 'replied'
+  | 'bounced'
+  | 'overdue'
+  | 'today'
+  | 'no-follow-up'
+  | 'never-contacted'
+  | 'scheduled';
 
 interface CallRow {
   id: string;
@@ -39,6 +47,13 @@ interface CallRow {
 }
 
 const REASONS: Record<CallReason, { label: string; short: string; blurb: string; classes: string }> = {
+  replied: {
+    label: 'They wrote back — ring these first',
+    short: 'They replied to you',
+    blurb:
+      "Someone at these businesses answered your email. They are the warmest leads you have and they go cold fastest — call them before anything else on this page.",
+    classes: 'border-emerald-400/40 bg-emerald-400/[0.12] text-emerald-100',
+  },
   bounced: {
     label: 'Email bounced — phone is the only way in',
     short: "Their email is dead — must call",
@@ -77,7 +92,7 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
   },
 };
 
-const ORDER: CallReason[] = ['bounced', 'overdue', 'today', 'no-follow-up', 'never-contacted'];
+const ORDER: CallReason[] = ['replied', 'bounced', 'overdue', 'today', 'no-follow-up', 'never-contacted'];
 
 export default function CallListPage() {
   const router = useRouter();
@@ -214,12 +229,16 @@ export default function CallListPage() {
         setSyncMessage(data.error || 'Could not check for bounces.');
         return;
       }
+      const parts = [
+        data.repliesFlagged > 0 &&
+          `${data.repliesFlagged} ${data.repliesFlagged === 1 ? 'business has' : 'businesses have'} written back — they're at the top of your list`,
+        data.flagged > 0 &&
+          `${data.flagged} ${data.flagged === 1 ? 'address' : 'addresses'} bounced — call those instead of emailing`,
+      ].filter(Boolean);
       setSyncMessage(
-        data.flagged > 0
-          ? `Found ${data.flagged} bounced ${data.flagged === 1 ? 'address' : 'addresses'} — moved to the top of your list.`
-          : `Checked ${data.scanned} bounce ${data.scanned === 1 ? 'notice' : 'notices'} — nothing new.`
+        parts.length > 0 ? `${parts.join('. ')}.` : 'Checked your inbox — nothing new.'
       );
-      if (data.flagged > 0) load();
+      if (data.flagged > 0 || data.repliesFlagged > 0) load();
     } finally {
       setSyncing(false);
     }
@@ -310,7 +329,7 @@ export default function CallListPage() {
           className="shrink-0 flex items-center gap-1.5 rounded-xl border border-white/15 px-3.5 py-2 text-xs font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors"
         >
           <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Checking...' : 'Check for bounced emails'}
+          {syncing ? 'Checking...' : 'Check my inbox'}
         </button>
       </div>
 
@@ -322,6 +341,7 @@ export default function CallListPage() {
           <div className="space-y-1.5 text-xs">
             {(
               [
+                ['replied', REASONS.replied.label],
                 ['bounced', REASONS.bounced.label],
                 ['overdue', REASONS.overdue.label],
                 ['today', REASONS.today.label],

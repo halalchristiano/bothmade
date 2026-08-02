@@ -278,6 +278,11 @@ model Lead {
   // A written assessment of the site they have today ("Underperforming
   // local-service website: still shows template remnants..."), shown right
   // beside the link to it so the rep reads the verdict and the site together.
+  // When someone at this business last wrote back. A reply is the strongest
+  // buying signal there is, and without recording it the lead just kept
+  // sinking down a queue ordered by neglect.
+  replyReceivedAt DateTime?
+
   currentSiteAssessment String? @db.Text
 
   customPainPoints String? @db.Text
