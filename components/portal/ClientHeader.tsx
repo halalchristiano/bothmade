@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -12,6 +12,7 @@ const LINKS = [
 export function ClientHeader() {
   const pathname = usePathname();
   const router = useRouter();
+  const [hasUnseenActivity, setHasUnseenActivity] = useState(false);
 
   useEffect(() => {
     if (pathname === '/client/settings') return;
@@ -24,6 +25,36 @@ export function ClientHeader() {
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Aggregate "anything new across any project?" indicator on the Projects
+  // nav link, so clients know to check in even from a page that isn't it.
+  useEffect(() => {
+    fetch('/api/client/projects')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.success) return;
+        const unseen = (data.projects as Array<{
+          id: string;
+          updates: Array<{ createdAt: string }>;
+          _count: { messages: number };
+        }>).some((project) => {
+          const lastVisit = Number(localStorage.getItem(`bothmade_last_visit_${project.id}`) || 0);
+          const latestUpdateAt = project.updates[0]
+            ? new Date(project.updates[0].createdAt).getTime()
+            : 0;
+          const hasNewUpdate = lastVisit > 0 && latestUpdateAt > lastVisit;
+
+          const seenMessages = Number(
+            localStorage.getItem(`bothmade_seen_messages_${project.id}`) || 0
+          );
+          const hasNewMessage = project._count.messages > seenMessages;
+
+          return hasNewUpdate || hasNewMessage;
+        });
+        setHasUnseenActivity(unseen);
+      })
+      .catch(() => {});
   }, [pathname]);
 
   const handleLogout = async () => {
@@ -60,6 +91,13 @@ export function ClientHeader() {
                 }`}
               >
                 {link.label}
+                {link.href === '/client/projects' && hasUnseenActivity && (
+                  <span
+                    className="absolute -top-0.5 -right-2.5 h-1.5 w-1.5 rounded-full bg-emerald-400"
+                    title="New activity"
+                    aria-label="New activity"
+                  />
+                )}
                 <span
                   className={`absolute bottom-0 left-0 h-px bg-gradient-to-r from-sky-400 to-purple-500 transition-all duration-300 ${
                     current ? 'w-full' : 'w-0 group-hover:w-full'

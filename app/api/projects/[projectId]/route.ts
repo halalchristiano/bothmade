@@ -91,9 +91,11 @@ export async function GET(
           statusStage: project.statusStage,
           baseService: project.baseService,
           addOns: project.addOns.split(',').filter(Boolean),
+          customItems: project.customItems,
           timeline: project.timeline,
           basePrice: project.basePrice,
           totalPrice: project.totalPrice,
+          estimatedCompletionDate: project.estimatedCompletionDate,
           amountPaid,
           balanceDue: project.totalPrice - amountPaid,
           payments: project.payments,
@@ -160,6 +162,12 @@ export async function PUT(
         timeline: body.timeline,
         basePrice: body.basePrice,
         totalPrice: body.totalPrice,
+        estimatedCompletionDate:
+          body.estimatedCompletionDate !== undefined
+            ? body.estimatedCompletionDate
+              ? new Date(body.estimatedCompletionDate)
+              : null
+            : undefined,
         deliverables: body.deliverables
           ? JSON.stringify(body.deliverables)
           : undefined,

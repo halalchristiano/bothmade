@@ -206,8 +206,13 @@ function extractAddresses(text: string): string[] {
  */
 export async function scanBouncedAddresses(
   client: GmailOAuthClient,
-  maxMessages = 100
+  opts: { maxMessages?: number; newerThanDays?: number } = {}
 ): Promise<BounceScanResult> {
+  // Each message costs an API round trip, so the work has to be bounded —
+  // an unbounded scan inside a cron job can outlive the function's time
+  // limit and take the rest of that job down with it.
+  const maxMessages = opts.maxMessages ?? 100;
+  const recency = opts.newerThanDays ? `newer_than:${opts.newerThanDays}d` : '';
   const gmail = google.gmail({ version: 'v1', auth: client });
   try {
     const { data: labelList } = await gmail.users.labels.list({ userId: 'me' });
@@ -215,11 +220,13 @@ export async function scanBouncedAddresses(
 
     // Fall back to the same query the filter uses, so this still works before
     // the label exists or if someone deleted it.
+    const fallbackQuery =
+      '(from:(mailer-daemon OR postmaster OR mail-daemon) OR subject:("Delivery Status Notification" OR "Address not found" OR "Message blocked" OR "Undelivered Mail Returned to Sender"))';
     const listParams = label?.id
-      ? { userId: 'me' as const, labelIds: [label.id], maxResults: maxMessages }
+      ? { userId: 'me' as const, labelIds: [label.id], maxResults: maxMessages, q: recency || undefined }
       : {
           userId: 'me' as const,
-          q: 'from:(mailer-daemon OR postmaster OR mail-daemon) OR subject:("Delivery Status Notification" OR "Address not found" OR "Message blocked" OR "Undelivered Mail Returned to Sender")',
+          q: [fallbackQuery, recency].filter(Boolean).join(' '),
           maxResults: maxMessages,
         };
 

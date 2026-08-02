@@ -10,6 +10,7 @@ import {
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  customItemsTotal,
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
@@ -18,9 +19,11 @@ import {
   isClientType,
   isTimelineKey,
   minAllowedPrice,
+  sanitizeCustomItems,
   type AddOnKey,
   type BaseService,
   type ClientType,
+  type CustomItem,
   type TimelineKey,
 } from '@/lib/pricing';
 
@@ -46,6 +49,7 @@ function NewProjectForm() {
   const [clientType, setClientType] = useState<ClientType>('smb');
   const [timeline, setTimeline] = useState<TimelineKey>('standard');
   const [priceOverride, setPriceOverride] = useState('');
+  const [customItems, setCustomItems] = useState<CustomItem[]>([]);
   const [convertedFromLeadId, setConvertedFromLeadId] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
 
@@ -68,6 +72,7 @@ function NewProjectForm() {
     const qAddOns = searchParams.get('addOns');
     const qClientType = searchParams.get('clientType');
     const qTimeline = searchParams.get('timeline');
+    const qCustomItems = searchParams.get('customItems');
     const qLeadId = searchParams.get('leadId');
 
     if (qCompany) setCompany(qCompany);
@@ -80,6 +85,13 @@ function NewProjectForm() {
     }
     if (qClientType && isClientType(qClientType)) setClientType(qClientType);
     if (qTimeline && isTimelineKey(qTimeline)) setTimeline(qTimeline);
+    if (qCustomItems) {
+      try {
+        setCustomItems(sanitizeCustomItems(JSON.parse(qCustomItems)));
+      } catch {
+        // malformed query param — ignore rather than block the whole form
+      }
+    }
     if (qLeadId) setConvertedFromLeadId(qLeadId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -91,6 +103,8 @@ function NewProjectForm() {
     () => calculatePrice({ baseService, addOns, clientType, timeline }),
     [baseService, addOns, clientType, timeline]
   );
+  const customTotal = customItemsTotal(customItems);
+  const grandTotal = breakdown.totalPrice + customTotal;
 
   const toggleAddOn = (key: AddOnKey) => {
     setAddOns((prev) => {
@@ -118,6 +132,7 @@ function NewProjectForm() {
           addOns,
           clientType,
           timeline,
+          customItems,
           totalPriceOverride: priceOverride ? Number(priceOverride) * 100 : undefined,
           convertedFromLeadId,
         }),
@@ -258,20 +273,34 @@ function NewProjectForm() {
             </div>
           </div>
 
+          {customItems.length > 0 && (
+            <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-4 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-300">
+                ⚠ Custom items carried over from the proposal — not in the standard catalogue
+              </p>
+              {customItems.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm font-medium text-white">
+                  <span>{item.label}</span>
+                  <span>{formatCents(item.priceCents)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium mb-2 text-white/70">
-              Override price (optional, USD) — suggested: {formatCents(breakdown.totalPrice)}
+              Override price (optional, USD) — suggested: {formatCents(grandTotal)}
             </label>
             <input
               type="number"
               value={priceOverride}
               onChange={(e) => setPriceOverride(e.target.value)}
-              placeholder={String(breakdown.totalPrice / 100)}
+              placeholder={String(grandTotal / 100)}
               className={inputClass}
             />
             {role === 'sales' && (
               <p className="text-xs text-white/30 mt-1.5">
-                You can discount down to {formatCents(minAllowedPrice(breakdown.totalPrice))} without approval. Lower needs Kiana.
+                You can discount down to {formatCents(minAllowedPrice(grandTotal))} without approval. Lower needs Kiana.
               </p>
             )}
           </div>

@@ -114,53 +114,69 @@ export const ADD_ON_CATEGORIES: Record<AddOnCategory, { label: string }> = {
 
 export const ADD_ONS: Record<
   AddOnKey,
-  { label: string; description: string; price: number; category: AddOnCategory }
+  { label: string; description: string; benefit: string; price: number; category: AddOnCategory }
 > = {
   // Content & growth
   seo: {
     label: 'SEO Setup',
+    benefit:
+      "You get found by people already searching for what you do — the ones ready to buy, arriving without you paying per click.",
     description: 'Technical SEO, metadata, and search console setup.',
     price: 75000,
     category: 'content-growth',
   },
   analytics: {
     label: 'Analytics',
+    benefit:
+      "You stop guessing which marketing works. Most people cut the thing that was working and keep paying for the thing that wasn't.",
     description: 'Event tracking and a reporting dashboard.',
     price: 50000,
     category: 'content-growth',
   },
   copywriting: {
     label: 'Professional Copywriting',
+    benefit:
+      "More of the visitors you already have get in touch, because the words speak to what they're actually worried about.",
     description: 'Website and product copy written for you, not just placeholder text.',
     price: 90000,
     category: 'content-growth',
   },
   cms: {
     label: 'Content Management System',
+    benefit:
+      "You change your own prices, photos and pages in minutes, instead of waiting on a developer and paying for it.",
     description: 'Edit pages, images, and copy yourself without touching code.',
     price: 120000,
     category: 'content-growth',
   },
   blog: {
     label: 'Blog / Articles',
+    benefit:
+      "You show up for the questions your customers type into Google long before they're ready to buy.",
     description: 'A blog section with categories, tags, and RSS.',
     price: 60000,
     category: 'content-growth',
   },
   multilingual: {
     label: 'Multi-language Support',
+    benefit:
+      "You stop being invisible to customers who don't read English first — usually a market your competitors ignore.",
     description: 'Translated content and language switching for a second language.',
     price: 80000,
     category: 'content-growth',
   },
   'email-marketing': {
     label: 'Email Marketing Setup',
+    benefit:
+      "The people who didn't buy today hear from you again, so you're who they remember when they're ready.",
     description: 'Klaviyo/Mailchimp integration with a welcome flow and abandoned-cart or lead-nurture sequences.',
     price: 85000,
     category: 'content-growth',
   },
   'local-seo': {
     label: 'Local SEO & Google Business Profile',
+    benefit:
+      "You appear in the map results when someone nearby searches. That's the highest-intent customer there is.",
     description: 'Google Business Profile setup, local listings, and map-pack optimization for businesses that rely on nearby customers finding them.',
     price: 55000,
     category: 'content-growth',
@@ -169,18 +185,24 @@ export const ADD_ONS: Record<
   // Commerce & bookings
   ecommerce: {
     label: 'E-commerce & Payments',
+    benefit:
+      "You can sell without a person involved, so your sales stop being capped by how many calls your team can answer.",
     description: 'Product catalog, cart, and checkout — Stripe or your platform of choice.',
     price: 250000,
     category: 'commerce-bookings',
   },
   booking: {
     label: 'Appointments & Booking',
+    benefit:
+      "Someone deciding at 9pm can book you at 9pm. Right now they ring the next name on the list instead.",
     description: 'Calendar scheduling so customers can book time with you directly.',
     price: 150000,
     category: 'commerce-bookings',
   },
   subscriptions: {
     label: 'Subscriptions & Memberships',
+    benefit:
+      "One-off customers become monthly income — worth several times more each, and it's what makes a quiet month survivable.",
     description: 'Recurring billing, member accounts, and gated content.',
     price: 220000,
     category: 'commerce-bookings',
@@ -189,24 +211,32 @@ export const ADD_ONS: Record<
   // Design & motion
   illustrations: {
     label: 'Custom Illustrations & Icons',
+    benefit:
+      "You look like a business with its own identity rather than one using the same stock photos as everyone else.",
     description: 'Original artwork and iconography instead of stock assets.',
     price: 70000,
     category: 'design-motion',
   },
   animations: {
     label: 'High-End Animations',
+    benefit:
+      "The site feels considered rather than templated, which is most of what people mean when they say a brand feels premium.",
     description: 'Scroll-driven motion, micro-interactions, the details that make it feel alive.',
     price: 140000,
     category: 'design-motion',
   },
   threed: {
     label: '3D / WebGL Visuals',
+    benefit:
+      "Customers can examine the product properly before buying, which cuts both hesitation and returns.",
     description: 'Interactive 3D scenes or product visualizations.',
     price: 200000,
     category: 'design-motion',
   },
   'brand-identity': {
     label: 'Brand Identity',
+    benefit:
+      "You stop getting haggled on price. Looking inconsistent is why people assume you're cheap.",
     description: 'Logo, color system, and typography — a full visual identity, not just a website.',
     price: 180000,
     category: 'design-motion',
@@ -215,54 +245,72 @@ export const ADD_ONS: Record<
   // Backend & integrations
   'custom-backend': {
     label: 'Custom Backend / API',
+    benefit:
+      "The software fits how you actually work, instead of you reshaping the business around what an off-the-shelf tool allows.",
     description: 'A purpose-built backend for logic that off-the-shelf tools can\'t handle. Already included if you picked Web App — this is for bolting real backend logic onto an otherwise simple Website or native app.',
     price: 300000,
     category: 'backend-integrations',
   },
   integrations: {
     label: 'Third-Party Integrations',
+    benefit:
+      "Information stops being typed into two places, so the numbers stop disagreeing and nobody has to reconcile them.",
     description: 'Connect to your CRM, Slack, Zapier, or other tools you already run on.',
     price: 100000,
     category: 'backend-integrations',
   },
   'crm-setup': {
     label: 'CRM & Lead Capture Setup',
+    benefit:
+      "No enquiry gets lost in somebody's inbox. Following up stops depending on whoever happens to remember.",
     description: 'Wire your site\'s forms into HubSpot, Salesforce, or a sheet/Zapier pipeline so leads land somewhere you actually work from.',
     price: 65000,
     category: 'backend-integrations',
   },
   'admin-dashboard': {
     label: 'Admin Dashboard',
+    benefit:
+      "Your team manages the day-to-day themselves, without a developer in the loop for routine changes.",
     description: 'An internal tool for your team to manage data without touching the database.',
     price: 220000,
     category: 'backend-integrations',
   },
   'user-accounts': {
     label: 'User Accounts & Auth',
+    benefit:
+      "Customers get their own space with their own data — the thing that turns a website into something people come back to.",
     description: 'Sign-up, login, and per-user data. Already included if you picked Web App — this is for adding accounts to an otherwise simple Website or native app.',
     price: 150000,
     category: 'backend-integrations',
   },
   'push-notifications': {
     label: 'Push Notifications',
+    benefit:
+      "You can reach customers directly on their phone, without paying a platform for the privilege.",
     description: 'Re-engage users with native push, web push, or both.',
     price: 90000,
     category: 'backend-integrations',
   },
   'live-chat': {
     label: 'Live Chat Widget',
+    benefit:
+      "You catch the people who have one question standing between them and buying, at the moment they have it.",
     description: 'Real-time chat support built into your product.',
     price: 70000,
     category: 'backend-integrations',
   },
   'app-store-submission': {
     label: 'App Store Submission & Optimization',
+    benefit:
+      "You end up actually live on the App Store. Rejections are common and handling them is a job in itself.",
     description: 'App Store / TestFlight setup, listing copy and screenshots, and handling the actual submission and review process.',
     price: 45000,
     category: 'backend-integrations',
   },
   'data-migration': {
     label: 'Content & Data Migration',
+    benefit:
+      "You keep your existing content, customers and search rankings instead of starting from zero on launch day.",
     description: 'Import your existing site\'s pages, products, or customer data instead of starting from a blank slate.',
     price: 75000,
     category: 'backend-integrations',
@@ -271,12 +319,16 @@ export const ADD_ONS: Record<
   // Accessibility & compliance
   'accessibility-audit': {
     label: 'Accessibility Audit (WCAG)',
+    benefit:
+      "More people can use your site, and you're covered on a requirement larger and public-sector buyers increasingly ask about.",
     description: 'A full accessibility pass so your product works for everyone.',
     price: 60000,
     category: 'accessibility-compliance',
   },
   'privacy-compliance': {
     label: 'Privacy & Compliance Setup',
+    benefit:
+      "Handled properly before it matters. It's cheap now and expensive after something goes wrong.",
     description: 'Cookie consent, privacy policy wiring, and GDPR/CCPA-friendly data handling.',
     price: 50000,
     category: 'accessibility-compliance',
@@ -285,24 +337,32 @@ export const ADD_ONS: Record<
   // Ongoing care (recurring)
   maintenance: {
     label: 'Maintenance Plan',
+    benefit:
+      "Your site doesn't quietly decay as browsers and platforms change around it — which is what protects what you spent building it.",
     description: 'Ongoing updates and monitoring (first month included).',
     price: 30000,
     category: 'ongoing-care',
   },
   'growth-plan': {
     label: 'Growth Plan',
+    benefit:
+      "The site keeps improving every month rather than standing still while competitors move.",
     description: 'Maintenance plus a small batch of new features shipped every month (first month included).',
     price: 60000,
     category: 'ongoing-care',
   },
   hosting: {
     label: 'Managed Hosting',
+    benefit:
+      "It stays fast and online, and when something breaks it's our problem to fix rather than yours to diagnose.",
     description: 'We host and manage infrastructure (first month included).',
     price: 20000,
     category: 'ongoing-care',
   },
   'onboarding-retainer': {
     label: 'Onboarding & Support Retainer',
+    benefit:
+      "Your team is genuinely up to speed rather than nodding through a handover and quietly reverting to the old way.",
     description: 'A dedicated check-in cadence while your team gets up to speed (first month included).',
     price: 40000,
     category: 'ongoing-care',
@@ -508,6 +568,39 @@ export function minAllowedPrice(calculatedTotal: number): number {
 
 export function depositAmount(totalPrice: number): number {
   return Math.round((totalPrice * DEPOSIT_PERCENT) / 100);
+}
+
+/** An ad-hoc line item Evan adds beyond the fixed catalogue — his own label and price. */
+export interface CustomItem {
+  label: string;
+  priceCents: number;
+}
+
+/**
+ * Validates and normalizes whatever shape came in over the wire (or out of
+ * the Lead.proposalCustomItems JSON column) into a safe CustomItem[] — never
+ * trusts client input for the price directly without checking it's a sane
+ * positive integer, and drops anything malformed rather than throwing, since
+ * a bad item shouldn't block sending the rest of the proposal.
+ */
+export function sanitizeCustomItems(input: unknown): CustomItem[] {
+  if (!Array.isArray(input)) return [];
+  const items: CustomItem[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue;
+    const label = 'label' in raw && typeof raw.label === 'string' ? raw.label.trim().slice(0, 200) : '';
+    const priceCents =
+      'priceCents' in raw && typeof raw.priceCents === 'number' && Number.isFinite(raw.priceCents)
+        ? Math.round(raw.priceCents)
+        : NaN;
+    if (!label || !Number.isFinite(priceCents) || priceCents <= 0) continue;
+    items.push({ label, priceCents });
+  }
+  return items.slice(0, 20); // a runaway list on a proposal is a mistake, not a use case
+}
+
+export function customItemsTotal(items: CustomItem[]): number {
+  return items.reduce((sum, i) => sum + i.priceCents, 0);
 }
 
 export function formatCents(cents: number): string {

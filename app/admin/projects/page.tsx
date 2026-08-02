@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FolderKanban, Plus } from 'lucide-react';
-import { Card, PageIn, PageTitle } from '@/components/admin/ui';
+import { Card, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
 
 interface ProjectRow {
   id: string;
@@ -40,6 +40,7 @@ export default function AdminProjectsPage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -61,6 +62,10 @@ export default function AdminProjectsPage() {
     };
     load();
   }, [router, statusFilter]);
+
+  const shown = projects.filter((p) =>
+    matchesSearch(search, p.name, p.client.company, p.client.email, p.status)
+  );
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
@@ -88,19 +93,27 @@ export default function AdminProjectsPage() {
         </div>
       </div>
 
+      <SearchFilter
+        value={search}
+        onChange={setSearch}
+        placeholder="Find a project or client..."
+        count={shown.length}
+        total={projects.length}
+      />
+
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
         </div>
-      ) : projects.length === 0 ? (
+      ) : shown.length === 0 ? (
         <Card className="p-12 text-center text-white/40">
-          No projects found.
+          {search ? `Nothing matches "${search}".` : 'No projects found.'}
         </Card>
       ) : (
         <>
           {/* Mobile: card list */}
           <div className="md:hidden space-y-3">
-            {projects.map((project) => (
+            {shown.map((project) => (
               <Link
                 key={project.id}
                 href={`/admin/projects/${project.id}`}
@@ -142,7 +155,7 @@ export default function AdminProjectsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.map((project) => (
+                  {shown.map((project) => (
                     <tr key={project.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
                       <td className="px-6 py-4 font-medium">{project.name}</td>
                       <td className="px-6 py-4 text-white/50">{project.client.company}</td>

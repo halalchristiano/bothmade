@@ -29,9 +29,11 @@ interface ProjectDetail {
   statusStage: number;
   baseService: string;
   addOns: string[];
+  customItems?: Array<{ label: string; priceCents: number }>;
   timeline: string | null;
   basePrice: number;
   totalPrice: number;
+  estimatedCompletionDate: string | null;
   amountPaid: number;
   balanceDue: number;
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
@@ -101,6 +103,9 @@ export default function AdminProjectDetailPage() {
   const [statusDraft, setStatusDraft] = useState('');
   const [statusDescription, setStatusDescription] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
+
+  const [estimatedDateDraft, setEstimatedDateDraft] = useState('');
+  const [estimatedDateSaving, setEstimatedDateSaving] = useState(false);
 
   const [messageContent, setMessageContent] = useState('');
   const [messageSending, setMessageSending] = useState(false);
@@ -247,6 +252,11 @@ export default function AdminProjectDetailPage() {
       if (data.success) {
         setProject(data.project);
         setStatusDraft(data.project.status);
+        setEstimatedDateDraft(
+          data.project.estimatedCompletionDate
+            ? data.project.estimatedCompletionDate.slice(0, 10)
+            : ''
+        );
       }
     } finally {
       setLoading(false);
@@ -274,6 +284,20 @@ export default function AdminProjectDetailPage() {
     loadQuestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  const handleSaveEstimatedDate = async () => {
+    setEstimatedDateSaving(true);
+    try {
+      await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estimatedCompletionDate: estimatedDateDraft || null }),
+      });
+      loadProject();
+    } finally {
+      setEstimatedDateSaving(false);
+    }
+  };
 
   const handleStatusUpdate = async () => {
     setStatusSaving(true);
@@ -459,6 +483,21 @@ export default function AdminProjectDetailPage() {
                   <p className="font-medium capitalize">{project.addOns.join(', ')}</p>
                 </div>
               )}
+              {project.customItems && project.customItems.length > 0 && (
+                <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-300 mb-2">
+                    ⚠ Custom items — not in the standard catalogue
+                  </p>
+                  <div className="space-y-1">
+                    {project.customItems.map((item, i) => (
+                      <p key={i} className="font-medium flex justify-between">
+                        <span>{item.label}</span>
+                        <span className="text-white/60">{formatCents(item.priceCents)}</span>
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <p className="text-white/40 mb-1">Timeline</p>
                 <p className="font-medium">{project.timeline || '—'}</p>
@@ -511,6 +550,28 @@ export default function AdminProjectDetailPage() {
                   )}
                 </>
               )}
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <p className="text-sm font-semibold mb-3">Estimated Completion</p>
+              <p className="text-xs text-white/40 mb-3">
+                Shown to the client as a rough target for the current stage.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={estimatedDateDraft}
+                  onChange={(e) => setEstimatedDateDraft(e.target.value)}
+                  className={`${inputClass} flex-1`}
+                />
+                <button
+                  onClick={handleSaveEstimatedDate}
+                  disabled={estimatedDateSaving}
+                  className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  {estimatedDateSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 pt-6 border-t border-white/10">

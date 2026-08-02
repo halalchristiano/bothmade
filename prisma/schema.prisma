@@ -108,11 +108,19 @@ model Project {
   // Project details
   baseService String   // "website", "web-app", "ios-app", "macos-app", "visionos", "multi"
   addOns      String   @default("") // comma-separated: "seo", "analytics", "maintenance", "hosting"
+  // Ad-hoc items added on the lead's proposal beyond the fixed catalogue,
+  // carried over so onboarding shows the full scope the client paid for.
+  // [{ label: string, priceCents: int }]
+  customItems Json     @default("[]")
 
   // Timeline & pricing
   timeline    String?  // "4 weeks", "8 weeks", "12 weeks", etc.
   basePrice   Int      // in cents
   totalPrice  Int      // in cents (including add-ons)
+
+  // Rough target date for the current stage, shown to the client for
+  // reassurance — set manually by the team, not derived/computed.
+  estimatedCompletionDate DateTime?
 
   // Deliverables
   deliverables String? // JSON array of milestone/deliverable objects
@@ -299,6 +307,10 @@ model Lead {
   proposalTimeline     String?
   proposalTotalPrice   Int? // cents, overrides the computed total if set
   proposalDepositOnly  Boolean @default(false)
+  // Ad-hoc items Evan adds beyond the fixed catalogue — a name and a price he
+  // sets himself. Stored as-is (not looked up against ADD_ONS) since these
+  // don't correspond to any catalogue key. [{ label: string, priceCents: int }]
+  proposalCustomItems  Json    @default("[]")
 
   // Clickwrap agreement captured at the moment the client agrees to the
   // contract on the sign-and-pay page, right before checkout.

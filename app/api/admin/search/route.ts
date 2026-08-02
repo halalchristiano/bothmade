@@ -9,6 +9,10 @@ export async function GET(request: NextRequest) {
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
     const q = request.nextUrl.searchParams.get('q')?.trim();
+    // "(305) 885-5525" and "3058855525" are the same number; stored formats
+    // vary, so match on the digits as typed and stripped of punctuation.
+    const phoneDigits = q ? q.replace(/[^0-9]/g, '') : '';
+
     if (!q || q.length < 2) {
       return NextResponse.json({ success: true, results: [] }, { status: 200 });
     }
@@ -20,6 +24,10 @@ export async function GET(request: NextRequest) {
             { company: { contains: q, mode: 'insensitive' } },
             { contactName: { contains: q, mode: 'insensitive' } },
             { email: { contains: q, mode: 'insensitive' } },
+            // Searching a number is how you identify an inbound call, which
+            // is one of the few times you reach for search under pressure.
+            ...(phoneDigits ? [{ phone: { contains: phoneDigits } }] : []),
+            { phone: { contains: q } },
           ],
         },
         orderBy: { updatedAt: 'desc' },
@@ -51,14 +59,22 @@ export async function GET(request: NextRequest) {
     ]);
 
     const results = [
-      ...leads.map((l) => ({
-        type: 'lead' as const,
-        id: l.id,
-        title: l.company,
-        subtitle: l.contactName || l.email || 'Lead',
-        href: `/admin/leads/${l.id}`,
-        updatedAt: l.updatedAt,
-      })),
+      ...leads.map((l) => {
+        // When the query was a number, lead with the phone — otherwise the
+        // result gives no clue why it matched.
+        const matchedOnPhone =
+          phoneDigits.length >= 3 && !!l.phone && l.phone.replace(/[^0-9]/g, '').includes(phoneDigits);
+        return {
+          type: 'lead' as const,
+          id: l.id,
+          title: l.company,
+          subtitle: matchedOnPhone
+            ? [l.phone, l.contactName].filter(Boolean).join(' · ')
+            : l.contactName || l.email || 'Lead',
+          href: `/admin/leads/${l.id}`,
+          updatedAt: l.updatedAt,
+        };
+      }),
       ...clients.map((c) => ({
         type: 'client' as const,
         id: c.id,

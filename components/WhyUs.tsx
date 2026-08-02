@@ -24,6 +24,11 @@ const PRINCIPLES = [
     title: 'Built to last',
     desc: "We reach for boring, proven tools over trendy ones that won't be maintained in two years. Your product outlives the trend cycle.",
   },
+  {
+    num: '05',
+    title: 'Still here after launch',
+    desc: "Shipping isn't the exit. We stay on to fix what breaks, ship what you learn from real users, and answer the phone when something's wrong.",
+  },
 ];
 
 /** Boutique-studio positioning, honestly scoped — no invented headcount or client-count claims. */
