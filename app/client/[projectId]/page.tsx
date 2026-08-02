@@ -89,6 +89,27 @@ export default function ClientDashboard() {
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const [payingBalance, setPayingBalance] = useState(false);
+  const [payError, setPayError] = useState('');
+
+  const handlePayBalance = async () => {
+    setPayingBalance(true);
+    setPayError('');
+    try {
+      const res = await fetch(`/api/projects/${projectId}/pay-balance`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setPayError(data.error || 'Could not start checkout. Please try again.');
+    } catch {
+      setPayError('Could not start checkout. Please try again.');
+    } finally {
+      setPayingBalance(false);
+    }
+  };
+
   useEffect(() => {
     const storageKey = `bothmade_last_visit_${projectId}`;
     const stored = Number(localStorage.getItem(storageKey) || 0);
@@ -486,9 +507,25 @@ export default function ClientDashboard() {
               <div className="w-full bg-white/10 rounded-full h-1.5 mb-6">
                 <div
                   className="bg-gradient-to-r from-emerald-400 to-sky-400 h-1.5 rounded-full transition-all"
-                  style={{ width: `${Math.min(100, (project.amountPaid / project.totalPrice) * 100)}%` }}
+                  style={{ width: `${project.totalPrice > 0 ? Math.min(100, (project.amountPaid / project.totalPrice) * 100) : 0}%` }}
                 />
               </div>
+
+              {project.balanceDue > 0 && (
+                <div className="mb-6">
+                  <button
+                    onClick={handlePayBalance}
+                    disabled={payingBalance}
+                    className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                  >
+                    {payingBalance
+                      ? 'Starting checkout…'
+                      : `Pay balance — $${(project.balanceDue / 100).toLocaleString()}`}
+                  </button>
+                  {payError && <p className="text-red-400 text-xs mt-2">{payError}</p>}
+                  <p className="text-center text-xs text-white/30 mt-2">Secure payment powered by Stripe</p>
+                </div>
+              )}
 
               {project.payments.length > 0 ? (
                 <div className="space-y-2">
