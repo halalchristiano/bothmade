@@ -24,6 +24,8 @@ interface GmailStatus {
   connectedAt: string | null;
   googleOAuthAvailable: boolean;
   willLandInGmailSent: boolean;
+  canReadInbox: boolean;
+  sendingCoveredOrgWide: boolean;
 }
 
 function ToggleRow({
@@ -379,10 +381,13 @@ export default function AdminSettingsPage() {
           title="Email sending"
           subtitle="Connect your Gmail so client emails go out as you, and land in your own Sent folder."
           action={
-            status.connected ? (
+            // Only green once this account can both send AND read — a
+            // send-only account still has replies and bounces invisible,
+            // which is exactly the state a reassuring green badge hid.
+            status.canReadInbox ? (
               <Badge solid tone="emerald">Connected</Badge>
             ) : status.willLandInGmailSent ? (
-              <Badge solid tone="emerald">Org-wide</Badge>
+              <Badge solid tone="amber">Send only</Badge>
             ) : (
               <Badge solid tone="amber">Not connected</Badge>
             )
@@ -393,8 +398,10 @@ export default function AdminSettingsPage() {
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2.5 text-xs text-amber-200">
             <AlertTriangle size={14} className="shrink-0 mt-0.5" />
             <span>
-              Google sign-in isn't set up on this deployment yet, so that button couldn't continue. Use the App
-              Password steps below in the meantime — they're already open.
+              Google sign-in isn't set up on this deployment yet, so that button couldn't continue — this needs
+              GOOGLE_OAUTH_CLIENT_ID/SECRET adding to the deployment before it can work. The App Password steps
+              below are open as a fallback, but they typically don't work for Workspace addresses like
+              @bothmade.studio.
             </span>
           </div>
         )}
@@ -458,13 +465,54 @@ export default function AdminSettingsPage() {
               <p className="text-xs text-emerald-300/70 px-1">{bounceFolderResult.message}</p>
             )}
           </div>
-        ) : status.willLandInGmailSent ? (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-sm text-emerald-200">
-            <CheckCircle2 size={16} />
-            Already covered — your org has Gmail sending set up for everyone, no personal setup needed.
-          </div>
         ) : (
           <div className="mt-4 space-y-4">
+            {/* Sending and reading are separate capabilities. Org-wide
+                delegation only carries the gmail.send scope, so this account
+                can already send while still being blind to replies and
+                bounces. Saying "already covered — no personal setup needed"
+                full stop (as this branch used to) contradicted the call
+                list's own "reconnect your email" prompt and sent people away
+                thinking they were done. */}
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] divide-y divide-white/[0.06]">
+              <div className="flex items-start gap-2 px-4 py-3">
+                {status.sendingCoveredOrgWide ? (
+                  <>
+                    <CheckCircle2 size={15} className="shrink-0 mt-0.5 text-emerald-300" />
+                    <div>
+                      <p className="text-sm text-emerald-200">Sending your emails — covered</p>
+                      <p className="text-xs text-white/40 mt-0.5">
+                        Your org has Gmail sending set up for everyone, so your emails already go out as you and
+                        land in your own Sent folder. Nothing to do here.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-300" />
+                    <div>
+                      <p className="text-sm text-amber-200">Sending your emails — not connected</p>
+                      <p className="text-xs text-white/40 mt-0.5">
+                        Emails will go out from a shared address and won't appear in your own Sent folder.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex items-start gap-2 px-4 py-3">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-300" />
+                <div>
+                  <p className="text-sm text-amber-200">Reading your inbox — not connected</p>
+                  <p className="text-xs text-white/40 mt-0.5">
+                    This is the part that's still missing. Until it's connected, nothing can see who replied to
+                    you or whose address bounced — so replies never reach the top of your call list, and dead
+                    addresses keep getting emailed. Org-wide sending doesn't cover this; it needs your own
+                    sign-in.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {status.googleOAuthAvailable ? (
               <a
                 href="/api/admin/settings/gmail-oauth/start"
