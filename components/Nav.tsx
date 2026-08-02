@@ -108,9 +108,15 @@ export function Nav() {
             })}
             <Link
               href="/client/login"
-              className="text-sm rounded-full border border-white/20 px-4 py-1.5 text-white/70 hover:text-white hover:border-white/40 transition-colors"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               Client Login
+            </Link>
+            <Link
+              href="/start"
+              className="text-sm rounded-full bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-1.5 font-medium text-black hover:opacity-90 transition-opacity"
+            >
+              Start a project
             </Link>
           </div>
 

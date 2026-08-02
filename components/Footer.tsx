@@ -92,6 +92,12 @@ export function Footer() {
             <p className="text-white/40 text-sm max-w-xs">
               Web and native Apple development. One team, from first sketch to App Store.
             </p>
+            <a
+              href="mailto:contact@bothmade.studio"
+              className="inline-block mt-4 text-sm text-white/50 hover:text-sky-300 transition"
+            >
+              contact@bothmade.studio
+            </a>
           </div>
 
           <div>
