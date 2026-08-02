@@ -52,6 +52,7 @@ import {
   classifyWrittenPoint,
   inferPainPointsFromNotes,
   calculatePrice,
+  customItemsTotal,
   depositAmount,
   dependentsOf,
   expandAddOnDependencies,
@@ -62,6 +63,7 @@ import {
   type AddOnKey,
   type BaseService,
   type ClientType,
+  type CustomItem,
   type TimelineKey,
 } from '@/lib/pricing';
 
@@ -182,6 +184,24 @@ export default function LeadDetailPage() {
   };
   const [proposalClientType, setProposalClientType] = useState<ClientType>('smb');
   const [proposalTimeline, setProposalTimeline] = useState<TimelineKey>('standard');
+  // Ad-hoc items Evan adds beyond the fixed catalogue. draftLabel/draftPrice
+  // hold the add-row inputs until "Add" commits them into customItems.
+  const [customItems, setCustomItems] = useState<CustomItem[]>([]);
+  const [draftCustomLabel, setDraftCustomLabel] = useState('');
+  const [draftCustomPrice, setDraftCustomPrice] = useState('');
+
+  const addCustomItem = () => {
+    const label = draftCustomLabel.trim();
+    const dollars = parseFloat(draftCustomPrice);
+    if (!label || !Number.isFinite(dollars) || dollars <= 0) return;
+    setCustomItems((prev) => [...prev, { label, priceCents: Math.round(dollars * 100) }]);
+    setDraftCustomLabel('');
+    setDraftCustomPrice('');
+  };
+
+  const removeCustomItem = (index: number) => {
+    setCustomItems((prev) => prev.filter((_, i) => i !== index));
+  };
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
@@ -592,7 +612,11 @@ export default function LeadDetailPage() {
     addOns: proposalAddOns,
     clientType: proposalClientType,
     timeline: proposalTimeline,
+    customItems,
   };
+
+  const proposalCustomTotal = customItemsTotal(customItems);
+  const proposalGrandTotal = proposalBreakdown.totalPrice + proposalCustomTotal;
 
   const handleCreatePaymentLink = async () => {
     setProposalError('');
@@ -2193,7 +2217,62 @@ export default function LeadDetailPage() {
             </div>
 
             <div>
-              <StepLabel n={3} label="Client Details" />
+              <StepLabel n={3} label="Custom Items" hint={customItems.length ? `${customItems.length} added` : 'optional'} />
+              <div className="space-y-2 mb-3">
+                {customItems.map((item, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                  >
+                    <span className="text-sm">{item.label}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-white/60">{formatCents(item.priceCents)}</span>
+                      <button
+                        onClick={() => removeCustomItem(i)}
+                        aria-label={`Remove ${item.label}`}
+                        className="text-white/40 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Custom item name"
+                  value={draftCustomLabel}
+                  onChange={(e) => setDraftCustomLabel(e.target.value)}
+                  className={`${inputClass} flex-1`}
+                />
+                <input
+                  type="number"
+                  placeholder="Price"
+                  min="0"
+                  step="1"
+                  value={draftCustomPrice}
+                  onChange={(e) => setDraftCustomPrice(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCustomItem();
+                    }
+                  }}
+                  className={`${inputClass} w-28`}
+                />
+                <button
+                  onClick={addCustomItem}
+                  disabled={!draftCustomLabel.trim() || !draftCustomPrice}
+                  className="shrink-0 rounded-lg border border-white/20 px-4 text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <StepLabel n={4} label="Client Details" />
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-2 text-white/50">Client Type</label>
@@ -2244,18 +2323,24 @@ export default function LeadDetailPage() {
                     <span>{formatCents(proposalBreakdown.addOnsPrice)}</span>
                   </div>
                 )}
+                {customItems.map((item, i) => (
+                  <div key={i} className="flex justify-between text-white/60">
+                    <span>{item.label}</span>
+                    <span>{formatCents(item.priceCents)}</span>
+                  </div>
+                ))}
               </div>
               <div className="flex justify-between items-baseline border-t border-white/10 pt-3">
                 <span className="font-semibold text-sm">Total</span>
                 <span className="text-2xl font-bold bg-gradient-to-r from-sky-300 to-purple-300 bg-clip-text text-transparent">
-                  {formatCents(proposalBreakdown.totalPrice)}
+                  {formatCents(proposalGrandTotal)}
                 </span>
               </div>
 
               <label className="flex items-start gap-2 text-xs text-white/55 mt-4 cursor-pointer">
                 <input type="checkbox" className="mt-0.5" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
                 <span>
-                  Charge 50% deposit only ({formatCents(depositAmount(proposalBreakdown.totalPrice))}) — collect the rest later
+                  Charge 50% deposit only ({formatCents(depositAmount(proposalGrandTotal))}) — collect the rest later
                 </span>
               </label>
             </div>
