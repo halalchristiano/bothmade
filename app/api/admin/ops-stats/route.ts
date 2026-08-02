@@ -124,7 +124,13 @@ export async function GET(request: Request) {
     );
     const projectsAwaitingReply = activeProjects
       .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin)
-      .map((p) => ({ id: p.id, name: p.name, company: p.client.company }));
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        company: p.client.company,
+        waitHours: Math.floor((now.getTime() - p.messages[0].createdAt.getTime()) / (60 * 60 * 1000)),
+      }))
+      .sort((a, b) => b.waitHours - a.waitHours);
 
     const revenueThisMonth = paymentsInPeriod.reduce((s, p) => s + p.amount, 0);
     const revenueLastMonth = paymentsInPreviousPeriod.reduce((s, p) => s + p.amount, 0);
@@ -144,6 +150,7 @@ export async function GET(request: Request) {
             onboardingTotal: p.onboardingQuestions.length,
             onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
             handoffAcknowledgedAt: p.handoffAcknowledgedAt,
+            daysWaiting: Math.floor((now.getTime() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
           })),
           newClientsThisWeek: newClientsInPeriod,
           atRiskProjects: atRiskProjects.slice(0, 40),

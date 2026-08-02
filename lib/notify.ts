@@ -94,3 +94,37 @@ export async function notifyAdminsStaleLeads(
   );
   await notifyAdmins(`${leads.length} lead${leads.length === 1 ? '' : 's'} going cold`, html);
 }
+
+/**
+ * One personalized email per rep, listing just their own overdue/due-today
+ * follow-ups — sent daily so a slipped follow-up shows up somewhere besides
+ * a dashboard widget nobody's looking at that morning.
+ */
+export async function notifyUserFollowUpDigest(
+  toEmail: string,
+  leads: Array<{ id: string; company: string; nextFollowUpAt: Date; overdue: boolean }>
+): Promise<boolean> {
+  if (leads.length === 0) return false;
+  const rows = leads
+    .map(
+      (l) =>
+        `<li><a href="${SITE_URL}/admin/leads/${l.id}">${l.company}</a> — ${
+          l.overdue ? `overdue since ${l.nextFollowUpAt.toLocaleDateString()}` : 'due today'
+        }</li>`
+    )
+    .join('');
+  const overdueCount = leads.filter((l) => l.overdue).length;
+  const html = wrap(
+    "Today's follow-ups",
+    `<p>You have ${leads.length} follow-up${leads.length === 1 ? '' : 's'} due${
+      overdueCount > 0 ? `, ${overdueCount} of them overdue` : ''
+    }:</p><ul>${rows}</ul>`,
+    `${SITE_URL}/admin/call-list`,
+    'Open Call List'
+  );
+  return sendEmail({
+    to: toEmail,
+    subject: `${leads.length} follow-up${leads.length === 1 ? '' : 's'} due today${overdueCount > 0 ? ` (${overdueCount} overdue)` : ''}`,
+    html,
+  });
+}

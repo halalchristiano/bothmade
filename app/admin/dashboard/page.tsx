@@ -31,6 +31,7 @@ import {
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
+import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
@@ -117,6 +118,15 @@ interface SalesStats {
   followUpsToday: Array<{ id: string; company: string; phone: string | null; email: string | null }>;
   followUpsOverdue: Array<{ id: string; company: string; nextFollowUpAt: string; phone: string | null; email: string | null }>;
   staleLeads: Array<{ id: string; company: string; updatedAt: string; phone: string | null; email: string | null }>;
+  stageAging: Array<{
+    id: string;
+    company: string;
+    estimatedValue: number | null;
+    phone: string | null;
+    email: string | null;
+    stageLabel: string;
+    daysIdle: number;
+  }>;
   sourcePerformance: Array<{ source: string; total: number; won: number }>;
   clientTypeBreakdown: Record<string, number>;
   wonDeals: Array<{ id: string; company: string; value: number; wonAt: string }>;
@@ -134,11 +144,12 @@ interface OpsStats {
     onboardingTotal: number;
     onboardingAnswered: number;
     handoffAcknowledgedAt: string | null;
+    daysWaiting: number;
   }>;
   newClientsThisWeek: number;
   atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
   overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
-  projectsAwaitingReply: Array<{ id: string; name: string; company: string }>;
+  projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
   pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
   revenueThisMonth: number;
@@ -179,28 +190,34 @@ interface NextAction {
 }
 
 function NextActionsCard({ stats }: { stats: SalesStats }) {
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const seen = new Set<string>();
   const actions: NextAction[] = [];
 
   for (const l of stats.followUpsOverdue) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email });
   }
   for (const l of stats.followUpsToday) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email });
   }
   for (const l of stats.hotLeads) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
   }
   for (const l of stats.staleLeads) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email });
+  }
+  for (const l of stats.stageAging) {
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
   }
 
   return (
@@ -245,6 +262,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                     </a>
                   )}
                   <LogTouchPopover leadId={a.id} />
+                  <SnoozeButton leadId={a.id} onSnoozed={() => setDismissed((prev) => new Set(prev).add(a.id))} />
                 </div>
               }
             />
@@ -786,13 +804,20 @@ function HandoffRow({
           {handoff.handoffAcknowledgedAt ? (
             <Badge tone="emerald">Picked up</Badge>
           ) : (
-            <button
-              onClick={handleAcknowledge}
-              disabled={saving}
-              className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
-            >
-              {saving ? 'Saving...' : "I've got this"}
-            </button>
+            <>
+              {handoff.daysWaiting >= 2 && (
+                <Badge tone={handoff.daysWaiting >= 4 ? 'red' : 'amber'} solid>
+                  Waiting {handoff.daysWaiting}d
+                </Badge>
+              )}
+              <button
+                onClick={handleAcknowledge}
+                disabled={saving}
+                className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                {saving ? 'Saving...' : "I've got this"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -881,6 +906,36 @@ function RevenueChartCard({ revenueHistory }: { revenueHistory: OpsStats['revenu
 
 type OverdueSort = 'amount' | 'name';
 
+function RemindButton({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  if (state === 'sent') return <span className="text-[11px] text-emerald-300/80 whitespace-nowrap">Reminder sent</span>;
+
+  return (
+    <button
+      onClick={async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setState('sending');
+        try {
+          const res = await fetch(`/api/admin/projects/${projectId}/payment-reminder`, { method: 'POST' });
+          setState(res.ok ? 'sent' : 'error');
+        } catch {
+          setState('error');
+        }
+      }}
+      disabled={state === 'sending'}
+      className={`text-[11px] px-2 py-1 rounded-md border font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
+        state === 'error'
+          ? 'border-red-400/30 text-red-300 hover:bg-red-400/10'
+          : 'border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-400/30 hover:bg-amber-400/10'
+      }`}
+    >
+      {state === 'sending' ? 'Sending…' : state === 'error' ? 'Failed — retry' : 'Remind'}
+    </button>
+  );
+}
+
 function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<OverdueSort>('amount');
@@ -922,7 +977,17 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
           ) : (
             <div className="space-y-0.5">
               {filtered.map((p) => (
-                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="amber">{formatCents(p.balanceDue)}</Badge>} />
+                <ListRow
+                  key={p.id}
+                  href={`/admin/projects/${p.id}`}
+                  title={p.company}
+                  trailing={
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Badge tone="amber">{formatCents(p.balanceDue)}</Badge>
+                      <RemindButton projectId={p.id} />
+                    </div>
+                  }
+                />
               ))}
             </div>
           )}
@@ -1118,10 +1183,20 @@ function OpsDashboard({
 
       {stats.projectsAwaitingReply.length > 0 && (
         <Card className="p-6 mb-5" glow="sky">
-          <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last" />
+          <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last, longest wait first" />
           <div className="grid sm:grid-cols-2 gap-1">
             {stats.projectsAwaitingReply.map((p) => (
-              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} subtitle={p.name} />
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                subtitle={p.name}
+                trailing={
+                  <Badge tone={p.waitHours >= 48 ? 'red' : p.waitHours >= 12 ? 'amber' : 'neutral'}>
+                    {p.waitHours < 24 ? `${p.waitHours}h` : `${Math.floor(p.waitHours / 24)}d`}
+                  </Badge>
+                }
+              />
             ))}
           </div>
         </Card>
