@@ -307,7 +307,96 @@ function BlockRenderer({
 
     case 'kineticWordDemo':
       return <KineticWordDemo word={block.word} />;
+
+    case 'flyThroughDemo':
+      return <FlyThroughDemo words={block.words} />;
   }
+}
+
+/**
+ * Scaled replay of WebHero's fly-through Act sequence: each word owns a
+ * slice of the local scroll range and scales from ~0.55x up through 1x to
+ * ~9x while fading, so scrolling through the bounded stage reads as flying
+ * through one word into the next.
+ */
+function FlyThroughDemo({ words }: { words: string[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ['start start', 'end end'],
+  });
+  const progress = useSpring(scrollYProgress, { stiffness: 140, damping: 28, mass: 0.3 });
+
+  if (reduceMotion) {
+    return (
+      <div className="rounded-2xl border border-white/10 p-10 space-y-6">
+        {words.map((w) => (
+          <p key={w} className="font-bold text-sky-100" style={{ fontSize: 'clamp(2rem, 6vw, 3.5rem)' }}>
+            {w}
+          </p>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative h-[220vh] rounded-2xl border border-white/10 overflow-hidden">
+      <div className="sticky top-24 h-72 md:h-80 overflow-hidden bg-[#02060d]">
+        <motion.p
+          className="absolute bottom-4 inset-x-0 z-20 text-center font-mono text-[10px] uppercase tracking-[0.35em] text-white/30"
+          style={{ opacity: useTransform(progress, [0, 0.08], [1, 0]) }}
+        >
+          scroll — flying through
+        </motion.p>
+        {words.map((word, i) => (
+          <FlyAct key={word} index={i} total={words.length} progress={progress} word={word} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FlyAct({
+  index,
+  total,
+  progress,
+  word,
+}: {
+  index: number;
+  total: number;
+  progress: MotionValue<number>;
+  word: string;
+}) {
+  const slotSize = 1 / total;
+  const enterStart = index === 0 ? 0 : (index - 0.1) * slotSize;
+  const settled = index === 0 ? 0 : (index + 0.05) * slotSize;
+  const exitStart = (index + 0.75) * slotSize;
+  const exitEnd = Math.min(1, (index + 1) * slotSize);
+  const last = index === total - 1;
+
+  const scale = useTransform(
+    progress,
+    [enterStart, settled, exitStart, exitEnd],
+    index === 0 ? [1, 1, 1, 9] : last ? [0.55, 1, 1, 1] : [0.55, 1, 1, 9]
+  );
+  const opacity = useTransform(
+    progress,
+    [enterStart, Math.min(settled, enterStart + 0.03), exitStart, Math.min(exitEnd, exitStart + 0.05)],
+    index === 0 ? [1, 1, 1, 0] : last ? [0, 1, 1, 1] : [0, 1, 1, 0]
+  );
+
+  return (
+    <div className="absolute inset-0 grid place-items-center pointer-events-none">
+      <motion.p
+        style={{ scale, opacity, fontSize: 'clamp(2rem, 9vw, 5rem)' }}
+        className="will-change-transform font-bold leading-none tracking-[-0.03em] whitespace-nowrap text-sky-100"
+      >
+        {word}
+      </motion.p>
+    </div>
+  );
 }
 
 /**

@@ -122,7 +122,13 @@ export type Block =
    * pointer, with an idle sine-wave breathing fallback when the pointer
    * has been still for a while.
    */
-  | { type: 'kineticWordDemo'; word: string };
+  | { type: 'kineticWordDemo'; word: string }
+  /**
+   * Scaled replay of WebHero's scroll-driven fly-through sequence: words
+   * scale up ~9x and fade as you scroll past each one's slot, so scrolling
+   * reads as flying through one word into the next.
+   */
+  | { type: 'flyThroughDemo'; words: string[] };
 
 export type BlogPost = {
   slug: string;
@@ -1157,6 +1163,57 @@ letter.style.color = \`rgba(\${186 + t*69}, \${230 + t*25}, 252, \${0.2 + t*0.8}
       {
         type: 'p',
         text: "Every letter's style is written directly via letter.style.fontVariationSettings, completely outside React's render cycle — not useState, not a Framer Motion value. At up to 60 updates per second across every letter in the word simultaneously, routing that through React re-renders would mean scheduling and diffing work the browser doesn't actually need, when a direct DOM mutation on an already-existing element is exactly what requestAnimationFrame loops are for. React owns mounting the spans once; after that, the animation loop owns them completely until the component unmounts and the loop is cancelled.",
+      },
+    ],
+  },
+  {
+    slug: 'the-scroll-zoom-flying-through-text-effect',
+    title: 'The scroll-zoom "flying through text" effect',
+    dek: 'How Apple-style product pages make giant words fly toward you as you scroll — it\'s three transforms and a shared timeline, not a video. Scroll the demo below.',
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2026-12-27',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "A lot of premium-feeling product pages open with a sequence where a giant word sits centered on screen, then as you keep scrolling it rushes toward you — scaling up far past the viewport, fading out right as the next word arrives small and settles into place. It reads like a camera flying through a tunnel of oversized text. It's genuinely just a handful of numbers on a timeline, no video, no WebGL, no scroll-jacking.",
+      },
+      {
+        type: 'statement',
+        text: "Each word owns a slice of one shared 0-to-1 scroll value. Nothing is happening simultaneously by accident — every word's arrival and exit is a deliberate window on the same timeline.",
+      },
+      { type: 'heading', text: 'Scroll through it' },
+      { type: 'flyThroughDemo', words: ['FAST.', 'FLUID.', 'CONVERTS.'] },
+      {
+        type: 'p',
+        text: "The section wraps a tall, pinned container — same position: sticky pattern as the sheet-stack section — and useScroll reports one continuous 0-to-1 value for how far you've scrolled through it. Each word divides that range into its own slot: it starts small and transparent, scales up to a resting size and full opacity, holds there while you keep scrolling, then — in its exit window — scales up roughly nine times its resting size while fading out, at the exact moment the next word is entering its own slot at a small scale. The overlap is what sells the illusion: word one is mid-exit while word two is mid-entrance, occupying the same few frames.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `// Each word gets four checkpoints on the shared 0–1 timeline:
+// [enterStart, settled, exitStart, exitEnd]
+const scale = useTransform(
+  progress,
+  [enterStart, settled, exitStart, exitEnd],
+  [0.55, 1, 1, 9]     // small → resting → resting → huge
+);
+const opacity = useTransform(
+  progress,
+  [enterStart, settled, exitStart, exitEnd],
+  [0, 1, 1, 0]        // fades in on arrival, fades out on exit
+);`,
+      },
+      { type: 'heading', text: 'The part that actually sells it' },
+      {
+        type: 'p',
+        text: "Scaling from 1 to 9 is the easy half. The part that makes it read as flight rather than \"a word getting bigger\" is that the opacity fade-out is compressed into a much narrower window than the scale-up — the word is still small-ish and readable for most of its exit, then rushes past full size and vanishes in the last few percent of its slot. If opacity faded out at the same rate as the scale grew, the word would just get faint and huge at the same steady pace, which reads as dissolving, not approaching. The mismatch between how fast it scales versus how fast it fades is the whole trick.",
+      },
+      { type: 'heading', text: "Why a spring wraps the raw scroll value" },
+      {
+        type: 'p',
+        text: "scrollYProgress itself is not smoothed — it's an exact, sometimes-jittery reflection of scroll position, especially on a trackpad sending rapid small deltas. Every transform in this sequence reads from a useSpring-wrapped copy of that value instead of the raw one, which is what keeps a giant word's scale from visibly stepping instead of gliding when your scroll input isn't perfectly smooth. It's a small addition — one extra hook — for a section where any stutter in a 9x scale-up would be the first thing anyone noticed.",
       },
     ],
   },
