@@ -3,7 +3,16 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Phone, MailX, Clock, CalendarClock, RefreshCw, AlertTriangle, ChevronRight } from 'lucide-react';
+import {
+  Phone,
+  MailX,
+  Clock,
+  CalendarClock,
+  RefreshCw,
+  AlertTriangle,
+  ChevronRight,
+  HelpCircle,
+} from 'lucide-react';
 import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
@@ -28,34 +37,40 @@ interface CallRow {
   lastActivity: { type: string; content: string; createdAt: string } | null;
 }
 
-const REASONS: Record<CallReason, { label: string; blurb: string; classes: string }> = {
+const REASONS: Record<CallReason, { label: string; short: string; blurb: string; classes: string }> = {
   bounced: {
     label: 'Email bounced — phone is the only way in',
+    short: "Their email is dead — must call",
     blurb: "These addresses are dead. Nothing you send will arrive, so they can only be reached by ringing.",
     classes: 'border-red-400/30 bg-red-400/[0.07] text-red-200',
   },
   overdue: {
     label: 'Follow-up overdue',
+    short: "You're late getting back to them",
     blurb: 'You said you would get back to these and the date has passed. Do these first.',
     classes: 'border-amber-400/30 bg-amber-400/[0.07] text-amber-200',
   },
   today: {
     label: 'Due today',
+    short: "You said you'd call today",
     blurb: 'Booked in for today.',
     classes: 'border-sky-400/30 bg-sky-400/[0.07] text-sky-200',
   },
   'no-follow-up': {
     label: 'Contacted, but nothing booked',
+    short: "Contacted once, then nothing",
     blurb: "Reached out at some point and no next step was ever set. This is the pile that quietly rots.",
     classes: 'border-purple-400/25 bg-purple-400/[0.06] text-purple-200',
   },
   'never-contacted': {
     label: 'Not contacted yet',
+    short: "Nobody has spoken to them",
     blurb: 'Fresh leads nobody has spoken to.',
     classes: 'border-white/15 bg-white/[0.04] text-white/70',
   },
   scheduled: {
     label: 'Booked for a later date',
+    short: "Booked for later",
     blurb: "Not on today's list — they have a follow-up date in the future.",
     classes: 'border-white/15 bg-white/[0.04] text-white/70',
   },
@@ -191,6 +206,9 @@ export default function CallListPage() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">Who to call</h1>
+          <p className="text-xs text-white/35 mt-1">
+            Start at the top and work down. Every business says why it's here.
+          </p>
           <p className="text-sm text-white/45 mt-1">
             {total === 0
               ? 'Nothing waiting on a call right now.'
@@ -201,9 +219,10 @@ export default function CallListPage() {
           {meta && meta.totalOpen > 0 && (
             <button
               onClick={() => setShowBreakdown((v) => !v)}
-              className="text-xs text-white/35 hover:text-white/60 mt-1.5 underline underline-offset-2 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-1.5 mt-2.5 text-xs font-semibold text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
             >
-              {showBreakdown ? 'Hide' : 'Where does this number come from?'}
+              <HelpCircle size={13} />
+              {showBreakdown ? 'Hide the maths' : 'Why these businesses?'}
             </button>
           )}
         </div>
@@ -379,6 +398,14 @@ export default function CallListPage() {
                       key={row.id}
                       className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3.5 min-w-0"
                     >
+                      {/* On the row, not just the band header — the header
+                          disappears the moment a different sort is chosen. */}
+                      <p
+                        className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mb-2 ${REASONS[row.reason].classes}`}
+                      >
+                        {REASONS[row.reason].short}
+                      </p>
+
                       <div className="flex items-start justify-between gap-3">
                         <Link href={`/admin/leads/${row.id}`} className="min-w-0 group">
                           <p className="text-sm font-bold text-white/90 group-hover:text-sky-300 transition-colors break-words">
