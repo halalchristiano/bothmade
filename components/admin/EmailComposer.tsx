@@ -90,6 +90,14 @@ export function EmailComposer({
   const [sentVia, setSentVia] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPreviewMobile, setShowPreviewMobile] = useState(false);
+  const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/admin/settings/gmail')
+      .then((r) => r.json())
+      .then((data) => setGmailConnected(!!data.willLandInGmailSent))
+      .catch(() => setGmailConnected(null));
+  }, []);
 
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewSubject, setPreviewSubject] = useState('');
@@ -278,6 +286,13 @@ export function EmailComposer({
               </div>
 
               {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+
+              {gmailConnected === false && (
+                <p className="text-xs text-amber-300/80 mb-3">
+                  Your Gmail isn't connected — this will send from a shared address and won't show up in your
+                  Sent folder. Connect it in Settings first if that matters to you.
+                </p>
+              )}
 
               <button
                 onClick={() => setShowPreviewMobile(true)}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, Send, Loader2, UserX } from 'lucide-react';
+import { X, Send, Loader2, UserX, AlertTriangle } from 'lucide-react';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
 
 interface PreviewLead {
@@ -24,11 +24,13 @@ function splitDraft(draft: string, company: string): { subject: string; body: st
 export function ColdEmailPreviewModal({
   leads,
   sending,
+  gmailConnected,
   onClose,
   onConfirm,
 }: {
   leads: PreviewLead[];
   sending: boolean;
+  gmailConnected?: boolean | null;
   onClose: () => void;
   onConfirm: (leadIds: string[]) => void;
 }) {
@@ -70,6 +72,16 @@ export function ColdEmailPreviewModal({
             <X size={18} />
           </button>
         </div>
+
+        {gmailConnected === false && (
+          <div className="flex items-start gap-2 mx-6 mt-4 p-3 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-300/90 text-xs">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <span>
+              Your Gmail isn't connected — these will send from a shared address instead of yours, and won't
+              show up in your Sent folder. Connect it in Settings first if that matters to you.
+            </span>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-3">
           {leads.map((lead) => {

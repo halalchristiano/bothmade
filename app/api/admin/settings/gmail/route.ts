@@ -4,6 +4,7 @@ import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { encryptSecret } from '@/lib/crypto';
 import { verifyGmailCredentials } from '@/lib/mailer';
+import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 
 export async function GET() {
   try {
@@ -16,7 +17,15 @@ export async function GET() {
     });
 
     return NextResponse.json(
-      { connected: !!user?.gmailAddress, gmailAddress: user?.gmailAddress || null, connectedAt: user?.gmailConnectedAt },
+      {
+        connected: !!user?.gmailAddress,
+        gmailAddress: user?.gmailAddress || null,
+        connectedAt: user?.gmailConnectedAt,
+        // True either way this account's sends will land in a real Gmail
+        // Sent folder — via a personal app password OR org-wide delegation
+        // (which needs no per-user setup at all).
+        willLandInGmailSent: !!user?.gmailAddress || isDomainDelegationConfigured(),
+      },
       { status: 200 }
     );
   } catch (error) {

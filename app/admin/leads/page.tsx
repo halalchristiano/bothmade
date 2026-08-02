@@ -151,6 +151,7 @@ export default function AdminLeadsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
   const [previewingBatch, setPreviewingBatch] = useState<LeadRow[] | null>(null);
+  const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -173,6 +174,10 @@ export default function AdminLeadsPage() {
       .then((r) => r.json())
       .then((data) => setPreviewBeforeBulkSend(data.previewBeforeBulkSend))
       .catch(() => setPreviewBeforeBulkSend(true));
+    fetch('/api/admin/settings/gmail')
+      .then((r) => r.json())
+      .then((data) => setGmailConnected(!!data.willLandInGmailSent))
+      .catch(() => setGmailConnected(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -398,6 +403,12 @@ export default function AdminLeadsPage() {
               )}
             </div>
           </div>
+          {gmailConnected === false && (
+            <p className="text-xs text-amber-300/80 mt-3 pt-3 border-t border-white/[0.06]">
+              Your Gmail isn't connected — these will send from a shared address instead of yours, and won't
+              show up in your Sent folder. Connect it in Settings first if that matters to you.
+            </p>
+          )}
         </Card>
       )}
 
@@ -680,6 +691,7 @@ export default function AdminLeadsPage() {
         <ColdEmailPreviewModal
           leads={previewingBatch}
           sending={sendingColdDrafts}
+          gmailConnected={gmailConnected}
           onClose={() => setPreviewingBatch(null)}
           onConfirm={sendColdDrafts}
         />
