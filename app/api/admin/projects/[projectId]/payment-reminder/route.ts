@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const paymentLink = await stripe.paymentLinks.create({
-      after_completion: { type: 'redirect', redirect: { url: `${siteUrl}/checkout/success` } },
+      after_completion: { type: 'redirect', redirect: { url: `${siteUrl}/checkout/success?type=balance` } },
       line_items: [
         {
           price_data: {

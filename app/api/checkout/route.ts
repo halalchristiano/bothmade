@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    const successUrl = `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl = `${siteUrl}/checkout/success?type=welcome&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${siteUrl}/start`;
 
     const session = await createCheckoutSession(

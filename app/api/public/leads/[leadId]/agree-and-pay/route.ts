@@ -172,7 +172,7 @@ export async function POST(
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
-      success_url: `${siteUrl}/checkout/success`,
+      success_url: `${siteUrl}/checkout/success?type=welcome`,
       cancel_url: `${siteUrl}/sign/${leadId}`,
       customer_email: lead.email,
       line_items: [

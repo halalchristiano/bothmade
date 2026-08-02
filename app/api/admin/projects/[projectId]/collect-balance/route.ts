@@ -40,7 +40,7 @@ export async function POST(
     const paymentLink = await stripe.paymentLinks.create({
       after_completion: {
         type: 'redirect',
-        redirect: { url: `${siteUrl}/checkout/success` },
+        redirect: { url: `${siteUrl}/checkout/success?type=balance` },
       },
       line_items: [
         {
