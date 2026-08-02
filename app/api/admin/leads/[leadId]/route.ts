@@ -64,7 +64,29 @@ export async function GET(
         return [];
       });
 
-    return NextResponse.json({ success: true, lead, playbook }, { status: 200 });
+    // Duplicates already exist from overlapping CSV imports, and the damage
+    // is done at the moment of dialling: ringing a business someone spoke to
+    // yesterday. Cheaper to warn here than to reconcile the whole table.
+    const companyKey = lead.company.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const possibleDuplicates = (
+      await prisma.lead.findMany({
+        where: {
+          id: { not: leadId },
+          status: { notIn: ['lost'] },
+          OR: [
+            ...(lead.email ? [{ email: { equals: lead.email, mode: 'insensitive' as const } }] : []),
+            { company: { equals: lead.company, mode: 'insensitive' as const } },
+          ],
+        },
+        select: { id: true, company: true, status: true, updatedAt: true },
+        take: 5,
+      })
+    ).filter((d) => d.company.toLowerCase().replace(/[^a-z0-9]/g, '') === companyKey || !!lead.email);
+
+    return NextResponse.json(
+      { success: true, lead, playbook, possibleDuplicates },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Get lead error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

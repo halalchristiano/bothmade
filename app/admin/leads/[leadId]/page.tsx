@@ -159,6 +159,7 @@ export default function LeadDetailPage() {
   // on a page left open between calls.
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
+  const [duplicates, setDuplicates] = useState<Array<{ id: string; company: string; status: string }>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
   const [sendingColdDraft, setSendingColdDraft] = useState(false);
@@ -352,6 +353,7 @@ export default function LeadDetailPage() {
         const l: LeadDetail = data.lead;
         setLead(l);
         setPlaybook(data.playbook ?? []);
+        setDuplicates(data.possibleDuplicates ?? []);
         setCompany(l.company);
         setContactName(l.contactName || '');
         setEmail(l.email || '');
@@ -1043,6 +1045,28 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      {duplicates.length > 0 && (
+        <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/[0.09] p-4">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-amber-100">
+            <AlertTriangle size={14} /> This business may already be in here twice
+          </p>
+          <p className="text-xs text-amber-100/70 mt-1 leading-relaxed">
+            Check before you ring — someone may have spoken to them already under the other record.
+          </p>
+          <div className="mt-2.5 space-y-1.5">
+            {duplicates.map((d) => (
+              <Link
+                key={d.id}
+                href={`/admin/leads/${d.id}`}
+                className="block rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/[0.08] transition-colors break-words"
+              >
+                {d.company} — {LEAD_STATUS_LABELS[d.status as LeadStatus] ?? d.status} →
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Mid-call, this page is a long scroll. These are the only three places
           anyone needs to reach in a hurry, so they stay within one tap. */}
