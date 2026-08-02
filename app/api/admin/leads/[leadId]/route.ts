@@ -71,6 +71,7 @@ export async function PATCH(
       qualBudget,
       qualTiming,
       qualMotivation,
+      clearEmailFailure,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -137,6 +138,8 @@ export async function PATCH(
         qualTiming: qualTiming !== undefined ? qualTiming : undefined,
         qualMotivation: qualMotivation !== undefined ? qualMotivation : undefined,
         qualifiedAt,
+        emailDeliveryFailedAt: clearEmailFailure ? null : undefined,
+        emailDeliveryFailedReason: clearEmailFailure ? null : undefined,
       },
     });
 

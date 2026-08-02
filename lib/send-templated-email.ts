@@ -129,7 +129,15 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     { gmailTransport, gmailOAuthClient }
   );
 
-  if (!result.ok) return { ok: false, error: 'Failed to send email' };
+  if (!result.ok) {
+    if (leadId) {
+      const reason = "Couldn't send — the address may be invalid or no longer active. Call instead.";
+      await prisma.lead
+        .update({ where: { id: leadId }, data: { emailDeliveryFailedAt: new Date(), emailDeliveryFailedReason: reason } })
+        .catch(() => null);
+    }
+    return { ok: false, error: 'Failed to send email' };
+  }
 
   if (leadId) {
     await prisma.leadActivity
@@ -147,9 +155,12 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { status: true } });
     if (lead) {
       const nextStatus = advanceToContactedOnOutreach(lead.status);
-      if (nextStatus !== lead.status) {
-        await prisma.lead.update({ where: { id: leadId }, data: { status: nextStatus } }).catch(() => null);
-      }
+      await prisma.lead
+        .update({
+          where: { id: leadId },
+          data: { status: nextStatus, emailDeliveryFailedAt: null, emailDeliveryFailedReason: null },
+        })
+        .catch(() => null);
     }
   }
 

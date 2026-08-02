@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   MoreVertical,
   Trash2,
+  MailX,
 } from 'lucide-react';
 import {
   ADD_ON_CATEGORIES,
@@ -92,6 +93,8 @@ interface LeadDetail {
   coldEmailDraft: string | null;
   coldEmailSentAt: string | null;
   personalizedObservation: string | null;
+  emailDeliveryFailedAt: string | null;
+  emailDeliveryFailedReason: string | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -365,6 +368,15 @@ export default function LeadDetailPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hotLead: !lead.hotLead }),
+    });
+    load();
+  };
+
+  const handleClearEmailFailure = async () => {
+    await fetch(`/api/admin/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clearEmailFailure: true }),
     });
     load();
   };
@@ -736,6 +748,27 @@ export default function LeadDetailPage() {
                 />
               </div>
             </div>
+
+            {lead.emailDeliveryFailedAt && (
+              <div className="mb-4 rounded-lg bg-red-400/10 border border-red-400/20 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-red-300 mb-0.5">
+                      <MailX size={12} /> Email didn't send — call instead
+                    </p>
+                    <p className="text-sm text-red-200/80">
+                      {lead.emailDeliveryFailedReason || "The address may be invalid or no longer active."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleClearEmailFailure}
+                    className="shrink-0 text-xs text-red-300/60 hover:text-red-200 transition-colors whitespace-nowrap"
+                  >
+                    Mark resolved
+                  </button>
+                </div>
+              </div>
+            )}
 
             {lead.lostReason && (
               <div className="mb-4 rounded-lg bg-red-400/10 border border-red-400/20 p-3">

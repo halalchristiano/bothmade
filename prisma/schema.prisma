@@ -235,6 +235,14 @@ model Lead {
   coldEmailDraft String?
   coldEmailSentAt DateTime?
 
+  // Set when a send attempt to this lead's email actually fails (bounced,
+  // rejected, dead address) — distinct from simply never having sent one.
+  // Surfaced as its own "couldn't reach — call instead" list so a bad
+  // address doesn't just quietly vanish from the ready-to-send count.
+  // Cleared automatically the next time a send to this lead succeeds.
+  emailDeliveryFailedAt DateTime?
+  emailDeliveryFailedReason String?
+
   // A short one-liner (not the full draft above) usable as the "personalized
   // observation" field the cold-outreach templates require — lets Compose
   // Email pre-fill that field from research done at CSV-import time instead

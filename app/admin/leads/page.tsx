@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, Trash2 } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn, PageTitle, ViewTabs } from '@/components/admin/ui';
@@ -28,6 +28,8 @@ interface LeadRow {
   coldEmailSentAt: string | null;
   personalizedObservation: string | null;
   painPoints: string;
+  emailDeliveryFailedAt: string | null;
+  emailDeliveryFailedReason: string | null;
   assignedTo: { name: string | null } | null;
   activities: Array<{ createdAt: string }>;
 }
@@ -78,6 +80,13 @@ function StatusSelect({
 // instead — the whole point of storing a pre-written draft is knowing at a
 // glance which leads are ready without opening each one.
 function ColdOutreachFlag({ lead }: { lead: LeadRow }) {
+  if (lead.emailDeliveryFailedAt) {
+    return (
+      <span title={lead.emailDeliveryFailedReason || "Email didn't send — call instead"} className="inline-flex">
+        <MailX size={13} className="text-red-400" />
+      </span>
+    );
+  }
   if (!lead.email) {
     return (
       <span title="No email on file — call instead" className="inline-flex">
@@ -124,7 +133,7 @@ function QuickActions({ lead, onLogged }: { lead: LeadRow; onLogged?: () => void
   );
 }
 
-const FILTERS = ['all', 'needs-contact', 'cold-ready', 'needs-call', ...LEAD_STATUSES] as const;
+const FILTERS = ['all', 'needs-contact', 'cold-ready', 'needs-call', 'email-failed', ...LEAD_STATUSES] as const;
 type Filter = (typeof FILTERS)[number];
 
 const FILTER_LABELS: Record<Filter, string> = {
@@ -132,6 +141,7 @@ const FILTER_LABELS: Record<Filter, string> = {
   'needs-contact': 'Needs Contact',
   'cold-ready': 'Cold Email Ready',
   'needs-call': 'Needs a Call',
+  'email-failed': "Email Didn't Send",
   ...LEAD_STATUS_LABELS,
 };
 
@@ -187,10 +197,13 @@ export default function AdminLeadsPage() {
       return leads.filter((l) => l.status === 'new' && l.activities.length === 0);
     }
     if (statusFilter === 'cold-ready') {
-      return leads.filter((l) => l.email && !l.coldEmailSentAt);
+      return leads.filter((l) => l.email && !l.coldEmailSentAt && !l.emailDeliveryFailedAt);
     }
     if (statusFilter === 'needs-call') {
       return leads.filter((l) => !l.email);
+    }
+    if (statusFilter === 'email-failed') {
+      return leads.filter((l) => l.emailDeliveryFailedAt);
     }
     return leads.filter((l) => l.status === statusFilter);
   }, [leads, statusFilter]);
@@ -204,10 +217,11 @@ export default function AdminLeadsPage() {
   // powers the big "send them all" banner so Evan doesn't have to hunt for
   // small icons or manually select anything for the common case.
   const coldReadyLeads = useMemo(
-    () => leads.filter((l) => l.email && !l.coldEmailSentAt),
+    () => leads.filter((l) => l.email && !l.coldEmailSentAt && !l.emailDeliveryFailedAt),
     [leads]
   );
   const needsCallLeads = useMemo(() => leads.filter((l) => !l.email && l.coldEmailDraft), [leads]);
+  const emailFailedLeads = useMemo(() => leads.filter((l) => l.emailDeliveryFailedAt), [leads]);
 
   const handleStatusChange = async (lead: LeadRow, status: LeadStatus) => {
     if (status === 'lost') {
@@ -365,6 +379,7 @@ export default function AdminLeadsPage() {
               <option key={f} value={f} className="bg-[#05030a]">
                 {FILTER_LABELS[f]}
                 {f === 'needs-contact' && needsContactCount > 0 ? ` (${needsContactCount})` : ''}
+                {f === 'email-failed' && emailFailedLeads.length > 0 ? ` (${emailFailedLeads.length})` : ''}
               </option>
             ))}
           </select>
@@ -434,6 +449,33 @@ export default function AdminLeadsPage() {
               show up in your Sent folder. Connect it in Settings first if that matters to you.
             </p>
           )}
+        </Card>
+      )}
+
+      {emailFailedLeads.length > 0 && (
+        <Card className="p-5 mb-6" glow="red">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-red-400/15 flex items-center justify-center shrink-0">
+                <MailX size={20} className="text-red-400" />
+              </div>
+              <div>
+                <p className="font-semibold">
+                  {emailFailedLeads.length} email{emailFailedLeads.length === 1 ? '' : 's'} couldn't be delivered
+                </p>
+                <p className="text-sm text-white/50">
+                  The address is likely invalid or no longer active — call these instead.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setStatusFilter('email-failed')}
+              className="inline-flex items-center gap-2 rounded-xl border border-red-400/30 text-red-300 px-4 py-2.5 text-sm font-semibold hover:bg-red-400/10 transition-colors whitespace-nowrap shrink-0"
+            >
+              <PhoneCall size={15} />
+              View {emailFailedLeads.length} to call
+            </button>
+          </div>
         </Card>
       )}
 

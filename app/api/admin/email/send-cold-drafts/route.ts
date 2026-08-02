@@ -120,14 +120,23 @@ export async function POST(request: NextRequest) {
       );
 
       if (!result.ok) {
-        results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'Send failed' });
+        const reason = "Couldn't send — the address may be invalid or no longer active. Call instead.";
+        results.push({ leadId: lead.id, company: lead.company, ok: false, reason });
+        await prisma.lead
+          .update({ where: { id: lead.id }, data: { emailDeliveryFailedAt: new Date(), emailDeliveryFailedReason: reason } })
+          .catch(() => null);
         continue;
       }
 
       await prisma.lead
         .update({
           where: { id: lead.id },
-          data: { coldEmailSentAt: new Date(), status: advanceToContactedOnOutreach(lead.status) },
+          data: {
+            coldEmailSentAt: new Date(),
+            status: advanceToContactedOnOutreach(lead.status),
+            emailDeliveryFailedAt: null,
+            emailDeliveryFailedReason: null,
+          },
         })
         .catch(() => null);
       await prisma.leadActivity
