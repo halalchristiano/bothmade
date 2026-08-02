@@ -662,3 +662,26 @@ export const PLAYBOOK_BENEFITS: Record<string, string> = {
 export function personalise(text: string, company: string): string {
   return text.replace(/\{company\}/g, company);
 }
+
+/**
+ * Inserts any PLAYBOOK_SEED item not yet in the database, keyed by slug.
+ * Never touches an existing row, so an edit made in the database survives
+ * every call. Takes a PrismaClient rather than importing it, so this stays
+ * usable from both the app and standalone scripts without a circular import.
+ */
+export async function ensurePlaybookSeeded(prisma: {
+  salesPlaybookItem: {
+    createMany: (args: {
+      data: Array<PlaybookSeedItem & { benefit: string }>;
+      skipDuplicates: boolean;
+    }) => Promise<unknown>;
+  };
+}): Promise<void> {
+  await prisma.salesPlaybookItem.createMany({
+    data: PLAYBOOK_SEED.map((item) => ({
+      ...item,
+      benefit: PLAYBOOK_BENEFITS[item.slug] ?? '',
+    })),
+    skipDuplicates: true,
+  });
+}
