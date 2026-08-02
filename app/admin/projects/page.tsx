@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FolderKanban, Plus } from 'lucide-react';
@@ -13,7 +13,10 @@ interface ProjectRow {
   timeline: string | null;
   createdAt: string;
   updatedAt: string;
+  totalPrice: number;
   client: { company: string; email: string };
+  messages: Array<{ isFromAdmin: boolean; createdAt: string }>;
+  payments: Array<{ amount: number }>;
 }
 
 const STATUSES = ['all', 'discovery', 'design', 'build', 'launch', 'complete'];
@@ -23,6 +26,22 @@ function isAtRisk(project: ProjectRow): boolean {
   if (project.status === 'complete') return false;
   const days = (Date.now() - new Date(project.updatedAt).getTime()) / (24 * 60 * 60 * 1000);
   return days >= AT_RISK_DAYS;
+}
+
+function isAwaitingReply(project: ProjectRow): boolean {
+  if (project.status === 'complete') return false;
+  const last = project.messages[0];
+  return !!last && !last.isFromAdmin;
+}
+
+function balanceDue(project: ProjectRow): number {
+  const paid = project.payments.reduce((sum, p) => sum + p.amount, 0);
+  return project.totalPrice - paid;
+}
+
+/** Anything a PM would actually want to look at today, in one signal. */
+function needsAttention(project: ProjectRow): boolean {
+  return isAtRisk(project) || isAwaitingReply(project) || (project.status !== 'complete' && balanceDue(project) > 0);
 }
 
 function AtRiskBadge({ project }: { project: ProjectRow }) {
@@ -35,12 +54,38 @@ function AtRiskBadge({ project }: { project: ProjectRow }) {
   );
 }
 
+function HealthBadges({ project }: { project: ProjectRow }) {
+  const due = balanceDue(project);
+  const badges: ReactNode[] = [];
+  if (isAtRisk(project)) badges.push(<AtRiskBadge key="risk" project={project} />);
+  if (isAwaitingReply(project)) {
+    badges.push(
+      <span key="reply" className="text-xs px-2 py-1 rounded-full bg-sky-400/20 text-sky-300 whitespace-nowrap">
+        💬 Awaiting reply
+      </span>
+    );
+  }
+  if (project.status !== 'complete' && due > 0) {
+    badges.push(
+      <span key="balance" className="text-xs px-2 py-1 rounded-full bg-amber-400/20 text-amber-300 whitespace-nowrap">
+        ${(due / 100).toLocaleString()} due
+      </span>
+    );
+  }
+  if (badges.length === 0) {
+    return <span className="text-xs text-emerald-300/70">On track</span>;
+  }
+  return <div className="flex flex-wrap gap-1.5">{badges}</div>;
+}
+
 export default function AdminProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [attentionOnly, setAttentionOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<'attention' | 'newest' | 'stalest'>('attention');
 
   useEffect(() => {
     const load = async () => {
@@ -63,9 +108,20 @@ export default function AdminProjectsPage() {
     load();
   }, [router, statusFilter]);
 
-  const shown = projects.filter((p) =>
-    matchesSearch(search, p.name, p.client.company, p.client.email, p.status)
-  );
+  const shown = projects
+    .filter((p) => matchesSearch(search, p.name, p.client.company, p.client.email, p.status))
+    .filter((p) => !attentionOnly || needsAttention(p))
+    .sort((a, b) => {
+      if (sortBy === 'newest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (sortBy === 'stalest') return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      // Attention-needed first, oldest-updated within that group first.
+      const aAttn = needsAttention(a);
+      const bAttn = needsAttention(b);
+      if (aAttn !== bAttn) return aAttn ? -1 : 1;
+      return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+    });
+
+  const attentionCount = projects.filter(needsAttention).length;
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
@@ -101,6 +157,28 @@ export default function AdminProjectsPage() {
         total={projects.length}
       />
 
+      <div className="flex flex-wrap items-center gap-3 mt-4 mb-2">
+        <button
+          onClick={() => setAttentionOnly((v) => !v)}
+          className={`text-sm px-3.5 py-1.5 rounded-full border transition-colors ${
+            attentionOnly
+              ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
+              : 'border-white/15 text-white/60 hover:bg-white/5'
+          }`}
+        >
+          Needs attention {attentionCount > 0 && `(${attentionCount})`}
+        </button>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          className="text-sm px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/70 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+        >
+          <option value="attention" className="bg-[#05030a]">Sort: Needs attention first</option>
+          <option value="stalest" className="bg-[#05030a]">Sort: Quietest first</option>
+          <option value="newest" className="bg-[#05030a]">Sort: Newest first</option>
+        </select>
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
@@ -118,19 +196,19 @@ export default function AdminProjectsPage() {
                 key={project.id}
                 href={`/admin/projects/${project.id}`}
                 className={`block rounded-xl border bg-white/[0.04] backdrop-blur-xl p-4 transition-colors ${
-                  isAtRisk(project) ? 'border-red-400/30' : 'border-white/[0.08] hover:border-white/20'
+                  needsAttention(project) ? 'border-amber-400/30' : 'border-white/[0.08] hover:border-white/20'
                 }`}
               >
                 <div className="flex justify-between items-start mb-1 gap-2">
                   <p className="font-semibold">{project.name}</p>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize whitespace-nowrap">
-                      {project.status}
-                    </span>
-                    <AtRiskBadge project={project} />
-                  </div>
+                  <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize whitespace-nowrap">
+                    {project.status}
+                  </span>
                 </div>
                 <p className="text-sm text-white/50 mb-2">{project.client.company}</p>
+                <div className="mb-2">
+                  <HealthBadges project={project} />
+                </div>
                 <div className="flex justify-between text-xs text-white/40">
                   <span>{project.timeline || '—'}</span>
                   <span>{new Date(project.createdAt).toLocaleDateString()}</span>
@@ -165,7 +243,7 @@ export default function AdminProjectsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {isAtRisk(project) ? <AtRiskBadge project={project} /> : <span className="text-xs text-emerald-300/70">On track</span>}
+                        <HealthBadges project={project} />
                       </td>
                       <td className="px-6 py-4 text-white/50">{project.timeline || '—'}</td>
                       <td className="px-6 py-4 text-white/50">
