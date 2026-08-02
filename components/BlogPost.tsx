@@ -301,7 +301,112 @@ function BlockRenderer({
 
     case 'pricingDemo':
       return <PricingDemo />;
+
+    case 'springboardDemo':
+      return <SpringboardDemo />;
   }
+}
+
+type Rect = { top: number; left: number; width: number; height: number };
+
+const DEMO_APPS = [
+  { label: 'Ridgeline', glyph: '⛰', from: '#4f46e5', to: '#1e1b4b' },
+  { label: 'Cadence', glyph: '◷', from: '#0ea5e9', to: '#0c2f52' },
+  { label: 'Ledger', glyph: '◧', from: '#059669', to: '#052e26' },
+  { label: 'Signal', glyph: '◉', from: '#e11d48', to: '#4c0519' },
+];
+
+/**
+ * Scaled replay of IOSHero's launch transition: tapping an icon measures
+ * its rect relative to the bounded stage, then AnimatePresence animates a
+ * panel from that exact rect to fill the stage. Same technique, smaller
+ * container, tap "back" to collapse it again instead of a real navigation.
+ */
+function SpringboardDemo() {
+  const [launching, setLaunching] = useState<Rect | null>(null);
+  const [open, setOpen] = useState(false);
+  const [openLabel, setOpenLabel] = useState('');
+  const stageRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const launch = (e: React.MouseEvent<HTMLButtonElement>, label: string) => {
+    const el = e.currentTarget.getBoundingClientRect();
+    const host = stageRef.current?.getBoundingClientRect();
+    if (!host) return;
+    setLaunching({ top: el.top - host.top, left: el.left - host.left, width: el.width, height: el.height });
+    setOpen(true);
+    setOpenLabel(label);
+  };
+
+  return (
+    <div
+      ref={stageRef}
+      className="relative h-72 md:h-80 rounded-2xl border border-white/10 overflow-hidden bg-[radial-gradient(ellipse_at_50%_20%,#221a4d_0%,#07050f_60%)]"
+    >
+      <div className="relative h-full flex flex-col items-center justify-center gap-6 px-6">
+        <motion.p
+          className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30"
+          animate={{ opacity: open ? 0 : 1 }}
+        >
+          tap an app to open
+        </motion.p>
+
+        <motion.div
+          className="grid grid-cols-4 gap-4 sm:gap-6"
+          animate={
+            open
+              ? { scale: 1.08, opacity: 0, filter: 'blur(6px)' }
+              : { scale: 1, opacity: 1, filter: 'blur(0px)' }
+          }
+          transition={{ duration: 0.5, ease: [0.32, 0, 0.2, 1] }}
+        >
+          {DEMO_APPS.map((app) => (
+            <button
+              key={app.label}
+              onClick={(e) => launch(e, app.label)}
+              aria-label={`Open ${app.label}`}
+              className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-[22%] grid place-items-center text-xl text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform duration-200 active:scale-90 hover:scale-105"
+              style={{ background: `linear-gradient(150deg, ${app.from}, ${app.to})` }}
+            >
+              <span className="relative">{app.glyph}</span>
+            </button>
+          ))}
+        </motion.div>
+      </div>
+
+      <AnimatePresence>
+        {open && launching && !reduceMotion && (
+          <motion.div
+            className="absolute z-20 overflow-hidden bg-[#07050f] grid place-items-center"
+            initial={{ ...launching, borderRadius: '22%' }}
+            animate={{ top: 0, left: 0, width: '100%', height: '100%', borderRadius: 0 }}
+            transition={{ duration: 0.55, ease: [0.32, 0.72, 0, 1] }}
+          >
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.35 }}
+              onClick={() => { setOpen(false); setLaunching(null); }}
+              className="absolute inset-0 grid place-items-center text-white/70 font-mono text-xs uppercase tracking-[0.3em]"
+            >
+              {openLabel} — tap to go back
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {open && reduceMotion && (
+        <div className="absolute inset-0 z-20 bg-[#07050f] grid place-items-center">
+          <button
+            onClick={() => { setOpen(false); setLaunching(null); }}
+            className="text-white/70 font-mono text-xs uppercase tracking-[0.3em]"
+          >
+            {openLabel} — tap to go back
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**

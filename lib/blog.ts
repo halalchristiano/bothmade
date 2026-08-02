@@ -108,7 +108,14 @@ export type Block =
    * lib/pricing.ts (the same data driving /start and Stripe checkout), so
    * these figures can never drift out of sync with the real pricing page.
    */
-  | { type: 'pricingDemo' };
+  | { type: 'pricingDemo' }
+  /**
+   * A scaled replay of the iOS page's Springboard: tap an icon and a panel
+   * expands from that exact icon's measured position to fill the demo
+   * container — the same rect-measurement + AnimatePresence technique as
+   * the real app-launch transition, bounded to a small stage.
+   */
+  | { type: 'springboardDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -1037,6 +1044,66 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
       {
         type: 'p',
         text: "A generic \"contact us for pricing\" isn't neutral — it's a lead-qualification filter that also happens to hide the number from people who'd rather not have a sales conversation before they know if they can afford one. We already run fixed-scope-fixed-price checkout end to end; the number was never a secret internally. The only decision was whether to also say it out loud on the website, and we didn't see a reason not to.",
+      },
+    ],
+  },
+  {
+    slug: 'recreating-the-ios-app-launch-animation',
+    title: 'Recreating the iOS app-launch animation, on the web',
+    dek: 'A shared-element transition — a home-screen icon expanding into the app it opens — built with two rects and AnimatePresence, no native APIs involved. Tap an icon below.',
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2026-12-13',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "Tap an app icon on an iPhone and it doesn't just appear — it grows out of exactly where you tapped, its corners squaring off as it fills the screen. It's one of the most recognizable pieces of motion in software, and it's a genuinely hard thing to fake on the web, because the icon and the fullscreen view it becomes are usually two completely different DOM elements with no natural way to animate between them. Our iOS service page opens with that exact transition anyway.",
+      },
+      {
+        type: 'statement',
+        text: "The trick is measuring where the icon actually is, then animating a second element from that measured rect to fill the screen. Nothing moves — the icon and the panel are just choreographed to line up.",
+      },
+      { type: 'heading', text: 'Tap an icon' },
+      { type: 'springboardDemo' },
+      {
+        type: 'p',
+        text: 'This is the same underlying technique as the real page, scaled to a small stage: tapping an icon calls getBoundingClientRect() on the button you clicked and on the container it lives in, subtracts the two to get the icon\'s position relative to the stage, and stores that as a plain { top, left, width, height } rect — not a DOM reference, just four numbers.',
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `const launch = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const el = e.currentTarget.getBoundingClientRect();
+  const host = stageRef.current!.getBoundingClientRect();
+
+  setLaunching({
+    top: el.top - host.top,
+    left: el.left - host.left,
+    width: el.width,
+    height: el.height,
+  });
+  setOpen(true);
+};`,
+      },
+      { type: 'heading', text: "A second element inherits that rect as its starting point" },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `<motion.div
+  initial={{ ...launching, borderRadius: '22%' }}
+  animate={{ top: 0, left: 0, width: '100%', height: '100%', borderRadius: 0 }}
+  transition={{ duration: 0.55, ease: [0.32, 0.72, 0, 1] }}
+/>`,
+      },
+      {
+        type: 'p',
+        text: "The icon you tapped never moves at all — it's a completely unrelated element that fades out under a blur. A brand-new motion.div mounts with initial values equal to the icon's measured rect, exactly overlapping it for one frame, then animates to fill the stage. Because the starting position, size, and corner radius all match the icon precisely, the illusion reads as one object growing rather than two objects that happen to be choreographed. This is the shared-element / FLIP pattern (First, Last, Invert, Play) — measure before, measure after, animate the delta — done by hand instead of through a dedicated layout-animation library.",
+      },
+      { type: 'heading', text: "Why not Framer Motion's layoutId" },
+      {
+        type: 'p',
+        text: "Framer Motion actually ships a purpose-built tool for exactly this — give two elements the same layoutId and it handles the FLIP measuring automatically, even across a conditional mount/unmount. We didn't reach for it here because the source and destination aren't really \"the same element in two states\" the way layoutId assumes — the icon stays a small square glyph forever, and the destination is a fully different fullscreen layout with its own content fading in on a delay. Manual rects gave more control over exactly when the icon fades versus when the panel's content arrives, at the cost of writing the coordinate math by hand instead of trusting a shared ID to infer it.",
       },
     ],
   },
