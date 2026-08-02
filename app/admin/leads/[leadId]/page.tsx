@@ -40,6 +40,7 @@ import {
   MoreVertical,
   Trash2,
   MailX,
+  FileSignature,
 } from 'lucide-react';
 import {
   ADD_ON_CATEGORIES,
@@ -168,12 +169,80 @@ export default function LeadDetailPage() {
   const [savingQual, setSavingQual] = useState(false);
 
   const [activityType, setActivityType] = useState<LeadActivityType>('note');
-  const [activityContent, setActivityContent] = useState('');
+  // A rep mid-call losing a half-typed note to a dropped connection or a
+  // stray refresh is the worst possible failure mode for this field — so
+  // the draft round-trips through localStorage, not just React state.
+  const [activityContent, setActivityContent] = useState(() =>
+    typeof window === 'undefined' ? '' : localStorage.getItem(`bothmade_activity_draft_${leadId}`) || ''
+  );
   const [activityUrl, setActivityUrl] = useState('');
   const [sendEmailNow, setSendEmailNow] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [loggingActivity, setLoggingActivity] = useState(false);
   const [activityMessage, setActivityMessage] = useState('');
+
+  useEffect(() => {
+    const key = `bothmade_activity_draft_${leadId}`;
+    if (activityContent) localStorage.setItem(key, activityContent);
+    else localStorage.removeItem(key);
+  }, [activityContent, leadId]);
+
+  // Quick per-section notes on the priced brief — a rep on the phone jots
+  // feedback against the exact item being discussed instead of one big note
+  // at the end. Keyed by section label; lives at this level (not inside the
+  // inline PricedCard) because that card is redefined on every render and
+  // would otherwise lose whatever's mid-typing on any unrelated state change.
+  const [sectionNoteDrafts, setSectionNoteDrafts] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      return JSON.parse(localStorage.getItem(`bothmade_section_notes_draft_${leadId}`) || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [sectionNoteObjection, setSectionNoteObjection] = useState<Record<string, boolean>>({});
+  const [sectionNoteSaving, setSectionNoteSaving] = useState<Record<string, boolean>>({});
+  const [sectionNoteJustLogged, setSectionNoteJustLogged] = useState<Record<string, boolean>>({});
+  const [sectionNoteError, setSectionNoteError] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const key = `bothmade_section_notes_draft_${leadId}`;
+    const hasAny = Object.values(sectionNoteDrafts).some(Boolean);
+    if (hasAny) localStorage.setItem(key, JSON.stringify(sectionNoteDrafts));
+    else localStorage.removeItem(key);
+  }, [sectionNoteDrafts, leadId]);
+
+  const handleLogSectionNote = async (sectionLabel: string) => {
+    const text = (sectionNoteDrafts[sectionLabel] || '').trim();
+    if (!text) return;
+    setSectionNoteSaving((prev) => ({ ...prev, [sectionLabel]: true }));
+    setSectionNoteError((prev) => ({ ...prev, [sectionLabel]: '' }));
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/activity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: sectionNoteObjection[sectionLabel] ? 'objection' : 'note',
+          content: `[${sectionLabel}] ${text}`,
+        }),
+      });
+      if (res.ok) {
+        setSectionNoteDrafts((prev) => ({ ...prev, [sectionLabel]: '' }));
+        setSectionNoteObjection((prev) => ({ ...prev, [sectionLabel]: false }));
+        setSectionNoteJustLogged((prev) => ({ ...prev, [sectionLabel]: true }));
+        setTimeout(() => {
+          setSectionNoteJustLogged((prev) => ({ ...prev, [sectionLabel]: false }));
+        }, 2500);
+        load();
+      } else {
+        setSectionNoteError((prev) => ({ ...prev, [sectionLabel]: "Couldn't save — your note is still here, try again." }));
+      }
+    } catch {
+      setSectionNoteError((prev) => ({ ...prev, [sectionLabel]: "No connection — your note is saved, try again when back online." }));
+    } finally {
+      setSectionNoteSaving((prev) => ({ ...prev, [sectionLabel]: false }));
+    }
+  };
 
   const [proposalService, setProposalServiceRaw] = useState<BaseService>('website');
   const [proposalAddOns, setProposalAddOns] = useState<AddOnKey[]>([]);
@@ -604,6 +673,8 @@ export default function LeadDetailPage() {
       } else {
         setActivityMessage(data.error || 'Failed to log activity');
       }
+    } catch {
+      setActivityMessage("No connection — your note is saved, try again when back online.");
     } finally {
       setLoggingActivity(false);
     }
@@ -1137,6 +1208,64 @@ export default function LeadDetailPage() {
                   )}
                 </>
               )}
+
+              {/* Quick note — jot their reaction to this exact item while on
+                  the call; logs straight to the lead's timeline. Its own
+                  high-contrast box, not just a thin divider, so it doesn't
+                  get lost under all the pitch copy above it. */}
+              <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
+                  <StickyNote size={13} /> Their feedback on this
+                </p>
+                {(() => {
+                  const prefix = `[${i.point}]`;
+                  const lastNote = lead.activities
+                    .filter((a) => a.content.startsWith(prefix))
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+                  if (!lastNote) return null;
+                  return (
+                    <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">
+                      <span className="font-semibold text-white/80">Last time: </span>
+                      {lastNote.content.slice(prefix.length).trim()}
+                      <span className="text-white/35"> · {new Date(lastNote.createdAt).toLocaleDateString()}</span>
+                    </p>
+                  );
+                })()}
+                <textarea
+                  value={sectionNoteDrafts[i.point] || ''}
+                  onChange={(e) =>
+                    setSectionNoteDrafts((prev) => ({ ...prev, [i.point]: e.target.value }))
+                  }
+                  placeholder="What did they say about this?"
+                  rows={2}
+                  className="w-full px-2.5 py-2 rounded-md bg-black/30 border border-sky-400/25 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/60 resize-none"
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <label className="flex items-center gap-1.5 text-xs text-white/60 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!sectionNoteObjection[i.point]}
+                      onChange={(e) =>
+                        setSectionNoteObjection((prev) => ({ ...prev, [i.point]: e.target.checked }))
+                      }
+                    />
+                    This was an objection
+                  </label>
+                  <button
+                    onClick={() => handleLogSectionNote(i.point)}
+                    disabled={sectionNoteSaving[i.point] || !(sectionNoteDrafts[i.point] || '').trim()}
+                    className="px-4 py-1.5 rounded-md bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  >
+                    {sectionNoteSaving[i.point] ? 'Logging...' : 'Log to timeline'}
+                  </button>
+                </div>
+                {sectionNoteJustLogged[i.point] && (
+                  <p className="text-xs font-semibold text-emerald-300 mt-1.5">Logged ✓</p>
+                )}
+                {sectionNoteError[i.point] && (
+                  <p className="text-xs text-red-300 mt-1.5">{sectionNoteError[i.point]}</p>
+                )}
+              </div>
             </div>
           );
         };
@@ -1646,6 +1775,16 @@ export default function LeadDetailPage() {
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={() =>
+                document.getElementById('proposal-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+              className="w-full mb-4 flex items-center justify-center gap-2 text-sm font-bold px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
+            >
+              <FileSignature size={15} /> Jump to proposal
+            </button>
+
             {lead.emailDeliveryFailedAt && (
               <div className="mb-4 rounded-lg bg-red-400/10 border border-red-400/20 p-3">
                 <div className="flex items-start justify-between gap-2">
@@ -2120,9 +2259,18 @@ export default function LeadDetailPage() {
                 <p className="text-white/40 text-sm">No activity logged yet.</p>
               )}
               {lead.activities.map((activity) => (
-                <div key={activity.id} className="p-4 rounded-lg bg-white/5 border-l-2 border-sky-400/50">
+                <div
+                  key={activity.id}
+                  className={`p-4 rounded-lg bg-white/5 border-l-2 ${
+                    activity.type === 'objection' ? 'border-red-400/50' : 'border-sky-400/50'
+                  }`}
+                >
                   <div className="flex justify-between items-start mb-1">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-sky-300">
+                    <span
+                      className={`text-xs font-semibold uppercase tracking-wide ${
+                        activity.type === 'objection' ? 'text-red-300' : 'text-sky-300'
+                      }`}
+                    >
                       {LEAD_ACTIVITY_LABELS[activity.type]}
                     </span>
                     <span className="text-xs text-white/30">
@@ -2149,7 +2297,10 @@ export default function LeadDetailPage() {
       </div>
 
       {/* Proposal builder — configure exactly what they want, then send a payment link or a contract */}
-      <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-xl p-6 md:p-8 mt-6 shadow-[0_0_60px_-15px_rgba(56,189,248,0.15)]">
+      <div
+        id="proposal-builder"
+        className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-xl p-6 md:p-8 mt-6 shadow-[0_0_60px_-15px_rgba(56,189,248,0.15)]"
+      >
         <div className="flex items-center gap-3 mb-1">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-bold">
             ✦

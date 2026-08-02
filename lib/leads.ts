@@ -135,7 +135,7 @@ export const PAIN_POINTS: Record<PainPointKey, string> = {
   'disconnected-tools': "Tools don't talk to each other",
 };
 
-export const LEAD_ACTIVITY_TYPES = ['note', 'email', 'call', 'loom', 'proposal'] as const;
+export const LEAD_ACTIVITY_TYPES = ['note', 'email', 'call', 'loom', 'proposal', 'objection'] as const;
 export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
 
 export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
@@ -144,6 +144,7 @@ export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
   call: 'Call',
   loom: 'Loom Video',
   proposal: 'Proposal',
+  objection: 'Objection',
 };
 
 export const LOST_REASON_PRESETS = [
