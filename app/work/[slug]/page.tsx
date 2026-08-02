@@ -1,10 +1,14 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CaseStudyPage } from '@/components/CaseStudy';
-import { CASE_STUDIES, getCaseStudy, getNextCaseStudy } from '@/lib/case-studies';
+import { PUBLISHED_CASE_STUDIES, getCaseStudy, getNextCaseStudy } from '@/lib/case-studies';
+
+export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return CASE_STUDIES.map(({ slug }) => ({ slug }));
+  // Only build pages for published studies — in-progress drafts must not be
+  // reachable by paid or organic traffic.
+  return PUBLISHED_CASE_STUDIES.map(({ slug }) => ({ slug }));
 }
 
 export async function generateMetadata({
@@ -36,7 +40,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const { slug } = await params;
   const study = getCaseStudy(slug);
 
-  if (!study) notFound();
+  // Defensive: only live studies are public (dynamicParams=false already 404s
+  // unpublished slugs, but never render an in-progress draft even if reached).
+  if (!study || study.status !== 'live') notFound();
 
   return <CaseStudyPage study={study} next={getNextCaseStudy(slug)} />;
 }

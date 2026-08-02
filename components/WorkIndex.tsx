@@ -8,7 +8,7 @@ import { Footer } from '@/components/Footer';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { PillCTA } from '@/components/ui';
 
-import { CASE_STUDIES, ACCENT_HEX } from '@/lib/case-studies';
+import { PUBLISHED_CASE_STUDIES, ACCENT_HEX } from '@/lib/case-studies';
 
 export function WorkIndex() {
   const [active, setActive] = useState<string | null>(null);
@@ -63,12 +63,12 @@ export function WorkIndex() {
               In the works
             </h2>
             <span className="font-mono text-sm text-white/25">
-              {String(CASE_STUDIES.length).padStart(2, '0')} projects
+              {String(PUBLISHED_CASE_STUDIES.length).padStart(2, '0')} projects
             </span>
           </div>
 
           <div>
-            {CASE_STUDIES.map((p, idx) => {
+            {PUBLISHED_CASE_STUDIES.map((p, idx) => {
               const accent = ACCENT_HEX[p.accent];
 
               return (
@@ -134,6 +134,12 @@ export function WorkIndex() {
                 </motion.article>
               );
             })}
+            {PUBLISHED_CASE_STUDIES.length === 0 && (
+              <p className="border-t border-white/10 py-16 text-center text-sm text-white/30">
+                Our first write-ups are on the way — the projects we&apos;re building now will be
+                documented here: the problem, the decisions, and what happened after launch.
+              </p>
+            )}
           </div>
         </div>
       </section>

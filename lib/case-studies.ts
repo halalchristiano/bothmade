@@ -195,16 +195,27 @@ export const CASE_STUDIES: CaseStudy[] = [
   },
 ];
 
+/**
+ * The only case studies safe to show publicly: `status: 'live'`. In-progress
+ * entries are unpublished drafts (the sample content is explicitly invented),
+ * so the public /work index and detail pages must build from this list — never
+ * the raw CASE_STUDIES — so paid traffic is never pointed at fiction. Flip a
+ * study to 'live' when it describes something real, and it appears everywhere.
+ */
+export const PUBLISHED_CASE_STUDIES: CaseStudy[] = CASE_STUDIES.filter(
+  (c) => c.status === 'live'
+);
+
 export function getCaseStudy(slug: string): CaseStudy | undefined {
   return CASE_STUDIES.find((c) => c.slug === slug);
 }
 
-/** Wraps around, so the last study points back to the first. */
+/** Wraps around the published studies, so the last points back to the first. */
 export function getNextCaseStudy(slug: string): CaseStudy | undefined {
-  if (CASE_STUDIES.length < 2) return undefined;
-  const i = CASE_STUDIES.findIndex((c) => c.slug === slug);
+  if (PUBLISHED_CASE_STUDIES.length < 2) return undefined;
+  const i = PUBLISHED_CASE_STUDIES.findIndex((c) => c.slug === slug);
   if (i === -1) return undefined;
-  return CASE_STUDIES[(i + 1) % CASE_STUDIES.length];
+  return PUBLISHED_CASE_STUDIES[(i + 1) % PUBLISHED_CASE_STUDIES.length];
 }
 
 export const ACCENT_HEX: Record<Accent, { from: string; to: string; text: string }> = {
