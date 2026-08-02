@@ -471,7 +471,7 @@ export default function ClientDashboard() {
             <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
               <h2 className="text-xl font-bold mb-6">Project Details</h2>
 
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h3 className="text-sm text-white/40 mb-1">Service Type</h3>
                   <p className="text-lg font-semibold capitalize">{project.baseService.replace('-', ' ')}</p>

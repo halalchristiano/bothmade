@@ -171,7 +171,7 @@ function NewProjectForm() {
       <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 space-y-6">
         <div>
           <h2 className="text-lg font-bold mb-4">Client</h2>
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
               <input value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputClass} />
@@ -201,7 +201,7 @@ function NewProjectForm() {
 
         <div className="pt-6 border-t border-white/10">
           <h2 className="text-lg font-bold mb-4">Project</h2>
-          <div className="grid md:grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
               ([key, service]) => (
                 <button
@@ -221,7 +221,7 @@ function NewProjectForm() {
             )}
           </div>
 
-          <div className="grid md:grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             {(Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).map(([key, addOn]) => (
               <label
                 key={key}
@@ -238,7 +238,7 @@ function NewProjectForm() {
             ))}
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium mb-2 text-white/70">Client Type</label>
               <select

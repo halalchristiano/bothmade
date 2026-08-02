@@ -117,7 +117,7 @@ export function BlogPostPage({
       {/* Prev / next */}
       {(prev || next) && (
         <section className="relative border-t border-white/10">
-          <div className="max-w-3xl mx-auto grid sm:grid-cols-2">
+          <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2">
             {prev ? (
               <AdjacentLink post={prev} direction="prev" />
             ) : (
@@ -561,7 +561,7 @@ function PricingDemo() {
 /** Scaled replay of ServicePage's stack-chip grid: two-axis stagger (column + per-chip) plus a hover lift. */
 function StackChipsDemo({ columns }: { columns: { heading: string; items: string[] }[] }) {
   return (
-    <div className="rounded-2xl border border-white/10 p-6 md:p-8 grid sm:grid-cols-2 gap-10">
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8 grid grid-cols-1 sm:grid-cols-2 gap-10">
       {columns.map((col, idx) => (
         <motion.div
           key={col.heading}
@@ -689,7 +689,7 @@ function ScrollCompareDemo() {
   const filler = Array.from({ length: 8 });
 
   return (
-    <div className="grid sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="rounded-2xl border border-white/10 overflow-hidden">
         <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-300/70 border-b border-white/10">
           native

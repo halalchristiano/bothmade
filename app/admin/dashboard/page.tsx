@@ -616,7 +616,7 @@ function SalesDashboard({
         />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card className="lg:col-span-2 p-6">
           <CardHeader icon={FolderKanban} tone="sky" title="Pipeline by Stage" action={<Link href="/admin/pipeline" className="text-xs text-sky-300/70 hover:text-sky-300">Full board →</Link>} />
           <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
@@ -715,7 +715,7 @@ function SalesDashboard({
         </div>
       )}
 
-      <div className="grid lg:grid-cols-2 gap-5 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
         <InsightsCard stats={stats} />
 
         <WonDealsCard stats={stats} />
@@ -1366,7 +1366,7 @@ function OpsDashboard({
 
       <RevenueChartCard revenueHistory={stats.revenueHistory} />
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card className="p-6" glow="emerald">
           <CardHeader icon={Inbox} tone="emerald" title="New Handoffs" subtitle="Give them a first touch" />
           {newHandoffs.length === 0 ? (
@@ -1396,7 +1396,7 @@ function OpsDashboard({
         <OverdueBalancesCard balances={stats.overdueBalances} />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <ActivityFeedCard activity={stats.activityFeed} />
 
         <TasksWidget />
@@ -1405,7 +1405,7 @@ function OpsDashboard({
       {stats.projectsAwaitingReply.length > 0 && (
         <Card className="p-6 mb-5" glow="sky">
           <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last, longest wait first" />
-          <div className="grid sm:grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
             {stats.projectsAwaitingReply.map((p) => (
               <ListRow
                 key={p.id}
@@ -1426,7 +1426,7 @@ function OpsDashboard({
       {stats.awaitingSignature.length > 0 && (
         <Card className="p-6 mb-8" glow="purple">
           <CardHeader icon={FileSignature} tone="purple" title="Contracts Awaiting Signature" />
-          <div className="grid sm:grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
             {stats.awaitingSignature.map((l) => (
               <ListRow
                 key={l.id}

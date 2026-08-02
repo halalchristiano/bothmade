@@ -114,7 +114,7 @@ export default function ClientProjectsPage() {
               <p className="text-white/50">We'll reach out soon to get your project started!</p>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {projects.map((project) => {
                 const stageIndex = Math.min(project.statusStage, 4);
                 const progress = ((stageIndex + 1) / STATUS_STAGES.length) * 100;
