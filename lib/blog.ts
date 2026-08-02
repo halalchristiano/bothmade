@@ -100,6 +100,39 @@ export type Project = {
       },
     ],
   },
+  {
+    slug: 'fixed-scope-fixed-price',
+    title: 'Fixed scope, fixed price',
+    dek: 'Why we quote a number before we write a line of code, and what has to be true for that to work.',
+    tag: 'Process',
+    accent: 'sky',
+    date: '2026-08-09',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "Hourly billing sounds fair until you're the one paying it. The incentive runs backwards: the studio gets paid more the longer the project takes, and you find out what something actually cost only after it's already been built. We quote a fixed number for a fixed scope before we start, because the alternative asks you to trust a stranger's time sheet instead of trusting a specific, written description of what you're getting.",
+      },
+      {
+        type: 'statement',
+        text: 'The price only moves if the scope moves — and the scope is a document, not a feeling.',
+      },
+      { type: 'heading', text: 'What has to happen first' },
+      {
+        type: 'p',
+        text: "A fixed price is only honest if the scoping was thorough. We spend real time before quoting anything — what screens exist, what the data model looks like, which parts are genuinely uncertain versus just undecided. If we can't scope something with confidence (a novel technical risk, an integration we've never touched), we say so and price that piece separately as a short, capped discovery phase, rather than quietly padding the main number to cover our own uncertainty.",
+      },
+      { type: 'heading', text: 'What happens when you want more' },
+      {
+        type: 'p',
+        text: "Scope changes on almost every real project — that's normal, not a failure of planning. When it happens, we price the addition on its own, you approve it before we start, and the original number never quietly grows to absorb it. You always know, at any point, exactly what the current total is and why.",
+      },
+      {
+        type: 'p',
+        text: "The tradeoff is on us, not you. If we underestimate something inside the agreed scope, that's our error to absorb, not a renegotiation. Fixed price only means something if it's actually fixed on the side that got it wrong.",
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
