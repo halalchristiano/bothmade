@@ -32,6 +32,7 @@ interface ProjectDetail {
   timeline: string | null;
   basePrice: number;
   totalPrice: number;
+  estimatedCompletionDate: string | null;
   amountPaid: number;
   balanceDue: number;
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
@@ -101,6 +102,9 @@ export default function AdminProjectDetailPage() {
   const [statusDraft, setStatusDraft] = useState('');
   const [statusDescription, setStatusDescription] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
+
+  const [estimatedDateDraft, setEstimatedDateDraft] = useState('');
+  const [estimatedDateSaving, setEstimatedDateSaving] = useState(false);
 
   const [messageContent, setMessageContent] = useState('');
   const [messageSending, setMessageSending] = useState(false);
@@ -247,6 +251,11 @@ export default function AdminProjectDetailPage() {
       if (data.success) {
         setProject(data.project);
         setStatusDraft(data.project.status);
+        setEstimatedDateDraft(
+          data.project.estimatedCompletionDate
+            ? data.project.estimatedCompletionDate.slice(0, 10)
+            : ''
+        );
       }
     } finally {
       setLoading(false);
@@ -274,6 +283,20 @@ export default function AdminProjectDetailPage() {
     loadQuestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  const handleSaveEstimatedDate = async () => {
+    setEstimatedDateSaving(true);
+    try {
+      await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estimatedCompletionDate: estimatedDateDraft || null }),
+      });
+      loadProject();
+    } finally {
+      setEstimatedDateSaving(false);
+    }
+  };
 
   const handleStatusUpdate = async () => {
     setStatusSaving(true);
@@ -511,6 +534,28 @@ export default function AdminProjectDetailPage() {
                   )}
                 </>
               )}
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <p className="text-sm font-semibold mb-3">Estimated Completion</p>
+              <p className="text-xs text-white/40 mb-3">
+                Shown to the client as a rough target for the current stage.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={estimatedDateDraft}
+                  onChange={(e) => setEstimatedDateDraft(e.target.value)}
+                  className={`${inputClass} flex-1`}
+                />
+                <button
+                  onClick={handleSaveEstimatedDate}
+                  disabled={estimatedDateSaving}
+                  className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  {estimatedDateSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 pt-6 border-t border-white/10">

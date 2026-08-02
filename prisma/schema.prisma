@@ -114,6 +114,10 @@ model Project {
   basePrice   Int      // in cents
   totalPrice  Int      // in cents (including add-ons)
 
+  // Rough target date for the current stage, shown to the client for
+  // reassurance — set manually by the team, not derived/computed.
+  estimatedCompletionDate DateTime?
+
   // Deliverables
   deliverables String? // JSON array of milestone/deliverable objects
 

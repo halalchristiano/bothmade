@@ -18,6 +18,8 @@ interface Project {
   totalPrice: number;
   amountPaid: number;
   balanceDue: number;
+  payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
+  estimatedCompletionDate: string | null;
   createdAt: string;
   updatedAt: string;
   messages: any[];
@@ -82,6 +84,8 @@ export default function ClientDashboard() {
   // "New" badges on updates/deliverables: remember the last time this client
   // actually looked at the dashboard, so anything added since then stands out.
   const [lastVisitAt, setLastVisitAt] = useState<number | null>(null);
+
+  const [summaryCopied, setSummaryCopied] = useState(false);
 
   useEffect(() => {
     const storageKey = `bothmade_last_visit_${projectId}`;
@@ -239,6 +243,25 @@ export default function ClientDashboard() {
   const currentStage = STATUS_STAGES[Math.min(project.statusStage, 4)];
   const progressPct = ((Math.min(project.statusStage + 1, 5)) / 5) * 100;
 
+  const handleCopySummary = () => {
+    const latestUpdate = project.updates[0];
+    const lines = [
+      `${project.name} — status summary`,
+      `Stage: ${currentStage} (${Math.min(project.statusStage + 1, 5)}/5)`,
+      project.estimatedCompletionDate
+        ? `Estimated target: ${new Date(project.estimatedCompletionDate).toLocaleDateString()}`
+        : null,
+      `Balance due: $${(project.balanceDue / 100).toLocaleString()}`,
+      latestUpdate ? `Latest update: ${latestUpdate.title} (${new Date(latestUpdate.createdAt).toLocaleDateString()})` : null,
+      '',
+      `View live: ${typeof window !== 'undefined' ? window.location.href : ''}`,
+    ].filter(Boolean);
+
+    navigator.clipboard.writeText(lines.join('\n'));
+    setSummaryCopied(true);
+    setTimeout(() => setSummaryCopied(false), 2000);
+  };
+
   return (
     <main className="relative min-h-screen bg-[#05030a] text-white overflow-hidden">
       <GridBackdrop className="opacity-40" />
@@ -252,14 +275,22 @@ export default function ClientDashboard() {
 
         {/* Project header */}
         <div className="border-b border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent">
-          <div className="max-w-6xl mx-auto px-6 py-10">
-            <p className="text-xs font-semibold uppercase tracking-wide text-sky-300/80 mb-2">
-              {project.client.company}
-            </p>
-            <h1 className="text-3xl md:text-4xl font-bold">{project.name}</h1>
-            <p className="text-white/40 text-sm mt-1">
-              Created {new Date(project.createdAt).toLocaleDateString()}
-            </p>
+          <div className="max-w-6xl mx-auto px-6 py-10 flex justify-between items-start gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-300/80 mb-2">
+                {project.client.company}
+              </p>
+              <h1 className="text-3xl md:text-4xl font-bold">{project.name}</h1>
+              <p className="text-white/40 text-sm mt-1">
+                Created {new Date(project.createdAt).toLocaleDateString()}
+              </p>
+            </div>
+            <button
+              onClick={handleCopySummary}
+              className="shrink-0 rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 transition-colors whitespace-nowrap"
+            >
+              {summaryCopied ? 'Copied ✓' : 'Copy status summary'}
+            </button>
           </div>
         </div>
 
@@ -285,6 +316,11 @@ export default function ClientDashboard() {
                 {tab === 'timeline' && project.updates.some((u) => isNew(u.createdAt)) && (
                   <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-400 border border-[#05030a]" />
                 )}
+                {tab === 'onboarding' && questions.some((q) => !q.response) && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-black text-[10px] font-bold">
+                    {questions.filter((q) => !q.response).length}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -292,6 +328,28 @@ export default function ClientDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {/* Onboarding nudge */}
+            {questions.some((q) => !q.response) && (
+              <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 backdrop-blur-xl p-6 flex justify-between items-center gap-4">
+                <div>
+                  <p className="font-semibold text-amber-200">
+                    {questions.filter((q) => !q.response).length === 1
+                      ? '1 question needs your answer'
+                      : `${questions.filter((q) => !q.response).length} questions need your answer`}
+                  </p>
+                  <p className="text-sm text-amber-200/70 mt-0.5">
+                    Answering these helps the team keep moving without waiting on you.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('onboarding')}
+                  className="shrink-0 rounded-full bg-amber-400 text-black text-sm font-semibold px-5 py-2 hover:opacity-90 transition-opacity whitespace-nowrap"
+                >
+                  Answer now
+                </button>
+              </div>
+            )}
+
             {/* Current Status */}
             <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
               <h2 className="text-xl font-bold mb-6">Project Status</h2>
@@ -302,12 +360,25 @@ export default function ClientDashboard() {
                   {Math.min(project.statusStage + 1, 5)}/5
                 </span>
               </div>
-              <div className="w-full bg-white/10 rounded-full h-2 mb-8">
+              <div className="w-full bg-white/10 rounded-full h-2 mb-2">
                 <div
                   className="bg-gradient-to-r from-sky-400 to-purple-500 h-2 rounded-full transition-all"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
+              {project.estimatedCompletionDate && (
+                <p className="text-xs text-white/40 mb-6">
+                  Estimated target:{' '}
+                  <span className="text-white/70 font-medium">
+                    {new Date(project.estimatedCompletionDate).toLocaleDateString(undefined, {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </span>
+                </p>
+              )}
+              {!project.estimatedCompletionDate && <div className="mb-6" />}
 
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {STATUS_STAGES.map((stage, idx) => {
@@ -360,15 +431,6 @@ export default function ClientDashboard() {
                   <p className="text-lg font-semibold">${(project.totalPrice / 100).toLocaleString()}</p>
                 </div>
 
-                {project.balanceDue > 0 && (
-                  <div>
-                    <h3 className="text-sm text-white/40 mb-1">Balance Due</h3>
-                    <p className="text-lg font-semibold text-amber-300">
-                      ${(project.balanceDue / 100).toLocaleString()}
-                    </p>
-                  </div>
-                )}
-
                 {project.addOns.length > 0 && (
                   <div>
                     <h3 className="text-sm text-white/40 mb-1">Add-ons</h3>
@@ -378,6 +440,53 @@ export default function ClientDashboard() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Payments */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+              <h2 className="text-xl font-bold mb-6">Payments</h2>
+
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-white/40">Paid</span>
+                <span className="text-emerald-300 font-medium">
+                  ${(project.amountPaid / 100).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm mb-3">
+                <span className="text-white/40">Balance Due</span>
+                <span className={`font-medium ${project.balanceDue > 0 ? 'text-amber-300' : 'text-white/40'}`}>
+                  ${(project.balanceDue / 100).toLocaleString()}
+                </span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-1.5 mb-6">
+                <div
+                  className="bg-gradient-to-r from-emerald-400 to-sky-400 h-1.5 rounded-full transition-all"
+                  style={{ width: `${Math.min(100, (project.amountPaid / project.totalPrice) * 100)}%` }}
+                />
+              </div>
+
+              {project.payments.length > 0 ? (
+                <div className="space-y-2">
+                  {project.payments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="flex justify-between items-center py-2 border-b border-white/10 last:border-b-0"
+                    >
+                      <div>
+                        <p className="text-sm font-medium capitalize">{payment.type}</p>
+                        <p className="text-xs text-white/30">
+                          {new Date(payment.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-emerald-300">
+                        ${(payment.amount / 100).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-white/40">No payments recorded yet.</p>
+              )}
             </div>
 
             {/* Signed Agreement */}
@@ -504,7 +613,10 @@ export default function ClientDashboard() {
         {/* Messages Tab */}
         {activeTab === 'messages' && (
           <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
-            <h2 className="text-xl font-bold mb-6">Project Messages</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Project Messages</h2>
+              <p className="text-xs text-white/40">Our team typically replies within one business day</p>
+            </div>
 
             <div className="space-y-4 mb-8 max-h-96 overflow-y-auto">
               {project.messages.length > 0 ? (
