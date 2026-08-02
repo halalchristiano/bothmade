@@ -274,12 +274,12 @@ function NewProjectForm() {
           </div>
 
           {customItems.length > 0 && (
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-1.5">
-              <p className="text-xs text-white/40 mb-1">
-                Custom items carried over from the proposal
+            <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-4 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-300">
+                ⚠ Custom items carried over from the proposal — not in the standard catalogue
               </p>
               {customItems.map((item, i) => (
-                <div key={i} className="flex justify-between text-sm text-white/70">
+                <div key={i} className="flex justify-between text-sm font-medium text-white">
                   <span>{item.label}</span>
                   <span>{formatCents(item.priceCents)}</span>
                 </div>

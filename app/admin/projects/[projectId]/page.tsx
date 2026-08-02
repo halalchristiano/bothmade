@@ -461,12 +461,15 @@ export default function AdminProjectDetailPage() {
                 </div>
               )}
               {project.customItems && project.customItems.length > 0 && (
-                <div>
-                  <p className="text-white/40 mb-1">Custom items</p>
+                <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-300 mb-2">
+                    ⚠ Custom items — not in the standard catalogue
+                  </p>
                   <div className="space-y-1">
                     {project.customItems.map((item, i) => (
-                      <p key={i} className="font-medium">
-                        {item.label} <span className="text-white/40">({formatCents(item.priceCents)})</span>
+                      <p key={i} className="font-medium flex justify-between">
+                        <span>{item.label}</span>
+                        <span className="text-white/60">{formatCents(item.priceCents)}</span>
                       </p>
                     ))}
                   </div>

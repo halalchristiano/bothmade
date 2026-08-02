@@ -2246,11 +2246,11 @@ export default function LeadDetailPage() {
                 {customItems.map((item, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+                    className="flex items-center justify-between gap-3 rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3"
                   >
-                    <span className="text-sm">{item.label}</span>
+                    <span className="text-sm font-medium">{item.label}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-white/60">{formatCents(item.priceCents)}</span>
+                      <span className="text-sm font-medium text-amber-200">{formatCents(item.priceCents)}</span>
                       <button
                         onClick={() => removeCustomItem(i)}
                         aria-label={`Remove ${item.label}`}
@@ -2348,7 +2348,7 @@ export default function LeadDetailPage() {
                   </div>
                 )}
                 {customItems.map((item, i) => (
-                  <div key={i} className="flex justify-between text-white/60">
+                  <div key={i} className="flex justify-between font-medium text-amber-200">
                     <span>{item.label}</span>
                     <span>{formatCents(item.priceCents)}</span>
                   </div>
