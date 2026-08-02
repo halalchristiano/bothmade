@@ -3,9 +3,22 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { motion, type Variants } from 'framer-motion';
 import { ClientHeader } from '@/components/portal/ClientHeader';
-import { GridBackdrop } from '@/components/ui';
+import { GridBackdrop, CountUp } from '@/components/ui';
 import { formatCents } from '@/lib/pricing';
+
+const EASE = [0.16, 1, 0.3, 1] as const;
+
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: EASE } },
+};
+
+const stagger: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.1, delayChildren: 0.1 } },
+};
 
 interface ProjectSummary {
   id: string;
@@ -99,8 +112,10 @@ export default function ClientProjectsPage() {
         <ClientHeader />
 
         <div className="max-w-6xl mx-auto px-6 py-12">
-          <p className="text-sm text-white/40 mb-1">Welcome back{company ? `, ${company}` : ''}</p>
-          <h1 className="text-3xl font-bold mb-8">Your Projects</h1>
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE }}>
+            <p className="text-sm text-white/40 mb-1">Welcome back{company ? `, ${company}` : ''}</p>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-8">Your Projects</h1>
+          </motion.div>
 
           {error && (
             <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-red-300 mb-6">
@@ -109,31 +124,52 @@ export default function ClientProjectsPage() {
           )}
 
           {projects.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-12 text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: EASE, delay: 0.15 }}
+              className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-12 text-center"
+            >
               <h2 className="text-xl font-bold mb-2">No projects yet</h2>
               <p className="text-white/50">We'll reach out soon to get your project started!</p>
-            </div>
+            </motion.div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <motion.div
+              variants={stagger}
+              initial="hidden"
+              animate="show"
+              className="grid grid-cols-1 md:grid-cols-2 gap-6"
+            >
               {projects.map((project) => {
                 const stageIndex = Math.min(project.statusStage, 4);
                 const progress = ((stageIndex + 1) / STATUS_STAGES.length) * 100;
 
                 return (
-                  <div
+                  <motion.div
                     key={project.id}
-                    className="group rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-xl p-8 hover:border-sky-400/30 hover:shadow-[0_0_50px_-15px_rgba(56,189,248,0.25)] transition-all"
+                    variants={fadeUp}
+                    whileHover={{ y: -4 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                    className="group rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-xl p-8 hover:border-sky-400/30 hover:shadow-[0_0_50px_-15px_rgba(56,189,248,0.25)] transition-colors"
                   >
-                    <div className="flex justify-between items-start mb-5">
-                      <div>
-                        <h2 className="text-xl font-bold">{project.name}</h2>
-                        <p className="text-sm text-white/50 capitalize">
-                          {project.baseService.replace('-', ' ')} · {formatCents(project.totalPrice)}
-                        </p>
+                    <div className="flex justify-between items-start mb-5 gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <span className="shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400/25 to-purple-500/25 border border-white/10 text-sm font-bold text-white/90">
+                          {project.name.charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0">
+                          <h2 className="text-xl font-bold break-words">{project.name}</h2>
+                          <p className="text-sm text-white/50 capitalize">
+                            {project.baseService.replace('-', ' ')} ·{' '}
+                            <CountUp value={formatCents(project.totalPrice)} />
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="shrink-0 flex items-center gap-2">
                         {unseenIds.has(project.id) && (
-                          <span
+                          <motion.span
+                            animate={{ opacity: [1, 0.4, 1] }}
+                            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
                             className="h-2 w-2 rounded-full bg-emerald-400"
                             title="New activity"
                             aria-label="New activity"
@@ -146,10 +182,12 @@ export default function ClientProjectsPage() {
                     </div>
 
                     <div className="mb-2">
-                      <div className="w-full bg-white/10 rounded-full h-1.5">
-                        <div
-                          className="bg-gradient-to-r from-sky-400 to-purple-500 h-1.5 rounded-full transition-all"
-                          style={{ width: `${progress}%` }}
+                      <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          transition={{ duration: 0.9, ease: EASE, delay: 0.3 }}
+                          className="bg-gradient-to-r from-sky-400 to-purple-500 h-1.5 rounded-full"
                         />
                       </div>
                     </div>
@@ -170,10 +208,10 @@ export default function ClientProjectsPage() {
                       </span>
                       <span className="absolute inset-0 translate-y-full bg-white transition-transform duration-500 ease-[cubic-bezier(0.76,0,0.24,1)] group-hover/btn:translate-y-0" />
                     </Link>
-                  </div>
+                  </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
           )}
         </div>
       </div>
