@@ -81,6 +81,8 @@ export default function AdminSettingsPage() {
   const [showGmailGuide, setShowGmailGuide] = useState(false);
   const [showAppPasswordFallback, setShowAppPasswordFallback] = useState(false);
   const [oauthResult, setOauthResult] = useState<{ ok: boolean; reason?: string } | null>(null);
+  const [settingUpBounceFolder, setSettingUpBounceFolder] = useState(false);
+  const [bounceFolderResult, setBounceFolderResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -229,6 +231,29 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const handleSetupBounceFolder = async () => {
+    setSettingUpBounceFolder(true);
+    setBounceFolderResult(null);
+    try {
+      const res = await fetch('/api/admin/settings/gmail-oauth/bounce-folder', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setBounceFolderResult({ ok: false, message: data.error || 'Failed to set it up' });
+        return;
+      }
+      setBounceFolderResult({
+        ok: true,
+        message: data.alreadyExisted
+          ? `Already set up — bounces route to "${data.labelName}".`
+          : `Done — bounces now skip the inbox and land in "${data.labelName}".`,
+      });
+    } catch {
+      setBounceFolderResult({ ok: false, message: 'Failed to set it up' });
+    } finally {
+      setSettingUpBounceFolder(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
@@ -363,24 +388,52 @@ export default function AdminSettingsPage() {
         )}
 
         {status.connected ? (
-          <div className="mt-4 flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
-            <div className="flex items-center gap-2 text-sm text-emerald-200">
-              <CheckCircle2 size={16} />
-              <span>
-                Connected as {status.gmailAddress}
-                <span className="text-emerald-200/50">
-                  {' '}
-                  — via {status.connectedVia === 'oauth' ? 'Google sign-in' : 'App Password'}
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm text-emerald-200">
+                <CheckCircle2 size={16} />
+                <span>
+                  Connected as {status.gmailAddress}
+                  <span className="text-emerald-200/50">
+                    {' '}
+                    — via {status.connectedVia === 'oauth' ? 'Google sign-in' : 'App Password'}
+                  </span>
                 </span>
-              </span>
+              </div>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className="text-xs text-white/40 hover:text-red-300 transition-colors"
+              >
+                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+              </button>
             </div>
-            <button
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className="text-xs text-white/40 hover:text-red-300 transition-colors"
-            >
-              {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-            </button>
+
+            {status.connectedVia === 'oauth' && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Keep bounces out of your inbox</p>
+                    <p className="text-xs text-white/40 mt-0.5">
+                      Auto-files "this address doesn't exist" delivery failures into their own Gmail label
+                      instead of your inbox — check it for leads that need a call instead of an email.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleSetupBounceFolder}
+                    disabled={settingUpBounceFolder}
+                    className="shrink-0 px-3.5 py-2 rounded-xl border border-white/15 text-xs font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+                  >
+                    {settingUpBounceFolder ? 'Setting up...' : 'Set up bounce folder'}
+                  </button>
+                </div>
+                {bounceFolderResult && (
+                  <p className={`text-xs mt-2 ${bounceFolderResult.ok ? 'text-emerald-300' : 'text-red-300'}`}>
+                    {bounceFolderResult.message}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         ) : status.willLandInGmailSent ? (
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-sm text-emerald-200">

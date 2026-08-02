@@ -4,7 +4,14 @@ import { encodeMimeMessage } from '@/lib/gmail-mime';
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/userinfo.email',
+  // Lets us create the "Bounced — Call Instead" label + inbox-skip filter
+  // (setupBounceFolder below) so delivery-failure notices never clutter
+  // the inbox — not needed just to send.
+  'https://www.googleapis.com/auth/gmail.labels',
+  'https://www.googleapis.com/auth/gmail.settings.basic',
 ];
+
+export const BOUNCE_LABEL_NAME = 'Bounced — Call Instead';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
@@ -71,6 +78,69 @@ export function createGmailOAuthBatchClient(refreshToken: string): GmailOAuthCli
   const client = buildOAuthClient();
   client.setCredentials({ refresh_token: refreshToken });
   return client;
+}
+
+export interface BounceFolderResult {
+  ok: boolean;
+  alreadyExisted: boolean;
+  error?: string;
+}
+
+/**
+ * Creates a "Bounced — Call Instead" label plus a Gmail filter that catches
+ * delivery-failure notices (from mailer-daemon/postmaster, or the standard
+ * "Delivery Status Notification (Failure)" / "Undelivered Mail Returned to
+ * Sender" subjects) and routes them straight to that label, skipping the
+ * inbox — so a bounce never has to be manually spotted and filed away, and
+ * the inbox stays leads-only. Safe to call more than once: reuses the
+ * label/filter if they already exist instead of duplicating them.
+ */
+export async function setupBounceFolder(client: GmailOAuthClient): Promise<BounceFolderResult> {
+  try {
+    const gmail = google.gmail({ version: 'v1', auth: client });
+
+    const { data: labelList } = await gmail.users.labels.list({ userId: 'me' });
+    let label = labelList.labels?.find((l) => l.name === BOUNCE_LABEL_NAME);
+    let alreadyExisted = !!label;
+
+    if (!label) {
+      const { data: created } = await gmail.users.labels.create({
+        userId: 'me',
+        requestBody: {
+          name: BOUNCE_LABEL_NAME,
+          labelListVisibility: 'labelShow',
+          messageListVisibility: 'show',
+        },
+      });
+      label = created;
+    }
+    if (!label?.id) throw new Error('Could not create or find the bounce label');
+
+    const bounceQuery =
+      '(from:(mailer-daemon OR postmaster OR mail-daemon) OR subject:("Delivery Status Notification" OR "Undelivered Mail Returned to Sender" OR "Mail delivery failed" OR "failure notice"))';
+
+    const { data: filterList } = await gmail.users.settings.filters.list({ userId: 'me' });
+    const filterExists = filterList.filter?.some(
+      (f) => f.criteria?.query === bounceQuery && f.action?.addLabelIds?.includes(label!.id!)
+    );
+
+    if (!filterExists) {
+      await gmail.users.settings.filters.create({
+        userId: 'me',
+        requestBody: {
+          criteria: { query: bounceQuery },
+          action: { addLabelIds: [label.id], removeLabelIds: ['INBOX'] },
+        },
+      });
+    } else {
+      alreadyExisted = true;
+    }
+
+    return { ok: true, alreadyExisted };
+  } catch (error) {
+    console.error('Gmail bounce-folder setup failed:', error);
+    return { ok: false, alreadyExisted: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
 }
 
 /** Sends one email through the Gmail API as the OAuth-connected account — lands in their real Sent folder, no App Password involved. */
