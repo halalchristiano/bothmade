@@ -49,7 +49,71 @@ const HEADER_ALIASES: Record<string, string> = {
   noteforevan: 'salesnote',
   evannote: 'salesnote',
   strategynote: 'salesnote',
+  currentwebsite: 'originalwebsite',
+  thingstheyneed: 'needfreeform',
+  whattheyneed: 'needfreeform',
+  lowestestimate: 'estimatelow',
+  lowestimate: 'estimatelow',
+  minimumestimate: 'estimatelow',
+  highestestimate: 'estimatehigh',
+  highestimate: 'estimatehigh',
+  maximumestimate: 'estimatehigh',
+  range: 'estimaterange',
+  estimaterange: 'estimaterange',
+  pricerange: 'estimaterange',
 };
+
+// "$15,000" -> 1500000 cents. Returns null for anything that isn't a number.
+function parseMoneyCents(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^0-9.]/g, '');
+  const dollars = parseFloat(cleaned);
+  return !isNaN(dollars) && dollars > 0 ? Math.round(dollars * 100) : null;
+}
+
+// "$15,000 - $30,000" -> [1500000, 3000000]. Used only to backfill a low/high
+// that weren't given as their own columns.
+function parseMoneyRange(raw: string | undefined): [number | null, number | null] {
+  if (!raw) return [null, null];
+  const parts = raw.split(/[-–—]|\bto\b/i).map((p) => parseMoneyCents(p));
+  const nums = parts.filter((n): n is number => n !== null);
+  if (nums.length === 0) return [null, null];
+  if (nums.length === 1) return [nums[0], null];
+  return [Math.min(...nums), Math.max(...nums)];
+}
+
+/**
+ * Gathers "Pain point 1", "Pain point 2", ... style columns into a single
+ * newline-separated block, in numeric order (so 10 lands after 9, not after
+ * 1). Any freeform column covering the same ground is appended, split on
+ * newlines and semicolons so one cell can carry several points.
+ *
+ * Each resulting line is expected to read "Point: explanation for this
+ * business" — see parseSalesPoints() for how it's read back.
+ */
+function collectNumberedPoints(
+  row: Record<string, string>,
+  prefix: string,
+  freeformKey?: string
+): string | null {
+  const numbered = Object.entries(row)
+    .map(([key, value]) => {
+      const match = key.match(new RegExp(`^${prefix}(\\d+)$`));
+      return match ? { n: parseInt(match[1], 10), value: value.trim() } : null;
+    })
+    .filter((x): x is { n: number; value: string } => !!x && !!x.value)
+    .sort((a, b) => a.n - b.n)
+    .map((x) => x.value);
+
+  const freeform = freeformKey && row[freeformKey] ? row[freeformKey] : '';
+  const extra = freeform
+    .split(/[\n;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const all = [...numbered, ...extra];
+  return all.length > 0 ? all.join('\n') : null;
+}
 
 /**
  * Maps a raw CSV row (keyed however the header row happened to read) onto
@@ -66,7 +130,16 @@ function normalizeRow(row: Record<string, string>): Record<string, string> {
     const key = normalizeKey(rawKey);
     let canonical = HEADER_ALIASES[key];
     if (!canonical) {
-      if (key.includes('coldemail') || ((key.includes('personalized') || key.includes('personalised')) && key.includes('email'))) {
+      // Numbered point columns ("Pain point 3", "Upsell point 10") pass
+      // through untouched — collectNumberedPoints() gathers them later.
+      // Checked first so the looser branches below can't swallow them.
+      if (/^(painpoint|essentialpoint|upsellpoint)\d+$/.test(key)) {
+        canonical = key;
+      } else if (key.includes('upsold') || key.includes('upsell')) {
+        canonical = 'upsellfreeform';
+      } else if (key.includes('essential')) {
+        canonical = 'needfreeform';
+      } else if (key.includes('coldemail') || ((key.includes('personalized') || key.includes('personalised')) && key.includes('email'))) {
         canonical = 'personalisedcoldemail';
       } else if (key.includes('observation')) {
         canonical = 'personalizedobservation';
@@ -112,8 +185,17 @@ function normalizeRow(row: Record<string, string>): Record<string, string> {
  * as a one-click link on the lead detail page), salesnote (a strategic
  * note for whoever works the lead, distinct from general notes), and
  * address, industry, servicestopitch (folded into notes since there's no
- * dedicated column for them yet). Header matching is tolerant of
- * real-world spelling/spacing — see
+ * dedicated column for them yet).
+ *
+ * It also accepts the hand-written sales brief columns: "Pain point 1..N",
+ * "Essential point 1..N" and "Upsell point 1..N", each cell written as
+ * "Point: explanation for this specific business", plus the freeform
+ * equivalents ("Things they need", "Things they could be upsold on") and
+ * the quotable range ("Lowest estimate", "Highest estimate", or a single
+ * "Range" column). Numbered columns are gathered in numeric order into one
+ * newline-separated block per group.
+ *
+ * Header matching is tolerant of real-world spelling/spacing — see
  * normalizeRow() — since research CSVs rarely use our exact field names.
  */
 export async function POST(request: NextRequest) {
@@ -145,11 +227,18 @@ export async function POST(request: NextRequest) {
           .filter(isPainPointKey)
           .join(',');
 
-        // Strip currency symbols/commas ("$15,313" -> "15313") before parsing —
-        // research CSVs format the value for human readability, not parseFloat.
-        const cleanedValue = (row.estimatedvalue || '').replace(/[^0-9.]/g, '');
-        const dollars = parseFloat(cleanedValue);
-        const estimatedValue = !isNaN(dollars) && dollars > 0 ? Math.round(dollars * 100) : null;
+        // Research CSVs format money for human readability, not parseFloat.
+        const estimatedValue = parseMoneyCents(row.estimatedvalue);
+
+        // Low/high win over the combined range column; the range only fills
+        // in whichever end wasn't given explicitly.
+        const [rangeLow, rangeHigh] = parseMoneyRange(row.estimaterange);
+        const estimateLowCents = parseMoneyCents(row.estimatelow) ?? rangeLow;
+        const estimateHighCents = parseMoneyCents(row.estimatehigh) ?? rangeHigh;
+
+        const customPainPoints = collectNumberedPoints(row, 'painpoint');
+        const essentialPoints = collectNumberedPoints(row, 'essentialpoint', 'needfreeform');
+        const upsellPoints = collectNumberedPoints(row, 'upsellpoint', 'upsellfreeform');
 
         const status = isLeadStatus(row.status?.trim()) ? row.status.trim() : undefined;
 
@@ -180,6 +269,11 @@ export async function POST(request: NextRequest) {
           mockupUrl: row.mockupurl?.trim() || null,
           originalWebsite: row.originalwebsite?.trim() || null,
           salesNote: row.salesnote?.trim() || null,
+          customPainPoints,
+          essentialPoints,
+          upsellPoints,
+          estimateLowCents,
+          estimateHighCents,
           assignedToId: session.userId,
         };
       })

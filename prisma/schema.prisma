@@ -260,6 +260,22 @@ model Lead {
   // opposed to `notes`, which is general freeform info about the business.
   salesNote String?
 
+  // Hand-written, per-lead sales content from the research CSV. Each holds
+  // one "Point: explanation written about this specific business" per line.
+  // Stored as text rather than 25 separate columns because the count varies
+  // per lead and nothing ever queries an individual point — they're only
+  // ever read back as an ordered list on the lead's page. When present these
+  // take precedence over the generic pain-point heuristics, since a human
+  // who looked at the business beats a lookup table every time.
+  customPainPoints String? @db.Text
+  essentialPoints  String? @db.Text
+  upsellPoints     String? @db.Text
+
+  // The quotable range for this lead, in cents. Low = core essentials only,
+  // high = everything including upsells.
+  estimateLowCents  Int?
+  estimateHighCents Int?
+
   // BANT-style qualification — structured so "qualified" means something
   // consistent instead of a gut call. Each is a freeform answer summary,
   // not just a checkbox, since the real value is in what was actually said.

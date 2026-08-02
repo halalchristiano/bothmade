@@ -75,6 +75,11 @@ export async function PATCH(
       assignedToId,
       originalWebsite,
       salesNote,
+      customPainPoints,
+      essentialPoints,
+      upsellPoints,
+      estimateLowCents,
+      estimateHighCents,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -146,6 +151,11 @@ export async function PATCH(
         assignedToId: assignedToId !== undefined ? (assignedToId || null) : undefined,
         originalWebsite: originalWebsite !== undefined ? originalWebsite : undefined,
         salesNote: salesNote !== undefined ? salesNote : undefined,
+        customPainPoints: customPainPoints !== undefined ? customPainPoints : undefined,
+        essentialPoints: essentialPoints !== undefined ? essentialPoints : undefined,
+        upsellPoints: upsellPoints !== undefined ? upsellPoints : undefined,
+        estimateLowCents: estimateLowCents !== undefined ? estimateLowCents : undefined,
+        estimateHighCents: estimateHighCents !== undefined ? estimateHighCents : undefined,
       },
     });
 

@@ -10,6 +10,7 @@ import {
   LEAD_ACTIVITY_LABELS,
   PAIN_POINTS,
   painPointSentence,
+  parseSalesPoints,
   type LeadStatus,
   type LeadActivityType,
   type PainPointKey,
@@ -100,6 +101,11 @@ interface LeadDetail {
   emailDeliveryFailedReason: string | null;
   originalWebsite: string | null;
   salesNote: string | null;
+  customPainPoints: string | null;
+  essentialPoints: string | null;
+  upsellPoints: string | null;
+  estimateLowCents: number | null;
+  estimateHighCents: number | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
 }
@@ -683,11 +689,27 @@ export default function LeadDetailPage() {
       )}
 
       {(() => {
+        // Hand-written content from the research CSV always wins over the
+        // generic heuristics — a human who actually looked at the business
+        // beats a lookup table. The heuristics stay as the fallback (and, for
+        // pain points, as extra call scripts underneath).
+        const writtenPains = parseSalesPoints(lead.customPainPoints);
+        const writtenNeeds = parseSalesPoints(lead.essentialPoints);
+        const writtenUpsell = parseSalesPoints(lead.upsellPoints);
+
         const inferred = inferPainPointsFromNotes(lead.notes, painPoints);
         const allPains = [...painPoints, ...inferred];
         const recs = buildSalesRecommendations(allPains);
         const base = BASE_SERVICES[recs.baseService];
-        const hasPains = allPains.length > 0;
+
+        const useWrittenNeeds = writtenNeeds.length > 0;
+        const useWrittenUpsell = writtenUpsell.length > 0;
+        const hasRange = lead.estimateLowCents !== null || lead.estimateHighCents !== null;
+        const anything =
+          writtenPains.length > 0 || allPains.length > 0 || useWrittenNeeds || useWrittenUpsell || hasRange;
+
+        const low = lead.estimateLowCents ?? recs.coreTotal;
+        const high = lead.estimateHighCents ?? recs.maxTotal;
 
         const Step = ({ n, title, hint }: { n: number; title: string; hint: string }) => (
           <div className="flex items-start gap-3 mb-3">
@@ -701,13 +723,36 @@ export default function LeadDetailPage() {
           </div>
         );
 
+        // A written point: the headline, then why it applies to this business.
+        const WrittenPoint = ({
+          item,
+          tone,
+        }: {
+          item: { point: string; explanation: string | null };
+          tone: 'red' | 'green' | 'amber';
+        }) => {
+          const styles = {
+            red: 'border-red-400/20 bg-red-400/[0.05] text-red-200',
+            green: 'border-emerald-400/20 bg-emerald-400/[0.05] text-emerald-100',
+            amber: 'border-amber-400/20 bg-amber-400/[0.05] text-amber-100',
+          }[tone];
+          return (
+            <div className={`rounded-xl border p-3.5 min-w-0 ${styles}`}>
+              <p className="text-sm font-bold break-words">{item.point}</p>
+              {item.explanation && (
+                <p className="text-xs text-white/60 leading-relaxed mt-1.5 break-words">{item.explanation}</p>
+              )}
+            </div>
+          );
+        };
+
         return (
           <div className="mt-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-4 sm:p-6 min-w-0">
             <div className="mb-5">
               <h2 className="text-base font-bold">Your brief for {lead.company}</h2>
               <p className="text-xs text-white/45 mt-1 leading-relaxed">
-                Everything below is worked out from what we found on <em>this</em> business. Read it top to bottom
-                before you call — it goes problem → what to sell → what it costs.
+                Everything below is about <em>this</em> business. Read it top to bottom before you call — it goes
+                problem → what to sell → what it costs.
               </p>
             </div>
 
@@ -745,144 +790,189 @@ export default function LeadDetailPage() {
               </div>
             )}
 
-            {!hasPains ? (
+            {!anything ? (
               <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.07] p-4">
                 <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-200 mb-1">
                   <AlertTriangle size={14} /> Nothing to brief you on yet
                 </p>
                 <p className="text-xs text-amber-100/70 leading-relaxed">
-                  Nobody has recorded what's wrong with this business's setup, so there's nothing to recommend or
-                  price. Hit <strong>Edit</strong> on the card below, tick everything you can see wrong under
-                  "What's wrong with their current setup?", and save — this whole brief writes itself from those
-                  boxes.
+                  Nobody has recorded what's wrong with this business, so there's nothing to recommend or price.
+                  Hit <strong>Edit</strong> on the card below, tick everything you can see wrong under "What's
+                  wrong with their current setup?", and save — this brief writes itself from those boxes.
                 </p>
               </div>
             ) : (
               <>
-                {/* ---- Step 1: the problems ---- */}
+                {/* ---- Step 1: their problems ---- */}
                 <Step
                   n={1}
                   title="What's wrong with their business right now"
-                  hint="These are their problems, in plain English. Lead the call with these — not with what we sell."
+                  hint="Their problems, in plain English. Open the call with these — not with what we sell."
                 />
                 <div className="space-y-2.5 mb-6">
-                  {allPains.map((key) => {
-                    const brief = PAIN_POINT_BRIEFS[key];
-                    if (!brief) return null;
-                    const fromNotes = inferred.includes(key);
-                    return (
-                      <div key={key} className="rounded-xl border border-red-400/20 bg-red-400/[0.05] p-3.5 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                          <p className="text-sm font-bold text-red-200">{PAIN_POINTS[key]}</p>
-                          {fromNotes && (
-                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
-                              spotted in the notes — double-check
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">{brief.problem}</p>
-                        <p className="text-xs text-white/50 leading-relaxed mb-2.5 break-words">
-                          <span className="text-amber-300/90 font-semibold">Why they should care: </span>
-                          {brief.costsThem}
+                  {writtenPains.map((item, i) => (
+                    <WrittenPoint key={`w${i}`} item={item} tone="red" />
+                  ))}
+
+                  {allPains.length > 0 && (
+                    <>
+                      {writtenPains.length > 0 && (
+                        <p className="text-[11px] uppercase tracking-wide text-white/30 pt-2">
+                          Also flagged on the checklist — with lines you can use
                         </p>
-                        <div className="rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
-                            Say something like this
-                          </p>
-                          <p className="text-xs text-white/80 italic leading-relaxed break-words">"{brief.sayThis}"</p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      )}
+                      {allPains.map((key) => {
+                        const brief = PAIN_POINT_BRIEFS[key];
+                        if (!brief) return null;
+                        const fromNotes = inferred.includes(key);
+                        return (
+                          <div key={key} className="rounded-xl border border-red-400/20 bg-red-400/[0.05] p-3.5 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              <p className="text-sm font-bold text-red-200">{PAIN_POINTS[key]}</p>
+                              {fromNotes && (
+                                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
+                                  spotted in the notes — double-check
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">{brief.problem}</p>
+                            <p className="text-xs text-white/50 leading-relaxed mb-2.5 break-words">
+                              <span className="text-amber-300/90 font-semibold">Why they should care: </span>
+                              {brief.costsThem}
+                            </p>
+                            <div className="rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                                Say something like this
+                              </p>
+                              <p className="text-xs text-white/80 italic leading-relaxed break-words">
+                                "{brief.sayThis}"
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
 
                 {/* ---- Step 2: the core sell ---- */}
                 <Step
                   n={2}
                   title="What they definitely need"
-                  hint="This is the actual deal. Don't discount it away — without these the problems above aren't fixed."
+                  hint="This is the actual deal. Without these the problems above aren't fixed — don't discount it away."
                 />
                 <div className="space-y-2.5 mb-3">
-                  <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/[0.08] p-3.5 min-w-0">
-                    <div className="flex items-start justify-between gap-3 mb-1">
-                      <div className="min-w-0">
-                        <span className="inline-block rounded bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-200 mb-1.5">
-                          The main build
-                        </span>
-                        <p className="text-sm font-bold text-emerald-100 break-words">{base.label}</p>
+                  {useWrittenNeeds ? (
+                    writtenNeeds.map((item, i) => <WrittenPoint key={i} item={item} tone="green" />)
+                  ) : (
+                    <>
+                      <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/[0.08] p-3.5 min-w-0">
+                        <div className="flex items-start justify-between gap-3 mb-1">
+                          <div className="min-w-0">
+                            <span className="inline-block rounded bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-200 mb-1.5">
+                              The main build
+                            </span>
+                            <p className="text-sm font-bold text-emerald-100 break-words">{base.label}</p>
+                          </div>
+                          <p className="text-sm font-bold text-emerald-300 whitespace-nowrap">
+                            {formatCents(base.price)}
+                          </p>
+                        </div>
+                        <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">{base.description}</p>
+                        <p className="text-xs text-emerald-200/70 leading-relaxed break-words">
+                          <span className="font-semibold">Why this one: </span>
+                          {recs.baseReason}
+                        </p>
                       </div>
-                      <p className="text-sm font-bold text-emerald-300 whitespace-nowrap">{formatCents(base.price)}</p>
-                    </div>
-                    <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">{base.description}</p>
-                    <p className="text-xs text-emerald-200/70 leading-relaxed break-words">
-                      <span className="font-semibold">Why this one: </span>
-                      {recs.baseReason}
-                    </p>
-                  </div>
-
-                  {recs.needs.map((item) => (
-                    <div key={item.key} className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] p-3.5 min-w-0">
-                      <div className="flex items-start justify-between gap-3 mb-1">
-                        <p className="text-sm font-bold text-emerald-100 break-words">{item.label}</p>
-                        <p className="text-sm font-bold text-emerald-300 whitespace-nowrap">{formatCents(item.price)}</p>
-                      </div>
-                      <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">{item.description}</p>
-                      <p className="text-xs text-emerald-200/70 leading-relaxed break-words">
-                        <span className="font-semibold">Needed because: </span>
-                        {item.becauseOf.join(', ').toLowerCase()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 mb-6">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-emerald-100">Quote this figure</p>
-                    <p className="text-[11px] text-emerald-200/60 mt-0.5">
-                      {formatCents(depositAmount(recs.coreTotal))} up front (50%), the rest on delivery
-                    </p>
-                  </div>
-                  <p className="text-lg font-bold text-emerald-300 whitespace-nowrap">{formatCents(recs.coreTotal)}</p>
-                </div>
-
-                {/* ---- Step 3: upsells ---- */}
-                {recs.upsell.length > 0 && (
-                  <>
-                    <Step
-                      n={3}
-                      title="Extras you can add on"
-                      hint="Only bring these up once they've agreed to the main build. Raising them too early makes the price look scary."
-                    />
-                    <div className="space-y-2.5 mb-3">
-                      {recs.upsell.map((item) => (
-                        <div key={item.key} className="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 min-w-0">
+                      {recs.needs.map((item) => (
+                        <div
+                          key={item.key}
+                          className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] p-3.5 min-w-0"
+                        >
                           <div className="flex items-start justify-between gap-3 mb-1">
-                            <p className="text-sm font-bold text-amber-100 break-words">{item.label}</p>
-                            <p className="text-sm font-bold text-amber-300 whitespace-nowrap">
-                              +{formatCents(item.price)}
+                            <p className="text-sm font-bold text-emerald-100 break-words">{item.label}</p>
+                            <p className="text-sm font-bold text-emerald-300 whitespace-nowrap">
+                              {formatCents(item.price)}
                             </p>
                           </div>
-                          <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">{item.description}</p>
-                          <p className="text-xs text-amber-200/70 leading-relaxed break-words">
-                            <span className="font-semibold">Worth pitching because: </span>
+                          <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">
+                            {item.description}
+                          </p>
+                          <p className="text-xs text-emerald-200/70 leading-relaxed break-words">
+                            <span className="font-semibold">Needed because: </span>
                             {item.becauseOf.join(', ').toLowerCase()}
                           </p>
                         </div>
                       ))}
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white/80">If they take everything</p>
-                        <p className="text-[11px] text-white/40 mt-0.5">Main build + all the extras above</p>
-                      </div>
-                      <p className="text-lg font-bold text-white/90 whitespace-nowrap">{formatCents(recs.maxTotal)}</p>
+                    </>
+                  )}
+                </div>
+
+                {/* ---- Step 3: upsells ---- */}
+                {(useWrittenUpsell || recs.upsell.length > 0) && (
+                  <>
+                    <Step
+                      n={3}
+                      title="Extras you can add on"
+                      hint="Only raise these once they've agreed to the main build. Too early and the price just looks scary."
+                    />
+                    <div className="space-y-2.5 mb-3">
+                      {useWrittenUpsell
+                        ? writtenUpsell.map((item, i) => <WrittenPoint key={i} item={item} tone="amber" />)
+                        : recs.upsell.map((item) => (
+                            <div
+                              key={item.key}
+                              className="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 min-w-0"
+                            >
+                              <div className="flex items-start justify-between gap-3 mb-1">
+                                <p className="text-sm font-bold text-amber-100 break-words">{item.label}</p>
+                                <p className="text-sm font-bold text-amber-300 whitespace-nowrap">
+                                  +{formatCents(item.price)}
+                                </p>
+                              </div>
+                              <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">
+                                {item.description}
+                              </p>
+                              <p className="text-xs text-amber-200/70 leading-relaxed break-words">
+                                <span className="font-semibold">Worth pitching because: </span>
+                                {item.becauseOf.join(', ').toLowerCase()}
+                              </p>
+                            </div>
+                          ))}
                     </div>
                   </>
                 )}
 
-                <p className="text-[11px] text-white/30 leading-relaxed mt-5">
-                  These are our standard list prices. To build a real quote with discounts, timelines or a payment
-                  link, scroll down to the proposal builder further down this page.
-                </p>
+                {/* ---- Step 4: the money ---- */}
+                <Step
+                  n={4}
+                  title="What to quote"
+                  hint="Say the lower number first. The higher one is only if they take every extra."
+                />
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3.5 min-w-0">
+                    <p className="text-[11px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                      Just what they need
+                    </p>
+                    <p className="text-lg font-bold text-emerald-300 break-words">{formatCents(low)}</p>
+                    <p className="text-[11px] text-emerald-200/60 mt-1 leading-snug">
+                      {formatCents(depositAmount(low))} up front (50%), rest on delivery
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-3.5 min-w-0">
+                    <p className="text-[11px] uppercase tracking-wide text-amber-300/80 font-semibold mb-1">
+                      If they take everything
+                    </p>
+                    <p className="text-lg font-bold text-amber-300 break-words">{formatCents(high)}</p>
+                    <p className="text-[11px] text-amber-200/60 mt-1 leading-snug">Core plus every extra above</p>
+                  </div>
+                </div>
+                {!hasRange && (
+                  <p className="text-[11px] text-white/30 leading-relaxed mt-3">
+                    These are our standard list prices, added up from the items above. To build a real quote with
+                    discounts, timelines or a payment link, use the proposal builder further down this page.
+                  </p>
+                )}
               </>
             )}
           </div>

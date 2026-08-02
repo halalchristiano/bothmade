@@ -250,3 +250,36 @@ export function isFurtherAlong(current: string, target: LeadStatus): boolean {
 export function isLeadActivityType(value: string): value is LeadActivityType {
   return (LEAD_ACTIVITY_TYPES as readonly string[]).includes(value);
 }
+
+/** One hand-written sales point: the headline, and why it applies to this business. */
+export interface SalesPoint {
+  point: string;
+  explanation: string | null;
+}
+
+/**
+ * Parses the "Point: explanation written for this business" lines that come
+ * out of the research CSV into something renderable. One point per line.
+ *
+ * The split is on the FIRST colon only, because explanations routinely
+ * contain colons of their own ("Booking: they lose bookings after 6pm: the
+ * phone goes unanswered"). A line with no colon is still a valid point —
+ * it just has no explanation yet, which is better than dropping it.
+ */
+export function parseSalesPoints(text: string | null | undefined): SalesPoint[] {
+  if (!text) return [];
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const idx = line.indexOf(':');
+      if (idx === -1) return { point: line, explanation: null };
+      const point = line.slice(0, idx).trim();
+      const explanation = line.slice(idx + 1).trim();
+      // A leading colon, or a "point" that's really a sentence, means the
+      // author didn't use the format — keep the whole line as the point.
+      if (!point) return { point: explanation, explanation: null };
+      return { point, explanation: explanation || null };
+    });
+}

@@ -48,6 +48,39 @@ const COLUMNS: Array<{ header: string; required: boolean; description: string; e
     description: 'A short strategic note for whoever works this lead — separate from general notes',
     example: 'Lead with the booking system — they mentioned losing appointments to no-shows.',
   },
+  {
+    header: 'Pain point 1 … Pain point 5',
+    required: false,
+    description:
+      'One problem per column, written "Point: explanation about this business". Shown at the top of the rep\'s brief, ahead of anything we guess automatically. Add as many numbered columns as you need.',
+    example: 'No online booking: they take every appointment by phone and lose the after-hours ones.',
+  },
+  {
+    header: 'Essential point 1 … Essential point 10',
+    required: false,
+    description:
+      'What they definitely need — same "Point: explanation" format. These become the green "must have" list.',
+    example: 'Booking system: lets customers book at 9pm without anyone answering the phone.',
+  },
+  {
+    header: 'Upsell point 1 … Upsell point 10',
+    required: false,
+    description:
+      'What they could be upsold on — same format. These become the amber "extras" list the rep raises only after the core is agreed.',
+    example: 'Email marketing: they have 4,000 past customers and never email them.',
+  },
+  {
+    header: 'Lowest estimate / Highest estimate',
+    required: false,
+    description: 'The quotable range in dollars. Shown to the rep as the figure to say out loud.',
+    example: '$8,000  /  $21,000',
+  },
+  {
+    header: 'Range',
+    required: false,
+    description: 'Only needed if you did not give the two columns above — one cell holding both ends.',
+    example: '$8,000 - $21,000',
+  },
 ];
 
 export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
