@@ -340,20 +340,30 @@ export async function sendInvoiceOnlyEmail(
  * Notify the internal team the moment a client agrees online — a copy of
  * exactly what they signed, ready for the books.
  */
+// Always CC'd on a signed contract regardless of who's in the User table —
+// info@ is a shared inbox, not a login, so getAdminEmails() alone would
+// silently skip it. A signed agreement is the one document every one of
+// these three needs a copy of no matter what.
+const SIGNED_CONTRACT_ALWAYS_TO = [
+  'info@bothmade.studio',
+  'evan@bothmade.studio',
+  'kiana@bothmade.studio',
+];
+
 export async function sendSignedContractCopyEmail(
   toEmails: string[],
   company: string,
   contractUrl: string,
   totalPriceLabel: string
 ): Promise<boolean> {
-  if (toEmails.length === 0) return false;
+  const recipients = Array.from(new Set([...toEmails, ...SIGNED_CONTRACT_ALWAYS_TO]));
   const bodyHtml = `
     <p><strong style="color:#fff;">${company}</strong> just agreed to their project agreement online (total: ${totalPriceLabel}).</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">A copy is saved below and will also show up on the project once payment clears.</p>
   `;
 
   return sendEmail({
-    to: toEmails,
+    to: recipients,
     subject: `Signed: ${company}'s project agreement`,
     html: renderShell({
       eyebrow: 'Contract signed',
