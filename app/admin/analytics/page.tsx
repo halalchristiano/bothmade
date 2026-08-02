@@ -75,7 +75,7 @@ export default function AdminAnalyticsPage() {
         />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Card className="p-6">
           <CardHeader icon={TrendingUp} tone="emerald" title="Revenue by Month" />
           <MiniBarChart data={chartData} formatValue={(v) => (v > 0 ? formatCents(v) : '')} />
