@@ -846,7 +846,23 @@ export default function LeadDetailPage() {
                     <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-white/35 mb-1.5">
                       <StickyNote size={11} /> Notes
                     </p>
-                    <p className="text-white/70 leading-relaxed whitespace-pre-line">{lead.notes}</p>
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden divide-y divide-white/[0.06]">
+                      {lead.notes.split(/\n{2,}/).map((block, i) => {
+                        const match = block.match(/^([A-Za-z][A-Za-z \/]{1,30}):\s*([\s\S]*)$/);
+                        return (
+                          <div key={i} className="px-3.5 py-3">
+                            {match ? (
+                              <>
+                                <p className="text-[11px] uppercase tracking-wide text-sky-300/70 mb-1">{match[1]}</p>
+                                <p className="text-white/70 leading-relaxed whitespace-pre-line break-words">{match[2]}</p>
+                              </>
+                            ) : (
+                              <p className="text-white/70 leading-relaxed whitespace-pre-line">{block}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 {painPoints.length > 0 && (
