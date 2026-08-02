@@ -40,6 +40,7 @@ import {
   MoreVertical,
   Trash2,
   MailX,
+  ChevronRight,
   FileSignature,
 } from 'lucide-react';
 import {
@@ -704,6 +705,7 @@ export default function LeadDetailPage() {
   // desk days later. Stacked vertically that meant scrolling past a proposal
   // builder to reach a note field mid-call.
   const [tab, setTab] = useState<'brief' | 'call' | 'proposal'>('brief');
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [showScript, setShowScript] = useState(false);
   const [scriptCopied, setScriptCopied] = useState(false);
 
@@ -1562,25 +1564,56 @@ export default function LeadDetailPage() {
         // needs if the customer pushes back on it — cost, what it actually
         // is, the words to sell it, and why the price is fair.
         const PricedCard = ({ i, tone }: { i: PricedItem; tone: 'green' | 'amber' }) => {
+          // Every item used to render all six coaching sections at once. With
+          // 22 items that made this tab 18,000px — the price ended up 21
+          // phone screens down, and the list stopped being scannable at all.
+          // Headline and cost always; the rest on demand.
+          const open = expandedItems.has(i.point);
+          const toggle = () =>
+            setExpandedItems((prev) => {
+              const next = new Set(prev);
+              if (next.has(i.point)) next.delete(i.point);
+              else next.add(i.point);
+              return next;
+            });
           const c =
             tone === 'green'
               ? { box: 'border-emerald-400/20 bg-emerald-400/[0.05]', head: 'text-emerald-100', price: 'text-emerald-300' }
               : { box: 'border-amber-400/20 bg-amber-400/[0.05]', head: 'text-amber-100', price: 'text-amber-300' };
           return (
-            <div className={`rounded-xl border p-3.5 min-w-0 ${c.box}`}>
-              <div className="flex items-start justify-between gap-3">
-                <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
-                {i.priceCents !== null && (
-                  <p className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
-                    {tone === 'amber' ? '+' : ''}
-                    {formatCents(i.priceCents)}
+            <div className={`rounded-xl border p-3 min-w-0 ${c.box}`}>
+              <button onClick={toggle} className="w-full text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
+                  <span className="shrink-0 flex items-center gap-1.5">
+                    {i.priceCents !== null && (
+                      <span className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
+                        {tone === 'amber' ? '+' : ''}
+                        {formatCents(i.priceCents)}
+                      </span>
+                    )}
+                    {i.entry && (
+                      <ChevronRight
+                        size={13}
+                        className={`text-white/30 transition-transform ${open ? 'rotate-90' : ''}`}
+                      />
+                    )}
+                  </span>
+                </div>
+                {i.explanation && (
+                  <p
+                    className={`text-xs text-white/55 leading-relaxed mt-1 break-words ${
+                      open ? '' : 'line-clamp-1'
+                    }`}
+                  >
+                    {i.explanation}
                   </p>
                 )}
-              </div>
-              {i.explanation && (
-                <p className="text-xs text-white/60 leading-relaxed mt-1.5 break-words">{i.explanation}</p>
-              )}
-              {i.entry && (
+                {i.entry && open && (
+                  <p className="text-[11px] font-semibold text-white/40 mt-2">Hide the detail</p>
+                )}
+              </button>
+              {i.entry && open && (
                 <>
                   <div className="mt-2.5 rounded-lg bg-white/[0.03] px-3 py-2.5">
                     <p className="text-[10px] uppercase tracking-wide text-white/40 font-semibold mb-1">
@@ -1618,9 +1651,11 @@ export default function LeadDetailPage() {
               )}
 
               {/* Quick note — jot their reaction to this exact item while on
-                  the call; logs straight to the lead's timeline. Its own
-                  high-contrast box, not just a thin divider, so it doesn't
-                  get lost under all the pitch copy above it. */}
+                  the call; logs straight to the lead's timeline. Shown with
+                  the item's detail rather than always: rendered on all 22
+                  items at once it added 3,400px of open forms to a tab that
+                  was already too long to scroll. */}
+              {open && (
               <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
                 <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
                   <StickyNote size={13} /> Their feedback on this
@@ -1674,6 +1709,7 @@ export default function LeadDetailPage() {
                   <p className="text-xs text-red-300 mt-1.5">{sectionNoteError[i.point]}</p>
                 )}
               </div>
+              )}
             </div>
           );
         };
