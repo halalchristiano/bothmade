@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyOAuthState } from '@/lib/auth';
 import { encryptSecret } from '@/lib/crypto';
-import { exchangeGoogleAuthCode } from '@/lib/gmail-oauth';
+import { exchangeGoogleAuthCode, createGmailOAuthBatchClient, setupBounceFolder } from '@/lib/gmail-oauth';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
@@ -37,7 +37,21 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.redirect(settingsUrl({ gmailOauth: 'success' }));
+    // Set up the bounce-notice label/filter automatically right here — no
+    // reason to make connecting Google a two-step "connect, then remember
+    // to also click this other button" flow. Best-effort: a failure here
+    // shouldn't block the connection itself from succeeding.
+    let bounceFolderSet = true;
+    try {
+      const client = createGmailOAuthBatchClient(refreshToken);
+      const result = await setupBounceFolder(client);
+      bounceFolderSet = result.ok;
+    } catch (err) {
+      console.error('Auto bounce-folder setup failed:', err);
+      bounceFolderSet = false;
+    }
+
+    return NextResponse.redirect(settingsUrl({ gmailOauth: 'success', bounceFolder: bounceFolderSet ? 'ok' : 'failed' }));
   } catch (error) {
     console.error('Gmail OAuth callback error:', error);
     const reason = error instanceof Error ? error.message : 'unknown';

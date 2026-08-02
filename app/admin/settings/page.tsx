@@ -80,7 +80,7 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showGmailGuide, setShowGmailGuide] = useState(false);
   const [showAppPasswordFallback, setShowAppPasswordFallback] = useState(false);
-  const [oauthResult, setOauthResult] = useState<{ ok: boolean; reason?: string } | null>(null);
+  const [oauthResult, setOauthResult] = useState<{ ok: boolean; reason?: string; bounceFolderFailed?: boolean } | null>(null);
   const [settingUpBounceFolder, setSettingUpBounceFolder] = useState(false);
   const [bounceFolderResult, setBounceFolderResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -88,7 +88,11 @@ export default function AdminSettingsPage() {
     const params = new URLSearchParams(window.location.search);
     const oauthStatus = params.get('gmailOauth');
     if (!oauthStatus) return;
-    setOauthResult({ ok: oauthStatus === 'success', reason: params.get('reason') || undefined });
+    const bounceFolderFailed = params.get('bounceFolder') === 'failed';
+    setOauthResult({ ok: oauthStatus === 'success', reason: params.get('reason') || undefined, bounceFolderFailed });
+    if (oauthStatus === 'success' && bounceFolderFailed) {
+      setBounceFolderResult({ ok: false, message: "Couldn't set up the bounce folder automatically." });
+    }
     window.history.replaceState(null, '', '/admin/settings');
   }, []);
 
@@ -381,7 +385,7 @@ export default function AdminSettingsPage() {
             {oauthResult.ok ? <CheckCircle2 size={14} className="shrink-0 mt-0.5" /> : <AlertTriangle size={14} className="shrink-0 mt-0.5" />}
             <span>
               {oauthResult.ok
-                ? 'Google account connected.'
+                ? 'Google account connected — bounce notices will skip your inbox automatically.'
                 : `Couldn't connect Google account${oauthResult.reason ? ` (${oauthResult.reason})` : ''}. Try again.`}
             </span>
           </div>
@@ -409,30 +413,24 @@ export default function AdminSettingsPage() {
               </button>
             </div>
 
-            {status.connectedVia === 'oauth' && (
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
+            {status.connectedVia === 'oauth' && bounceFolderResult && !bounceFolderResult.ok && (
+              <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3.5">
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">Keep bounces out of your inbox</p>
-                    <p className="text-xs text-white/40 mt-0.5">
-                      Auto-files "this address doesn't exist" delivery failures into their own Gmail label
-                      instead of your inbox — check it for leads that need a call instead of an email.
-                    </p>
-                  </div>
+                  <p className="text-xs text-amber-200/80">
+                    {bounceFolderResult.message} Bounce notices may still land in your inbox until this is set up.
+                  </p>
                   <button
                     onClick={handleSetupBounceFolder}
                     disabled={settingUpBounceFolder}
                     className="shrink-0 px-3.5 py-2 rounded-xl border border-white/15 text-xs font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
                   >
-                    {settingUpBounceFolder ? 'Setting up...' : 'Set up bounce folder'}
+                    {settingUpBounceFolder ? 'Retrying...' : 'Retry'}
                   </button>
                 </div>
-                {bounceFolderResult && (
-                  <p className={`text-xs mt-2 ${bounceFolderResult.ok ? 'text-emerald-300' : 'text-red-300'}`}>
-                    {bounceFolderResult.message}
-                  </p>
-                )}
               </div>
+            )}
+            {status.connectedVia === 'oauth' && bounceFolderResult?.ok && (
+              <p className="text-xs text-emerald-300/70 px-1">{bounceFolderResult.message}</p>
             )}
           </div>
         ) : status.willLandInGmailSent ? (
