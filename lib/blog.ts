@@ -253,6 +253,65 @@ export type Project = {
       },
     ],
   },
+  {
+    slug: 'magnetic-buttons',
+    title: 'A button that leans toward you',
+    dek: "Making every call-to-action on the site pull toward the cursor, without touching anyone on a touchscreen.",
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2026-09-06',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "Most of what separates a button that feels alive from one that just sits there is a few pixels of motion nobody consciously notices. Move the cursor near it and it drifts a little toward you; move away and it eases back. It reads as weight, like the button has physical presence, even though nothing about it changed shape. Every button on this site does that now — the trick is a small hook, not a library.",
+      },
+      {
+        type: 'statement',
+        text: "The hard part isn't the pull toward the cursor. It's making sure nothing happens at all on a phone.",
+      },
+      { type: 'heading', text: 'The mechanics' },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `function useMagnetic(reach = 70, pull = 0.35) {
+  const x = useSpring(0, { stiffness: 300, damping: 20, mass: 0.5 });
+  const y = useSpring(0, { stiffness: 300, damping: 20, mass: 0.5 });
+
+  useEffect(() => {
+    const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
+    if (!fine.matches) return; // touch devices: do nothing, ever
+
+    const onMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      const dx = e.clientX - (rect.left + rect.width / 2);
+      const dy = e.clientY - (rect.top + rect.height / 2);
+      const dist = Math.hypot(dx, dy);
+      if (dist < reach) { x.set(dx * pull); y.set(dy * pull); }
+      else { x.set(0); y.set(0); }
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    return () => window.removeEventListener('mousemove', onMove);
+  }, [reach, pull]);
+
+  return { x, y };
+}`,
+      },
+      {
+        type: 'p',
+        text: 'Two spring-driven motion values, not raw state — that\'s what keeps it smooth. Setting x/y directly on every mousemove would fight the browser\'s paint cycle and feel jittery; a spring lets Framer Motion write straight to a CSS transform on the compositor thread every frame, so the button glides rather than snaps, and React never re-renders on mouse movement at all.',
+      },
+      { type: 'heading', text: 'The part that matters more than the effect' },
+      {
+        type: 'p',
+        text: "The matchMedia check at the top isn't a nice-to-have — it's the reason this is safe to ship. hover: hover and pointer: fine both have to be true before a single listener attaches. No fine pointer, no hover capability, nothing runs: no wasted event listeners on mobile, no phantom offset that never resets because there was never a mouseleave to fire it. The effect only exists for the input device it makes sense on.",
+      },
+      {
+        type: 'p',
+        text: "It also gets out of the way for anyone who's told their OS they don't want motion — a useReducedMotion() check inside the same hook bails before any listener is ever attached. A detail like this should be additive polish, never a tax on someone who explicitly opted out of it.",
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
