@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
         clientId: client.id,
         email: client.email,
         type: 'client',
+        sv: client.sessionVersion,
       });
 
       await clearFailedLogins(email);
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         role: user.role,
         type: 'user',
+        sv: user.sessionVersion,
       });
 
       await clearFailedLogins(email);

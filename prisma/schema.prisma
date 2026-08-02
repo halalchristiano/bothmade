@@ -32,6 +32,16 @@ model User {
   sentTeamMessages     TeamMessage[]    @relation("TeamMessageSender")
   receivedTeamMessages TeamMessage[]    @relation("TeamMessageRecipient")
 
+  /// Bumped whenever every existing session for this account should stop
+  /// working — a password change or a reset. Tokens carry the version they
+  /// were issued at, and one that no longer matches is refused.
+  ///
+  /// A counter rather than a timestamp on purpose: a JWT's `iat` is only
+  /// accurate to the second, so a freshly re-issued token can share a second
+  /// with the revocation that prompted it and be wrongly rejected. A version
+  /// has no such ambiguity — the new token simply carries the new number.
+  sessionVersion Int @default(0)
+
   @@map("users")
 }
 
@@ -61,6 +71,16 @@ model Client {
   projects         Project[]
   messages         ProjectMessage[]  @relation("SentByClient")
   emailPreferences EmailPreferences?
+
+  /// Bumped whenever every existing session for this account should stop
+  /// working — a password change or a reset. Tokens carry the version they
+  /// were issued at, and one that no longer matches is refused.
+  ///
+  /// A counter rather than a timestamp on purpose: a JWT's `iat` is only
+  /// accurate to the second, so a freshly re-issued token can share a second
+  /// with the revocation that prompted it and be wrongly rejected. A version
+  /// has no such ambiguity — the new token simply carries the new number.
+  sessionVersion Int @default(0)
 
   @@map("clients")
 }

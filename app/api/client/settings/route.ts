@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { hashPassword, verifyPassword } from '@/lib/auth';
+import {
+  createToken,
+  getCurrentSession,
+  hashPassword,
+  setAuthCookie,
+  verifyPassword,
+} from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 
 export async function GET() {
@@ -94,10 +99,29 @@ export async function PATCH(request: NextRequest) {
       }
 
       const hashedPassword = await hashPassword(newPassword);
-      await prisma.client.update({
+
+      // Bumping the version ends every session issued so far, including any an
+      // attacker is holding.
+      const updated = await prisma.client.update({
         where: { id: session.clientId },
-        data: { password: hashedPassword, mustChangePassword: false },
+        data: {
+          password: hashedPassword,
+          mustChangePassword: false,
+          sessionVersion: { increment: 1 },
+        },
+        select: { sessionVersion: true },
       });
+
+      // Re-issue this device's cookie at the new version, so the person who
+      // just changed their own password isn't signed out by doing it.
+      await setAuthCookie(
+        createToken({
+          clientId: session.clientId,
+          email: session.email,
+          type: 'client',
+          sv: updated.sessionVersion,
+        })
+      );
     }
 
     const hasPreferenceUpdate =

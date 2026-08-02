@@ -30,10 +30,10 @@ import {
  *   4. The new password has to meet the same minimum as everywhere else. The
  *      old handler would happily set a one-character password.
  *
- * Still true and worth knowing: a reset does not revoke sessions that already
- * exist. Doing that needs a version stamp checked on every authenticated
- * request, which would add a database read to the hot path of the whole app —
- * a real change that belongs in its own review, not smuggled in here.
+ * A completed reset also ends every session that already exists, by bumping
+ * the account's session version. Someone resetting a password has often lost
+ * control of the account, and a reset that leaves the intruder signed in for
+ * another seven days is not a reset.
  */
 
 const TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -166,14 +166,18 @@ export async function PUT(request: NextRequest) {
     // Mark the token used in the same transaction as the password change, so
     // a crash between the two cannot leave a spent link still usable.
     await prisma.$transaction([
+      // Bumping sessionVersion ends every session that already exists. Someone
+      // resetting a password has often lost control of the account, and a
+      // reset that leaves the intruder signed in for another seven days is
+      // not a reset.
       record.userType === 'client'
         ? prisma.client.update({
             where: { email: record.identifier },
-            data: { password: hashedPassword },
+            data: { password: hashedPassword, sessionVersion: { increment: 1 } },
           })
         : prisma.user.update({
             where: { email: record.identifier },
-            data: { password: hashedPassword },
+            data: { password: hashedPassword, sessionVersion: { increment: 1 } },
           }),
       prisma.passwordResetToken.update({
         where: { id: record.id },

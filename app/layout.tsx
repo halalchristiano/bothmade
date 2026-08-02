@@ -4,6 +4,7 @@ import "./globals.css";
 import { ScrollReset } from "@/components/ScrollReset";
 import { ScrollProgress } from "@/components/ScrollProgress";
 import { ScrollSeamIndicator } from "@/components/ScrollSeamIndicator";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -95,6 +96,10 @@ export default function RootLayout({
         <ScrollReset />
         <ScrollSeamIndicator />
         {children}
+        {/* Page views and referrers, so ad spend can actually be judged.
+            Cookieless and privacy-friendly — no consent banner needed, and
+            it's a no-op until Analytics is enabled in the Vercel project. */}
+        <Analytics />
       </body>
     </html>
   );

@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
 
 /**
  * The signing key for every session on this site.
@@ -61,12 +62,17 @@ export interface AuthPayload {
   email: string;
   role?: string;
   type: 'user';
+  /** Session version this token was issued at. Absent on tokens minted before
+   *  revocation existed, which are treated as version 0 — the default every
+   *  existing row already has, so nobody is signed out by the upgrade. */
+  sv?: number;
 }
 
 export interface ClientAuthPayload {
   clientId: string;
   email: string;
   type: 'client';
+  sv?: number;
 }
 
 /**
@@ -151,7 +157,93 @@ export async function getCurrentSession(): Promise<
 > {
   const token = await getAuthCookie();
   if (!token) return null;
-  return verifyToken(token);
+
+  const session = verifyToken(token);
+  if (!session) return null;
+
+  // A valid signature is not the same as a session that should still exist.
+  // Changing a password has to end whoever else was signed in — that is the
+  // entire reason someone changes it when they think they have been
+  // compromised — and a JWT cannot express that on its own.
+  if (await isRevoked(session)) return null;
+
+  return session;
+}
+
+
+/**
+ * Whether this token's session version still matches the account's.
+ *
+ * COST: one indexed primary-key read per authenticated request. That is a real
+ * addition to a path that was previously pure signature verification, and it
+ * deserved thinking about rather than assuming. It is justified because the
+ * alternative is a stolen session surviving the password change made
+ * specifically to kill it, for up to seven days. Every route calling this
+ * already runs several queries to render anything, so one keyed lookup is not
+ * what will make this application slow.
+ *
+ * Fails OPEN on a database error: a transient outage must not sign the whole
+ * studio out. It is logged rather than swallowed.
+ */
+async function isRevoked(session: AuthPayload | ClientAuthPayload): Promise<boolean> {
+  const tokenVersion = session.sv ?? 0;
+
+  try {
+    const account =
+      session.type === 'client'
+        ? await prisma.client.findUnique({
+            where: { id: session.clientId },
+            select: { sessionVersion: true },
+          })
+        : await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { sessionVersion: true },
+          });
+
+    // The account is gone — so is the session.
+    if (!account) return true;
+
+    return account.sessionVersion !== tokenVersion;
+  } catch (error) {
+    console.error('[auth] revocation check failed, allowing session:', error);
+    return false;
+  }
+}
+
+/**
+ * The current session version for an account, for minting a token.
+ */
+export async function currentSessionVersion(
+  kind: 'user' | 'client',
+  id: string
+): Promise<number> {
+  try {
+    const account =
+      kind === 'client'
+        ? await prisma.client.findUnique({ where: { id }, select: { sessionVersion: true } })
+        : await prisma.user.findUnique({ where: { id }, select: { sessionVersion: true } });
+    return account?.sessionVersion ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * End every existing session for an account. Call this wherever a password
+ * changes — reset, self-service change, or an admin setting a new one.
+ */
+export async function revokeSessions(
+  kind: 'user' | 'client',
+  id: string
+): Promise<number> {
+  const data = { sessionVersion: { increment: 1 } };
+
+  const updated =
+    kind === 'client'
+      ? await prisma.client.update({ where: { id }, data, select: { sessionVersion: true } })
+      : await prisma.user.update({ where: { id }, data, select: { sessionVersion: true } });
+
+  return updated.sessionVersion;
 }
 
 /**

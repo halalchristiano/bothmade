@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       role: user.role,
       type: 'user',
+      sv: user.sessionVersion,
     });
 
     await setAuthCookie(token);
