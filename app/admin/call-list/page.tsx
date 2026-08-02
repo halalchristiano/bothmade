@@ -84,6 +84,7 @@ export default function CallListPage() {
   const [noPhone, setNoPhone] = useState<CallRow[]>([]);
   const [meta, setMeta] = useState<{
     totalOpen: number;
+    callsToday: number;
     breakdown: Partial<Record<CallReason, number>>;
     noPhoneCount: number;
     truncated: boolean;
@@ -113,6 +114,7 @@ export default function CallListPage() {
         setNoPhone(data.noPhone);
         setMeta({
           totalOpen: data.totalOpen ?? 0,
+          callsToday: data.callsToday ?? 0,
           breakdown: data.breakdown ?? {},
           noPhoneCount: data.noPhoneCount ?? 0,
           truncated: !!data.truncated,
@@ -209,6 +211,13 @@ export default function CallListPage() {
           <p className="text-xs text-white/35 mt-1">
             Start at the top and work down. Every business says why it's here.
           </p>
+          {/* Progress. The list only ever shows what's left, which makes a
+              long day feel like no progress at all. */}
+          {meta && meta.callsToday > 0 && (
+            <p className="text-xs text-emerald-300/80 font-semibold mt-1.5">
+              {meta.callsToday} {meta.callsToday === 1 ? 'call' : 'calls'} logged today — nice one.
+            </p>
+          )}
           <p className="text-sm text-white/45 mt-1">
             {total === 0
               ? 'Nothing waiting on a call right now.'

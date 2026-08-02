@@ -980,9 +980,32 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
+      {/* Mid-call, this page is a long scroll. These are the only three places
+          anyone needs to reach in a hurry, so they stay within one tap. */}
+      <div className="sticky top-14 lg:top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-2 mt-3 bg-[#050505]/90 backdrop-blur border-b border-white/[0.06]">
+        <div className="flex gap-2 overflow-x-auto">
+          {[
+            { href: '#call-script', label: 'Script', icon: Phone },
+            { href: '#objections', label: 'If they push back', icon: AlertTriangle },
+            { href: '#log-the-call', label: 'Log the call', icon: CheckCircle2 },
+          ].map(({ href, label, icon: Icon }) => (
+            <a
+              key={href}
+              href={href}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.1] hover:text-white transition-colors"
+            >
+              <Icon size={12} /> {label}
+            </a>
+          ))}
+        </div>
+      </div>
+
       {/* Post-call wrap-up — sits directly under the action bar because this is
           what the rep reaches for the second they hang up. */}
-      <div className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5">
+      <div
+        id="log-the-call"
+        className="mt-4 scroll-mt-20 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5"
+      >
         <p className="text-sm font-bold text-white/85">Just got off the phone?</p>
         <p className="text-xs text-white/40 mt-0.5 mb-3.5">
           Tap what happened. It writes the note, moves the status and books the next follow-up in one go.
@@ -1399,7 +1422,10 @@ export default function LeadDetailPage() {
             )}
 
             {anything && (
-              <div className="mb-6 rounded-xl border border-emerald-400/30 bg-emerald-400/[0.07] overflow-hidden">
+              <div
+                id="call-script"
+                className="mb-6 scroll-mt-20 rounded-xl border border-emerald-400/30 bg-emerald-400/[0.07] overflow-hidden"
+              >
                 <div className="flex items-start justify-between gap-3 p-4">
                   <button onClick={() => setShowScript((v) => !v)} className="min-w-0 text-left">
                     <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-100">
@@ -1467,7 +1493,10 @@ export default function LeadDetailPage() {
             )}
 
             {anything && (
-              <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+              <div
+                id="objections"
+                className="mb-6 scroll-mt-20 rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden"
+              >
                 <button
                   onClick={() => setShowObjections((v) => !v)}
                   className="w-full flex items-start justify-between gap-3 p-4 text-left"

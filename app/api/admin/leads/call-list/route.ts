@@ -82,6 +82,14 @@ export async function GET() {
     // worst possible failure for a work queue.
     const totalOpen = await prisma.lead.count({ where });
 
+    // Calls logged today, by this person. A rep working a long list has no
+    // sense of progress otherwise — the list only ever shows what's left.
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const callsToday = await prisma.leadActivity.count({
+      where: { type: 'call', createdById: session.userId, createdAt: { gte: startOfDay } },
+    });
+
     const leads = await prisma.lead.findMany({
       where,
       select: {
@@ -182,6 +190,7 @@ export async function GET() {
         noPhone: due.filter((r) => !r.phone),
         // What the numbers on screen actually mean.
         totalOpen,
+        callsToday,
         breakdown,
         scheduledLater: breakdown.scheduled,
         noPhoneCount: due.filter((r) => !r.phone).length,
