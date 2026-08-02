@@ -141,7 +141,13 @@ export type Block =
   /** A toggle switch flips the exact same animated element between full motion and its prefers-reduced-motion fallback, side by side. */
   | { type: 'reducedMotionToggleDemo' }
   /** A text input replaces WebHero's fixed word — type anything and it gets the cursor-reactive kinetic-weight treatment live. */
-  | { type: 'kineticPlaygroundDemo' };
+  | { type: 'kineticPlaygroundDemo' }
+  /** Live add-on checklist reading real ADD_ON_REQUIRES/expandAddOnDependencies from lib/pricing.ts — check one, watch its silent dependency auto-add. */
+  | { type: 'dependencyDemo' }
+  /** A scaled replay of Nav's mobile overlay: hamburger-to-X morph, staggered link entrance, scroll lock, Escape to close — in a bounded stage instead of the real viewport. */
+  | { type: 'mobileMenuDemo' }
+  /** Side by side: a stock-photo-style placeholder vs. the site's actual dashed "honest empty frame." */
+  | { type: 'honestFrameDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -1392,6 +1398,151 @@ return (
       {
         type: 'p',
         text: 'If you want the mechanics — the smoothstep easing, the idle fallback, why it mutates the DOM directly instead of going through React state — that\'s the earlier post: "Type that reaches toward your cursor." This one\'s just for playing with it.',
+      },
+    ],
+  },
+  {
+    slug: 'our-calculator-wont-sell-you-something-broken',
+    title: "Our pricing calculator won't sell you something broken",
+    dek: "Check e-commerce without a backend and most quote tools just take your money. Ours won't let the selection be inconsistent in the first place. Try it below.",
+    tag: 'Process',
+    accent: 'sky',
+    date: '2027-01-31',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "E-commerce needs somewhere to store orders. A booking system needs somewhere to store bookings. Neither of those is optional — they're not features you could theoretically ship without a backend, they're features that are a backend with a nice interface on top. A pricing calculator that lets you check \"E-commerce\" without also accounting for the backend it structurally requires isn't being flexible, it's just wrong, and whoever sold it that way finds out at kickoff, not at checkout.",
+      },
+      {
+        type: 'statement',
+        text: "Check something that needs a backend, and the backend gets added for you — not as an upsell, as a correction to keep the selection actually buildable.",
+      },
+      { type: 'heading', text: 'Try it' },
+      { type: 'dependencyDemo' },
+      {
+        type: 'p',
+        text: 'That checklist calls expandAddOnDependencies() imported directly from lib/pricing.ts — the exact function our real /start calculator runs on every selection change. It walks a small dependency map (ADD_ON_REQUIRES) and keeps expanding the selected set until nothing new gets pulled in — e-commerce and booking both silently require Custom Backend / API, and subscriptions requires that plus user accounts. Nothing about this is a growth trick to inflate the invoice; it\'s the calculator refusing to represent a combination that can\'t actually be built.',
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `export const ADD_ON_REQUIRES: Partial<Record<AddOnKey, AddOnKey[]>> = {
+  ecommerce: ['custom-backend'],
+  booking: ['custom-backend'],
+  subscriptions: ['custom-backend', 'user-accounts'],
+  'push-notifications': ['custom-backend'],
+  'admin-dashboard': ['custom-backend'],
+};
+
+export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
+  const result = new Set(selected);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const key of Array.from(result)) {
+      for (const req of ADD_ON_REQUIRES[key] ?? []) {
+        if (!result.has(req)) { result.add(req); grew = true; }
+      }
+    }
+  }
+  return Array.from(result);
+}`,
+      },
+      { type: 'heading', text: "It also refuses to double-charge you" },
+      {
+        type: 'p',
+        text: "The reverse case matters just as much. A Web App's base price already assumes a backend and user accounts — that's what \"an app people log into\" means. If a client checked \"Web App\" and separately checked \"Custom Backend / API,\" a naive calculator would just add both line items and charge twice for the same underlying thing. BASE_SERVICE_INCLUDES marks that add-on as already bundled for that base service — still shown as included in the summary, since the product genuinely has it, but priced at zero and locked, because unchecking it wouldn't actually remove a backend from a Web App.",
+      },
+      { type: 'heading', text: 'Why bother, if most visitors would never notice' },
+      {
+        type: 'p',
+        text: "Most people configuring a quote don't know which add-ons quietly require a backend — that's exactly why this logic has to live in the tool instead of in a salesperson's head. The alternative isn't \"nothing goes wrong,\" it's \"something goes wrong quietly, later, when the mismatch surfaces mid-build instead of at the moment you picked the wrong combination.\" A calculator that can represent an impossible selection eventually will, for someone, and the honest fix is making the impossible selection unrepresentable in the first place.",
+      },
+    ],
+  },
+  {
+    slug: 'an-accessible-mobile-menu-focus-scroll-lock-escape',
+    title: 'An accessible mobile menu: focus, scroll lock, and Escape',
+    dek: "The three things a mobile nav overlay has to get right that most tutorials skip. Tap the icon below, then try pressing Escape.",
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2027-02-07',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "A mobile hamburger menu looks like a solved problem — toggle a boolean, slide a panel in, done. Most implementations that stop there are missing at least one of three things a real overlay needs: the page behind it has to stop scrolling, the keyboard has to be able to close it without hunting for a tiny X button, and the visual state (hamburger vs. X) has to actually reflect whether it's open, not just visually but to assistive tech too.",
+      },
+      {
+        type: 'statement',
+        text: "An open menu owns the screen. That's not a style choice — it's a contract with three separate implications, and skipping any one of them is a real bug, not a nitpick.",
+      },
+      { type: 'heading', text: 'Try it' },
+      { type: 'mobileMenuDemo' },
+      {
+        type: 'p',
+        text: "Tap the hamburger and it morphs into an X — two motion.span lines rotating into a cross via animate, not a font-icon swap. Once it's open, try pressing Escape; it closes the same way tapping the icon does. That's not a browser default for a custom overlay — it's a keydown listener attached only while the menu is open, and removed the moment it closes, so it never intercepts Escape anywhere else on the page.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `useEffect(() => {
+  if (!open) return;
+
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';        // scroll lock
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') setOpen(false);        // keyboard close
+  };
+  window.addEventListener('keydown', onKey);
+
+  return () => {
+    document.body.style.overflow = previousOverflow;
+    window.removeEventListener('keydown', onKey);
+  };
+}, [open]);`,
+      },
+      { type: 'heading', text: 'Why the scroll lock has to save the previous value' },
+      {
+        type: 'p',
+        text: "Setting overflow: 'hidden' on open and overflow: '' on close looks equivalent to saving and restoring the previous value, until something else on the page also manages document.body.style.overflow — a different modal, a loading state. Capturing previousOverflow before overwriting it and restoring exactly that value on cleanup means this effect never assumes it's the only code with an opinion about body scroll, even though today, on this site, it happens to be.",
+      },
+      { type: 'heading', text: "aria-expanded is not optional decoration" },
+      {
+        type: 'p',
+        text: "The toggle button carries aria-expanded={open} and an aria-label that changes between \"Open menu\" and \"Close menu\" — not because it changes what the button looks like, but because a screen reader user gets zero visual information from the hamburger-to-X morph. Without aria-expanded, that same user has no way to know whether pressing the button again opens or closes something; the two icon states carry meaning only sighted users can see unless the accessibility tree says it explicitly.",
+      },
+    ],
+  },
+  {
+    slug: 'wed-rather-show-you-an-empty-box',
+    title: "We'd rather show you an empty box",
+    dek: "No stock photos, ever — when a real screenshot doesn't exist yet, the site shows a labeled placeholder instead of faking one. See both side by side.",
+    tag: 'Design',
+    accent: 'purple',
+    date: '2027-02-14',
+    readMinutes: 3,
+    body: [
+      {
+        type: 'p',
+        text: "Every case study on this site has a slot for real product screenshots — and for work that's still in progress, some of those slots are genuinely empty, because the screen doesn't exist to photograph yet. The easy fix is a stock photo: someone smiling at a laptop, a vague dashboard mockup that looks plausible from six feet away. It fills the space. It also isn't the product, and pretending otherwise for the sake of a tidier-looking page is exactly the kind of small dishonesty that compounds.",
+      },
+      {
+        type: 'statement',
+        text: "An empty, labeled frame tells the truth: this doesn't exist yet. A stock photo tells a small lie the same size as the box it's filling.",
+      },
+      { type: 'heading', text: 'Side by side' },
+      { type: 'honestFrameDemo' },
+      {
+        type: 'p',
+        text: "The real component — ShotFrame inside CaseStudy.tsx — checks whether a shot has a src. If it does, it renders the actual image with a real alt description. If it doesn't, it renders a dashed border, the shot's intended caption in mono type, and a small note pointing at exactly where to add the file once it exists. Both states use the same layout dimensions, so the page never visually jumps once a real screenshot lands — the empty frame is placeholder geometry with an honest label, not a broken image tag or a lorem-ipsum stand-in.",
+      },
+      { type: 'heading', text: "Why this is harder than it sounds to keep doing" },
+      {
+        type: 'p',
+        text: "The temptation to fill an empty box only gets stronger the longer it stays empty — a case study that's sat unfinished for a few weeks starts to feel like it needs to look done. The actual discipline here isn't the component, which took a few lines; it's not reaching for a placeholder image the fifth time a page feels a little sparse. The dashed frame is a small, constant reminder pointed at us as much as at anyone reading the page: this isn't finished, and the honest thing is to say so rather than dress it up.",
       },
     ],
   },
