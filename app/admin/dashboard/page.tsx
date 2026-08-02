@@ -884,6 +884,7 @@ function MockupRequestRow({
 function HandoffRow({
   handoff,
   onAcknowledged,
+  onUnacknowledged,
 }: {
   handoff: OpsStats['newHandoffs'][number];
   onAcknowledged: () => void;
