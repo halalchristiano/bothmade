@@ -35,6 +35,11 @@ model User {
   gmailConnectedAt   DateTime?
   googleRefreshToken String? // encrypted at rest, same as gmailAppPassword
 
+  // Set when a Gmail read fails for want of a scope — a token minted before
+  // reading was needed can still send, so nothing looks broken while bounce
+  // and reply detection sit silently dead. Cleared on a successful reconnect.
+  gmailNeedsReconnect Boolean @default(false)
+
   // Headshot shown in the outbound-email footer next to the sender's name.
   avatarUrl String?
 
@@ -138,6 +143,11 @@ model Project {
   // last one generated, for manually-onboarded projects) — carried over
   // from the Lead so the client can always find it in their own dashboard.
   contractUrl String?
+
+  // When a payment reminder was last emailed for this project's balance —
+  // shown on the dashboard so a reminder can't be fired off twice in a row
+  // by accident after a page reload forgets the button was already used.
+  lastPaymentReminderSentAt DateTime?
 
   // Metadata
   createdAt   DateTime @default(now())

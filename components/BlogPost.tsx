@@ -288,7 +288,178 @@ function BlockRenderer({
 
     case 'introDemo':
       return <IntroDemo />;
+
+    case 'scrollCompareDemo':
+      return <ScrollCompareDemo />;
+
+    case 'processDemo':
+      return <ProcessDemo phases={block.phases} />;
+
+    case 'stackChipsDemo':
+      return <StackChipsDemo columns={block.columns} />;
   }
+}
+
+/** Scaled replay of ServicePage's stack-chip grid: two-axis stagger (column + per-chip) plus a hover lift. */
+function StackChipsDemo({ columns }: { columns: { heading: string; items: string[] }[] }) {
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8 grid sm:grid-cols-2 gap-10">
+      {columns.map((col, idx) => (
+        <motion.div
+          key={col.heading}
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ delay: idx * 0.08, duration: 0.5 }}
+          viewport={{ once: true }}
+        >
+          <h4 className="font-mono text-[10px] uppercase tracking-[0.35em] mb-4 text-sky-300/60">
+            {col.heading}
+          </h4>
+          <ul className="flex flex-wrap gap-2.5">
+            {col.items.map((li, i) => (
+              <motion.li
+                key={li}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.08 + i * 0.05 }}
+                viewport={{ once: true }}
+                className="rounded-full border border-white/12 px-4 py-2 text-sm text-white/60 transition-all duration-300 hover:text-white hover:-translate-y-0.5 hover:border-sky-400/60"
+              >
+                {li}
+              </motion.li>
+            ))}
+          </ul>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Scaled replay of ProcessTimeline: whileInView card reveals (viewport:
+ * { once: false }, so they replay on re-entry) plus a scroll-derived
+ * progress bar underneath, tracking the same bounded section.
+ */
+function ProcessDemo({ phases }: { phases: { num: string; title: string; tag: string }[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ['start 0.8', 'end 0.4'],
+  });
+  const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
+
+  return (
+    <div ref={containerRef} className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="space-y-6">
+        {phases.map((phase, i) => (
+          <motion.div
+            key={phase.num}
+            className="border-l-2 border-white/20 pl-6 py-2"
+            initial={{ opacity: 0, x: -16 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: i * 0.08 }}
+            viewport={{ once: false, margin: '-15% 0px' }}
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40 mb-1">
+              {phase.num} · {phase.tag}
+            </p>
+            <h4 className="text-xl font-bold text-white">{phase.title}</h4>
+          </motion.div>
+        ))}
+      </div>
+
+      {!reduceMotion && (
+        <div className="mt-8 flex justify-center">
+          <div className="relative w-full max-w-xs h-1 bg-white/10 rounded-full overflow-hidden">
+            <motion.div
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-sky-400 via-indigo-400 to-purple-400"
+              style={{ width: progressWidth }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Left box: plain overflow-y-auto, the browser's own scroll physics.
+ * Right box: wheel events are captured and replayed through an eased,
+ * delayed scrollTop update instead of letting the browser handle them
+ * directly — a small, honest simulation of what a scroll-hijacking
+ * library actually does, so the difference is something you feel rather
+ * than take our word for.
+ */
+function ScrollCompareDemo() {
+  const hijackRef = useRef<HTMLDivElement>(null);
+  const targetScroll = useRef(0);
+  const currentScroll = useRef(0);
+  const frame = useRef<number | undefined>(undefined);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const el = hijackRef.current;
+    if (!el || reduceMotion) return;
+
+    targetScroll.current = el.scrollTop;
+    currentScroll.current = el.scrollTop;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const max = el.scrollHeight - el.clientHeight;
+      targetScroll.current = Math.min(max, Math.max(0, targetScroll.current + e.deltaY));
+    };
+
+    const tick = () => {
+      // Deliberately sluggish easing — 6% of the gap per frame — to make
+      // the lag a hijacked scroll introduces obvious rather than subtle.
+      currentScroll.current += (targetScroll.current - currentScroll.current) * 0.06;
+      el.scrollTop = currentScroll.current;
+      frame.current = requestAnimationFrame(tick);
+    };
+    frame.current = requestAnimationFrame(tick);
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (frame.current) cancelAnimationFrame(frame.current);
+    };
+  }, [reduceMotion]);
+
+  const filler = Array.from({ length: 8 });
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-300/70 border-b border-white/10">
+          native
+        </p>
+        <div className="h-48 overflow-y-auto p-5 space-y-3">
+          {filler.map((_, i) => (
+            <p key={i} className="text-sm text-white/45">
+              Scroll me — this is the browser's own physics, untouched.
+            </p>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-red-300/70 border-b border-white/10">
+          simulated hijack
+        </p>
+        <div ref={hijackRef} className="h-48 overflow-y-auto p-5 space-y-3">
+          {filler.map((_, i) => (
+            <p key={i} className="text-sm text-white/45">
+              {reduceMotion
+                ? 'Disabled under reduced motion.'
+                : 'Scroll me — every wheel tick gets intercepted and replayed on a lag.'}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**

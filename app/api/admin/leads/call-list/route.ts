@@ -73,7 +73,7 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { role: true },
+      select: { role: true, googleRefreshToken: true, gmailNeedsReconnect: true },
     });
 
     // A rep works their own leads; an owner sees everything.
@@ -213,6 +213,11 @@ export async function GET() {
         scheduledLater: breakdown.scheduled,
         noPhoneCount: due.filter((r) => !r.phone).length,
         truncated: leads.length >= MAX_ROWS,
+        gmailStatus: !user?.googleRefreshToken
+          ? 'not-connected'
+          : user.gmailNeedsReconnect
+            ? 'needs-reconnect'
+            : 'ok',
       },
       { status: 200 }
     );

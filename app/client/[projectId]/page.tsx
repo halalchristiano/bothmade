@@ -68,6 +68,9 @@ export default function ClientDashboard() {
   const [messageContent, setMessageContent] = useState('');
   const [fileToAttach, setFileToAttach] = useState<File | null>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageError, setMessageError] = useState('');
+  const [payingBalance, setPayingBalance] = useState(false);
+  const [payBalanceError, setPayBalanceError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [questions, setQuestions] = useState<
@@ -183,11 +186,26 @@ export default function ClientDashboard() {
     }
   };
 
+  const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setMessageError('');
+    if (file && file.size > MAX_ATTACHMENT_BYTES) {
+      setMessageError('That file is too large to attach (25MB max) — try a smaller file or a link instead.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFileToAttach(null);
+      return;
+    }
+    setFileToAttach(file);
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageContent.trim() && !fileToAttach) return;
 
     setSendingMessage(true);
+    setMessageError('');
     try {
       let attachments: Array<{ name: string; url: string }> = [];
       if (fileToAttach) {
@@ -209,11 +227,33 @@ export default function ClientDashboard() {
         setFileToAttach(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         loadProject();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setMessageError(data?.error || "Couldn't send that — try again in a moment.");
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+      setMessageError('Could not reach the server — check your connection and try again.');
     } finally {
       setSendingMessage(false);
+    }
+  };
+
+  const handlePayBalance = async () => {
+    setPayBalanceError('');
+    setPayingBalance(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/pay-balance`, { method: 'POST' });
+      const data = await response.json();
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        setPayBalanceError(data.error || "Couldn't start checkout — try again in a moment.");
+        setPayingBalance(false);
+      }
+    } catch {
+      setPayBalanceError('Could not reach the server — check your connection and try again.');
+      setPayingBalance(false);
     }
   };
 
@@ -490,6 +530,17 @@ export default function ClientDashboard() {
                 />
               </div>
 
+              {project.balanceDue > 0 && (
+                <button
+                  onClick={handlePayBalance}
+                  disabled={payingBalance}
+                  className="w-full mb-6 rounded-xl bg-gradient-to-r from-emerald-400 to-sky-400 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                >
+                  {payingBalance ? 'Opening secure checkout…' : `Pay ${(project.balanceDue / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} Now`}
+                </button>
+              )}
+              {payBalanceError && <p className="text-sm text-red-300 -mt-4 mb-6">{payBalanceError}</p>}
+
               {project.payments.length > 0 ? (
                 <div className="space-y-2">
                   {project.payments.map((payment) => (
@@ -704,7 +755,7 @@ export default function ClientDashboard() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  onChange={(e) => setFileToAttach(e.target.files?.[0] || null)}
+                  onChange={handleFileChange}
                   className="text-xs text-white/50 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:text-xs"
                 />
                 <button
@@ -715,6 +766,7 @@ export default function ClientDashboard() {
                   {sendingMessage ? 'Sending...' : 'Send Message'}
                 </button>
               </div>
+              {messageError && <p className="text-sm text-red-300">{messageError}</p>}
             </form>
           </div>
         )}

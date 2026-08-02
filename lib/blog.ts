@@ -84,7 +84,25 @@ export type Block =
    * intro — the seam-line-expands-into-light timeline — with a button to
    * trigger it again instead of the real one-per-session gate.
    */
-  | { type: 'introDemo' };
+  | { type: 'introDemo' }
+  /**
+   * Side-by-side scroll boxes — one native, one with a simulated scroll
+   * hijack (delayed, eased response to wheel input) — so the difference
+   * described in the surrounding prose can actually be felt, not just read.
+   */
+  | { type: 'scrollCompareDemo' }
+  /**
+   * Scaled replay of ProcessTimeline: a few phase cards that fade/slide in
+   * via whileInView (replaying every time they re-enter the viewport) plus
+   * a separately scroll-derived progress bar underneath.
+   */
+  | { type: 'processDemo'; phases: { num: string; title: string; tag: string }[] }
+  /**
+   * Scaled replay of ServicePage's stack-chip grid — a two-axis stagger
+   * (column delay + per-chip delay combined into one formula) plus a
+   * hover lift on each chip.
+   */
+  | { type: 'stackChipsDemo'; columns: { heading: string; items: string[] }[] };
 
 export type BlogPost = {
   slug: string;
@@ -799,6 +817,185 @@ transition={{ duration: 1.4, times: [0, 0.3, 0.6, 1] }}`,
       {
         type: 'p',
         text: "sessionStorage was the deliberate middle ground between two worse options. A cookie or localStorage-based \"seen it once, ever\" would mean a visitor who leaves and comes back a week later never sees the studio's own entrance again — the thing exists to make a first impression, and a week is still a first impression if enough time has passed to forget it. Showing it on literally every page navigation within one visit would train people to wait it out or, worse, to bounce before it finishes. Once per browser session is the one setting where it functions as a title sequence instead of a tax.",
+      },
+    ],
+  },
+  {
+    slug: 'why-we-dont-use-smooth-scroll-libraries',
+    title: "Why we don't use smooth-scroll libraries",
+    dek: 'Scroll hijacking is the reason your arrow keys and Page Down "randomly stop working" on some sites. Feel the difference between the two below.',
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-11-15',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: 'If you\'ve ever landed on a site where your mouse wheel felt "floaty," where Page Down stopped doing anything, or where scrolling to the bottom took an unreasonably long, syrupy fade — you were on a site running a smooth-scroll library. Somewhere along the way, "make scrolling smoother" became a default addition to a lot of portfolio and agency sites, including plenty of good-looking ones. We don\'t run one, anywhere on this site, on purpose.',
+      },
+      {
+        type: 'statement',
+        text: "What is scroll hijacking? It's a library intercepting your native scroll input — wheel, trackpad, arrow keys — and replaying it through its own physics instead of the browser's.",
+      },
+      { type: 'heading', text: 'Feel it yourself' },
+      { type: 'scrollCompareDemo' },
+      {
+        type: 'p',
+        text: "The box on the left is a plain overflow-y-auto element — the browser's own scroll physics, exactly what your operating system and input device already agreed on. The box on the right intercepts every wheel event, cancels the browser's default handling of it, and replays your input through a deliberately sluggish easing loop instead — a small, honest simulation of what a scroll-hijacking library does at a larger scale, across an entire page instead of one box.",
+      },
+      { type: 'heading', text: 'What breaks when a library owns your scroll' },
+      {
+        type: 'p',
+        text: "Once a library is intercepting wheel and touch events to drive its own scroll animation, it has to reimplement everything the browser used to give you for free: Page Up/Page Down, Home/End, spacebar, screen-reader scroll commands, momentum scrolling on trackpads, scroll-anchoring so the page doesn't jump when an image above you finishes loading. Most libraries reimplement some of this and quietly miss the rest — which is exactly the shape of the complaint \"scrolling on this site feels broken,\" because functionally, for that one user's input method, it is.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `// components/ScrollReset.tsx — the entire scroll-behavior
+// customization on this site. Not a hijack: it doesn't touch
+// wheel, keyboard, or touch input at all.
+export function ScrollReset() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (window.location.hash) return;
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}`,
+      },
+      { type: 'heading', text: 'What we do instead' },
+      {
+        type: 'p',
+        text: "Every scroll-driven effect on this site — the sheet stack, the scrub-in text, the reading-line focus, the scroll-progress bar — reads scroll position, it never sets it. Framer Motion's useScroll subscribes to the native scrollY the browser is already tracking and turns it into a number other elements react to. The browser stays in sole control of the actual act of scrolling; nothing ever calls scrollTo or intercepts a wheel event to fake it. That's the whole difference: react to native scrolling, don't replace it.",
+      },
+      {
+        type: 'p',
+        text: "The one exception, shown above, is ScrollReset — and it's not a hijack either. It doesn't touch how scrolling behaves at all; it just resets the position to the top when you navigate to a new route, which is what browsers already do on a full page load and what single-page apps have to do manually since they never actually reload the page. Nothing about wheel, keyboard, or touch input passes through custom code anywhere on this site.",
+      },
+    ],
+  },
+  {
+    slug: 'how-our-web-and-app-development-process-works',
+    title: 'How our web and app development process actually works',
+    dek: 'Discovery, design, build, launch — four phases, and the section of the homepage that explains them is doing more engineering than it looks like. Scroll the demo below.',
+    tag: 'Process',
+    accent: 'sky',
+    date: '2026-11-22',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: 'People asking "what does a web design agency process actually look like" usually get one of two unsatisfying answers: a vague five-word list with no timeline, or a diagram so detailed it reads like it was written to look thorough rather than to be read. Our homepage answers it with four phases — discovery, design, build, launch — each with a real week range, laid out as cards you scroll through with a progress bar tracking how far along the whole thing you are.',
+      },
+      {
+        type: 'statement',
+        text: "The interesting part isn't the four phases. It's that the cards replay every time you scroll back into them, and the progress bar doesn't.",
+      },
+      { type: 'heading', text: 'Scroll through it' },
+      {
+        type: 'processDemo',
+        phases: [
+          { num: '01', title: 'Discovery', tag: 'week 0–1' },
+          { num: '02', title: 'Design', tag: 'weeks 1–3' },
+          { num: '03', title: 'Build', tag: 'weeks 3–9' },
+        ],
+      },
+      {
+        type: 'p',
+        text: "Each card uses whileInView with viewport: { once: false } — deliberately the opposite of most of the reveal animations on this site, which play once and stay played. Scroll a phase card out of view and back in and it fades and slides in again, every single time. For a section that's explaining a sequence, that repeatability matters: if you scroll back up to re-read Design, you should see it arrive again, not sit there inert because it already \"used up\" its one entrance.",
+      },
+      { type: 'heading', text: "Two motion systems, one section, doing different jobs" },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `// Per-card: viewport-triggered, replayable
+<motion.div
+  initial={{ opacity: 0, x: -20 }}
+  whileInView={{ opacity: 1, x: 0 }}
+  viewport={{ once: false, margin: '-20% 0px' }}
+/>
+
+// Whole-section progress: continuous scroll position, not viewport events
+const { scrollYProgress } = useScroll({
+  target: containerRef,
+  offset: ['start 0.2', 'end 0.8'],
+});
+const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
+      },
+      {
+        type: 'p',
+        text: "The cards and the progress bar are driven by two genuinely different mechanisms sitting a few lines apart. whileInView is event-based — it fires when an element crosses a viewport threshold, discrete and re-triggerable. The progress bar is value-based — useScroll continuously reports a 0-to-1 number for how far the pointer target has moved through its scroll range, and the bar's width is just that number, always current, never \"triggered.\" Discrete events for things that should feel like arrivals; continuous values for things that should feel like a fact about where you are.",
+      },
+      { type: 'heading', text: 'Why a real week range on every phase' },
+      {
+        type: 'p',
+        text: "It would be easy to leave the phases untimed — safer, in the sense that nothing can be checked against reality later. We put ranges on them anyway, because a process description without a timeline isn't actually answering the question \"how long does this take,\" which is the question underneath most of the others. Week 0–1 for discovery, weeks 1–3 for design, and so on aren't marketing copy; they're what we tell a client on the first call, published in the same words.",
+      },
+    ],
+  },
+  {
+    slug: 'a-two-axis-stagger-animation-explained',
+    title: 'A two-axis stagger animation, explained',
+    dek: 'How to stagger a grid of items by both column and position with one small formula — the technique behind the tech-stack chips on our service pages.',
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2026-11-29',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "A basic stagger animation is easy: give item N a delay of N times some constant, and a list cascades in one row at a time. It gets less obvious the moment your content isn't a single list — our service pages show technology chips grouped into columns (Frontend, Backend, Tooling), and a naive per-item stagger across the whole page would either ignore the grouping entirely or force every column to wait for the ones before it to finish first.",
+      },
+      {
+        type: 'statement',
+        text: 'delay: idx * 0.08 + i * 0.05 — two independent counters, added together, and the whole grid cascades diagonally instead of column by column.',
+      },
+      { type: 'heading', text: 'Try it' },
+      {
+        type: 'stackChipsDemo',
+        columns: [
+          { heading: 'Frontend', items: ['React', 'Next.js', 'TypeScript'] },
+          { heading: 'Backend', items: ['Postgres', 'Prisma', 'REST'] },
+        ],
+      },
+      {
+        type: 'p',
+        text: "Each column gets its own whileInView trigger with delay: idx * 0.08 — column 0 starts immediately, column 1 waits 80ms, and so on. Independently, each chip inside a column gets delay: i * 0.05, where i resets to zero at the start of every column. Combine them — idx * 0.08 + i * 0.05 — and the result isn't \"finish column 1, then start column 2\": it's a diagonal wave, where column 2's first chip can appear before column 1's third chip does, because 0.16 (column 2, chip 0) is less than 0.10 + 0.05 (column 1, chip 2's math, roughly).",
+      },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `{columns.map((col, idx) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    transition={{ delay: idx * 0.08 }}   // column offset
+    viewport={{ once: true }}
+  >
+    {col.items.map((item, i) => (
+      <motion.li
+        initial={{ opacity: 0, y: 10 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        transition={{ delay: idx * 0.08 + i * 0.05 }}  // + chip offset
+        viewport={{ once: true }}
+      >
+        {item}
+      </motion.li>
+    ))}
+  </motion.div>
+))}`,
+      },
+      { type: 'heading', text: 'Why not framer-motion\'s built-in staggerChildren' },
+      {
+        type: 'p',
+        text: "Framer Motion has a variants-based staggerChildren option that handles the single-axis case elegantly — parent orchestrates, children just declare a variant name. It works well when every child should follow the exact same fixed delay increment. It works less well the moment you have two independent groupings that should each contribute their own offset, because staggerChildren computes one delay per child based on its index in a flat list — it doesn't know about \"column\" as a concept. Two counters added by hand is a few more characters than a variants config, and it's the version that actually generalizes to a grid.",
+      },
+      { type: 'heading', text: 'The hover lift is a separate, much smaller decision' },
+      {
+        type: 'p',
+        text: "Once a chip has arrived, hovering it lifts it half a pixel and brightens its border and text — a plain CSS transition, not Framer Motion at all, because it doesn't need spring physics or scroll awareness; it just needs to feel responsive on :hover, which transition-all duration-300 already does for free. Not every piece of motion on a page needs the same tool. The entrance needed viewport awareness and staggered timing, so it got a motion library. The hover state needed neither, so it got two Tailwind classes.",
       },
     ],
   },

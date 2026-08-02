@@ -62,6 +62,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       false
     );
 
+    if (sent) {
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { lastPaymentReminderSentAt: new Date() },
+      });
+    }
+
     return NextResponse.json({ success: true, sent, url: paymentLink.url, balanceDue }, { status: 201 });
   } catch (error) {
     console.error('Payment reminder error:', error);
