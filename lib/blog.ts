@@ -135,7 +135,13 @@ export type Block =
    * pointer position, with child elements at different translateZ depths
    * so the whole scene tilts as one rigid diorama.
    */
-  | { type: 'parallaxDemo' };
+  | { type: 'parallaxDemo' }
+  /** A staggered milestone timeline — launch, month 1, month 3, ongoing — each dot arriving in sequence with a connecting line drawing behind it. */
+  | { type: 'supportTimelineDemo'; milestones: { label: string; desc: string }[] }
+  /** A toggle switch flips the exact same animated element between full motion and its prefers-reduced-motion fallback, side by side. */
+  | { type: 'reducedMotionToggleDemo' }
+  /** A text input replaces WebHero's fixed word — type anything and it gets the cursor-reactive kinetic-weight treatment live. */
+  | { type: 'kineticPlaygroundDemo' };
 
 export type BlogPost = {
   slug: string;
@@ -1270,6 +1276,122 @@ const opacity = useTransform(
       {
         type: 'p',
         text: "Every other platform page on the site (web, iOS) opens with a scroll-driven sequence — the sheet stack, the fly-through words. Vision Pro's hero doesn't scroll-pin at all; it responds to the pointer sitting still and moving around inside a fixed viewport. That's deliberate, not an oversight: a headset doesn't have a scrollbar, and the platform's whole interaction model is about your position and gaze in a space rather than a linear feed you move through. The hero's mechanic matches the platform's actual interaction language instead of reusing the site's own default pattern out of habit.",
+      },
+    ],
+  },
+  {
+    slug: 'we-dont-disappear-after-launch',
+    title: "We don't disappear after launch",
+    dek: "The most common complaint about studios isn't the work — it's what happens the week after you pay the final invoice. Here's what stays true here.",
+    tag: 'Process',
+    accent: 'sky',
+    date: '2027-01-10',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "Ask around and the same story comes up: a studio delivers, gets paid, and the person who understood the codebase is suddenly two weeks behind on emails, then a month, then gone onto the next client entirely. Nothing about the contract was violated — \"launch\" was the deliverable, and launch happened. It's just that the moment a product actually meets real users is exactly when you need the people who built it the most, and that's precisely when a lot of studios stop being reachable.",
+      },
+      {
+        type: 'statement',
+        text: "Shipping was never the exit for us. It's closer to the point where the actual feedback loop starts.",
+      },
+      { type: 'heading', text: 'What "still here" actually means' },
+      {
+        type: 'supportTimelineDemo',
+        milestones: [
+          { label: 'Launch', desc: 'We watch it live, not just the deploy log.' },
+          { label: 'Week 1', desc: 'Fix what real usage surfaces that testing didn\'t.' },
+          { label: 'Month 1', desc: 'First real look at what users actually do.' },
+          { label: 'Ongoing', desc: 'Same two people. Same phone number.' },
+        ],
+      },
+      {
+        type: 'p',
+        text: "That's not a support tier we upsell after the fact — it's the same relationship that built the thing, continuing. When something breaks under real traffic three weeks in, you're not opening a ticket into a queue and hoping it lands on someone who remembers this codebase. You're messaging the person who wrote the code that broke.",
+      },
+      { type: 'heading', text: 'Why this is worth saying out loud' },
+      {
+        type: 'p',
+        text: "We could leave this implicit and let it show up in how we actually behave after a launch. We're saying it explicitly instead, because it's genuinely one of the differences between studios that's hard to evaluate before you've hired one — everyone's pitch deck says \"ongoing support,\" and the only way to find out what that means is to already be a client when something goes wrong. Naming it specifically, with a timeline, is at least something you can hold us to before you've signed anything.",
+      },
+    ],
+  },
+  {
+    slug: 'actually-respecting-prefers-reduced-motion',
+    title: 'Actually respecting prefers-reduced-motion',
+    dek: "Most sites check the media query once and call it done. Here's what that misses, and how every animation on this site handles it properly. Try the toggle below.",
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2027-01-17',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "prefers-reduced-motion isn't a niche accessibility checkbox — it's a real operating-system setting that people turn on because motion genuinely causes them physical discomfort: vestibular disorders, migraines, motion sickness triggered by parallax and scaling effects. A site that ignores it isn't just failing an audit, it's making itself unusable for a specific set of real visitors. And \"ignoring it\" is often not a decision anyone made on purpose — it's just what happens by default, because nothing forces you to check.",
+      },
+      {
+        type: 'statement',
+        text: "The setting exists at the OS level. The bug isn't forgetting it exists — it's checking it once on mount and missing every animation added after that.",
+      },
+      { type: 'heading', text: 'See it side by side' },
+      { type: 'reducedMotionToggleDemo' },
+      {
+        type: 'p',
+        text: "That toggle simulates the two states this site actually renders — not a CSS trick, a real branch in the component. With motion on, tapping the card plays a spring-driven scale-and-rotate entrance. With motion \"reduced,\" the identical card just appears at its resting state, no animation at all, not even a fast version of the same motion. A shortened animation still moves; for someone who's turned this setting on, movement is the problem, not the duration.",
+      },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `const reduceMotion = useReducedMotion(); // Framer Motion hook
+
+if (reduceMotion) {
+  return <div className={className}>{content}</div>;   // no motion props at all
+}
+
+return (
+  <motion.div
+    initial={{ opacity: 0, scale: 0.4, rotate: -20 }}
+    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+    transition={{ type: 'spring', stiffness: 260, damping: 16 }}
+  >
+    {content}
+  </motion.div>
+);`,
+      },
+      { type: 'heading', text: "Why every component checks it independently" },
+      {
+        type: 'p',
+        text: "A single top-level check — read the media query once in a layout, store it in context — misses two things a per-component check doesn't. First, useReducedMotion() from Framer Motion subscribes to the media query live, so a visitor who changes the OS setting in another window sees this site respond immediately, without a reload. Second, and more important: every animated component on this site — the drag seam, the sheet stack, the kinetic type, the parallax scene — makes its own independent decision about what its reduced-motion fallback should look like, because \"remove the motion\" means something different for a spring-driven drag handle than it does for a scroll-pinned sequence. A single global switch can turn animation off; it can't know what each component should show instead.",
+      },
+      { type: 'heading', text: "The part that's easy to get wrong" },
+      {
+        type: 'p',
+        text: "The failure mode isn't usually \"we never check prefers-reduced-motion\" — it's checking it in the first three components you build and forgetting on the fifteenth. There's no compiler error for a missing useReducedMotion() call; the component just works fine for the vast majority of visitors who never turn the setting on, and silently fails the ones who did. The only real defense is treating it as a required part of writing any new motion component, the same way you wouldn't ship an image without an alt attribute — not a pass you do at the end.",
+      },
+    ],
+  },
+  {
+    slug: 'type-anything-kinetic-playground',
+    title: 'Type anything — a kinetic type playground',
+    dek: "The cursor-reactive variable-weight effect from our web hero, except this time you pick the word. Go ahead, type something.",
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2027-01-24',
+    readMinutes: 2,
+    body: [
+      {
+        type: 'p',
+        text: "We already wrote up how the cursor-reactive kinetic type on our web hero works — per-letter font-variation-settings weight tracking pointer distance. This one's not really an explainer. It's the same mechanic, minus the fixed word, so you can just type whatever you want and watch it react instead of reading about it happening to someone else's headline.",
+      },
+      { type: 'kineticPlaygroundDemo' },
+      {
+        type: 'p',
+        text: "Move your cursor near it, type your name, type a client's name, type nothing and leave it idle for a few seconds to see the resting sine-wave breathing take over. It's the exact same requestAnimationFrame loop from the real hero — the only thing that changed is the letters come from an input value instead of a hardcoded prop, so the component re-measures whatever's currently rendered on every keystroke.",
+      },
+      {
+        type: 'p',
+        text: 'If you want the mechanics — the smoothstep easing, the idle fallback, why it mutates the DOM directly instead of going through React state — that\'s the earlier post: "Type that reaches toward your cursor." This one\'s just for playing with it.',
       },
     ],
   },
