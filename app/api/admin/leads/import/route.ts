@@ -6,9 +6,94 @@ import { isLeadStatus, isPainPointKey } from '@/lib/leads';
 
 const MAX_ROWS = 500;
 
+// Strips everything but letters/digits so "Public email", "public_email" and
+// "email" all collapse to the same comparable key regardless of spacing,
+// punctuation, or casing — CSVs from research tools rarely use our exact
+// internal field names verbatim.
+const normalizeKey = (key: string) => key.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Exact-match aliases for header wordings seen in practice. Checked first,
+// before the looser includes()-based fallback below.
+const HEADER_ALIASES: Record<string, string> = {
+  company: 'company',
+  businessname: 'company',
+  companyname: 'company',
+  contactname: 'contactname',
+  contact: 'contactname',
+  phone: 'phone',
+  phonenumber: 'phone',
+  email: 'email',
+  publicemail: 'email',
+  emailaddress: 'email',
+  source: 'source',
+  estimatedvalue: 'estimatedvalue',
+  estimatedprojectvalue: 'estimatedvalue',
+  dealsize: 'estimatedvalue',
+  painpoints: 'painpoints',
+  notes: 'notes',
+  status: 'status',
+  personalisedcoldemail: 'personalisedcoldemail',
+  personalizedcoldemail: 'personalisedcoldemail',
+  personalizedobservation: 'personalizedobservation',
+  personalisedobservation: 'personalizedobservation',
+  mockupurl: 'mockupurl',
+  mockuplink: 'mockupurl',
+  industry: 'industry',
+  address: 'address',
+  originalwebsite: 'originalwebsite',
+  existingwebsite: 'originalwebsite',
+  website: 'originalwebsite',
+  servicestopitch: 'servicestopitch',
+  services: 'servicestopitch',
+};
+
 /**
- * Bulk-import leads from a CSV (already parsed client-side into row objects
- * keyed by lowercased header name). Recognized columns: company (required),
+ * Maps a raw CSV row (keyed however the header row happened to read) onto
+ * our canonical field names. Falls back to substring matching for anything
+ * the exact alias table doesn't cover, so a header like "One-line
+ * observation: where they're lacking" or "Personalized cold email" still
+ * lands in the right field instead of silently vanishing because it wasn't
+ * spelled exactly "personalizedobservation".
+ */
+function normalizeRow(row: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [rawKey, value] of Object.entries(row)) {
+    if (!value) continue;
+    const key = normalizeKey(rawKey);
+    let canonical = HEADER_ALIASES[key];
+    if (!canonical) {
+      if (key.includes('coldemail') || ((key.includes('personalized') || key.includes('personalised')) && key.includes('email'))) {
+        canonical = 'personalisedcoldemail';
+      } else if (key.includes('observation')) {
+        canonical = 'personalizedobservation';
+      } else if (key.includes('email')) {
+        canonical = 'email';
+      } else if (key.includes('value') || key.includes('price') || key.includes('budget')) {
+        canonical = 'estimatedvalue';
+      } else if (key.includes('mockup')) {
+        canonical = 'mockupurl';
+      } else if (key.includes('website') || key.includes('url')) {
+        canonical = 'originalwebsite';
+      } else if (key.includes('service')) {
+        canonical = 'servicestopitch';
+      } else if (key.includes('phone') || key.includes('tel')) {
+        canonical = 'phone';
+      } else if (key.includes('contact') || key.includes('name')) {
+        canonical = 'contactname';
+      } else if (key.includes('note')) {
+        canonical = 'notes';
+      } else {
+        canonical = key;
+      }
+    }
+    // First non-empty value wins if two source columns map to the same field.
+    if (!out[canonical]) out[canonical] = value;
+  }
+  return out;
+}
+
+/**
+ * Bulk-import leads from a CSV. Recognized columns: company (required),
  * contactname, email, phone, source, estimatedvalue (dollars), painpoints
  * (semicolon-separated keys), notes, status. Also accepts a few optional
  * research columns produced by external prep work — personalisedcoldemail
@@ -17,8 +102,10 @@ const MAX_ROWS = 500;
  * one-liner — pre-fills the "personalized observation" field the
  * cold-outreach templates require), mockupurl (stored on the lead's
  * mockupUrl field — powers the Loom/mockup link default in the email
- * composer), and address, industry, originalwebsite (folded into notes
- * since there's no dedicated column for them yet).
+ * composer), and address, industry, originalwebsite, servicestopitch
+ * (folded into notes since there's no dedicated column for them yet).
+ * Header matching is tolerant of real-world spelling/spacing — see
+ * normalizeRow() — since research CSVs rarely use our exact field names.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -35,7 +122,8 @@ export async function POST(request: NextRequest) {
 
     let skipped = 0;
     const toCreate = rows
-      .map((row: Record<string, string>) => {
+      .map((rawRow: Record<string, string>) => {
+        const row = normalizeRow(rawRow);
         const company = (row.company || '').trim();
         if (!company) {
           skipped++;
@@ -59,6 +147,7 @@ export async function POST(request: NextRequest) {
           row.industry ? `Industry: ${row.industry.trim()}` : '',
           row.address ? `Address: ${row.address.trim()}` : '',
           row.originalwebsite ? `Existing site: ${row.originalwebsite.trim()}` : '',
+          row.servicestopitch ? `Services to pitch: ${row.servicestopitch.trim()}` : '',
         ]
           .filter(Boolean)
           .join('\n');
