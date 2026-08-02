@@ -56,18 +56,18 @@ export async function GET(request: Request) {
       prisma.projectMessage.findMany({
         where: { isFromAdmin: false, createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
-        take: 10,
+        take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
       prisma.payment.findMany({
         orderBy: { createdAt: 'desc' },
-        take: 8,
+        take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
       prisma.leadActivity.findMany({
         where: { type: 'proposal', createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
-        take: 8,
+        take: 25,
         include: { lead: { select: { id: true, company: true } } },
       }),
     ]);
@@ -146,7 +146,7 @@ export async function GET(request: Request) {
             handoffAcknowledgedAt: p.handoffAcknowledgedAt,
           })),
           newClientsThisWeek: newClientsInPeriod,
-          atRiskProjects: atRiskProjects.slice(0, 10),
+          atRiskProjects: atRiskProjects.slice(0, 40),
           overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
@@ -181,7 +181,7 @@ export async function GET(request: Request) {
               preview: a.content.slice(0, 120),
               createdAt: a.createdAt,
             })),
-          ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 12),
+          ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 40),
         },
       },
       { status: 200 }
