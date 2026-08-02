@@ -294,7 +294,45 @@ function BlockRenderer({
 
     case 'processDemo':
       return <ProcessDemo phases={block.phases} />;
+
+    case 'stackChipsDemo':
+      return <StackChipsDemo columns={block.columns} />;
   }
+}
+
+/** Scaled replay of ServicePage's stack-chip grid: two-axis stagger (column + per-chip) plus a hover lift. */
+function StackChipsDemo({ columns }: { columns: { heading: string; items: string[] }[] }) {
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8 grid sm:grid-cols-2 gap-10">
+      {columns.map((col, idx) => (
+        <motion.div
+          key={col.heading}
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ delay: idx * 0.08, duration: 0.5 }}
+          viewport={{ once: true }}
+        >
+          <h4 className="font-mono text-[10px] uppercase tracking-[0.35em] mb-4 text-sky-300/60">
+            {col.heading}
+          </h4>
+          <ul className="flex flex-wrap gap-2.5">
+            {col.items.map((li, i) => (
+              <motion.li
+                key={li}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.08 + i * 0.05 }}
+                viewport={{ once: true }}
+                className="rounded-full border border-white/12 px-4 py-2 text-sm text-white/60 transition-all duration-300 hover:text-white hover:-translate-y-0.5 hover:border-sky-400/60"
+              >
+                {li}
+              </motion.li>
+            ))}
+          </ul>
+        </motion.div>
+      ))}
+    </div>
+  );
 }
 
 /**

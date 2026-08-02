@@ -96,7 +96,13 @@ export type Block =
    * via whileInView (replaying every time they re-enter the viewport) plus
    * a separately scroll-derived progress bar underneath.
    */
-  | { type: 'processDemo'; phases: { num: string; title: string; tag: string }[] };
+  | { type: 'processDemo'; phases: { num: string; title: string; tag: string }[] }
+  /**
+   * Scaled replay of ServicePage's stack-chip grid — a two-axis stagger
+   * (column delay + per-chip delay combined into one formula) plus a
+   * hover lift on each chip.
+   */
+  | { type: 'stackChipsDemo'; columns: { heading: string; items: string[] }[] };
 
 export type BlogPost = {
   slug: string;
@@ -926,6 +932,70 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
       {
         type: 'p',
         text: "It would be easy to leave the phases untimed — safer, in the sense that nothing can be checked against reality later. We put ranges on them anyway, because a process description without a timeline isn't actually answering the question \"how long does this take,\" which is the question underneath most of the others. Week 0–1 for discovery, weeks 1–3 for design, and so on aren't marketing copy; they're what we tell a client on the first call, published in the same words.",
+      },
+    ],
+  },
+  {
+    slug: 'a-two-axis-stagger-animation-explained',
+    title: 'A two-axis stagger animation, explained',
+    dek: 'How to stagger a grid of items by both column and position with one small formula — the technique behind the tech-stack chips on our service pages.',
+    tag: 'Engineering',
+    accent: 'purple',
+    date: '2026-11-29',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "A basic stagger animation is easy: give item N a delay of N times some constant, and a list cascades in one row at a time. It gets less obvious the moment your content isn't a single list — our service pages show technology chips grouped into columns (Frontend, Backend, Tooling), and a naive per-item stagger across the whole page would either ignore the grouping entirely or force every column to wait for the ones before it to finish first.",
+      },
+      {
+        type: 'statement',
+        text: 'delay: idx * 0.08 + i * 0.05 — two independent counters, added together, and the whole grid cascades diagonally instead of column by column.',
+      },
+      { type: 'heading', text: 'Try it' },
+      {
+        type: 'stackChipsDemo',
+        columns: [
+          { heading: 'Frontend', items: ['React', 'Next.js', 'TypeScript'] },
+          { heading: 'Backend', items: ['Postgres', 'Prisma', 'REST'] },
+        ],
+      },
+      {
+        type: 'p',
+        text: "Each column gets its own whileInView trigger with delay: idx * 0.08 — column 0 starts immediately, column 1 waits 80ms, and so on. Independently, each chip inside a column gets delay: i * 0.05, where i resets to zero at the start of every column. Combine them — idx * 0.08 + i * 0.05 — and the result isn't \"finish column 1, then start column 2\": it's a diagonal wave, where column 2's first chip can appear before column 1's third chip does, because 0.16 (column 2, chip 0) is less than 0.10 + 0.05 (column 1, chip 2's math, roughly).",
+      },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `{columns.map((col, idx) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    transition={{ delay: idx * 0.08 }}   // column offset
+    viewport={{ once: true }}
+  >
+    {col.items.map((item, i) => (
+      <motion.li
+        initial={{ opacity: 0, y: 10 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        transition={{ delay: idx * 0.08 + i * 0.05 }}  // + chip offset
+        viewport={{ once: true }}
+      >
+        {item}
+      </motion.li>
+    ))}
+  </motion.div>
+))}`,
+      },
+      { type: 'heading', text: 'Why not framer-motion\'s built-in staggerChildren' },
+      {
+        type: 'p',
+        text: "Framer Motion has a variants-based staggerChildren option that handles the single-axis case elegantly — parent orchestrates, children just declare a variant name. It works well when every child should follow the exact same fixed delay increment. It works less well the moment you have two independent groupings that should each contribute their own offset, because staggerChildren computes one delay per child based on its index in a flat list — it doesn't know about \"column\" as a concept. Two counters added by hand is a few more characters than a variants config, and it's the version that actually generalizes to a grid.",
+      },
+      { type: 'heading', text: 'The hover lift is a separate, much smaller decision' },
+      {
+        type: 'p',
+        text: "Once a chip has arrived, hovering it lifts it half a pixel and brightens its border and text — a plain CSS transition, not Framer Motion at all, because it doesn't need spring physics or scroll awareness; it just needs to feel responsive on :hover, which transition-all duration-300 already does for free. Not every piece of motion on a page needs the same tool. The entrance needed viewport awareness and staggered timing, so it got a motion library. The hover state needed neither, so it got two Tailwind classes.",
       },
     ],
   },
