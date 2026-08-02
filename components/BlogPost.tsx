@@ -275,7 +275,58 @@ function BlockRenderer({
 
     case 'cursorDemo':
       return <CursorDemo />;
+
+    case 'scrollProgressDemo':
+      return <ScrollProgressDemo />;
+
+    case 'focusListDemo':
+      return <FocusListDemo items={block.items} />;
   }
+}
+
+/**
+ * Same bar as the real ScrollProgress, but driven by useScroll({ container })
+ * against a bounded, internally-scrollable box instead of the page.
+ */
+function ScrollProgressDemo() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ container: containerRef });
+  const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
+
+  return (
+    <div className="rounded-2xl border border-white/10 overflow-hidden">
+      <div className="h-1 bg-white/10">
+        <motion.div
+          className="h-full bg-gradient-to-r from-blue-400 via-blue-500 to-purple-600 origin-left"
+          style={{ scaleX }}
+        />
+      </div>
+      <div ref={containerRef} className="h-56 overflow-y-auto p-6 space-y-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30">
+          scroll this box, not the page
+        </p>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <p key={i} className="text-sm text-white/45 leading-relaxed">
+            Line {i + 1} of filler content, just tall enough to make this box scrollable on
+            its own so the bar above has something real to track.
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A few rows using the real FocusRow primitive, reacting to page scroll like everywhere else it's used. */
+function FocusListDemo({ items }: { items: string[] }) {
+  return (
+    <div className="rounded-2xl border border-white/10 divide-y divide-white/10 overflow-hidden">
+      {items.map((item) => (
+        <FocusRow key={item} className="px-6 py-6">
+          <p className="text-lg text-white/70">{item}</p>
+        </FocusRow>
+      ))}
+    </div>
+  );
 }
 
 /**

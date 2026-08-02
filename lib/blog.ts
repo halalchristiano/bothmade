@@ -60,7 +60,19 @@ export type Block =
    * A miniature, self-contained replay of the site's custom cursor + easing
    * trail, scoped to a small box instead of the whole viewport.
    */
-  | { type: 'cursorDemo' };
+  | { type: 'cursorDemo' }
+  /**
+   * A bounded scroll box with its own progress bar tracking scroll through
+   * that box specifically — same technique as the global ScrollProgress
+   * bar, driven by useScroll({ container }) instead of the page.
+   */
+  | { type: 'scrollProgressDemo' }
+  /**
+   * A short stack of rows using the real FocusRow primitive, so scrolling
+   * this exact section of the article demonstrates the reading-line focus
+   * effect on itself.
+   */
+  | { type: 'focusListDemo'; items: string[] };
 
 export type BlogPost = {
   slug: string;
@@ -627,6 +639,65 @@ const tick = () => {
       {
         type: 'p',
         text: "It also only runs at all behind a matchMedia('(hover: hover) and (pointer: fine)') check, same as the magnetic buttons — a touch device has no persistent pointer position for a trailing ring to chase, so the whole thing never initializes there. No cursor replacement, no dead code paying a battery cost for an effect nobody on that device could ever see.",
+      },
+    ],
+  },
+  {
+    slug: 'the-details-nobody-asks-for',
+    title: 'The details nobody asks for',
+    dek: 'Three small effects that never got their own post — an odometer, a scroll bar, and a reading line — because none of them are impressive alone. Try all three below.',
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-10-25',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "Not every detail earns a whole article. Some effects are two motion values and a spring, doing one small job well, and writing a thousand words about any one of them alone would inflate something that's supposed to be quiet. So instead of three thin posts, here are three real pieces of the site's motion system in one place — each with the actual component embedded, not a description of it.",
+      },
+      { type: 'heading', text: 'A number that rolls up, not in' },
+      {
+        type: 'p',
+        text: "When a real figure appears on the site, it doesn't just fade into view — it counts up from zero, prefix and suffix held still while only the numeric part animates. It exists specifically so a stat never gets a chance to be skimmed past unread; the motion holds your eye on the number for the half-second it takes to land.",
+      },
+      {
+        type: 'stats',
+        items: [
+          { value: '40MB', label: 'example — prefix/suffix held still' },
+          { value: '95%', label: 'example — decimals preserved too' },
+          { value: '<1s', label: 'example — leading symbol untouched' },
+        ],
+      },
+      {
+        type: 'p',
+        text: "Those three are illustrative, not a claim about anything — the component is built to only ever animate a number that's actually been sourced from somewhere real, on the site itself. A regex pulls the numeric core out of a string like \"40MB\" or \"<1s\", a spring drives it from zero to that target the moment it scrolls into view, and everything the regex didn't capture — the unit, the symbol — just sits there unanimated the whole time.",
+      },
+      { type: 'heading', text: 'A bar that knows exactly where you are' },
+      {
+        type: 'p',
+        text: "A thin gradient line sits fixed to the top of every page, its width tracking scroll progress through the whole document. It's a small thing to notice consciously, and that's rather the point — it answers \"how much is left\" at a glance, in your peripheral vision, without asking you to look for a scrollbar that half of browsers hide by default now anyway.",
+      },
+      { type: 'scrollProgressDemo' },
+      {
+        type: 'p',
+        text: "The one below is the same bar, same spring, but pointed at a small scrollable box instead of the page — Framer Motion's useScroll takes an optional container option, and swapping the page for that one ref is the entire difference between the site-wide version and this embedded one.",
+      },
+      { type: 'heading', text: 'The row you\'re reading, brighter than the rest' },
+      {
+        type: 'p',
+        text: "Case-study decisions and this post's own section headings use the same effect: whichever row is passing through the center of your viewport sits at full brightness, while rows above and below dim and sit a few pixels off — not because they were animated once, but because their opacity and position are a continuous function of where they are relative to the middle of the screen, recalculated every frame you scroll.",
+      },
+      {
+        type: 'focusListDemo',
+        items: [
+          'Scroll this stack and watch the middle row brighten as it passes center.',
+          'Nothing here is triggered once — it tracks scroll position continuously.',
+          'Scroll back up and it reverses correctly, same as everything else on this page.',
+        ],
+      },
+      {
+        type: 'p',
+        text: "None of these three would carry an entire article on their own, and none of them are trying to. Put together they're most of what makes scrolling through the site feel considered rather than assembled — small, continuous reactions to exactly where you are, instead of animations that just play once and stop.",
       },
     ],
   },
