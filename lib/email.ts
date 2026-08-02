@@ -444,8 +444,14 @@ export async function sendWeeklyDigestEmail(
       eyebrow: 'Weekly digest',
       title: 'Your week at Bothmade',
       bodyHtml,
-      ctaLabel: 'Open Dashboard',
-      ctaUrl: `${SITE_URL}/admin/dashboard`,
+      // Aggregate counts alone aren't actionable — point at the ranked list
+      // of exactly which leads/projects they refer to when there's anything
+      // to act on, the dashboard otherwise.
+      ctaLabel: stats.overdueBalances + stats.atRiskProjects > 0 ? 'See what needs attention' : 'Open Dashboard',
+      ctaUrl:
+        stats.overdueBalances + stats.atRiskProjects > 0
+          ? `${SITE_URL}/admin/priorities`
+          : `${SITE_URL}/admin/dashboard`,
     }),
   });
 }
