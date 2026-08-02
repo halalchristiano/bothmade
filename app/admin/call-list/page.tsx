@@ -66,6 +66,11 @@ export default function CallListPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // Choosing controls. The list knows the right order; these let a rep pick a
+  // business to actually ring now — which the order alone can't, because the
+  // most urgent lead is often one where it's the middle of the night.
+  const [readyNow, setReadyNow] = useState(false);
+  const [sortBy, setSortBy] = useState<'urgent' | 'value' | 'time'>('urgent');
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const load = async () => {
@@ -125,12 +130,43 @@ export default function CallListPage() {
   }
 
   const match = (r: CallRow) => matchesSearch(search, r.company, r.contactName, r.phone, r.email);
-  const visible = callable.filter(match);
+  const now = new Date(nowTick);
+
+  // A number we can't place is treated as callable: hiding a lead because we
+  // couldn't read its area code would quietly lose work.
+  const callableNow = (r: CallRow) => (leadLocalTime(r.phone, now)?.callability ?? 'okay') !== 'bad';
+
+  const searched = callable.filter(match);
+  const readyCount = searched.filter(callableNow).length;
+  const visible = readyNow ? searched.filter(callableNow) : searched;
   const visibleNoPhone = noPhone.filter(match);
-  const grouped = ORDER.map((r) => ({ reason: r, rows: visible.filter((c) => c.reason === r) })).filter(
-    (g) => g.rows.length > 0
-  );
+
+  const RANK = { good: 0, okay: 1, bad: 2 } as const;
+  const sortRows = (rows: CallRow[]) => {
+    if (sortBy === 'urgent') return rows; // already ordered by the server
+    const copy = [...rows];
+    if (sortBy === 'value') {
+      copy.sort((a, b) => (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0));
+    } else {
+      copy.sort(
+        (a, b) =>
+          RANK[leadLocalTime(a.phone, now)?.callability ?? 'okay'] -
+          RANK[leadLocalTime(b.phone, now)?.callability ?? 'okay']
+      );
+    }
+    return copy;
+  };
+
+  // Sorting by value or by time is a deliberate override of the urgency
+  // grouping, so present one flat list rather than pretending both apply.
+  const flat = sortBy !== 'urgent';
+  const grouped = flat
+    ? [{ reason: 'today' as CallReason, rows: sortRows(visible) }].filter((g) => g.rows.length > 0)
+    : ORDER.map((r) => ({ reason: r, rows: visible.filter((c) => c.reason === r) })).filter(
+        (g) => g.rows.length > 0
+      );
   const total = visible.length;
+  const nextUp = sortRows(visible)[0] ?? null;
 
   return (
     <PageIn className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-10">
@@ -163,6 +199,65 @@ export default function CallListPage() {
         />
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 -mt-1 mb-1">
+        <button
+          onClick={() => setReadyNow((v) => !v)}
+          className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+            readyNow
+              ? 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200'
+              : 'border-white/15 text-white/55 hover:bg-white/5'
+          }`}
+        >
+          {readyNow ? '✓ ' : ''}Sensible hour there ({readyCount})
+        </button>
+        {(['urgent', 'value', 'time'] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => setSortBy(k)}
+            className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+              sortBy === k
+                ? 'border-sky-400/40 bg-sky-400/15 text-sky-200'
+                : 'border-white/15 text-white/55 hover:bg-white/5'
+            }`}
+          >
+            {k === 'urgent' ? 'Most urgent' : k === 'value' ? 'Biggest deal' : 'Best time to call'}
+          </button>
+        ))}
+      </div>
+
+      {nextUp && (
+        <div className="mb-5 rounded-2xl border border-sky-400/25 bg-sky-400/[0.07] p-4">
+          <p className="text-[11px] uppercase tracking-wide text-sky-300/80 font-semibold mb-1.5">
+            If you don't know where to start, call this one
+          </p>
+          <p className="text-base font-bold text-white/90 break-words">{nextUp.company}</p>
+          {(() => {
+            const lt = leadLocalTime(nextUp.phone, now);
+            return (
+              <p className="text-xs text-white/50 mt-1 leading-relaxed">
+                {REASONS[nextUp.reason].label}
+                {lt?.time ? ` · ${lt.time} their time` : ''}
+                {nextUp.estimatedValue ? ` · ${formatCents(nextUp.estimatedValue)}` : ''}
+              </p>
+            );
+          })()}
+          <div className="flex gap-2 mt-3">
+            <a
+              href={`tel:${nextUp.phone}`}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+            >
+              <Phone size={14} /> Call {nextUp.company}
+            </a>
+            <Link
+              href={`/admin/leads/${nextUp.id}`}
+              className="shrink-0 rounded-lg border border-white/15 px-3.5 py-2.5 text-sm font-semibold hover:bg-white/5 transition-colors"
+            >
+              Brief
+            </Link>
+          </div>
+        </div>
+      )}
+
       {syncMessage && (
         <p className="text-xs text-sky-300 bg-sky-400/10 border border-sky-400/20 rounded-lg px-3 py-2 mt-3">
           {syncMessage}
@@ -183,14 +278,18 @@ export default function CallListPage() {
           const meta = REASONS[reason];
           return (
             <section key={reason}>
-              <div className={`rounded-xl border px-3.5 py-2.5 mb-3 ${meta.classes}`}>
+              <div className={`rounded-xl border px-3.5 py-2.5 mb-3 ${flat ? 'border-white/15 bg-white/[0.04] text-white/70' : meta.classes}`}>
                 <p className="text-sm font-bold flex items-center gap-1.5">
-                  {reason === 'bounced' && <MailX size={14} />}
-                  {reason === 'overdue' && <AlertTriangle size={14} />}
-                  {meta.label}
+                  {!flat && reason === 'bounced' && <MailX size={14} />}
+                  {!flat && reason === 'overdue' && <AlertTriangle size={14} />}
+                  {flat ? (sortBy === 'value' ? 'Biggest deals first' : 'Best time to call first') : meta.label}
                   <span className="ml-1 opacity-60 font-semibold">({rows.length})</span>
                 </p>
-                <p className="text-xs opacity-70 mt-0.5 leading-relaxed">{meta.blurb}</p>
+                <p className="text-xs opacity-70 mt-0.5 leading-relaxed">
+                  {flat
+                    ? 'Urgency grouping is off while this sort is on — switch back to "Most urgent" to see it.'
+                    : meta.blurb}
+                </p>
               </div>
 
               <div className="space-y-2">
