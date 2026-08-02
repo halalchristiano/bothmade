@@ -333,27 +333,45 @@ export function EmptyState({ icon: Icon, text }: { icon: LucideIcon; text: strin
 export function MiniBarChart({
   data,
   formatValue,
+  onBarClick,
+  selectedIndex,
 }: {
   data: Array<{ label: string; value: number }>;
   formatValue?: (v: number) => string;
+  onBarClick?: (index: number) => void;
+  selectedIndex?: number | null;
 }) {
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="flex items-end gap-2 h-28">
-      {data.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-          <span className="text-[11px] text-white/0 group-hover:text-white/50 transition-colors -mb-1">
-            {formatValue ? formatValue(d.value) : d.value}
-          </span>
-          <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: `${Math.max((d.value / max) * 100, 3)}%` }}
-            transition={{ duration: 0.5, ease: 'easeOut', delay: i * 0.05 }}
-            className="w-full rounded-t-sm bg-sky-400/40 group-hover:bg-sky-400/70 transition-colors"
-          />
-          <span className="text-[11px] text-white/30">{d.label}</span>
-        </div>
-      ))}
+      {data.map((d, i) => {
+        const isSelected = selectedIndex === i;
+        const Wrapper = onBarClick ? 'button' : 'div';
+        return (
+          <Wrapper
+            key={i}
+            {...(onBarClick ? { onClick: () => onBarClick(i), type: 'button' } : {})}
+            className={`flex-1 flex flex-col items-center gap-1.5 group ${onBarClick ? 'cursor-pointer' : ''}`}
+          >
+            <span
+              className={`text-[11px] transition-colors -mb-1 ${
+                isSelected ? 'text-white/70' : 'text-white/0 group-hover:text-white/50'
+              }`}
+            >
+              {formatValue ? formatValue(d.value) : d.value}
+            </span>
+            <motion.div
+              initial={{ height: 0 }}
+              animate={{ height: `${Math.max((d.value / max) * 100, 3)}%` }}
+              transition={{ duration: 0.5, ease: 'easeOut', delay: i * 0.05 }}
+              className={`w-full rounded-t-sm transition-colors ${
+                isSelected ? 'bg-sky-400' : 'bg-sky-400/40 group-hover:bg-sky-400/70'
+              }`}
+            />
+            <span className={`text-[11px] transition-colors ${isSelected ? 'text-white/70' : 'text-white/30'}`}>{d.label}</span>
+          </Wrapper>
+        );
+      })}
     </div>
   );
 }

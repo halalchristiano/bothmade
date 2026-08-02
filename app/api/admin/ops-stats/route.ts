@@ -81,7 +81,7 @@ export async function GET(request: Request) {
     const revenueHistory = await Promise.all(
       monthStarts.map(async ({ start, end, label }) => {
         const payments = await prisma.payment.findMany({ where: { createdAt: { gte: start, lt: end } } });
-        return { label, value: payments.reduce((s, p) => s + p.amount, 0) };
+        return { label, value: payments.reduce((s, p) => s + p.amount, 0), year: start.getFullYear(), month: start.getMonth() };
       })
     );
 

@@ -99,7 +99,7 @@ interface OpsStats {
   pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
   revenueThisMonth: number;
   revenueLastMonth: number;
-  revenueHistory: Array<{ label: string; value: number }>;
+  revenueHistory: Array<{ label: string; value: number; year: number; month: number }>;
   activeProjectCount: number;
   activityFeed: Array<{
     type: 'message' | 'payment' | 'proposal';
@@ -656,6 +656,84 @@ function HandoffRow({
   );
 }
 
+interface RevenueBreakdownPayment {
+  id: string;
+  amount: number;
+  type: string;
+  createdAt: string;
+  projectId: string;
+  projectName: string;
+  company: string;
+}
+
+function RevenueChartCard({ revenueHistory }: { revenueHistory: OpsStats['revenueHistory'] }) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [payments, setPayments] = useState<RevenueBreakdownPayment[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBarClick = async (index: number) => {
+    if (selectedIndex === index) {
+      setSelectedIndex(null);
+      setPayments(null);
+      return;
+    }
+    setSelectedIndex(index);
+    setPayments(null);
+    setError(null);
+    setLoading(true);
+    const bar = revenueHistory[index];
+    try {
+      const res = await fetch(`/api/admin/revenue-breakdown?year=${bar.year}&month=${bar.month}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load breakdown.');
+      setPayments(data.payments);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load breakdown.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="p-6 mb-5">
+      <CardHeader icon={TrendingUp} tone="emerald" title="Revenue — Last 6 Months" subtitle="Click a bar to see what made up that month" />
+      <MiniBarChart data={revenueHistory} formatValue={(v) => formatCents(v)} onBarClick={handleBarClick} selectedIndex={selectedIndex} />
+
+      {selectedIndex !== null && (
+        <div className="mt-5 pt-5 border-t border-white/[0.07]">
+          <p className="text-xs text-white/40 mb-3">{revenueHistory[selectedIndex].label} payments</p>
+          {loading && <p className="text-sm text-white/30 py-2">Loading...</p>}
+          {error && (
+            <div className="flex items-center gap-2 text-sm text-red-300/80">
+              <AlertTriangle size={14} /> {error}
+            </div>
+          )}
+          {payments && payments.length === 0 && <p className="text-sm text-white/30 py-2">No payments that month.</p>}
+          {payments && payments.length > 0 && (
+            <div className="space-y-0.5 max-h-56 overflow-y-auto">
+              {payments.map((p) => (
+                <ListRow
+                  key={p.id}
+                  href={`/admin/projects/${p.projectId}`}
+                  title={p.company}
+                  subtitle={`${p.projectName} · ${p.type}`}
+                  trailing={
+                    <span className="text-white/40 text-xs whitespace-nowrap">
+                      <span className="text-emerald-300/80 font-medium">{formatCents(p.amount)}</span> ·{' '}
+                      {new Date(p.createdAt).toLocaleDateString()}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 type OverdueSort = 'amount' | 'name';
 
 function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
@@ -777,10 +855,7 @@ function OpsDashboard({
         />
       </div>
 
-      <Card className="p-6 mb-5">
-        <CardHeader icon={TrendingUp} tone="emerald" title="Revenue — Last 6 Months" />
-        <MiniBarChart data={stats.revenueHistory} formatValue={(v) => formatCents(v)} />
-      </Card>
+      <RevenueChartCard revenueHistory={stats.revenueHistory} />
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
         <Card className="p-6" glow="emerald">
