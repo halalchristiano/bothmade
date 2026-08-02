@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -169,6 +169,14 @@ export default function LeadDetailPage() {
 
   const inputClass =
     'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
+
+  const followUpInputRef = useRef<HTMLInputElement>(null);
+  const openFollowUpPicker = () => {
+    const el = followUpInputRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') el.showPicker();
+    else el.click();
+  };
 
   const load = async () => {
     try {
@@ -629,16 +637,22 @@ export default function LeadDetailPage() {
         {/* LEFT: Lead info */}
         <div className="lg:col-span-1 space-y-6">
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <div className="flex justify-between items-start gap-3 mb-5">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <button
-                  onClick={handleToggleHot}
-                  title={lead.hotLead ? 'Unmark as hot' : 'Mark as hot lead'}
-                  className={`shrink-0 text-lg leading-none transition-colors ${lead.hotLead ? 'text-amber-400' : 'text-white/20 hover:text-white/50'}`}
-                >
-                  ★
-                </button>
-                <h1 className="text-2xl font-bold truncate">{lead.company}</h1>
+            <div className="flex items-start gap-3.5 mb-5">
+              <span className="shrink-0 flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-sky-400/25 to-purple-500/25 border border-white/10 text-lg font-bold text-white/90">
+                {lead.company.charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h1 className="text-xl font-bold truncate">{lead.company}</h1>
+                  <button
+                    onClick={handleToggleHot}
+                    title={lead.hotLead ? 'Unmark as hot' : 'Mark as hot lead'}
+                    className={`shrink-0 text-base leading-none transition-colors ${lead.hotLead ? 'text-amber-400' : 'text-white/20 hover:text-white/50'}`}
+                  >
+                    ★
+                  </button>
+                </div>
+                {lead.contactName && <p className="text-sm text-white/40 truncate mt-0.5">{lead.contactName}</p>}
               </div>
               <button
                 onClick={() => setEditing(!editing)}
@@ -665,15 +679,34 @@ export default function LeadDetailPage() {
                   ))}
                 </select>
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 relative">
                 <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-sky-300/70 mb-1.5">
                   <CalendarClock size={11} /> Follow-up
                 </label>
+                <button
+                  type="button"
+                  onClick={openFollowUpPicker}
+                  className={`${inputClass} w-full min-w-0 flex items-center justify-between gap-1 border-sky-400/20 hover:border-sky-400/40 text-left`}
+                >
+                  <span className={`truncate ${lead.nextFollowUpAt ? '' : 'text-white/30'}`}>
+                    {lead.nextFollowUpAt
+                      ? new Date(`${lead.nextFollowUpAt.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : 'Set a date'}
+                  </span>
+                  <CalendarClock size={13} className="shrink-0 text-sky-300/60" />
+                </button>
                 <input
+                  ref={followUpInputRef}
                   type="date"
                   defaultValue={lead.nextFollowUpAt ? lead.nextFollowUpAt.slice(0, 10) : ''}
                   onChange={(e) => handleSetFollowUp(e.target.value)}
-                  className={`${inputClass} block w-full min-w-0 max-w-full box-border border-sky-400/20 focus:ring-sky-400/50 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:ml-0.5 [&::-webkit-calendar-picker-indicator]:mr-0`}
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-hidden="true"
                 />
               </div>
             </div>
