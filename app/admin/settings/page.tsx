@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Mail, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
+import { Mail, CheckCircle2, ExternalLink, Loader2, Eye } from 'lucide-react';
 import { Card, CardHeader, PageIn, PageTitle } from '@/components/admin/ui';
 
 interface GmailStatus {
@@ -18,13 +18,35 @@ export default function AdminSettingsPage() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
+  const [savingPreview, setSavingPreview] = useState(false);
+
   const load = () => {
     fetch('/api/admin/settings/gmail')
       .then((r) => r.json())
       .then(setStatus);
+    fetch('/api/admin/settings/preferences')
+      .then((r) => r.json())
+      .then((data) => setPreviewBeforeBulkSend(data.previewBeforeBulkSend));
   };
 
   useEffect(load, []);
+
+  const handleTogglePreview = async () => {
+    if (previewBeforeBulkSend === null) return;
+    const next = !previewBeforeBulkSend;
+    setPreviewBeforeBulkSend(next);
+    setSavingPreview(true);
+    try {
+      await fetch('/api/admin/settings/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ previewBeforeBulkSend: next }),
+      });
+    } finally {
+      setSavingPreview(false);
+    }
+  };
 
   const handleConnect = async () => {
     setConnecting(true);
@@ -153,6 +175,41 @@ export default function AdminSettingsPage() {
             </button>
           </div>
         )}
+      </Card>
+
+      <Card className="p-6">
+        <CardHeader
+          title="Bulk sending"
+          subtitle="Controls what happens when you use a 'Send all now' cold-email button."
+        />
+        <button
+          onClick={handleTogglePreview}
+          disabled={previewBeforeBulkSend === null || savingPreview}
+          className="mt-4 w-full flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 text-left hover:bg-white/[0.05] transition-colors disabled:opacity-50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-sky-400/10 flex items-center justify-center shrink-0">
+              <Eye size={16} className="text-sky-300" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Preview before bulk sending</p>
+              <p className="text-xs text-white/40 mt-0.5">
+                Show every recipient's subject and body before a batch cold-email send actually goes out.
+              </p>
+            </div>
+          </div>
+          <span
+            className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              previewBeforeBulkSend ? 'bg-gradient-to-r from-sky-400 to-purple-500' : 'bg-white/15'
+            }`}
+          >
+            <span
+              className={`inline-block h-[18px] w-[18px] transform rounded-full bg-white transition-transform ${
+                previewBeforeBulkSend ? 'translate-x-[22px]' : 'translate-x-1'
+              }`}
+            />
+          </span>
+        </button>
       </Card>
     </PageIn>
   );

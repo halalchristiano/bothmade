@@ -11,6 +11,7 @@ import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { ImportLeadsModal } from '@/components/admin/ImportLeadsModal';
 import { BulkEmailComposer } from '@/components/admin/BulkEmailComposer';
+import { ColdEmailPreviewModal } from '@/components/admin/ColdEmailPreviewModal';
 
 interface LeadRow {
   id: string;
@@ -142,6 +143,8 @@ export default function AdminLeadsPage() {
   const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
   const [sendingColdDrafts, setSendingColdDrafts] = useState(false);
   const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[] } | null>(null);
+  const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
+  const [previewingBatch, setPreviewingBatch] = useState<LeadRow[] | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -160,6 +163,10 @@ export default function AdminLeadsPage() {
 
   useEffect(() => {
     load();
+    fetch('/api/admin/settings/preferences')
+      .then((r) => r.json())
+      .then((data) => setPreviewBeforeBulkSend(data.previewBeforeBulkSend))
+      .catch(() => setPreviewBeforeBulkSend(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -240,17 +247,27 @@ export default function AdminLeadsPage() {
   );
   const selectedNeedingCall = useMemo(() => selectedLeads.filter((l) => !l.email), [selectedLeads]);
 
-  const handleSendColdDrafts = async (targets: LeadRow[]) => {
+  // Entry point for every "send prepared cold emails" button — routes to
+  // the preview modal unless the user has switched it off in Settings.
+  const handleSendColdDrafts = (targets: LeadRow[]) => {
     if (targets.length === 0) return;
-    if (!confirm(`Send ${targets.length} prepared cold email${targets.length === 1 ? '' : 's'} now? This goes out immediately.`)) {
+    if (previewBeforeBulkSend === false) {
+      if (confirm(`Send ${targets.length} prepared cold email${targets.length === 1 ? '' : 's'} now? This goes out immediately.`)) {
+        sendColdDrafts(targets.map((l) => l.id));
+      }
       return;
     }
+    setPreviewingBatch(targets);
+  };
+
+  const sendColdDrafts = async (leadIds: string[]) => {
+    if (leadIds.length === 0) return;
     setSendingColdDrafts(true);
     try {
       const res = await fetch('/api/admin/email/send-cold-drafts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadIds: targets.map((l) => l.id) }),
+        body: JSON.stringify({ leadIds }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -259,6 +276,7 @@ export default function AdminLeadsPage() {
           .map((r: { company: string; reason?: string }) => `${r.company}: ${r.reason}`);
         setColdSendResult({ sentCount: data.sentCount, total: data.total, failures });
         setSelected(new Set());
+        setPreviewingBatch(null);
         load();
       }
     } finally {
@@ -580,6 +598,15 @@ export default function AdminLeadsPage() {
           companyName={lostTarget.company}
           onCancel={() => setLostTarget(null)}
           onConfirm={handleConfirmLost}
+        />
+      )}
+
+      {previewingBatch && (
+        <ColdEmailPreviewModal
+          leads={previewingBatch}
+          sending={sendingColdDrafts}
+          onClose={() => setPreviewingBatch(null)}
+          onConfirm={sendColdDrafts}
         />
       )}
     </PageIn>
