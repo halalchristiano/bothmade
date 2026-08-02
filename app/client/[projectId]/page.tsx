@@ -428,7 +428,17 @@ export default function ClientDashboard() {
 
             {/* Latest Updates */}
             <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
-              <h2 className="text-xl font-bold mb-6">Latest Updates</h2>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold">Latest Updates</h2>
+                {project.updates.length > 0 && (
+                  <button
+                    onClick={() => setActiveTab('timeline')}
+                    className="text-sm font-semibold text-sky-300 hover:underline"
+                  >
+                    View full timeline →
+                  </button>
+                )}
+              </div>
 
               {project.updates.length === 0 ? (
                 <div className="flex items-center gap-4 rounded-lg bg-white/5 border border-white/10 p-4">
