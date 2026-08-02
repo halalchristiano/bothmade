@@ -1,6 +1,14 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { useRef } from 'react';
+import {
+  motion,
+  useScroll,
+  useSpring,
+  useTransform,
+  useReducedMotion,
+  type MotionValue,
+} from 'framer-motion';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
@@ -252,7 +260,116 @@ function BlockRenderer({
           <code>{block.code}</code>
         </motion.pre>
       );
+
+    case 'stackDemo':
+      return <StackDemo panels={block.panels} accent={accent} />;
   }
+}
+
+/**
+ * A miniature, self-contained replay of the ServiceList sheet-presentation
+ * technique — scoped to its own local scroll region instead of the full
+ * page. Panels rise from the bottom, dock full-bleed, and get buried by the
+ * next one as you scroll past, driven by a local scrollYProgress rather
+ * than any global scroll state, so it can live safely inside an article.
+ */
+function StackDemo({
+  panels,
+  accent,
+}: {
+  panels: { label: string; from: string; to: string }[];
+  accent: { from: string; to: string; text: string };
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ['start start', 'end end'],
+  });
+  const progress = useSpring(scrollYProgress, { stiffness: 150, damping: 30, mass: 0.4 });
+
+  if (reduceMotion) {
+    return (
+      <div className="rounded-xl border border-white/10 overflow-hidden divide-y divide-white/10">
+        {panels.map((p) => (
+          <div
+            key={p.label}
+            className="p-8 text-center font-mono text-xs uppercase tracking-[0.3em] text-white/60"
+            style={{ background: `linear-gradient(135deg, ${p.from}33, ${p.to}66)` }}
+          >
+            {p.label}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative" style={{ height: `${panels.length * 90}vh` }}>
+      <div className="sticky top-24 h-[60vh] rounded-2xl overflow-hidden border border-white/10">
+        {panels.map((panel, i) => (
+          <DemoSheet key={panel.label} panel={panel} index={i} total={panels.length} progress={progress} />
+        ))}
+        <div className="absolute bottom-4 inset-x-0 z-40 text-center font-mono text-[10px] uppercase tracking-[0.3em] text-white/30">
+          scroll to stack them
+        </div>
+      </div>
+      <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: accent.text }}>
+        live demo — same technique as the homepage
+      </p>
+    </div>
+  );
+}
+
+function DemoSheet({
+  panel,
+  index,
+  total,
+  progress,
+}: {
+  panel: { label: string; from: string; to: string };
+  index: number;
+  total: number;
+  progress: MotionValue<number>;
+}) {
+  const isFirst = index === 0;
+  const isLast = index === total - 1;
+  const inStart = (index - 1) / (total - 1) + 0.05;
+  const inEnd = index / (total - 1) - 0.03;
+  const outStart = index / (total - 1) + 0.05;
+  const outEnd = (index + 1) / (total - 1) - 0.03;
+
+  const y = useTransform(
+    progress,
+    isFirst ? [0, 0.0001] : [inStart, Math.max(inEnd, inStart + 0.01)],
+    isFirst ? ['0%', '0%'] : ['104%', '0%']
+  );
+  const buriedScale = useTransform(
+    progress,
+    isLast ? [0, 1] : [outStart, outEnd],
+    isLast ? [1, 1] : [1, 0.94]
+  );
+  const dim = useTransform(
+    progress,
+    isLast ? [0, 1] : [outStart, outEnd],
+    isLast ? [0, 0] : [0, 0.6]
+  );
+
+  return (
+    <motion.div className="absolute inset-0" style={{ scale: buriedScale, zIndex: 10 + index }}>
+      <motion.div
+        className="absolute inset-0 grid place-items-center"
+        style={{
+          y,
+          background: `linear-gradient(135deg, ${panel.from}, ${panel.to})`,
+        }}
+      >
+        <p className="font-mono text-sm uppercase tracking-[0.4em] text-white/90">{panel.label}</p>
+      </motion.div>
+      <motion.div className="absolute inset-0 bg-black pointer-events-none" style={{ opacity: dim }} />
+    </motion.div>
+  );
 }
 
 function AdjacentLink({ post, direction }: { post: BlogPost; direction: 'prev' | 'next' }) {

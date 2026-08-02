@@ -30,7 +30,14 @@ export type Block =
   /** A monospace code sample. */
   | { type: 'code'; code: string; language?: string }
   /** A section break with its own heading, restarting the reading rhythm. */
-  | { type: 'heading'; text: string };
+  | { type: 'heading'; text: string }
+  /**
+   * A live, scroll-driven demo embedded in the article itself — panels
+   * stack over each other exactly like the sheet-presentation technique
+   * described in the surrounding prose, scoped to a small local scroll
+   * region rather than the full page. Show, don't just tell.
+   */
+  | { type: 'stackDemo'; panels: { label: string; from: string; to: string }[] };
 
 export type BlogPost = {
   slug: string;
@@ -395,6 +402,62 @@ words.map((word, i) => (
       {
         type: 'p',
         text: "Pick the container based on what the content needs, not on what looks most impressive in a keynote. Most of an app's screens are still windows. That's not a failure to use the platform — using restraint on a platform this new is usually the harder, better decision.",
+      },
+    ],
+  },
+  {
+    slug: 'four-worlds-one-scrollbar',
+    title: 'Four worlds, one scrollbar',
+    dek: 'How the homepage presents Web, iOS, macOS, and Vision Pro as physical sheets stacking on top of each other — try it below.',
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2026-09-27',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "Our homepage has a section that doesn't scroll like the rest of the page. Instead of content sliding past, four full-screen panels — Web, iOS, macOS, Vision Pro — rise up and dock into place one after another, each one burying the last slightly into the background, the way an iOS sheet slides up over whatever was on screen before it. It's not a slideshow and it's not a carousel. It's four sheets of glass, physically stacking, and your scrollbar is the only thing moving them.",
+      },
+      {
+        type: 'statement',
+        text: "The section is pinned in place for five screen-heights of scrolling, and everything you see is just one number — scroll progress — mapped onto four sheets at once.",
+      },
+      { type: 'heading', text: 'Try it' },
+      {
+        type: 'stackDemo',
+        panels: [
+          { label: 'Web', from: '#0ea5e9', to: '#0c2f52' },
+          { label: 'iOS', from: '#6366f1', to: '#1e1b4b' },
+          { label: 'macOS', from: '#a855f7', to: '#3b0764' },
+          { label: 'Vision Pro', from: '#f0abfc', to: '#818cf8' },
+        ],
+      },
+      {
+        type: 'p',
+        text: "That's a scaled-down version of exactly the same code driving the real section — same math, same easing, same four-panel idea, just a smaller pinned region. Scrolling through it doesn't play a video or trigger a sequence of separate animations; every panel's position and depth-dimming is a pure function of one scrollYProgress value, read fresh on every frame.",
+      },
+      { type: 'heading', text: 'The trick is a pinned container' },
+      {
+        type: 'p',
+        text: "The section wrapper is five screen-heights tall, but position: sticky holds its inner content pinned to the top of the viewport for the entire time you're scrolling through that height. From the outside it looks like the page stopped scrolling and something else took over — really, the page never stopped; the tall wrapper is just giving the sticky content somewhere to stay pinned while five screens' worth of scroll distance quietly pass underneath it.",
+      },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `<section className="relative h-[500vh]">
+  <div className="sticky top-0 h-screen overflow-hidden">
+    {/* every panel lives here, position is derived, not stepped */}
+  </div>
+</section>`,
+      },
+      { type: 'heading', text: 'One progress value, four interpretations' },
+      {
+        type: 'p',
+        text: "Each panel gets handed the exact same scrollYProgress and asks a different question of it: am I in my arrival window, my resting window, or my burial window? A panel arriving translates from 104% down to 0% — fully offscreen below to fully docked. A panel already resting just sits at 0% doing nothing, which is why the section feels calm instead of constantly busy. And a panel about to be buried by the next one scales down a touch and dims, so depth reads as a physical stack rather than a cut.",
+      },
+      {
+        type: 'p',
+        text: "None of the four panels animate on a timer, and none of them know what the others are doing — they all just react independently to the same shared number. That's what makes scrolling backward feel correct instantly, with no special-case code for reverse: run the same math with a smaller progress value and the whole stack unwinds exactly as it built.",
       },
     ],
   },
