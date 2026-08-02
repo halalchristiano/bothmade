@@ -32,7 +32,7 @@ const ADD_ONS_BY_CATEGORY = Object.entries(ADD_ONS).reduce(
   {} as Record<AddOnCategory, AddOnKey[]>
 );
 
-const FAQ_ITEMS: Array<{ q: string; a: string }> = [
+export const FAQ_ITEMS: Array<{ q: string; a: string }> = [
   {
     q: "What's the actual difference between a Website and a Web App?",
     a: 'A Website is something people visit — no login, no account, just pages to read and a way to contact you (portfolios, restaurants, landing pages, marketing sites). A Web App is something people log into and use — their own account, their own data, real functionality like a dashboard or booking system. The simple test: if anyone ever needs to create an account or log in, you need a Web App, not a Website. Picking the wrong one usually means re-scoping later, so when in doubt, tell us what the end user actually does with it and we\'ll confirm the right fit before you pay anything.',
