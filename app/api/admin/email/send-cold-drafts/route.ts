@@ -4,7 +4,7 @@ import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
 import { sendAsUser } from '@/lib/mailer';
-import { buildFallbackColdEmailDraft } from '@/lib/leads';
+import { buildFallbackColdEmailDraft, advanceToContactedOnOutreach } from '@/lib/leads';
 
 const MAX_LEADS = 200;
 
@@ -95,7 +95,12 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      await prisma.lead.update({ where: { id: lead.id }, data: { coldEmailSentAt: new Date() } }).catch(() => null);
+      await prisma.lead
+        .update({
+          where: { id: lead.id },
+          data: { coldEmailSentAt: new Date(), status: advanceToContactedOnOutreach(lead.status) },
+        })
+        .catch(() => null);
       await prisma.leadActivity
         .create({ data: { leadId: lead.id, type: 'email', content: subject, createdById: session.userId } })
         .catch(() => null);

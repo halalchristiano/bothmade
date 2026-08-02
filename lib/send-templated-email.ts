@@ -3,6 +3,7 @@ import { getTemplate } from '@/lib/email-templates';
 import { renderShell } from '@/lib/email';
 import { sendAsUser } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
+import { advanceToContactedOnOutreach } from '@/lib/leads';
 
 export interface SendTemplatedEmailInput {
   senderId: string;
@@ -125,6 +126,14 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
         },
       })
       .catch(() => null);
+
+    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { status: true } });
+    if (lead) {
+      const nextStatus = advanceToContactedOnOutreach(lead.status);
+      if (nextStatus !== lead.status) {
+        await prisma.lead.update({ where: { id: leadId }, data: { status: nextStatus } }).catch(() => null);
+      }
+    }
   }
 
   const sentViaGmail = (!!sender.email && isDomainDelegationConfigured()) || !!sender.gmailAddress;

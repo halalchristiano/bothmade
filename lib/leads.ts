@@ -159,6 +159,18 @@ export function isLeadStatus(value: string): value is LeadStatus {
 }
 
 /**
+ * A lead that's still sitting at "New" or "Researched" hasn't actually been
+ * talked to yet — the moment an email goes out, that's no longer true.
+ * Returns 'contacted' when the current status is earlier in the pipeline
+ * than that, otherwise returns the status unchanged so a lead that's
+ * already further along (replied, qualified, etc.) never gets moved
+ * backwards by a routine follow-up email.
+ */
+export function advanceToContactedOnOutreach(currentStatus: string): string {
+  return currentStatus === 'new' || currentStatus === 'researched' ? 'contacted' : currentStatus;
+}
+
+/**
  * A generic "Subject: ...\n\n<body>" cold-email draft for leads that don't
  * have a bespoke personalisedColdEmail from CSV research — so "send all"
  * doesn't silently skip them just because nobody wrote a custom line yet.

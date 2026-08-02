@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
-import { isLeadActivityType } from '@/lib/leads';
+import { isLeadActivityType, advanceToContactedOnOutreach } from '@/lib/leads';
 import { sendEmail } from '@/lib/email';
 
 export async function POST(
@@ -53,7 +53,11 @@ export async function POST(
       include: { createdBy: { select: { id: true, name: true } } },
     });
 
-    await prisma.lead.update({ where: { id: leadId }, data: { updatedAt: new Date() } });
+    const nextStatus = emailSent ? advanceToContactedOnOutreach(lead.status) : lead.status;
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { updatedAt: new Date(), status: nextStatus },
+    });
 
     return NextResponse.json({ success: true, activity, emailSent }, { status: 201 });
   } catch (error) {
