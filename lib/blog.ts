@@ -46,7 +46,61 @@ export type BlogPost = {
   body: Block[];
 };
 
-export const BLOG_POSTS: BlogPost[] = [];
+export const BLOG_POSTS: BlogPost[] = [
+  {
+    slug: 'one-team-every-surface',
+    title: 'One team, every surface',
+    dek: 'Why the same two people write the website and the iOS app, and what that actually costs us.',
+    tag: 'Process',
+    accent: 'indigo',
+    date: '2026-08-02',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: 'Most software gets built by two teams that never talk. One ships the website, the other ships the app, and the seam between them shows up as the thing users notice first — a feature that exists on one platform and not the other, copy that drifted apart after the first rewrite, a login flow that behaves differently depending on where you tapped it from. Nobody planned that inconsistency. It is just what happens when two separate groups own two separate halves of one product.',
+      },
+      {
+        type: 'statement',
+        text: 'We avoid that seam by never creating it — the person who writes your API is the same person who consumes it in Swift.',
+      },
+      { type: 'heading', text: 'What one team actually buys' },
+      {
+        type: 'p',
+        text: "It is not that we are twice as productive as two specialized teams — we are not. It is that a decision made for the web side is felt immediately on the native side, by the same person, in the same day, instead of being relayed through a meeting, a ticket, and a Slack thread that loses context on the way. When we change how a resource is shaped in the backend, the TypeScript types and the Swift models get updated in the same sitting, because nothing is waiting on someone else's sprint.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `// One shape, defined once, consumed twice.
+export type Project = {
+  id: string;
+  title: string;
+  status: 'draft' | 'active' | 'shipped';
+  updatedAt: string; // ISO 8601
+};
+
+// The Swift side mirrors this by hand today — same fields,
+// same order, reviewed in the same PR as the TS change.
+// struct Project: Codable {
+//   let id: String
+//   let title: String
+//   let status: Status
+//   let updatedAt: String
+// }`,
+      },
+      {
+        type: 'p',
+        text: "That mirroring is manual right now, which is deliberate — we would rather feel the friction of keeping two type systems in sync by hand than hide it behind a code generator we don't fully trust yet. The friction is a signal. If it starts to hurt, that's the point at which generating the Swift models from the TypeScript source earns its complexity. It hasn't yet.",
+      },
+      { type: 'heading', text: 'What it costs' },
+      {
+        type: 'p',
+        text: "The honest tradeoff is capacity. A two-person studio that does both surfaces will always ship fewer total projects at once than two separate specialist shops running in parallel. We are not the fastest option if you need five features shipped simultaneously across a large team. What we are is the option where nothing gets lost in the handoff, because there is no handoff — just the same two people, moving from one file to the other.",
+      },
+    ],
+  },
+];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
   return BLOG_POSTS.find((p) => p.slug === slug);
