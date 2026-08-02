@@ -64,18 +64,14 @@ export function WebHero() {
           <Act key={act.word} index={i} progress={progress} word={act.word} copy={act.copy} />
         ))}
 
-        {/* CTA lands with the final word */}
-        <motion.div
-          className="absolute inset-x-0 bottom-14 z-20 flex justify-center"
-          style={{
-            opacity: useTransform(progress, [0.78, 0.88], [0, 1]),
-            y: useTransform(progress, [0.78, 0.88], [24, 0]),
-          }}
-        >
+        {/* CTA — present from first paint (no scroll required) so it sits
+            above the fold, and stays fixed at the bottom of the pinned
+            viewport for the entire scroll sequence. */}
+        <div className="absolute inset-x-0 bottom-14 z-20 flex justify-center">
           <PillCTA href="/#contact" size="lg">
             Start your web project
           </PillCTA>
-        </motion.div>
+        </div>
 
         {/* scroll cue, first act only */}
         <motion.div
@@ -140,7 +136,7 @@ function Act({
   return (
     <div className="absolute inset-0 grid place-items-center pointer-events-none">
       <motion.div style={{ scale, opacity }} className="will-change-transform">
-        <KineticWord text={word} />
+        <KineticWord text={word} as={index === 0 ? 'h1' : 'span'} />
       </motion.div>
 
       <motion.p
@@ -153,9 +149,15 @@ function Act({
   );
 }
 
-/** Giant word whose letters carry the pointer-proximity weight field. */
-function KineticWord({ text }: { text: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
+/**
+ * Giant word whose letters carry the pointer-proximity weight field.
+ * Renders as an `h1` for the first act — the page's real, visible,
+ * above-the-fold heading — and a plain `span` for the rest, which are
+ * decorative sequence steps rather than the page title.
+ */
+function KineticWord({ text, as = 'span' }: { text: string; as?: 'h1' | 'span' }) {
+  const ref = useRef<HTMLElement>(null);
+  const Tag = as;
 
   useEffect(() => {
     const host = ref.current;
@@ -202,8 +204,8 @@ function KineticWord({ text }: { text: string }) {
   }, []);
 
   return (
-    <span
-      ref={ref}
+    <Tag
+      ref={ref as never}
       aria-label={text}
       className="block select-none font-bold leading-none tracking-[-0.04em] whitespace-nowrap"
       style={{ fontSize: 'clamp(3.5rem, 16vw, 15rem)' }}
@@ -222,7 +224,7 @@ function KineticWord({ text }: { text: string }) {
           {ch}
         </span>
       ))}
-    </span>
+    </Tag>
   );
 }
 
@@ -233,15 +235,18 @@ function StaticHero() {
       <p className="mb-8 font-mono text-[10px] uppercase tracking-[0.45em] text-sky-300/60">
         web development
       </p>
-      {ACTS.map((act) => (
-        <h2
-          key={act.word}
-          className="font-bold leading-[0.95] tracking-[-0.04em] text-sky-100"
-          style={{ fontSize: 'clamp(3rem, 11vw, 9rem)' }}
-        >
-          {act.word}
-        </h2>
-      ))}
+      {ACTS.map((act, i) => {
+        const Tag = i === 0 ? 'h1' : 'h2';
+        return (
+          <Tag
+            key={act.word}
+            className="font-bold leading-[0.95] tracking-[-0.04em] text-sky-100"
+            style={{ fontSize: 'clamp(3rem, 11vw, 9rem)' }}
+          >
+            {act.word}
+          </Tag>
+        );
+      })}
       <p className="mt-10 max-w-md text-base leading-relaxed text-white/50">
         Marketing sites, SaaS platforms, dashboards — built on React and Next.js.
       </p>

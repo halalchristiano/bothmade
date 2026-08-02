@@ -94,13 +94,26 @@ export function IOSHero() {
       {/* ---------------- Springboard ---------------- */}
       <div className="relative h-[100svh] flex flex-col items-center justify-center px-6 pt-24 pb-16">
         <motion.p
-          className="mb-10 font-mono text-[10px] uppercase tracking-[0.45em] text-white/40"
+          className="mb-4 font-mono text-[10px] uppercase tracking-[0.45em] text-white/40"
           initial={{ opacity: 0 }}
           animate={{ opacity: open ? 0 : 1 }}
           transition={{ duration: 0.4 }}
         >
           ios · ipados · macos
         </motion.p>
+
+        {/* Real, visible, above-the-fold heading — present on first paint,
+            not gated behind tapping an icon. */}
+        <motion.h1
+          className="mb-8 text-center font-bold leading-[1.05] tracking-[-0.03em] text-white"
+          style={{ fontSize: 'clamp(1.75rem, 5vw, 3.25rem)' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: open ? 0 : 1 }}
+          transition={{ duration: 0.4 }}
+        >
+          Native iOS, iPad &amp; Mac apps,
+          <br className="hidden sm:block" /> built to last.
+        </motion.h1>
 
         <motion.div
           className="grid grid-cols-4 gap-5 sm:gap-7"
@@ -158,6 +171,12 @@ export function IOSHero() {
         >
           tap an app to open
         </motion.p>
+
+        {/* CTA — present and reachable above the fold without tapping an
+            icon or scrolling; the launch animation is a bonus, not a gate. */}
+        <motion.div className="mt-6" animate={{ opacity: open ? 0 : 1 }} transition={{ duration: 0.3 }}>
+          <PillCTA href="/#contact">Start your iOS project</PillCTA>
+        </motion.div>
 
         {/* dock */}
         <motion.div
@@ -226,7 +245,11 @@ export function IOSHero() {
                   ios · ipados · macos
                 </p>
 
-                <h1
+                {/* The page's one real h1 lives in the springboard, above
+                    the fold on first paint — this is a second, decorative
+                    beat that plays after the launch animation, so it stays
+                    an h2 to avoid a duplicate top-level heading. */}
+                <h2
                   className="font-bold leading-[0.95] tracking-[-0.03em]"
                   style={{ fontSize: 'clamp(2.5rem, 8vw, 6.5rem)' }}
                 >
@@ -237,7 +260,7 @@ export function IOSHero() {
                   <span className="bg-gradient-to-r from-indigo-200 via-indigo-300 to-indigo-500 bg-clip-text text-transparent">
                     home screen.
                   </span>
-                </h1>
+                </h2>
 
                 <p className="mt-8 max-w-xl text-base md:text-lg leading-relaxed text-white/50">
                   That transition you just watched is the one users see every time they
