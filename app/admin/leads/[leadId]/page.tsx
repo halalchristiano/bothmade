@@ -43,6 +43,7 @@ import {
   TIMELINES,
   PAIN_POINT_BRIEFS,
   buildSalesRecommendations,
+  classifyWrittenPoint,
   inferPainPointsFromNotes,
   calculatePrice,
   depositAmount,
@@ -720,6 +721,13 @@ export default function LeadDetailPage() {
           lead.upsellPoints
         );
 
+        // A checklist pain point already covered by a bespoke one would show
+        // the same problem twice with the same script attached.
+        const coveredByWritten = new Set(
+          writtenPains.map((p) => classifyWrittenPoint(p.point, p.explanation)).filter(Boolean)
+        );
+        const checklistPains = allPains.filter((k) => !coveredByWritten.has(k));
+
         const useWrittenNeeds = writtenNeeds.length > 0;
         const useWrittenUpsell = writtenUpsell.length > 0;
         const hasRange = lead.estimateLowCents !== null || lead.estimateHighCents !== null;
@@ -837,23 +845,53 @@ export default function LeadDetailPage() {
                   hint="Their problems, in plain English. Open the call with these — not with what we sell."
                 />
                 <div className="space-y-2.5 mb-6">
-                  {writtenPains.map((item, i) => (
-                    <WrittenPoint key={`w${i}`} item={item} tone="red" />
-                  ))}
+                  {writtenPains.map((item, i) => {
+                    // Their bespoke wording stays the headline and the body;
+                    // the matched brief only adds the two things the CSV
+                    // can't give — the money angle and a line to say.
+                    const matched = classifyWrittenPoint(item.point, item.explanation);
+                    const brief = matched ? PAIN_POINT_BRIEFS[matched] : null;
+                    return (
+                      <div key={`w${i}`} className="rounded-xl border border-red-400/20 bg-red-400/[0.05] p-3.5 min-w-0">
+                        <p className="text-sm font-bold text-red-200 break-words">{item.point}</p>
+                        {item.explanation && (
+                          <p className="text-xs text-white/60 leading-relaxed mt-1.5 break-words">
+                            {item.explanation}
+                          </p>
+                        )}
+                        {brief && (
+                          <>
+                            <p className="text-xs text-white/50 leading-relaxed mt-2 break-words">
+                              <span className="text-amber-300/90 font-semibold">Why they should care: </span>
+                              {brief.costsThem}
+                            </p>
+                            <div className="mt-2.5 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
+                                Say something like this
+                              </p>
+                              <p className="text-xs text-white/80 italic leading-relaxed break-words">
+                                "{brief.sayThis}"
+                              </p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
 
-                  {allPains.length > 0 && writtenPains.length > 0 && (
+                  {checklistPains.length > 0 && writtenPains.length > 0 && (
                     <button
                       onClick={() => setShowChecklistPains((v) => !v)}
                       className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-left text-xs font-semibold text-white/55 hover:bg-white/[0.06] transition-colors"
                     >
-                      {showChecklistPains ? 'Hide' : 'Show'} {allPains.length} more from the checklist — each with a
+                      {showChecklistPains ? 'Hide' : 'Show'} {checklistPains.length} more from the checklist — each with a
                       line you can say out loud
                     </button>
                   )}
 
-                  {allPains.length > 0 && (writtenPains.length === 0 || showChecklistPains) && (
+                  {checklistPains.length > 0 && (writtenPains.length === 0 || showChecklistPains) && (
                     <>
-                      {allPains.map((key) => {
+                      {checklistPains.map((key) => {
                         const brief = PAIN_POINT_BRIEFS[key];
                         if (!brief) return null;
                         const fromNotes = inferred.includes(key);

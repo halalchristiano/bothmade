@@ -742,6 +742,58 @@ export function inferPainPointsFromNotes(
   );
 }
 
+/**
+ * Works out which of our canonical pain points a hand-written one is really
+ * describing, so a bespoke line like "Manual RFQ qualification" can borrow
+ * the matching brief's "why they should care" and its call script.
+ *
+ * Deliberately strict: a wrong match hands the rep a script about the wrong
+ * problem, which is worse on a live call than having no script at all. Every
+ * pattern here has to be specific enough that a false positive is unlikely,
+ * and anything ambiguous returns null and simply gets no script.
+ */
+const WRITTEN_POINT_SIGNALS: Array<{ key: PainPointKey; patterns: RegExp[] }> = [
+  { key: 'not-mobile-friendly', patterns: [/\bmobile\b/i, /\bon (a )?phone\b/i, /\bresponsive\b/i] },
+  { key: 'poor-seo', patterns: [/\bsearch(es|able)?\b/i, /\bseo\b/i, /\branking?s?\b/i, /\bdiscoverab/i] },
+  {
+    key: 'no-analytics',
+    patterns: [/\banalytics\b/i, /\btracking\b/i, /\bmeasur/i, /\bvisibility into\b/i, /\bintelligence\b/i],
+  },
+  {
+    key: 'manual-processes',
+    patterns: [/\bmanual(ly)?\b/i, /\bby hand\b/i, /\brfq\b/i, /\bspreadsheet/i, /\bre-?type/i, /\bthrough email\b/i],
+  },
+  {
+    key: 'disconnected-tools',
+    patterns: [/\bdisconnect/i, /\bnot unified\b/i, /\bfragment/i, /\bsilo/i, /\bdon'?t talk\b/i],
+  },
+  { key: 'no-booking', patterns: [/\bbook(ing|ings)?\b/i, /\bappointment/i, /\bschedul/i] },
+  { key: 'no-ecommerce', patterns: [/\breorder\b/i, /\bcheckout\b/i, /\bbuy online\b/i, /\bpurchase online\b/i] },
+  { key: 'weak-branding', patterns: [/\bbrand(ing)?\b/i, /\blogo\b/i, /\binconsistent\b/i] },
+  {
+    key: 'outdated-design',
+    patterns: [/\bfirst impression\b/i, /\boutdated\b/i, /\bdated\b/i, /\btemplate\b/i, /\bcredibilit/i],
+  },
+  { key: 'security-concerns', patterns: [/\bsecurity\b/i, /\bcomplian/i, /\bgdpr\b/i, /\bprivacy\b/i] },
+  { key: 'scaling-issues', patterns: [/\bscal(e|ing)\b/i, /\bcan'?t keep up\b/i, /\boutgrow/i] },
+  { key: 'no-app', patterns: [/\bmobile app\b/i, /\bapp store\b/i] },
+];
+
+function singleSignalMatch(text: string): PainPointKey | null {
+  const hits = WRITTEN_POINT_SIGNALS.filter(({ patterns }) => patterns.some((re) => re.test(text)));
+  // More than one strong signal means the text spans several problems and we
+  // can't say which script fits — better to show none than to guess wrong.
+  return hits.length === 1 ? hits[0].key : null;
+}
+
+export function classifyWrittenPoint(point: string, explanation?: string | null): PainPointKey | null {
+  // The headline names one problem; the explanation underneath usually
+  // touches several while describing it ("mobile conversion friction" whose
+  // body also mentions booking and estimates). So the headline decides when
+  // it can, and the body is only consulted when the headline says nothing.
+  return singleSignalMatch(point) ?? singleSignalMatch(`${point} ${explanation ?? ''}`);
+}
+
 /** One line item in the recommendation, carrying why it's being recommended. */
 export interface RecommendedItem {
   key: AddOnKey;
