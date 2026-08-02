@@ -767,40 +767,74 @@ export default function AdminDashboardPage() {
   const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
   const [opsStats, setOpsStats] = useState<OpsStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
+      setLoading(true);
+      setError(null);
       try {
         const meResponse = await fetch('/api/auth/me');
         if (meResponse.status === 401) {
           router.push('/admin/login');
           return;
         }
+        if (!meResponse.ok) throw new Error(`Failed to load your session (${meResponse.status}).`);
         const me = await meResponse.json();
         const userRole = me.user?.role || 'admin';
+
+        const statsUrl = userRole === 'sales' ? '/api/admin/sales-stats' : '/api/admin/ops-stats';
+        const res = await fetch(statsUrl);
+        if (!res.ok) throw new Error(`Failed to load dashboard data (${res.status}).`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Failed to load dashboard data.');
+
+        if (cancelled) return;
         setRole(userRole);
         setName(me.user?.name || '');
-
         if (userRole === 'sales') {
-          const res = await fetch('/api/admin/sales-stats');
-          const data = await res.json();
-          if (data.success) setSalesStats(data.stats);
+          setSalesStats(data.stats);
         } else {
-          const res = await fetch('/api/admin/ops-stats');
-          const data = await res.json();
-          if (data.success) setOpsStats(data.stats);
+          setOpsStats(data.stats);
         }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Something went wrong loading your dashboard.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     load();
-  }, [router]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, retryCount]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-56px)] lg:h-screen">
         <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 h-[calc(100vh-56px)] lg:h-screen px-4 text-center">
+        <AlertTriangle className="text-red-400" size={32} />
+        <div>
+          <p className="font-semibold mb-1">Couldn't load your dashboard</p>
+          <p className="text-white/40 text-sm">{error}</p>
+        </div>
+        <button
+          onClick={() => setRetryCount((c) => c + 1)}
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+        >
+          Try Again
+        </button>
       </div>
     );
   }
