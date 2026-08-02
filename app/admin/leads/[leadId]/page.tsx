@@ -58,7 +58,12 @@ import {
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
+  isAddOnKey,
+  isBaseService,
+  isClientType,
   isIncludedInBase,
+  isTimelineKey,
+  sanitizeCustomItems,
   withBaseIncludes,
   type AddOnCategory,
   type AddOnKey,
@@ -120,6 +125,15 @@ interface LeadDetail {
   estimateHighCents: number | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
+  // What was actually saved the last time a sign-and-pay link was
+  // prepared/sent — the source of truth for whether the builder's current
+  // state still matches what the client can see.
+  proposalBaseService: string | null;
+  proposalAddOns: string;
+  proposalClientType: string | null;
+  proposalTimeline: string | null;
+  proposalDepositOnly: boolean;
+  proposalCustomItems?: Array<{ label: string; priceCents: number }>;
 }
 
 export default function LeadDetailPage() {
@@ -150,6 +164,7 @@ export default function LeadDetailPage() {
   // on a page left open between calls.
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
+  const [duplicates, setDuplicates] = useState<Array<{ id: string; company: string; status: string }>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
   const [sendingColdDraft, setSendingColdDraft] = useState(false);
@@ -266,6 +281,54 @@ export default function LeadDetailPage() {
   const [customItems, setCustomItems] = useState<CustomItem[]>([]);
   const [draftCustomLabel, setDraftCustomLabel] = useState('');
   const [draftCustomPrice, setDraftCustomPrice] = useState('');
+  // Guards the one-time hydration of the builder from the saved proposal (or
+  // a local draft) so later load() calls — triggered by unrelated actions
+  // elsewhere on the page — never silently overwrite an in-progress edit.
+  const hydratedProposalRef = useRef(false);
+  const [restoredDraft, setRestoredDraft] = useState(false);
+  const clearProposalDraft = () => {
+    try {
+      localStorage.removeItem(`bothmade_proposal_draft_${leadId}`);
+    } catch {
+      // no-op — nothing to clean up if storage isn't accessible
+    }
+  };
+
+  // Lets him add the missing email right where he discovers he needs it,
+  // instead of backing out of the builder to go find the edit form.
+  const [quickEmail, setQuickEmail] = useState('');
+  const [savingQuickEmail, setSavingQuickEmail] = useState(false);
+  const handleSaveQuickEmail = async () => {
+    const value = quickEmail.trim();
+    if (!value) return;
+    setSavingQuickEmail(true);
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: value }),
+      });
+      setQuickEmail('');
+      load();
+    } finally {
+      setSavingQuickEmail(false);
+    }
+  };
+
+  // Un-does whatever's been tinkered with since the last send — one click
+  // back to exactly what the client's link currently shows, instead of
+  // manually toggling every changed add-on and custom item back by hand.
+  const handleRevertToLastSent = () => {
+    if (!lead) return;
+    if (lead.proposalBaseService && isBaseService(lead.proposalBaseService)) {
+      setProposalServiceRaw(lead.proposalBaseService);
+    }
+    setProposalAddOns(lead.proposalAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a)));
+    if (lead.proposalClientType && isClientType(lead.proposalClientType)) setProposalClientType(lead.proposalClientType);
+    if (lead.proposalTimeline && isTimelineKey(lead.proposalTimeline)) setProposalTimeline(lead.proposalTimeline);
+    setDepositOnly(lead.proposalDepositOnly);
+    setCustomItems(sanitizeCustomItems(lead.proposalCustomItems || []));
+  };
 
   const addCustomItem = () => {
     const label = draftCustomLabel.trim();
@@ -343,6 +406,7 @@ export default function LeadDetailPage() {
         const l: LeadDetail = data.lead;
         setLead(l);
         setPlaybook(data.playbook ?? []);
+        setDuplicates(data.possibleDuplicates ?? []);
         setCompany(l.company);
         setContactName(l.contactName || '');
         setEmail(l.email || '');
@@ -363,6 +427,45 @@ export default function LeadDetailPage() {
         setQualBudget(l.qualBudget || '');
         setQualTiming(l.qualTiming || '');
         setQualMotivation(l.qualMotivation || '');
+
+        // Only on the very first load — later calls to load() happen after
+        // unrelated actions (logging an activity, changing status) and must
+        // never clobber whatever Evan is mid-way through typing into the
+        // pricing builder.
+        if (!hydratedProposalRef.current) {
+          hydratedProposalRef.current = true;
+          if (l.proposalBaseService && isBaseService(l.proposalBaseService)) {
+            // A proposal already exists server-side — that's the source of
+            // truth for what the client can actually see, so it wins over
+            // any local draft.
+            setProposalServiceRaw(l.proposalBaseService);
+            setProposalAddOns(l.proposalAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a)));
+            if (l.proposalClientType && isClientType(l.proposalClientType)) setProposalClientType(l.proposalClientType);
+            if (l.proposalTimeline && isTimelineKey(l.proposalTimeline)) setProposalTimeline(l.proposalTimeline);
+            setDepositOnly(l.proposalDepositOnly);
+            setCustomItems(sanitizeCustomItems(l.proposalCustomItems || []));
+          } else {
+            // Nothing sent yet — restore whatever was last typed into the
+            // builder in case a crash or accidental navigation lost it.
+            try {
+              const raw = localStorage.getItem(`bothmade_proposal_draft_${leadId}`);
+              const draft = raw ? JSON.parse(raw) : null;
+              if (draft) {
+                if (draft.baseService && isBaseService(draft.baseService)) setProposalServiceRaw(draft.baseService);
+                if (Array.isArray(draft.addOns)) {
+                  setProposalAddOns(draft.addOns.filter((a: string): a is AddOnKey => isAddOnKey(a)));
+                }
+                if (draft.clientType && isClientType(draft.clientType)) setProposalClientType(draft.clientType);
+                if (draft.timeline && isTimelineKey(draft.timeline)) setProposalTimeline(draft.timeline);
+                if (typeof draft.depositOnly === 'boolean') setDepositOnly(draft.depositOnly);
+                if (Array.isArray(draft.customItems)) setCustomItems(sanitizeCustomItems(draft.customItems));
+                setRestoredDraft(true);
+              }
+            } catch {
+              // corrupt or inaccessible localStorage — nothing to restore, no big deal
+            }
+          }
+        }
       }
     } finally {
       setLoading(false);
@@ -373,6 +476,29 @@ export default function LeadDetailPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+
+  // Mirrors the builder to localStorage on every change, so a crashed tab or
+  // an accidental back-button doesn't cost him the selections. Skipped until
+  // hydration has actually run — otherwise the pre-hydration defaults
+  // ('website', no add-ons) would overwrite a real draft in the first tick.
+  useEffect(() => {
+    if (!hydratedProposalRef.current) return;
+    try {
+      localStorage.setItem(
+        `bothmade_proposal_draft_${leadId}`,
+        JSON.stringify({
+          baseService: proposalService,
+          addOns: proposalAddOns,
+          clientType: proposalClientType,
+          timeline: proposalTimeline,
+          depositOnly,
+          customItems,
+        })
+      );
+    } catch {
+      // storage full or disabled — the draft is a convenience, not required
+    }
+  }, [leadId, proposalService, proposalAddOns, proposalClientType, proposalTimeline, depositOnly, customItems]);
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
@@ -741,6 +867,47 @@ export default function LeadDetailPage() {
   const proposalCustomTotal = customItemsTotal(customItems);
   const proposalGrandTotal = proposalBreakdown.totalPrice + proposalCustomTotal;
 
+  // A link has gone out (or at least been generated) the moment a proposal
+  // is saved on the lead — before that there's nothing for "changed since
+  // sending" to compare against.
+  const hasSentProposal = Boolean(lead?.proposalBaseService);
+  const sameAddOns = (a: AddOnKey[], b: string) => {
+    const bSet = new Set(b.split(',').filter(Boolean));
+    return a.length === bSet.size && a.every((k) => bSet.has(k));
+  };
+  const sameCustomItems = (a: CustomItem[], b?: CustomItem[]) => {
+    const bItems = b || [];
+    if (a.length !== bItems.length) return false;
+    return a.every((item, i) => item.label === bItems[i]?.label && item.priceCents === bItems[i]?.priceCents);
+  };
+  const proposalChangedSinceSent =
+    hasSentProposal &&
+    lead &&
+    (proposalService !== lead.proposalBaseService ||
+      !sameAddOns(proposalAddOns, lead.proposalAddOns) ||
+      proposalClientType !== lead.proposalClientType ||
+      proposalTimeline !== lead.proposalTimeline ||
+      depositOnly !== lead.proposalDepositOnly ||
+      !sameCustomItems(customItems, lead.proposalCustomItems));
+
+  // One plain-English sentence for "what do I actually do next with this
+  // lead" — removes the need to piece it together from contract status,
+  // agreement timestamp, and pipeline stage separately.
+  const nextStepMessage: string | null = (() => {
+    if (!lead) return null;
+    if (lead.status === 'won') return null;
+    if (lead.status === 'lost') return null;
+    if (lead.agreementSignedAt) {
+      return "Next: they've signed and paid — hit \"Convert to Project\" below to kick off onboarding.";
+    }
+    if (hasSentProposal && lead.contractStatus === 'sent') {
+      return proposalChangedSinceSent
+        ? "Next: you've changed the scope since this went out — send it again so the client sees the update."
+        : 'Next: waiting on the client to review and sign. Nothing to do until they act, or follow up if it\'s been a few days.';
+    }
+    return 'Next: build the proposal below, then click "Email Sign & Pay Link" to send it to the client.';
+  })();
+
   const handleCreatePaymentLink = async () => {
     setProposalError('');
     setCreatingLink(true);
@@ -753,16 +920,25 @@ export default function LeadDetailPage() {
       const data = await response.json();
       if (data.success) {
         setPaymentLinkUrl(data.signUrl);
+        clearProposalDraft();
         load();
       } else {
-        setProposalError(data.error || 'Failed to prepare sign-and-pay link');
+        setProposalError(data.error || 'Something went wrong generating this link — try again in a moment.');
       }
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setCreatingLink(false);
     }
   };
 
-  const handleEmailPaymentLink = async () => {
+  // Clicking "Email Sign & Pay Link" opens an inline confirmation instead of
+  // sending immediately — a wrong price or scope going straight to the
+  // client's inbox isn't something to find out about after the fact.
+  const [confirmingSend, setConfirmingSend] = useState(false);
+
+  const doEmailPaymentLink = async () => {
+    setConfirmingSend(false);
     setProposalError('');
     setLinkEmailStatus('');
     setEmailingLink(true);
@@ -782,10 +958,13 @@ export default function LeadDetailPage() {
         } else {
           setLinkEmailStatus('Link created, but the email failed to send — copy it manually below.');
         }
+        clearProposalDraft();
         load();
       } else {
-        setProposalError(data.error || 'Failed to prepare sign-and-pay link');
+        setProposalError(data.error || 'Something went wrong sending this — try again in a moment.');
       }
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setEmailingLink(false);
     }
@@ -805,8 +984,10 @@ export default function LeadDetailPage() {
       if (data.success && data.sent) {
         setInvoiceStatus(`Invoice emailed to ${data.toEmail}.`);
       } else {
-        setProposalError(data.error || 'Failed to send invoice');
+        setProposalError(data.error || 'Something went wrong sending the invoice — try again in a moment.');
       }
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setSendingInvoice(null);
     }
@@ -823,7 +1004,7 @@ export default function LeadDetailPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setProposalError(data.error || 'Failed to generate contract');
+        setProposalError(data.error || 'Something went wrong generating the contract — try again in a moment.');
         return;
       }
       const blob = await response.blob();
@@ -834,6 +1015,8 @@ export default function LeadDetailPage() {
       a.click();
       URL.revokeObjectURL(url);
       load();
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setDownloadingContract(false);
     }
@@ -979,6 +1162,28 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      {duplicates.length > 0 && (
+        <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/[0.09] p-4">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-amber-100">
+            <AlertTriangle size={14} /> This business may already be in here twice
+          </p>
+          <p className="text-xs text-amber-100/70 mt-1 leading-relaxed">
+            Check before you ring — someone may have spoken to them already under the other record.
+          </p>
+          <div className="mt-2.5 space-y-1.5">
+            {duplicates.map((d) => (
+              <Link
+                key={d.id}
+                href={`/admin/leads/${d.id}`}
+                className="block rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/[0.08] transition-colors break-words"
+              >
+                {d.company} — {LEAD_STATUS_LABELS[d.status as LeadStatus] ?? d.status} →
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Mid-call, this page is a long scroll. These are the only three places
           anyone needs to reach in a hurry, so they stay within one tap. */}
@@ -2411,9 +2616,28 @@ export default function LeadDetailPage() {
           </span>
           <h2 className="text-xl font-bold">Onboard This Customer</h2>
         </div>
-        <p className="text-sm text-white/40 mb-8 ml-11">
+        <p className="text-sm text-white/40 mb-4 ml-11">
           Configure exactly what they want, then send a payment link or generate a contract — no need to send them back to the pricing page.
         </p>
+
+        {nextStepMessage && (
+          <div className="ml-11 mb-4 rounded-lg border border-sky-400/30 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
+            {nextStepMessage}
+          </div>
+        )}
+
+        {restoredDraft && (
+          <div className="ml-11 mb-8 flex items-center justify-between gap-3 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-sm text-emerald-200">
+            <span>↺ Restored your unsaved selections from last time — nothing was lost.</span>
+            <button
+              onClick={() => setRestoredDraft(false)}
+              aria-label="Dismiss"
+              className="text-emerald-200/60 hover:text-emerald-100 transition-colors shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-8">
           {/* Left: configuration steps */}
@@ -2624,16 +2848,91 @@ export default function LeadDetailPage() {
               </label>
             </div>
 
+            {proposalChangedSinceSent && !confirmingSend && (
+              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200 space-y-1.5">
+                <p>
+                  ⚠ You've changed something since this was last sent to {lead.email || 'the client'} — they're still seeing the old version until you send it again.
+                </p>
+                <button
+                  onClick={handleRevertToLastSent}
+                  className="font-medium underline underline-offset-2 hover:text-amber-100 transition-colors"
+                >
+                  ↺ Revert to what was last sent
+                </button>
+              </div>
+            )}
+
             {proposalError && <p className="text-red-400 text-sm">{proposalError}</p>}
 
+            {confirmingSend ? (
+              <div className="rounded-lg border-2 border-sky-400/40 bg-sky-400/10 p-4 space-y-3">
+                <p className="text-sm">
+                  Send to <span className="font-semibold">{lead.email || '(no email on file)'}</span> for{' '}
+                  <span className="font-semibold">
+                    {formatCents(depositOnly ? depositAmount(proposalGrandTotal) : proposalGrandTotal)}
+                  </span>
+                  {depositOnly ? ' (deposit)' : ''}?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={doEmailPaymentLink}
+                    disabled={emailingLink}
+                    className="flex-1 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    {emailingLink ? 'Sending...' : 'Yes, send it'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmingSend(false)}
+                    disabled={emailingLink}
+                    className="rounded-lg border border-white/20 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  onClick={() => setConfirmingSend(true)}
+                  disabled={emailingLink || creatingLink || !lead.email}
+                  title={!lead.email ? 'Add an email for this lead before sending' : undefined}
+                  className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                >
+                  {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
+                </button>
+                {!lead.email && (
+                  <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 space-y-2">
+                    <p className="text-xs text-amber-200">
+                      No email on file for this lead — add one to send the link.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        placeholder="client@company.com"
+                        value={quickEmail}
+                        onChange={(e) => setQuickEmail(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSaveQuickEmail();
+                          }
+                        }}
+                        className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
+                      />
+                      <button
+                        onClick={handleSaveQuickEmail}
+                        disabled={savingQuickEmail || !quickEmail.trim()}
+                        className="shrink-0 rounded-lg border border-white/20 px-4 text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors"
+                      >
+                        {savingQuickEmail ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
-              <button
-                onClick={handleEmailPaymentLink}
-                disabled={emailingLink || creatingLink}
-                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
-              </button>
               <button
                 onClick={handleCreatePaymentLink}
                 disabled={creatingLink || emailingLink}

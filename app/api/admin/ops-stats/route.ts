@@ -56,18 +56,18 @@ export async function GET(request: Request) {
       prisma.projectMessage.findMany({
         where: { isFromAdmin: false, createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
-        take: 10,
+        take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
       prisma.payment.findMany({
         orderBy: { createdAt: 'desc' },
-        take: 8,
+        take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
       prisma.leadActivity.findMany({
         where: { type: 'proposal', createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
-        take: 8,
+        take: 25,
         include: { lead: { select: { id: true, company: true } } },
       }),
     ]);
@@ -124,7 +124,13 @@ export async function GET(request: Request) {
     );
     const projectsAwaitingReply = activeProjects
       .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin)
-      .map((p) => ({ id: p.id, name: p.name, company: p.client.company }));
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        company: p.client.company,
+        waitHours: Math.floor((now.getTime() - p.messages[0].createdAt.getTime()) / (60 * 60 * 1000)),
+      }))
+      .sort((a, b) => b.waitHours - a.waitHours);
 
     const revenueThisMonth = paymentsInPeriod.reduce((s, p) => s + p.amount, 0);
     const revenueLastMonth = paymentsInPreviousPeriod.reduce((s, p) => s + p.amount, 0);
@@ -144,9 +150,10 @@ export async function GET(request: Request) {
             onboardingTotal: p.onboardingQuestions.length,
             onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
             handoffAcknowledgedAt: p.handoffAcknowledgedAt,
+            daysWaiting: Math.floor((now.getTime() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
           })),
           newClientsThisWeek: newClientsInPeriod,
-          atRiskProjects: atRiskProjects.slice(0, 10),
+          atRiskProjects: atRiskProjects.slice(0, 40),
           overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
@@ -181,7 +188,7 @@ export async function GET(request: Request) {
               preview: a.content.slice(0, 120),
               createdAt: a.createdAt,
             })),
-          ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 12),
+          ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 40),
         },
       },
       { status: 200 }

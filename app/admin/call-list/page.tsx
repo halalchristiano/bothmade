@@ -17,6 +17,7 @@ import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
+import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 
 type CallReason = 'bounced' | 'overdue' | 'today' | 'no-follow-up' | 'never-contacted' | 'scheduled';
 
@@ -100,6 +101,12 @@ export default function CallListPage() {
   const [readyNow, setReadyNow] = useState(false);
   const [sortBy, setSortBy] = useState<'urgent' | 'value' | 'time'>('urgent');
   const [nowTick, setNowTick] = useState(() => Date.now());
+  // Tapping a tel: link is the one moment we genuinely know a call was
+  // started — a browser cannot read the phone's call history, on any OS. So
+  // we remember who was dialled and ask on the way back, rather than relying
+  // on him to come and log it unprompted.
+  const [pendingCall, setPendingCall] = useState<{ id: string; company: string; at: number } | null>(null);
+  const [savingQuick, setSavingQuick] = useState(false);
 
   const load = async () => {
     try {
@@ -134,6 +141,68 @@ export default function CallListPage() {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
+
+  // Survives the page being backgrounded while the dialler is open, which is
+  // exactly what happens on a phone.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('pendingCall');
+      if (raw) setPendingCall(JSON.parse(raw));
+    } catch {
+      /* a corrupt entry just means no prompt */
+    }
+  }, []);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const raw = sessionStorage.getItem('pendingCall');
+        if (raw) setPendingCall(JSON.parse(raw));
+      } catch {
+        /* ignore */
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  const startCall = (row: CallRow) => {
+    const entry = { id: row.id, company: row.company, at: Date.now() };
+    try {
+      sessionStorage.setItem('pendingCall', JSON.stringify(entry));
+    } catch {
+      /* private mode — the prompt just won't survive a reload */
+    }
+    setPendingCall(entry);
+  };
+
+  const clearPendingCall = () => {
+    try {
+      sessionStorage.removeItem('pendingCall');
+    } catch {
+      /* ignore */
+    }
+    setPendingCall(null);
+  };
+
+  const logQuickOutcome = async (key: string) => {
+    if (!pendingCall) return;
+    setSavingQuick(true);
+    try {
+      const res = await fetch(`/api/admin/leads/${pendingCall.id}/call-outcome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome: key }),
+      });
+      if (res.ok) {
+        clearPendingCall();
+        load();
+      }
+    } finally {
+      setSavingQuick(false);
+    }
+  };
 
   const syncBounces = async () => {
     setSyncing(true);
@@ -338,6 +407,7 @@ export default function CallListPage() {
           <div className="flex gap-2 mt-3">
             <a
               href={`tel:${nextUp.phone}`}
+              onClick={() => startCall(nextUp)}
               className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
             >
               <Phone size={14} /> Call {nextUp.company}
@@ -357,6 +427,51 @@ export default function CallListPage() {
           You have more open leads than this page loads at once. The most urgent are shown — clear some down and
           the rest will appear.
         </p>
+      )}
+
+      {pendingCall && (
+        <div className="mb-5 rounded-2xl border border-sky-400/30 bg-sky-400/[0.1] p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white/90 break-words">
+                You called {pendingCall.company} — how did it go?
+              </p>
+              <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
+                One tap logs it, moves them along and books the next follow-up.
+              </p>
+            </div>
+            <button
+              onClick={clearPendingCall}
+              className="shrink-0 text-xs text-white/40 hover:text-white transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {CALL_OUTCOMES.filter((o) => !o.askForDate).map((o) => (
+              <button
+                key={o.key}
+                onClick={() => logQuickOutcome(o.key)}
+                disabled={savingQuick}
+                className={`rounded-xl border px-3 py-2 text-left text-xs font-bold disabled:opacity-40 transition-colors ${
+                  o.tone === 'good'
+                    ? 'border-emerald-400/30 bg-emerald-400/[0.08] text-emerald-100 hover:bg-emerald-400/15'
+                    : o.tone === 'bad'
+                      ? 'border-red-400/25 bg-red-400/[0.06] text-red-100 hover:bg-red-400/15'
+                      : 'border-white/12 bg-white/[0.04] text-white/80 hover:bg-white/[0.08]'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <Link
+            href={`/admin/leads/${pendingCall.id}`}
+            className="block text-center text-xs text-sky-300 hover:text-sky-200 mt-2.5 transition-colors"
+          >
+            Or open their page to add a note
+          </Link>
+        </div>
       )}
 
       {syncMessage && (
@@ -474,6 +589,7 @@ export default function CallListPage() {
                       <div className="flex gap-2 mt-3">
                         <a
                           href={`tel:${row.phone}`}
+                          onClick={() => startCall(row)}
                           className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-400/15 border border-emerald-400/30 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-400/25 transition-colors"
                         >
                           <Phone size={13} /> Call {row.phone}

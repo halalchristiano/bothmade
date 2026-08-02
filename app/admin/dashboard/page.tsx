@@ -26,10 +26,12 @@ import {
   Palette,
   Phone,
   Mail,
+  RefreshCw,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
+import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
@@ -41,6 +43,47 @@ const RANGE_OPTIONS: Array<{ value: StatsRange; label: string }> = [
   { value: 'month', label: 'Month' },
   { value: 'quarter', label: 'Quarter' },
 ];
+
+function formatRelativeTime(date: Date): string {
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 10) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return date.toLocaleDateString();
+}
+
+function RefreshIndicator({
+  lastUpdated,
+  refreshing,
+  onRefresh,
+}: {
+  lastUpdated: Date | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const [, forceTick] = useState(0);
+
+  // Re-render every 30s so the "Xm ago" label stays current without a refetch.
+  useEffect(() => {
+    const id = setInterval(() => forceTick((n) => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <button
+      onClick={onRefresh}
+      disabled={refreshing}
+      className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-60"
+      title="Refresh dashboard data"
+    >
+      <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+      {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
+    </button>
+  );
+}
 
 function RangePicker({ range, onChange }: { range: StatsRange; onChange: (r: StatsRange) => void }) {
   return (
@@ -75,6 +118,15 @@ interface SalesStats {
   followUpsToday: Array<{ id: string; company: string; phone: string | null; email: string | null }>;
   followUpsOverdue: Array<{ id: string; company: string; nextFollowUpAt: string; phone: string | null; email: string | null }>;
   staleLeads: Array<{ id: string; company: string; updatedAt: string; phone: string | null; email: string | null }>;
+  stageAging: Array<{
+    id: string;
+    company: string;
+    estimatedValue: number | null;
+    phone: string | null;
+    email: string | null;
+    stageLabel: string;
+    daysIdle: number;
+  }>;
   sourcePerformance: Array<{ source: string; total: number; won: number }>;
   clientTypeBreakdown: Record<string, number>;
   wonDeals: Array<{ id: string; company: string; value: number; wonAt: string }>;
@@ -92,11 +144,12 @@ interface OpsStats {
     onboardingTotal: number;
     onboardingAnswered: number;
     handoffAcknowledgedAt: string | null;
+    daysWaiting: number;
   }>;
   newClientsThisWeek: number;
   atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
   overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
-  projectsAwaitingReply: Array<{ id: string; name: string; company: string }>;
+  projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
   pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
   revenueThisMonth: number;
@@ -137,28 +190,34 @@ interface NextAction {
 }
 
 function NextActionsCard({ stats }: { stats: SalesStats }) {
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const seen = new Set<string>();
   const actions: NextAction[] = [];
 
   for (const l of stats.followUpsOverdue) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email });
   }
   for (const l of stats.followUpsToday) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email });
   }
   for (const l of stats.hotLeads) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
   }
   for (const l of stats.staleLeads) {
-    if (seen.has(l.id)) continue;
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
     actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email });
+  }
+  for (const l of stats.stageAging) {
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
   }
 
   return (
@@ -203,6 +262,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                     </a>
                   )}
                   <LogTouchPopover leadId={a.id} />
+                  <SnoozeButton leadId={a.id} onSnoozed={() => setDismissed((prev) => new Set(prev).add(a.id))} />
                 </div>
               }
             />
@@ -223,7 +283,16 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
 
   return (
     <Card className="p-6">
-      <CardHeader icon={Radio} tone="purple" title="Insights" subtitle="Why deals win, lose, and where they come from" />
+      <CardHeader
+        icon={Radio}
+        tone="purple"
+        title="Insights"
+        subtitle={
+          tab === 'tier'
+            ? 'Current active pipeline, by estimated deal size'
+            : `Lost reasons and sources, ${stats.periodLabel.toLowerCase()}`
+        }
+      />
       <div className="flex gap-1.5 mb-4">
         {tabs.map((t) => (
           <button
@@ -240,7 +309,7 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
 
       {tab === 'lost' &&
         (Object.keys(stats.lostReasonCounts).length === 0 ? (
-          <EmptyState icon={XCircle} text="No lost deals recorded yet." />
+          <EmptyState icon={XCircle} text={`No deals lost ${stats.periodLabel.toLowerCase()}.`} />
         ) : (
           <div className="space-y-2">
             {Object.entries(stats.lostReasonCounts)
@@ -254,18 +323,21 @@ function InsightsCard({ stats }: { stats: SalesStats }) {
           </div>
         ))}
 
-      {tab === 'source' && (
-        <div className="space-y-2">
-          {stats.sourcePerformance.map((s) => (
-            <div key={s.source} className="flex justify-between text-sm px-1">
-              <span className="text-white/70">{s.source}</span>
-              <span className="text-white/40">
-                {s.won}/{s.total} won
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {tab === 'source' &&
+        (stats.sourcePerformance.length === 0 ? (
+          <EmptyState icon={Radio} text={`No new leads ${stats.periodLabel.toLowerCase()}.`} />
+        ) : (
+          <div className="space-y-2">
+            {stats.sourcePerformance.map((s) => (
+              <div key={s.source} className="flex justify-between text-sm px-1">
+                <span className="text-white/70">{s.source}</span>
+                <span className="text-white/40">
+                  {s.won}/{s.total} won
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
 
       {tab === 'tier' &&
         (Object.keys(stats.clientTypeBreakdown).length === 0 ? (
@@ -443,23 +515,32 @@ function SalesDashboard({
   name,
   range,
   onRangeChange,
+  lastUpdated,
+  refreshing,
+  onRefresh,
 }: {
   stats: SalesStats;
   name: string;
   range: StatsRange;
   onRangeChange: (r: StatsRange) => void;
+  lastUpdated: Date | null;
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
         <div>
           <p className="text-sm text-sky-300/70 font-medium mb-1">Sales</p>
           <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
           <p className="text-white/40">Here's where your pipeline stands.</p>
         </div>
         <RangePicker range={range} onChange={onRangeChange} />
+      </div>
+      <div className="flex justify-end mb-6">
+        <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
       </div>
 
       <CallListBanner />
@@ -723,13 +804,20 @@ function HandoffRow({
           {handoff.handoffAcknowledgedAt ? (
             <Badge tone="emerald">Picked up</Badge>
           ) : (
-            <button
-              onClick={handleAcknowledge}
-              disabled={saving}
-              className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
-            >
-              {saving ? 'Saving...' : "I've got this"}
-            </button>
+            <>
+              {handoff.daysWaiting >= 2 && (
+                <Badge tone={handoff.daysWaiting >= 4 ? 'red' : 'amber'} solid>
+                  Waiting {handoff.daysWaiting}d
+                </Badge>
+              )}
+              <button
+                onClick={handleAcknowledge}
+                disabled={saving}
+                className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                {saving ? 'Saving...' : "I've got this"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -818,6 +906,36 @@ function RevenueChartCard({ revenueHistory }: { revenueHistory: OpsStats['revenu
 
 type OverdueSort = 'amount' | 'name';
 
+function RemindButton({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  if (state === 'sent') return <span className="text-[11px] text-emerald-300/80 whitespace-nowrap">Reminder sent</span>;
+
+  return (
+    <button
+      onClick={async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setState('sending');
+        try {
+          const res = await fetch(`/api/admin/projects/${projectId}/payment-reminder`, { method: 'POST' });
+          setState(res.ok ? 'sent' : 'error');
+        } catch {
+          setState('error');
+        }
+      }}
+      disabled={state === 'sending'}
+      className={`text-[11px] px-2 py-1 rounded-md border font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
+        state === 'error'
+          ? 'border-red-400/30 text-red-300 hover:bg-red-400/10'
+          : 'border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-400/30 hover:bg-amber-400/10'
+      }`}
+    >
+      {state === 'sending' ? 'Sending…' : state === 'error' ? 'Failed — retry' : 'Remind'}
+    </button>
+  );
+}
+
 function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<OverdueSort>('amount');
@@ -859,10 +977,92 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
           ) : (
             <div className="space-y-0.5">
               {filtered.map((p) => (
-                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="amber">{formatCents(p.balanceDue)}</Badge>} />
+                <ListRow
+                  key={p.id}
+                  href={`/admin/projects/${p.id}`}
+                  title={p.company}
+                  trailing={
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Badge tone="amber">{formatCents(p.balanceDue)}</Badge>
+                      <RemindButton projectId={p.id} />
+                    </div>
+                  }
+                />
               ))}
             </div>
           )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+const PAGE_SIZE = 10;
+
+function ShowMoreButton({ remaining, onClick }: { remaining: number; onClick: () => void }) {
+  if (remaining <= 0) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="w-full mt-2 text-xs text-white/40 hover:text-white/70 font-medium py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors"
+    >
+      Show {Math.min(remaining, PAGE_SIZE)} more ({remaining} left)
+    </button>
+  );
+}
+
+function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = projects.slice(0, visible);
+
+  return (
+    <Card className="p-6" glow="red">
+      <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
+      {projects.length === 0 ? (
+        <EmptyState icon={AlertTriangle} text="Everything's current." />
+      ) : (
+        <>
+          <div className="space-y-0.5">
+            {shown.map((p) => (
+              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
+            ))}
+          </div>
+          <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function ActivityFeedCard({ activity }: { activity: OpsStats['activityFeed'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = activity.slice(0, visible);
+
+  return (
+    <Card className="lg:col-span-2 p-6">
+      <CardHeader icon={Activity} tone="sky" title="Activity Feed" />
+      {activity.length === 0 ? (
+        <EmptyState icon={Activity} text="Nothing new." />
+      ) : (
+        <>
+          <div className="space-y-1 max-h-96 overflow-y-auto">
+            {shown.map((a) => (
+              <Link
+                key={`${a.type}-${a.id}`}
+                href={a.projectId ? `/admin/projects/${a.projectId}` : a.leadId ? `/admin/leads/${a.leadId}` : '#'}
+                className="block px-3 py-2.5 rounded-xl hover:bg-white/[0.05] border-l-2 border-sky-400/40 transition-colors"
+              >
+                <div className="flex justify-between items-start gap-2">
+                  <p className="text-sm font-medium">{a.label}</p>
+                  <span className="text-[10px] text-white/30 whitespace-nowrap">
+                    {new Date(a.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-xs text-white/40 mt-0.5">{a.preview}</p>
+              </Link>
+            ))}
+          </div>
+          <ShowMoreButton remaining={activity.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
         </>
       )}
     </Card>
@@ -875,12 +1075,18 @@ function OpsDashboard({
   showLeadsSpreadsheet,
   range,
   onRangeChange,
+  lastUpdated,
+  refreshing,
+  onRefresh,
 }: {
   stats: OpsStats;
   name: string;
   showLeadsSpreadsheet: boolean;
   range: StatsRange;
   onRangeChange: (r: StatsRange) => void;
+  lastUpdated: Date | null;
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
   const [newHandoffs, setNewHandoffs] = useState(stats.newHandoffs);
@@ -891,7 +1097,7 @@ function OpsDashboard({
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
         <div>
           <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
           <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
@@ -901,6 +1107,9 @@ function OpsDashboard({
           <RangePicker range={range} onChange={onRangeChange} />
           <BroadcastComposer />
         </div>
+      </div>
+      <div className="flex justify-end mb-6">
+        <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
       </div>
 
       {pendingMockups.length > 0 && (
@@ -961,57 +1170,33 @@ function OpsDashboard({
           )}
         </Card>
 
-        <Card className="p-6" glow="red">
-          <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
-          {stats.atRiskProjects.length === 0 ? (
-            <EmptyState icon={AlertTriangle} text="Everything's current." />
-          ) : (
-            <div className="space-y-0.5">
-              {stats.atRiskProjects.map((p) => (
-                <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
-              ))}
-            </div>
-          )}
-        </Card>
+        <AtRiskProjectsCard projects={stats.atRiskProjects} />
 
         <OverdueBalancesCard balances={stats.overdueBalances} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
-        <Card className="lg:col-span-2 p-6">
-          <CardHeader icon={Activity} tone="sky" title="Activity Feed" />
-          {stats.activityFeed.length === 0 ? (
-            <EmptyState icon={Activity} text="Nothing new." />
-          ) : (
-            <div className="space-y-1 max-h-96 overflow-y-auto">
-              {stats.activityFeed.map((a) => (
-                <Link
-                  key={`${a.type}-${a.id}`}
-                  href={a.projectId ? `/admin/projects/${a.projectId}` : a.leadId ? `/admin/leads/${a.leadId}` : '#'}
-                  className="block px-3 py-2.5 rounded-xl hover:bg-white/[0.05] border-l-2 border-sky-400/40 transition-colors"
-                >
-                  <div className="flex justify-between items-start gap-2">
-                    <p className="text-sm font-medium">{a.label}</p>
-                    <span className="text-[10px] text-white/30 whitespace-nowrap">
-                      {new Date(a.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <p className="text-xs text-white/40 mt-0.5">{a.preview}</p>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
+        <ActivityFeedCard activity={stats.activityFeed} />
 
         <TasksWidget />
       </div>
 
       {stats.projectsAwaitingReply.length > 0 && (
         <Card className="p-6 mb-5" glow="sky">
-          <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last" />
+          <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last, longest wait first" />
           <div className="grid sm:grid-cols-2 gap-1">
             {stats.projectsAwaitingReply.map((p) => (
-              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} subtitle={p.name} />
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                subtitle={p.name}
+                trailing={
+                  <Badge tone={p.waitHours >= 48 ? 'red' : p.waitHours >= 12 ? 'amber' : 'neutral'}>
+                    {p.waitHours < 24 ? `${p.waitHours}h` : `${Math.floor(p.waitHours / 24)}d`}
+                  </Badge>
+                }
+              />
             ))}
           </div>
         </Card>
@@ -1064,6 +1249,9 @@ export default function AdminDashboardPage() {
   const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
   const [opsStats, setOpsStats] = useState<OpsStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [range, setRange] = useState<StatsRange>('week');
@@ -1072,7 +1260,11 @@ export default function AdminDashboardPage() {
     let cancelled = false;
 
     const load = async () => {
-      setLoading(true);
+      if (hasLoadedOnce) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       try {
         const meResponse = await fetch('/api/auth/me');
@@ -1098,10 +1290,15 @@ export default function AdminDashboardPage() {
         } else {
           setOpsStats(data.stats);
         }
+        setLastUpdated(new Date());
+        setHasLoadedOnce(true);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Something went wrong loading your dashboard.');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
     load();
@@ -1109,6 +1306,7 @@ export default function AdminDashboardPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, retryCount, range]);
 
   if (loading) {
@@ -1137,8 +1335,20 @@ export default function AdminDashboardPage() {
     );
   }
 
+  const onRefresh = () => setRetryCount((c) => c + 1);
+
   if (role === 'sales' && salesStats) {
-    return <SalesDashboard stats={salesStats} name={name} range={range} onRangeChange={setRange} />;
+    return (
+      <SalesDashboard
+        stats={salesStats}
+        name={name}
+        range={range}
+        onRangeChange={setRange}
+        lastUpdated={lastUpdated}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      />
+    );
   }
 
   if (opsStats) {
@@ -1149,6 +1359,9 @@ export default function AdminDashboardPage() {
         showLeadsSpreadsheet={role !== 'sales'}
         range={range}
         onRangeChange={setRange}
+        lastUpdated={lastUpdated}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       />
     );
   }

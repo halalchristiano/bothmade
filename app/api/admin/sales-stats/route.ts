@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
-import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
+import { ACTIVE_LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
+
+// Late-funnel stages where a stall is expensive — worth a tighter SLA than
+// the generic 5-day "stale" threshold that covers every active stage.
+const LATE_FUNNEL_STATUSES = ['proposal_sent', 'verbal_yes', 'contract_sent', 'deposit_pending'];
+const LATE_FUNNEL_STALL_DAYS = 3;
 
 // Rough probability-to-close per stage, used only for the weighted forecast.
 const STAGE_WEIGHT: Record<string, number> = {
@@ -86,8 +91,9 @@ export async function GET(request: Request) {
         ? Math.round(wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0) / wonAllTime.length)
         : 0;
 
+    const lostInPeriod = lostAllTime.filter((l) => l.updatedAt >= periodStart);
     const lostReasonCounts: Record<string, number> = {};
-    for (const l of lostAllTime) {
+    for (const l of lostInPeriod) {
       const reason = l.lostReason?.trim() || 'No reason recorded';
       lostReasonCounts[reason] = (lostReasonCounts[reason] || 0) + 1;
     }
@@ -100,8 +106,14 @@ export async function GET(request: Request) {
     const followUpsOverdue = active.filter((l) => l.nextFollowUpAt && l.nextFollowUpAt < startOfToday);
     const staleLeads = active.filter((l) => l.updatedAt < staleThreshold);
 
+    const lateFunnelStallThreshold = new Date(now.getTime() - LATE_FUNNEL_STALL_DAYS * 24 * 60 * 60 * 1000);
+    const stageAging = active.filter(
+      (l) => LATE_FUNNEL_STATUSES.includes(l.status) && l.updatedAt < lateFunnelStallThreshold
+    );
+
+    const leadsInPeriod = allMine.filter((l) => l.createdAt >= periodStart);
     const sourceMap: Record<string, { total: number; won: number }> = {};
-    for (const l of allMine) {
+    for (const l of leadsInPeriod) {
       const source = l.source?.trim() || 'Unknown';
       if (!sourceMap[source]) sourceMap[source] = { total: 0, won: 0 };
       sourceMap[source].total += 1;
@@ -146,6 +158,15 @@ export async function GET(request: Request) {
           followUpsToday: followUpsToday.map((l) => ({ id: l.id, company: l.company, phone: l.phone, email: l.email })),
           followUpsOverdue: followUpsOverdue.map((l) => ({ id: l.id, company: l.company, nextFollowUpAt: l.nextFollowUpAt, phone: l.phone, email: l.email })),
           staleLeads: staleLeads.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt, phone: l.phone, email: l.email })),
+          stageAging: stageAging.map((l) => ({
+            id: l.id,
+            company: l.company,
+            estimatedValue: l.estimatedValue,
+            phone: l.phone,
+            email: l.email,
+            stageLabel: LEAD_STATUS_SHORT_LABELS[l.status as keyof typeof LEAD_STATUS_SHORT_LABELS] || l.status,
+            daysIdle: Math.floor((now.getTime() - l.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          })),
           sourcePerformance,
           clientTypeBreakdown,
           wonDeals: wonAllTime
