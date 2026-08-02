@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     const leads = await prisma.lead.findMany({ where: { id: { in: leadIds } } });
 
-    const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string }> = [];
+    const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
 
     for (const lead of leads) {
       if (!lead.email) {
@@ -85,12 +85,12 @@ export async function POST(request: NextRequest) {
         footerAvatarUrl: sender.avatarUrl,
       });
 
-      const sent = await sendAsUser(
+      const result = await sendAsUser(
         { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
         { to: lead.email, subject, html }
       );
 
-      if (!sent) {
+      if (!result.ok) {
         results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'Send failed' });
         continue;
       }
@@ -105,11 +105,15 @@ export async function POST(request: NextRequest) {
         .create({ data: { leadId: lead.id, type: 'email', content: subject, createdById: session.userId } })
         .catch(() => null);
 
-      results.push({ leadId: lead.id, company: lead.company, ok: true });
+      results.push({ leadId: lead.id, company: lead.company, ok: true, sentVia: result.sentVia });
     }
 
     const sentCount = results.filter((r) => r.ok).length;
-    return NextResponse.json({ success: true, sentCount, total: results.length, results }, { status: 200 });
+    const sentViaResend = results.filter((r) => r.ok && r.sentVia === 'resend').length;
+    return NextResponse.json(
+      { success: true, sentCount, total: results.length, results, sentViaResend },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Send cold drafts error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

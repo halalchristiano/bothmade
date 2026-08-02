@@ -171,9 +171,17 @@ export function EmailComposer({
         </div>
 
         {sentVia ? (
-          <div className="flex items-center gap-2 text-emerald-300 text-sm py-10 justify-center">
-            <CheckCircle2 size={18} />
-            Sent{sentVia === 'gmail' ? ' from your Gmail' : ''}
+          <div className="flex flex-col items-center gap-2 text-sm py-10 justify-center">
+            <div className="flex items-center gap-2 text-emerald-300">
+              <CheckCircle2 size={18} />
+              Sent{sentVia === 'gmail-app-password' || sentVia === 'delegated' ? ' from your Gmail' : ''}
+            </div>
+            {sentVia === 'resend' && (
+              <p className="text-xs text-amber-300/80 max-w-xs text-center">
+                Sent, but not from your own Gmail — it won't show up in your Sent folder. Connect Gmail in
+                Settings to fix that.
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">

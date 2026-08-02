@@ -2,7 +2,6 @@ import { prisma } from '@/lib/prisma';
 import { getTemplate } from '@/lib/email-templates';
 import { renderShell } from '@/lib/email';
 import { sendAsUser } from '@/lib/mailer';
-import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
 
 export interface SendTemplatedEmailInput {
@@ -18,7 +17,7 @@ export interface SendTemplatedEmailInput {
 export interface SendTemplatedEmailResult {
   ok: boolean;
   error?: string;
-  sentVia?: 'gmail' | 'resend';
+  sentVia?: 'delegated' | 'gmail-app-password' | 'resend' | 'failed';
 }
 
 export interface BuiltTemplatedEmail {
@@ -107,12 +106,12 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     footerAvatarUrl: sender.avatarUrl,
   });
 
-  const sent = await sendAsUser(
+  const result = await sendAsUser(
     { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
     { to, subject: built.subject, html }
   );
 
-  if (!sent) return { ok: false, error: 'Failed to send email' };
+  if (!result.ok) return { ok: false, error: 'Failed to send email' };
 
   if (leadId) {
     await prisma.leadActivity
@@ -136,6 +135,5 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     }
   }
 
-  const sentViaGmail = (!!sender.email && isDomainDelegationConfigured()) || !!sender.gmailAddress;
-  return { ok: true, sentVia: sentViaGmail ? 'gmail' : 'resend' };
+  return { ok: true, sentVia: result.sentVia };
 }

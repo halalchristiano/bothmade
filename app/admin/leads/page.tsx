@@ -146,7 +146,7 @@ export default function AdminLeadsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
   const [sendingColdDrafts, setSendingColdDrafts] = useState(false);
-  const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[] } | null>(null);
+  const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[]; sentViaResend: number } | null>(null);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
@@ -280,7 +280,7 @@ export default function AdminLeadsPage() {
         const failures = (data.results || [])
           .filter((r: { ok: boolean }) => !r.ok)
           .map((r: { company: string; reason?: string }) => `${r.company}: ${r.reason}`);
-        setColdSendResult({ sentCount: data.sentCount, total: data.total, failures });
+        setColdSendResult({ sentCount: data.sentCount, total: data.total, failures, sentViaResend: data.sentViaResend || 0 });
         setSelected(new Set());
         setPreviewingBatch(null);
         load();
@@ -486,6 +486,12 @@ export default function AdminLeadsPage() {
                 </p>
               ))}
             </div>
+          )}
+          {coldSendResult.sentViaResend > 0 && (
+            <p className="text-xs text-amber-300/80 mt-2">
+              {coldSendResult.sentViaResend} of these went out through our shared sender, not your own Gmail —
+              they won't show up in your Sent folder. Connect Gmail in Settings to fix that going forward.
+            </p>
           )}
         </div>
       )}

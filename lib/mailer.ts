@@ -16,6 +16,12 @@ export interface OutgoingEmail {
   html: string;
 }
 
+export interface SendAsUserResult {
+  ok: boolean;
+  /** Which path actually sent it — only 'delegated' and 'gmail-app-password' land in the sender's real Gmail Sent folder. */
+  sentVia: 'delegated' | 'gmail-app-password' | 'resend' | 'failed';
+}
+
 /**
  * Sends a client-facing email as a specific team member, trying the best
  * available method in order:
@@ -24,9 +30,10 @@ export interface OutgoingEmail {
  *      their actual Gmail Sent folder. Used automatically once configured.
  *   2. Their own connected Gmail app password (per-user opt-in, same effect).
  *   3. The shared Resend sender, with their name and reply-to — always works,
- *      but doesn't land in their personal Sent folder.
+ *      but doesn't land in their personal Sent folder, so callers should
+ *      surface sentVia to explain that instead of leaving it a silent gap.
  */
-export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): Promise<boolean> {
+export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): Promise<SendAsUserResult> {
   if (sender.email && isDomainDelegationConfigured()) {
     const sent = await sendAsDelegatedUser(sender.email, {
       fromName: sender.name,
@@ -34,7 +41,7 @@ export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): 
       subject: email.subject,
       html: email.html,
     });
-    if (sent) return true;
+    if (sent) return { ok: true, sentVia: 'delegated' };
   }
 
   if (sender.gmailAddress && sender.gmailAppPassword) {
@@ -52,19 +59,20 @@ export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): 
         subject: email.subject,
         html: email.html,
       });
-      return true;
+      return { ok: true, sentVia: 'gmail-app-password' };
     } catch (error) {
       console.error('Gmail send failed, falling back to Resend:', error);
     }
   }
 
-  return sendViaResend({
+  const sent = await sendViaResend({
     to: email.to,
     subject: email.subject,
     html: email.html,
     fromName: sender.name || undefined,
     replyTo: sender.email || undefined,
   });
+  return { ok: sent, sentVia: sent ? 'resend' : 'failed' };
 }
 
 /**
