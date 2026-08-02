@@ -35,10 +35,14 @@ export async function GET(request: NextRequest) {
         messages: {
           take: 1,
           orderBy: { createdAt: 'desc' },
+          select: { isFromAdmin: true, createdAt: true },
         },
         updates: {
           take: 1,
           orderBy: { createdAt: 'desc' },
+        },
+        payments: {
+          select: { amount: true },
         },
       },
       orderBy: { createdAt: 'desc' },

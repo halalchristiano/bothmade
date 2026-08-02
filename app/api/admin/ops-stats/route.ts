@@ -42,8 +42,15 @@ export async function GET(request: Request) {
           messages: { orderBy: { createdAt: 'desc' }, take: 1 },
         },
       }),
+      // Unacknowledged handoffs never age out of this list, no matter which
+      // period is selected — a handoff nobody picked up is exactly the thing
+      // a period filter would otherwise quietly hide. Already-acknowledged
+      // ones still respect the period, so the widget doesn't fill up with
+      // old, already-handled rows.
       prisma.project.findMany({
-        where: { createdAt: { gte: periodStart } },
+        where: {
+          OR: [{ handoffAcknowledgedAt: null }, { createdAt: { gte: periodStart } }],
+        },
         include: {
           client: { select: { company: true, contactName: true, email: true } },
           onboardingQuestions: { include: { response: true } },
@@ -170,17 +177,30 @@ export async function GET(request: Request) {
         stats: {
           range,
           periodLabel: RANGE_LABELS[range],
-          newHandoffs: newHandoffs.map((p) => ({
-            id: p.id,
-            name: p.name,
-            company: p.client.company,
-            contactName: p.client.contactName,
-            createdAt: p.createdAt,
-            onboardingTotal: p.onboardingQuestions.length,
-            onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
-            handoffAcknowledgedAt: p.handoffAcknowledgedAt,
-            daysWaiting: Math.floor((now.getTime() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
-          })),
+          newHandoffs: newHandoffs
+            .slice()
+            // Unpicked-up handoffs first, oldest (most overdue) first within
+            // that group; already-acknowledged ones trail behind, most
+            // recent first — matches how urgently each row deserves attention.
+            .sort((a, b) => {
+              if (!a.handoffAcknowledgedAt !== !b.handoffAcknowledgedAt) {
+                return a.handoffAcknowledgedAt ? 1 : -1;
+              }
+              return a.handoffAcknowledgedAt
+                ? b.createdAt.getTime() - a.createdAt.getTime()
+                : a.createdAt.getTime() - b.createdAt.getTime();
+            })
+            .map((p) => ({
+              id: p.id,
+              name: p.name,
+              company: p.client.company,
+              contactName: p.client.contactName,
+              createdAt: p.createdAt,
+              onboardingTotal: p.onboardingQuestions.length,
+              onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
+              handoffAcknowledgedAt: p.handoffAcknowledgedAt,
+              daysWaiting: Math.floor((now.getTime() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
+            })),
           newClientsThisWeek: newClientsInPeriod,
           atRiskProjects: atRiskProjects.slice(0, 40),
           waitingOnClient: waitingOnClient.slice(0, 40),

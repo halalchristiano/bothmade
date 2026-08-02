@@ -1426,7 +1426,7 @@ function OpsDashboard({
         <Card className="p-6" glow="emerald">
           <CardHeader icon={Inbox} tone="emerald" title="New Handoffs" subtitle="Give them a first touch" />
           {newHandoffs.length === 0 ? (
-            <EmptyState icon={Inbox} text="Nothing new this week." />
+            <EmptyState icon={Inbox} text="Nothing waiting to be picked up." />
           ) : (
             <div className="space-y-2">
               {newHandoffs.map((p) => (
