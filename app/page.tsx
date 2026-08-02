@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { track } from '@vercel/analytics';
 import { useState, FormEvent } from 'react';
 import { Intro } from '@/components/Intro';
 import { PillCTA, SectionTag, ScrubText } from '@/components/ui';
@@ -45,6 +46,7 @@ function ContactForm() {
       });
 
       if (response.ok) {
+        track('contact_submitted', { service: formData.service });
         setSubmitted(true);
         setFormData({
           name: '',

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PurchaseTrack } from './PurchaseTrack';
 
 /**
  * Shown after any Stripe checkout redirect. The copy differs by payment kind:
@@ -17,6 +18,7 @@ export default async function CheckoutSuccessPage({
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex items-center justify-center px-4">
+      <PurchaseTrack kind={isWelcome ? 'welcome' : 'balance'} />
       <div className="w-full max-w-lg text-center">
         <div className="bg-white rounded-2xl shadow-lg p-10">
           <div className="w-16 h-16 rounded-full bg-black text-white flex items-center justify-center text-3xl mx-auto mb-6">

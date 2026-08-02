@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { track } from '@vercel/analytics';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
@@ -178,6 +179,7 @@ export default function StartPage() {
       const data = await response.json();
 
       if (data.success) {
+        track('checkout_started', { baseService, total: breakdown.totalPrice });
         window.location.href = data.redirectUrl;
       } else {
         setError(data.error || 'Error creating checkout session');
@@ -210,6 +212,7 @@ export default function StartPage() {
 
       const data = await response.json();
       if (data.success) {
+        track('interest_sent', { baseService });
         setInterestSent(true);
       } else {
         setInterestError(data.error || 'Something went wrong');

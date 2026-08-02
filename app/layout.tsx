@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import { ScrollReset } from "@/components/ScrollReset";
 import { ScrollProgress } from "@/components/ScrollProgress";
 import { ScrollSeamIndicator } from "@/components/ScrollSeamIndicator";
@@ -95,6 +96,7 @@ export default function RootLayout({
         <ScrollReset />
         <ScrollSeamIndicator />
         {children}
+        <Analytics />
       </body>
     </html>
   );
