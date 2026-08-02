@@ -127,6 +127,7 @@ interface SalesStats {
     stageLabel: string;
     daysIdle: number;
   }>;
+  awaitingSignature: Array<{ id: string; company: string; phone: string | null; email: string | null; daysWaiting: number }>;
   sourcePerformance: Array<{ source: string; total: number; won: number }>;
   clientTypeBreakdown: Record<string, number>;
   wonDeals: Array<{ id: string; company: string; value: number; wonAt: string }>;
@@ -148,7 +149,13 @@ interface OpsStats {
   }>;
   newClientsThisWeek: number;
   atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
-  overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
+  overdueBalances: Array<{
+    id: string;
+    name: string;
+    company: string;
+    balanceDue: number;
+    lastPaymentReminderSentAt: string | null;
+  }>;
   projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
   pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
@@ -609,6 +616,52 @@ function SalesDashboard({
         <NextActionsCard stats={stats} />
       </div>
 
+      {stats.awaitingSignature.length > 0 && (
+        <div className="mb-5">
+          <Card className="p-6" glow="amber">
+            <CardHeader
+              icon={FileSignature}
+              tone="amber"
+              title="Awaiting Signature"
+              subtitle="Contracts sitting with the client, unsigned"
+              action={<Badge tone="amber">{stats.awaitingSignature.length}</Badge>}
+            />
+            <div className="space-y-0.5">
+              {stats.awaitingSignature.map((l) => (
+                <ListRow
+                  key={l.id}
+                  href={`/admin/leads/${l.id}`}
+                  title={l.company}
+                  subtitle={`Waiting ${l.daysWaiting}d`}
+                  trailing={
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {l.phone && (
+                        <a
+                          href={`tel:${l.phone}`}
+                          title={`Call ${l.phone}`}
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors"
+                        >
+                          <Phone size={13} />
+                        </a>
+                      )}
+                      {l.email && (
+                        <a
+                          href={`mailto:${l.email}`}
+                          title={`Email ${l.email}`}
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
+                        >
+                          <Mail size={13} />
+                        </a>
+                      )}
+                    </div>
+                  }
+                />
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-5 mb-8">
         <InsightsCard stats={stats} />
 
@@ -708,19 +761,27 @@ function MockupRequestRow({
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSave = async () => {
     if (!url.trim()) return;
     setSaving(true);
+    setError('');
     try {
-      await fetch(`/api/admin/leads/${request.id}`, {
+      const res = await fetch(`/api/admin/leads/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mockupUrl: url.trim() }),
       });
+      if (!res.ok) {
+        setError("Couldn't save that link — try again.");
+        return;
+      }
       setUrl('');
       setOpen(false);
       onDelivered();
+    } catch {
+      setError('Could not reach the server — check your connection.');
     } finally {
       setSaving(false);
     }
@@ -762,6 +823,7 @@ function MockupRequestRow({
           </button>
         </div>
       )}
+      {error && <p className="text-xs text-red-300 mt-1.5">{error}</p>}
     </div>
   );
 }
@@ -774,16 +836,24 @@ function HandoffRow({
   onAcknowledged: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const handleAcknowledge = async () => {
     setSaving(true);
+    setError('');
     try {
-      await fetch(`/api/projects/${handoff.id}`, {
+      const res = await fetch(`/api/projects/${handoff.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ acknowledgeHandoff: true }),
       });
+      if (!res.ok) {
+        setError("Couldn't mark this picked up — try again.");
+        return;
+      }
       onAcknowledged();
+    } catch {
+      setError('Could not reach the server — check your connection.');
     } finally {
       setSaving(false);
     }
@@ -822,6 +892,7 @@ function HandoffRow({
         </div>
       </div>
       <p className="text-xs text-white/30 mt-1">{handoff.name}</p>
+      {error && <p className="text-xs text-red-300 mt-1">{error}</p>}
     </div>
   );
 }
@@ -906,32 +977,95 @@ function RevenueChartCard({ revenueHistory }: { revenueHistory: OpsStats['revenu
 
 type OverdueSort = 'amount' | 'name';
 
-function RemindButton({ projectId }: { projectId: string }) {
+// Reminders sent under this long ago don't need a second confirmation — long
+// enough that a same-session double-click is still caught, short enough that
+// legitimately reminding again tomorrow doesn't feel like fighting the UI.
+const REMINDER_COOLDOWN_HOURS = 24;
+
+function RemindButton({
+  projectId,
+  lastSentAt,
+}: {
+  projectId: string;
+  lastSentAt: string | null;
+}) {
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [confirming, setConfirming] = useState(false);
+  const [sentAt, setSentAt] = useState<string | null>(lastSentAt);
+
+  const hoursSinceSent = sentAt ? (Date.now() - new Date(sentAt).getTime()) / (1000 * 60 * 60) : Infinity;
+  const recentlyReminded = hoursSinceSent < REMINDER_COOLDOWN_HOURS;
+
+  const send = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirming(false);
+    setState('sending');
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/payment-reminder`, { method: 'POST' });
+      if (res.ok) {
+        setState('sent');
+        setSentAt(new Date().toISOString());
+      } else {
+        setState('error');
+      }
+    } catch {
+      setState('error');
+    }
+  };
 
   if (state === 'sent') return <span className="text-[11px] text-emerald-300/80 whitespace-nowrap">Reminder sent</span>;
 
+  if (confirming) {
+    return (
+      <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <span className="text-[11px] text-amber-200/70 whitespace-nowrap">Already reminded — again?</span>
+        <button
+          onClick={send}
+          className="text-[11px] px-2 py-1 rounded-md border border-amber-400/40 text-amber-200 hover:bg-amber-400/10 transition-colors"
+        >
+          Yes
+        </button>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setConfirming(false);
+          }}
+          className="text-[11px] px-2 py-1 rounded-md border border-white/15 text-white/50 hover:bg-white/5 transition-colors"
+        >
+          No
+        </button>
+      </span>
+    );
+  }
+
   return (
     <button
-      onClick={async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setState('sending');
-        try {
-          const res = await fetch(`/api/admin/projects/${projectId}/payment-reminder`, { method: 'POST' });
-          setState(res.ok ? 'sent' : 'error');
-        } catch {
-          setState('error');
+      onClick={(e) => {
+        if (recentlyReminded) {
+          e.preventDefault();
+          e.stopPropagation();
+          setConfirming(true);
+          return;
         }
+        send(e);
       }}
       disabled={state === 'sending'}
+      title={recentlyReminded ? `Reminded ${formatRelativeTime(new Date(sentAt!))}` : undefined}
       className={`text-[11px] px-2 py-1 rounded-md border font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
         state === 'error'
           ? 'border-red-400/30 text-red-300 hover:bg-red-400/10'
           : 'border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-400/30 hover:bg-amber-400/10'
       }`}
     >
-      {state === 'sending' ? 'Sending…' : state === 'error' ? 'Failed — retry' : 'Remind'}
+      {state === 'sending'
+        ? 'Sending…'
+        : state === 'error'
+          ? 'Failed — retry'
+          : recentlyReminded
+            ? `Reminded ${formatRelativeTime(new Date(sentAt!))}`
+            : 'Remind'}
     </button>
   );
 }
@@ -984,7 +1118,7 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
                   trailing={
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       <Badge tone="amber">{formatCents(p.balanceDue)}</Badge>
-                      <RemindButton projectId={p.id} />
+                      <RemindButton projectId={p.id} lastSentAt={p.lastPaymentReminderSentAt} />
                     </div>
                   }
                 />
