@@ -233,7 +233,7 @@ export default function AdminClientDetailPage() {
             </button>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 gap-6 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
             <div>
               <p className="text-white/40 mb-1">Email</p>
               <p className="font-medium">{client.email}</p>

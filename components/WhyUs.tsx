@@ -43,7 +43,7 @@ export function WhyUs() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-x-10 gap-y-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-12">
           {PRINCIPLES.map((p, i) => (
             <motion.div
               key={p.num}

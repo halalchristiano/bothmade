@@ -101,7 +101,7 @@ export function CaseStudyPage({
 
       {/* The problem */}
       <section className="relative px-6 py-24 border-t border-white/10">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-12 gap-8">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8">
           <h2 className="md:col-span-3 text-sm font-mono uppercase tracking-[0.4em] text-white/40">
             The problem
           </h2>
@@ -188,7 +188,7 @@ export function CaseStudyPage({
               Screens
             </h2>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {study.shots.map((shot, idx) => (
                 <ShotFrame key={idx} shot={shot} accent={accent} index={idx} />
               ))}
