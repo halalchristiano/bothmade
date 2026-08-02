@@ -22,6 +22,7 @@ import { personalise, priceToTotal, type PlaybookEntry, type PricedItem } from '
 import { OBJECTIONS } from '@/lib/objections';
 import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { leadLocalTime } from '@/lib/local-time';
+import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
@@ -131,6 +132,11 @@ export default function LeadDetailPage() {
   const [outcomeNote, setOutcomeNote] = useState('');
   const [outcomeDate, setOutcomeDate] = useState('');
   const [savingOutcome, setSavingOutcome] = useState(false);
+  // The drafted follow-up, shown after an outcome is logged. Editable — it's
+  // a starting point, not something to fire off unread.
+  const [followUp, setFollowUp] = useState<{ subject: string; body: string; why: string } | null>(null);
+  const [sendingFollowUp, setSendingFollowUp] = useState(false);
+  const [followUpResult, setFollowUpResult] = useState<string | null>(null);
   // Recomputed on a timer so the lead's local time doesn't silently go stale
   // on a page left open between calls.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -294,6 +300,41 @@ export default function LeadDetailPage() {
     return () => clearInterval(t);
   }, []);
 
+  const pendingFollowUp = (key: string) => {
+    if (!lead?.email) return null;
+    return buildFollowUpDraft(key, {
+      company: lead.company,
+      contactName: lead.contactName,
+      senderName: lead.assignedTo?.name ?? null,
+      essentials: parseSalesPoints(lead.essentialPoints),
+      low: lead.estimateLowCents,
+      high: lead.estimateHighCents,
+    });
+  };
+
+  const sendFollowUp = async () => {
+    if (!followUp) return;
+    setSendingFollowUp(true);
+    setFollowUpResult(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/follow-up`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: followUp.subject, body: followUp.body }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFollowUpResult(data.error || 'Could not send.');
+        return;
+      }
+      setFollowUp(null);
+      setFollowUpResult('Sent — it will be in your Sent folder.');
+      load();
+    } finally {
+      setSendingFollowUp(false);
+    }
+  };
+
   const handleCallOutcome = async (key: string, needsDate: boolean) => {
     if (needsDate && !outcomeDate) return;
     setSavingOutcome(true);
@@ -311,6 +352,10 @@ export default function LeadDetailPage() {
         setLoggingOutcome(null);
         setOutcomeNote('');
         setOutcomeDate('');
+        setFollowUpResult(null);
+        // Offer the follow-up straight away — the moment right after the call
+        // is the only one where it reliably gets sent.
+        setFollowUp(pendingFollowUp(key));
         load();
       }
     } finally {
@@ -825,6 +870,52 @@ export default function LeadDetailPage() {
             );
           })}
         </div>
+
+        {followUpResult && (
+          <p className="mt-3 text-xs text-emerald-300 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-3 py-2">
+            {followUpResult}
+          </p>
+        )}
+
+        {followUp && (
+          <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] p-3.5">
+            <p className="text-sm font-bold text-emerald-100">Send the follow-up now</p>
+            <p className="text-xs text-emerald-200/60 mt-0.5 mb-3 leading-relaxed">{followUp.why}</p>
+
+            <label className="block text-[11px] uppercase tracking-wide text-emerald-300/70 mb-1.5">Subject</label>
+            <input
+              value={followUp.subject}
+              onChange={(e) => setFollowUp({ ...followUp, subject: e.target.value })}
+              className={`${inputClass} text-sm`}
+            />
+
+            <label className="block text-[11px] uppercase tracking-wide text-emerald-300/70 mt-3 mb-1.5">
+              Message — read it before you send, and change anything that isn't true
+            </label>
+            <textarea
+              value={followUp.body}
+              onChange={(e) => setFollowUp({ ...followUp, body: e.target.value })}
+              rows={12}
+              className={`${inputClass} text-sm resize-y font-normal`}
+            />
+
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setFollowUp(null)}
+                className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Not now
+              </button>
+              <button
+                onClick={sendFollowUp}
+                disabled={sendingFollowUp}
+                className="flex-1 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+              >
+                {sendingFollowUp ? 'Sending...' : `Send it to ${lead.email}`}
+              </button>
+            </div>
+          </div>
+        )}
 
         {loggingOutcome && (() => {
           const o = CALL_OUTCOMES.find((x) => x.key === loggingOutcome)!;

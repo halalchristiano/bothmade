@@ -317,7 +317,10 @@ export default function StartPage() {
                           />
                           <div>
                             <h4 className="font-semibold mb-1">{addOn.label}</h4>
-                            <p className="text-sm mb-2 text-white/50">{addOn.description}</p>
+                            <p className="text-sm mb-1.5 text-white/50">{addOn.description}</p>
+                            {/* What it is, then what you get out of it — the
+                                second is what people are actually choosing on. */}
+                            <p className="text-sm mb-2 text-white/70 leading-relaxed">{addOn.benefit}</p>
                             {includedInBase ? (
                               <p className="text-sm font-medium text-emerald-300">Included in {BASE_SERVICES[baseService].label}</p>
                             ) : (

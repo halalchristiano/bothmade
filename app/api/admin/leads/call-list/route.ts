@@ -24,6 +24,10 @@ import { unauthorizedResponse } from '@/lib/middleware';
  * separately rather than dropped, so it's obvious they need an address
  * finding rather than looking like they don't exist.
  */
+// High enough that a real book of business fits comfortably, low enough to
+// stay a cheap query. Truncation is reported rather than hidden.
+const MAX_ROWS = 2000;
+
 export type CallReason = 'bounced' | 'overdue' | 'today' | 'no-follow-up' | 'never-contacted';
 
 const REASON_RANK: Record<CallReason, number> = {
@@ -47,8 +51,15 @@ export async function GET() {
     // A rep works their own leads; an owner sees everything.
     const scope = user?.role === 'sales' ? { assignedToId: session.userId } : {};
 
+    const where = { ...scope, status: { notIn: ['won', 'lost'] } };
+
+    // Counted separately so the page can say how many were considered. A list
+    // that silently shows a subset reads as "this is everything", which is the
+    // worst possible failure for a work queue.
+    const totalOpen = await prisma.lead.count({ where });
+
     const leads = await prisma.lead.findMany({
-      where: { ...scope, status: { notIn: ['won', 'lost'] } },
+      where,
       select: {
         id: true,
         company: true,
@@ -71,7 +82,16 @@ export async function GET() {
           select: { type: true, content: true, createdAt: true },
         },
       },
-      take: 500,
+      // Ordered so that if the cap is ever reached, what survives is what
+      // matters: bounced first, then whoever has been waiting longest.
+      // Without an orderBy, Postgres returns an arbitrary set — which meant a
+      // lead could appear one day and silently vanish the next.
+      orderBy: [
+        { emailDeliveryFailedAt: { sort: 'desc', nulls: 'last' } },
+        { nextFollowUpAt: { sort: 'asc', nulls: 'last' } },
+        { updatedAt: 'asc' },
+      ],
+      take: MAX_ROWS,
     });
 
     // Compare on date, not timestamp — a follow-up set for "today" shouldn't
@@ -115,6 +135,10 @@ export async function GET() {
         success: true,
         callable: due.filter((r) => r.phone),
         noPhone: due.filter((r) => !r.phone),
+        // What the numbers on screen actually mean.
+        totalOpen,
+        scheduledLater: leads.length - due.length,
+        truncated: leads.length >= MAX_ROWS,
       },
       { status: 200 }
     );
