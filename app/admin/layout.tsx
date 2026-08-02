@@ -18,11 +18,13 @@ import {
   Menu,
   X,
   Settings,
+  PhoneCall,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, salesVisible: true },
   { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, salesVisible: true },
+  { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, salesVisible: true },
   { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true },
   { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
