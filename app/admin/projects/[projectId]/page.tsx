@@ -523,7 +523,7 @@ export default function AdminProjectDetailPage() {
               <div className="w-full bg-white/10 rounded-full h-1.5 mb-4">
                 <div
                   className="bg-gradient-to-r from-emerald-400 to-sky-400 h-1.5 rounded-full"
-                  style={{ width: `${Math.min(100, (project.amountPaid / project.totalPrice) * 100)}%` }}
+                  style={{ width: `${project.totalPrice > 0 ? Math.min(100, (project.amountPaid / project.totalPrice) * 100) : 0}%` }}
                 />
               </div>
 
