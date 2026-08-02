@@ -102,7 +102,27 @@ export type Block =
    * (column delay + per-chip delay combined into one formula) plus a
    * hover lift on each chip.
    */
-  | { type: 'stackChipsDemo'; columns: { heading: string; items: string[] }[] };
+  | { type: 'stackChipsDemo'; columns: { heading: string; items: string[] }[] }
+  /**
+   * A live, real pricing demo — reads BASE_SERVICES directly from
+   * lib/pricing.ts (the same data driving /start and Stripe checkout), so
+   * these figures can never drift out of sync with the real pricing page.
+   */
+  | { type: 'pricingDemo' }
+  /**
+   * A scaled replay of the iOS page's Springboard: tap an icon and a panel
+   * expands from that exact icon's measured position to fill the demo
+   * container — the same rect-measurement + AnimatePresence technique as
+   * the real app-launch transition, bounded to a small stage.
+   */
+  | { type: 'springboardDemo' }
+  /**
+   * A miniature replay of WebHero's KineticWord: letters morph
+   * font-variation-settings weight and color based on proximity to the
+   * pointer, with an idle sine-wave breathing fallback when the pointer
+   * has been still for a while.
+   */
+  | { type: 'kineticWordDemo'; word: string };
 
 export type BlogPost = {
   slug: string;
@@ -996,6 +1016,147 @@ const progressWidth = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);`,
       {
         type: 'p',
         text: "Once a chip has arrived, hovering it lifts it half a pixel and brightens its border and text — a plain CSS transition, not Framer Motion at all, because it doesn't need spring physics or scroll awareness; it just needs to feel responsive on :hover, which transition-all duration-300 already does for free. Not every piece of motion on a page needs the same tool. The entrance needed viewport awareness and staggered timing, so it got a motion library. The hover state needed neither, so it got two Tailwind classes.",
+      },
+    ],
+  },
+  {
+    slug: 'how-much-does-it-actually-cost',
+    title: 'How much does it actually cost?',
+    dek: "Real starting prices, pulled live from the same pricing engine that runs our checkout — not a 'contact us for a quote.' Pick a service below.",
+    tag: 'Process',
+    accent: 'sky',
+    date: '2026-12-06',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: '"How much does it cost to build an app" is a question most studio websites dodge — you fill out a form, wait two days, and get a number that was decided by whoever answered your email that morning. We\'d rather just tell you the starting price up front, because a real number you can see before talking to anyone is worth more than a promise that we\'ll be fair about it later.',
+      },
+      {
+        type: 'statement',
+        text: 'These are not marketing figures written for this post. This is the same pricing.ts file our actual checkout charges against.',
+      },
+      { type: 'heading', text: 'Pick a service' },
+      { type: 'pricingDemo' },
+      {
+        type: 'p',
+        text: "That component imports BASE_SERVICES directly from lib/pricing.ts and reads the price off it — it isn't a number typed into this post by hand. If we ever change what a website starts at, this demo updates the next time the site deploys, automatically, because it's reading the exact same constant /start and our Stripe checkout read.",
+      },
+      { type: 'heading', text: "Why 'starting price' and not 'the price'" },
+      {
+        type: 'p',
+        text: "The number above is the base — what a Website, Web App, or iOS App costs with nothing added. Almost nothing ships at the base price alone, because real projects need at least a few of what we scope as add-ons: a CMS, e-commerce, user accounts, an admin dashboard, ongoing maintenance. Our actual calculator at /start walks through every add-on individually so the total you see before paying anything is the real total, not the base figure with a surprise waiting at the bottom.",
+      },
+      { type: 'heading', text: 'Why show this instead of hiding behind a contact form' },
+      {
+        type: 'p',
+        text: "A generic \"contact us for pricing\" isn't neutral — it's a lead-qualification filter that also happens to hide the number from people who'd rather not have a sales conversation before they know if they can afford one. We already run fixed-scope-fixed-price checkout end to end; the number was never a secret internally. The only decision was whether to also say it out loud on the website, and we didn't see a reason not to.",
+      },
+    ],
+  },
+  {
+    slug: 'recreating-the-ios-app-launch-animation',
+    title: 'Recreating the iOS app-launch animation, on the web',
+    dek: 'A shared-element transition — a home-screen icon expanding into the app it opens — built with two rects and AnimatePresence, no native APIs involved. Tap an icon below.',
+    tag: 'Engineering',
+    accent: 'indigo',
+    date: '2026-12-13',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "Tap an app icon on an iPhone and it doesn't just appear — it grows out of exactly where you tapped, its corners squaring off as it fills the screen. It's one of the most recognizable pieces of motion in software, and it's a genuinely hard thing to fake on the web, because the icon and the fullscreen view it becomes are usually two completely different DOM elements with no natural way to animate between them. Our iOS service page opens with that exact transition anyway.",
+      },
+      {
+        type: 'statement',
+        text: "The trick is measuring where the icon actually is, then animating a second element from that measured rect to fill the screen. Nothing moves — the icon and the panel are just choreographed to line up.",
+      },
+      { type: 'heading', text: 'Tap an icon' },
+      { type: 'springboardDemo' },
+      {
+        type: 'p',
+        text: 'This is the same underlying technique as the real page, scaled to a small stage: tapping an icon calls getBoundingClientRect() on the button you clicked and on the container it lives in, subtracts the two to get the icon\'s position relative to the stage, and stores that as a plain { top, left, width, height } rect — not a DOM reference, just four numbers.',
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `const launch = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const el = e.currentTarget.getBoundingClientRect();
+  const host = stageRef.current!.getBoundingClientRect();
+
+  setLaunching({
+    top: el.top - host.top,
+    left: el.left - host.left,
+    width: el.width,
+    height: el.height,
+  });
+  setOpen(true);
+};`,
+      },
+      { type: 'heading', text: "A second element inherits that rect as its starting point" },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `<motion.div
+  initial={{ ...launching, borderRadius: '22%' }}
+  animate={{ top: 0, left: 0, width: '100%', height: '100%', borderRadius: 0 }}
+  transition={{ duration: 0.55, ease: [0.32, 0.72, 0, 1] }}
+/>`,
+      },
+      {
+        type: 'p',
+        text: "The icon you tapped never moves at all — it's a completely unrelated element that fades out under a blur. A brand-new motion.div mounts with initial values equal to the icon's measured rect, exactly overlapping it for one frame, then animates to fill the stage. Because the starting position, size, and corner radius all match the icon precisely, the illusion reads as one object growing rather than two objects that happen to be choreographed. This is the shared-element / FLIP pattern (First, Last, Invert, Play) — measure before, measure after, animate the delta — done by hand instead of through a dedicated layout-animation library.",
+      },
+      { type: 'heading', text: "Why not Framer Motion's layoutId" },
+      {
+        type: 'p',
+        text: "Framer Motion actually ships a purpose-built tool for exactly this — give two elements the same layoutId and it handles the FLIP measuring automatically, even across a conditional mount/unmount. We didn't reach for it here because the source and destination aren't really \"the same element in two states\" the way layoutId assumes — the icon stays a small square glyph forever, and the destination is a fully different fullscreen layout with its own content fading in on a delay. Manual rects gave more control over exactly when the icon fades versus when the panel's content arrives, at the cost of writing the coordinate math by hand instead of trusting a shared ID to infer it.",
+      },
+    ],
+  },
+  {
+    slug: 'type-that-reaches-toward-your-cursor',
+    title: 'Type that reaches toward your cursor',
+    dek: "Letters that get heavier and brighter the closer your mouse gets, using a variable font's weight axis instead of a swapped font file. Move your cursor near the word below.",
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-12-20',
+    readMinutes: 5,
+    body: [
+      {
+        type: 'p',
+        text: "A variable font isn't one font file — it's a continuous range of one, with axes like weight or width you can dial to any value instead of picking from a fixed set of \"Regular / Medium / Bold\" cuts. Almost nobody uses that continuity for anything interactive; it mostly gets used the same way a normal font would, just picking a couple of fixed weights and calling it done. Our web service page hero does something with it that a static weight can't: each letter's weight tracks how close your cursor is to it, in real time.",
+      },
+      {
+        type: 'statement',
+        text: "Nothing is swapped, cropped, or cross-faded. One property — font-variation-settings — is just being set to a different number, sixty times a second, per letter.",
+      },
+      { type: 'heading', text: 'Move your cursor near this' },
+      { type: 'kineticWordDemo', word: 'REACH' },
+      {
+        type: 'p',
+        text: "Every letter measures its own distance to the cursor on every animation frame and maps that distance to a 0–1 value using smoothstep — the same t*t*(3-2*t) curve used to avoid a mechanical linear ramp — then uses that value to interpolate the weight axis between 260 (light) and 900 (heavy), and the color between a dim, desaturated blue and a bright, saturated one. Move away and the letters behind you cool back down on their own, because the calculation runs continuously — there's no explicit \"unhover\" event to write, just distance getting larger again.",
+      },
+      {
+        type: 'code',
+        language: 'typescript',
+        code: `const r = letter.getBoundingClientRect();
+const d = Math.hypot(mx - (r.left + r.width / 2), my - (r.top + r.height / 2));
+const raw = Math.max(0, 1 - d / 300);       // 0 past 300px, 1 at the center
+const t = raw * raw * (3 - 2 * raw);        // smoothstep
+
+letter.style.fontVariationSettings = \`'wght' \${Math.round(260 + t * 640)}\`;
+letter.style.color = \`rgba(\${186 + t*69}, \${230 + t*25}, 252, \${0.2 + t*0.8})\`;`,
+      },
+      { type: 'heading', text: "It never actually sits still" },
+      {
+        type: 'p',
+        text: "If the pointer hasn't moved in 2.6 seconds, the loop switches from cursor-distance to a slow per-letter sine wave — each letter breathing between light and slightly heavier on its own gentle offset, so the word never looks frozen when nobody's touching it. That threshold matters more than it sounds like it should: without it, a word that hasn't been touched yet just sits at its lightest weight looking inert, which reads as broken rather than as \"waiting for you.\" The idle animation is what tells a first-time visitor there's something here to discover before they've found it themselves.",
+      },
+      { type: 'heading', text: 'Why raw style mutation instead of React state' },
+      {
+        type: 'p',
+        text: "Every letter's style is written directly via letter.style.fontVariationSettings, completely outside React's render cycle — not useState, not a Framer Motion value. At up to 60 updates per second across every letter in the word simultaneously, routing that through React re-renders would mean scheduling and diffing work the browser doesn't actually need, when a direct DOM mutation on an already-existing element is exactly what requestAnimationFrame loops are for. React owns mounting the spans once; after that, the animation loop owns them completely until the component unmounts and the loop is cancelled.",
       },
     ],
   },

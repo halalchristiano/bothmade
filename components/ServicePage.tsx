@@ -85,7 +85,7 @@ export function ServicePage({
         <div className="max-w-6xl mx-auto">
           <SectionTag className="mb-16">Stack</SectionTag>
 
-          <div className="grid md:grid-cols-3 gap-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             {data.stack.map((col, idx) => (
               <motion.div
                 key={col.heading}

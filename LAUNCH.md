@@ -19,6 +19,34 @@ the site is deployable after the first section.
 - [ ] **Test the form once on production** — submit it yourself, confirm both
       the studio notification and the acknowledgement arrive.
 
+## Required before "Sign in with Google" works (admin → Who to call)
+
+Reps see "Google sign-in is not configured yet (GOOGLE_OAUTH_CLIENT_ID/SECRET
+missing)" until this is done once. It has to happen in Google Cloud Console
+and Vercel — no amount of code changes fixes it.
+
+- [ ] **Create (or reuse) a Google Cloud project** at
+      console.cloud.google.com.
+- [ ] **Enable the Gmail API** for that project (APIs & Services → Library →
+      Gmail API → Enable).
+- [ ] **Configure the OAuth consent screen.** Since every account that will
+      connect is `@bothmade.studio` (Google Workspace), set the user type to
+      **Internal** — this skips Google's app-verification review entirely,
+      which otherwise takes days to weeks for sensitive scopes like
+      `gmail.readonly`. Internal is only offered if you're signed in as a
+      Workspace admin/user for that domain.
+- [ ] **Create an OAuth 2.0 Client ID** (APIs & Services → Credentials →
+      Create Credentials → OAuth client ID → Application type: **Web
+      application**). Add this Authorized redirect URI, matching whatever
+      `NEXT_PUBLIC_SITE_URL` is set to in Vercel:
+      `https://bothmade.studio/api/admin/settings/gmail-oauth/callback`
+- [ ] **Copy the Client ID and Client Secret** into Vercel → Project →
+      Settings → Environment Variables as `GOOGLE_OAUTH_CLIENT_ID` and
+      `GOOGLE_OAUTH_CLIENT_SECRET`, then redeploy (env var changes don't
+      apply to already-running deployments).
+- [ ] **Verify**: open `/admin/settings`, the amber "isn't set up yet"
+      notice should be gone and "Sign in with Google" should be clickable.
+
 ## Required before running ads
 
 - [ ] **Replace the sample case studies.** Everything in

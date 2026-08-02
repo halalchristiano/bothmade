@@ -247,7 +247,7 @@ export default function StartPage() {
 
           <div className="rounded-xl border border-sky-400/20 bg-sky-400/[0.04] p-5 mb-6">
             <p className="text-sm font-semibold text-sky-300 mb-2">Website vs. Web App — what's the actual difference?</p>
-            <div className="grid sm:grid-cols-2 gap-4 text-sm text-white/60">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-white/60">
               <div>
                 <p className="font-medium text-white/80 mb-1">Website</p>
                 <p>People <em>visit</em> it. No login, no account, nothing to "use" — just read, look, and get in touch. Think: a restaurant's site, a portfolio, a landing page.</p>
@@ -262,7 +262,7 @@ export default function StartPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
               ([key, service]) => (
                 <button
@@ -294,7 +294,7 @@ export default function StartPage() {
                   <h3 className="text-sm font-mono uppercase tracking-[0.2em] text-white/40 mb-3">
                     {ADD_ON_CATEGORIES[category].label}
                   </h3>
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {keys.map((key) => {
                       const addOn = ADD_ONS[key];
                       const isChecked = addOns.includes(key);
@@ -351,7 +351,7 @@ export default function StartPage() {
         {/* Step 3: Client type */}
         <section className="mb-12">
           <h2 className="text-2xl font-bold mb-6">3. Which best describes you?</h2>
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {(Object.entries(CLIENT_TYPES) as [ClientType, (typeof CLIENT_TYPES)[ClientType]][]).map(
               ([key, type]) => (
                 <button
@@ -371,7 +371,7 @@ export default function StartPage() {
         {/* Step 4: Timeline */}
         <section className="mb-12">
           <h2 className="text-2xl font-bold mb-6">4. Timeline</h2>
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {(Object.entries(TIMELINES) as [TimelineKey, (typeof TIMELINES)[TimelineKey]][]).map(
               ([key, tl]) => (
                 <button

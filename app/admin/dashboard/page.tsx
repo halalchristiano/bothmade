@@ -10,6 +10,7 @@ import {
   Percent,
   Flame,
   AlertTriangle,
+  Clock,
   XCircle,
   Radio,
   Building2,
@@ -32,6 +33,7 @@ import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
+import { UndoToast } from '@/components/admin/UndoToast';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
@@ -82,6 +84,46 @@ function RefreshIndicator({
       <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
       {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
     </button>
+  );
+}
+
+function SkeletonBlock({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-white/[0.06] ${className}`} />;
+}
+
+/**
+ * Shaped to roughly match the dashboard layout (header, stat row, card
+ * grid) instead of a bare spinner — reduces the jarring "page replaced
+ * with nothing" feel on first load.
+ */
+function DashboardSkeleton() {
+  return (
+    <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="flex justify-between items-start mb-8">
+        <div className="space-y-2">
+          <SkeletonBlock className="h-4 w-16" />
+          <SkeletonBlock className="h-8 w-64" />
+          <SkeletonBlock className="h-4 w-48" />
+        </div>
+        <SkeletonBlock className="h-9 w-40 rounded-xl" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-xl overflow-hidden mb-6 border border-white/[0.07]">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="p-5 bg-white/[0.02] space-y-2">
+            <SkeletonBlock className="h-3 w-20" />
+            <SkeletonBlock className="h-7 w-24" />
+          </div>
+        ))}
+      </div>
+      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+        <SkeletonBlock className="lg:col-span-2 h-64 rounded-xl" />
+        <SkeletonBlock className="h-64 rounded-xl" />
+      </div>
+      <div className="grid lg:grid-cols-2 gap-5">
+        <SkeletonBlock className="h-52 rounded-xl" />
+        <SkeletonBlock className="h-52 rounded-xl" />
+      </div>
+    </div>
   );
 }
 
@@ -149,6 +191,13 @@ interface OpsStats {
   }>;
   newClientsThisWeek: number;
   atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
+  waitingOnClient: Array<{
+    id: string;
+    name: string;
+    company: string;
+    daysSinceUpdate: number;
+    daysSinceWeAsked: number | null;
+  }>;
   overdueBalances: Array<{
     id: string;
     name: string;
@@ -194,6 +243,7 @@ interface NextAction {
   meta: string;
   phone: string | null;
   email: string | null;
+  previousNextFollowUpAt: string | null;
 }
 
 function NextActionsCard({ stats }: { stats: SalesStats }) {
@@ -204,27 +254,27 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
   for (const l of stats.followUpsOverdue) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: l.nextFollowUpAt });
   }
   for (const l of stats.followUpsToday) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.hotLeads) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.staleLeads) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.stageAging) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email });
+    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
 
   return (
@@ -237,7 +287,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
         action={actions.length > 0 ? <Badge solid tone={actions.length > 5 ? 'red' : 'amber'}>{actions.length}</Badge> : undefined}
       />
       {actions.length === 0 ? (
-        <EmptyState icon={Flame} text="Nothing urgent — you're caught up." />
+        <EmptyState icon={Flame} text="Nothing urgent — you're caught up." tone="clear" />
       ) : (
         <div className="space-y-0.5">
           {actions.map((a) => (
@@ -269,7 +319,18 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                     </a>
                   )}
                   <LogTouchPopover leadId={a.id} />
-                  <SnoozeButton leadId={a.id} onSnoozed={() => setDismissed((prev) => new Set(prev).add(a.id))} />
+                  <SnoozeButton
+                    leadId={a.id}
+                    previousNextFollowUpAt={a.previousNextFollowUpAt}
+                    onSnoozed={() => setDismissed((prev) => new Set(prev).add(a.id))}
+                    onUndo={() =>
+                      setDismissed((prev) => {
+                        const next = new Set(prev);
+                        next.delete(a.id);
+                        return next;
+                      })
+                    }
+                  />
                 </div>
               }
             />
@@ -390,7 +451,7 @@ function WonDealsCard({ stats }: { stats: SalesStats }) {
         <EmptyState icon={DollarSign} text="No deals closed yet." />
       ) : (
         <>
-          <div className="flex gap-2 mb-3">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -563,7 +624,7 @@ function SalesDashboard({
         />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card className="lg:col-span-2 p-6">
           <CardHeader icon={FolderKanban} tone="sky" title="Pipeline by Stage" action={<Link href="/admin/pipeline" className="text-xs text-sky-300/70 hover:text-sky-300">Full board →</Link>} />
           <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
@@ -662,7 +723,7 @@ function SalesDashboard({
         </div>
       )}
 
-      <div className="grid lg:grid-cols-2 gap-5 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
         <InsightsCard stats={stats} />
 
         <WonDealsCard stats={stats} />
@@ -831,27 +892,36 @@ function MockupRequestRow({
 function HandoffRow({
   handoff,
   onAcknowledged,
+  onUnacknowledged,
 }: {
   handoff: OpsStats['newHandoffs'][number];
   onAcknowledged: () => void;
+  onUnacknowledged?: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showUndo, setShowUndo] = useState(false);
+
+  const setAcknowledged = async (acknowledgeHandoff: boolean) => {
+    const res = await fetch(`/api/projects/${handoff.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acknowledgeHandoff }),
+    });
+    return res.ok;
+  };
 
   const handleAcknowledge = async () => {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch(`/api/projects/${handoff.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ acknowledgeHandoff: true }),
-      });
-      if (!res.ok) {
+      const ok = await setAcknowledged(true);
+      if (ok) {
+        onAcknowledged();
+        setShowUndo(true);
+      } else {
         setError("Couldn't mark this picked up — try again.");
-        return;
       }
-      onAcknowledged();
     } catch {
       setError('Could not reach the server — check your connection.');
     } finally {
@@ -859,8 +929,20 @@ function HandoffRow({
     }
   };
 
+  const handleUndo = async () => {
+    const ok = await setAcknowledged(false);
+    if (ok) onUnacknowledged?.();
+  };
+
   return (
     <div className="rounded-xl border border-white/10 px-3 py-2.5">
+      {showUndo && (
+        <UndoToast
+          message={`Picked up ${handoff.company}`}
+          onUndo={handleUndo}
+          onDismiss={() => setShowUndo(false)}
+        />
+      )}
       <div className="flex justify-between items-center gap-2">
         <Link href={`/admin/projects/${handoff.id}`} className="text-sm font-medium hover:underline truncate">
           {handoff.company}
@@ -1082,10 +1164,10 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
     <Card className="p-6">
       <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
       {balances.length === 0 ? (
-        <EmptyState icon={Wallet} text="Nothing outstanding." />
+        <EmptyState icon={Wallet} text="Nothing outstanding." tone="clear" />
       ) : (
         <>
-          <div className="flex gap-2 mb-3">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -1151,14 +1233,62 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
 
   return (
     <Card className="p-6" glow="red">
-      <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
+      <CardHeader
+        icon={AlertTriangle}
+        tone="red"
+        title="Needs you"
+        subtitle="Stalled 7+ days and the ball is with us"
+      />
       {projects.length === 0 ? (
-        <EmptyState icon={AlertTriangle} text="Everything's current." />
+        <EmptyState icon={AlertTriangle} text="Everything's current." tone="clear" />
       ) : (
         <>
           <div className="space-y-0.5">
             {shown.map((p) => (
               <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
+            ))}
+          </div>
+          <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Projects stalled because the client hasn't come back, kept apart from the
+ * ones stalled on us. Same symptom, opposite action: these need chasing, not
+ * working on, and a rep-style guilt list buries that distinction.
+ */
+function WaitingOnClientCard({ projects }: { projects: OpsStats['waitingOnClient'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = projects.slice(0, visible);
+
+  return (
+    <Card className="p-6" glow="amber">
+      <CardHeader
+        icon={Clock}
+        tone="amber"
+        title="Waiting on them"
+        subtitle="You asked, they haven't come back — chase these"
+      />
+      {projects.length === 0 ? (
+        <EmptyState icon={Clock} text="Nobody's holding you up." />
+      ) : (
+        <>
+          <div className="space-y-0.5">
+            {shown.map((p) => (
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                subtitle={
+                  p.daysSinceWeAsked !== null
+                    ? `You messaged ${p.daysSinceWeAsked === 0 ? 'today' : `${p.daysSinceWeAsked}d ago`}`
+                    : undefined
+                }
+                trailing={<Badge tone="amber">{p.daysSinceUpdate}d</Badge>}
+              />
             ))}
           </div>
           <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
@@ -1248,7 +1378,17 @@ function OpsDashboard({
 
       {pendingMockups.length > 0 && (
         <Card className="p-6 mb-6" glow="amber">
-          <CardHeader icon={Palette} tone="amber" title="Mockup Requests" subtitle="Evan's waiting on these" />
+          <CardHeader
+            icon={Palette}
+            tone="amber"
+            title="Mockup Requests"
+            subtitle="Evan's waiting on these"
+            action={
+              <Link href="/admin/mockup-queue" className="text-xs text-amber-300/70 hover:text-amber-300">
+                Full briefs →
+              </Link>
+            }
+          />
           <div className="space-y-2">
             {pendingMockups.map((r) => (
               <MockupRequestRow
@@ -1282,7 +1422,7 @@ function OpsDashboard({
 
       <RevenueChartCard revenueHistory={stats.revenueHistory} />
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card className="p-6" glow="emerald">
           <CardHeader icon={Inbox} tone="emerald" title="New Handoffs" subtitle="Give them a first touch" />
           {newHandoffs.length === 0 ? (
@@ -1298,6 +1438,9 @@ function OpsDashboard({
                       prev.map((h) => (h.id === p.id ? { ...h, handoffAcknowledgedAt: new Date().toISOString() } : h))
                     )
                   }
+                  onUnacknowledged={() =>
+                    setNewHandoffs((prev) => prev.map((h) => (h.id === p.id ? { ...h, handoffAcknowledgedAt: null } : h)))
+                  }
                 />
               ))}
             </div>
@@ -1305,11 +1448,12 @@ function OpsDashboard({
         </Card>
 
         <AtRiskProjectsCard projects={stats.atRiskProjects} />
+        <WaitingOnClientCard projects={stats.waitingOnClient ?? []} />
 
         <OverdueBalancesCard balances={stats.overdueBalances} />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <ActivityFeedCard activity={stats.activityFeed} />
 
         <TasksWidget />
@@ -1318,7 +1462,7 @@ function OpsDashboard({
       {stats.projectsAwaitingReply.length > 0 && (
         <Card className="p-6 mb-5" glow="sky">
           <CardHeader icon={MessageCircle} tone="sky" title="Awaiting Your Reply" subtitle="Client messaged last, longest wait first" />
-          <div className="grid sm:grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
             {stats.projectsAwaitingReply.map((p) => (
               <ListRow
                 key={p.id}
@@ -1339,7 +1483,7 @@ function OpsDashboard({
       {stats.awaitingSignature.length > 0 && (
         <Card className="p-6 mb-8" glow="purple">
           <CardHeader icon={FileSignature} tone="purple" title="Contracts Awaiting Signature" />
-          <div className="grid sm:grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
             {stats.awaitingSignature.map((l) => (
               <ListRow
                 key={l.id}
@@ -1444,11 +1588,7 @@ export default function AdminDashboardPage() {
   }, [router, retryCount, range]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-56px)] lg:h-screen">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (error) {

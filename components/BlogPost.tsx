@@ -20,6 +20,7 @@ import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ScrollProgress } from '@/components/ScrollProgress';
 import { CountUp, FocusRow, ScrubText, GridBackdrop } from '@/components/ui';
 import { formatBlogDate, type BlogPost, type Block } from '@/lib/blog';
+import { BASE_SERVICES, formatCents, type BaseService } from '@/lib/pricing';
 
 const ACCENT_HEX: Record<BlogPost['accent'], { from: string; to: string; text: string }> = {
   sky: { from: '#0ea5e9', to: '#0c2f52', text: 'rgb(125 211 252)' },
@@ -116,7 +117,7 @@ export function BlogPostPage({
       {/* Prev / next */}
       {(prev || next) && (
         <section className="relative border-t border-white/10">
-          <div className="max-w-3xl mx-auto grid sm:grid-cols-2">
+          <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2">
             {prev ? (
               <AdjacentLink post={prev} direction="prev" />
             ) : (
@@ -297,13 +298,270 @@ function BlockRenderer({
 
     case 'stackChipsDemo':
       return <StackChipsDemo columns={block.columns} />;
+
+    case 'pricingDemo':
+      return <PricingDemo />;
+
+    case 'springboardDemo':
+      return <SpringboardDemo />;
+
+    case 'kineticWordDemo':
+      return <KineticWordDemo word={block.word} />;
   }
+}
+
+/**
+ * Miniature replay of WebHero's KineticWord: each letter's
+ * font-variation-settings weight and color track proximity to the
+ * pointer on an rAF loop; when the pointer's been still past a
+ * threshold, an idle sine wave takes over instead.
+ */
+function KineticWordDemo({ word }: { word: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    const host = ref.current;
+    if (!host || reduceMotion) return;
+    const letters = Array.from(host.children) as HTMLSpanElement[];
+
+    let mx = -9999;
+    let my = -9999;
+    let live = false;
+    let lastMove = 0;
+
+    const onMove = (e: PointerEvent) => {
+      mx = e.clientX;
+      my = e.clientY;
+      live = true;
+      lastMove = performance.now();
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+
+    let frame: number;
+    const tick = (now: number) => {
+      const idle = !live || now - lastMove > 2600;
+      for (let i = 0; i < letters.length; i++) {
+        let t: number;
+        if (idle) {
+          t = Math.max(0, Math.sin(now / 650 - i * 0.5)) * 0.5;
+        } else {
+          const r = letters[i].getBoundingClientRect();
+          const d = Math.hypot(mx - (r.left + r.width / 2), my - (r.top + r.height / 2));
+          const raw = Math.max(0, 1 - d / 300);
+          t = raw * raw * (3 - 2 * raw);
+        }
+        letters[i].style.fontVariationSettings = `'wght' ${Math.round(260 + t * 640)}`;
+        letters[i].style.color = `rgba(${186 + t * 69}, ${230 + t * 25}, 252, ${0.2 + t * 0.8})`;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, [reduceMotion]);
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-10 md:p-16 grid place-items-center overflow-hidden">
+      {reduceMotion ? (
+        <span className="font-bold text-sky-300" style={{ fontSize: 'clamp(2rem, 8vw, 4rem)' }}>
+          {word}
+        </span>
+      ) : (
+        <span
+          ref={ref}
+          aria-label={word}
+          className="block select-none font-bold leading-none tracking-[-0.03em] whitespace-nowrap"
+          style={{ fontSize: 'clamp(2rem, 8vw, 4rem)' }}
+        >
+          {word.split('').map((ch, i) => (
+            <span
+              key={i}
+              aria-hidden="true"
+              className="inline-block"
+              style={{
+                fontVariationSettings: "'wght' 260",
+                color: 'rgba(186,230,252,0.2)',
+                willChange: 'font-variation-settings, color',
+              }}
+            >
+              {ch}
+            </span>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+type Rect = { top: number; left: number; width: number; height: number };
+
+const DEMO_APPS = [
+  { label: 'Ridgeline', glyph: '⛰', from: '#4f46e5', to: '#1e1b4b' },
+  { label: 'Cadence', glyph: '◷', from: '#0ea5e9', to: '#0c2f52' },
+  { label: 'Ledger', glyph: '◧', from: '#059669', to: '#052e26' },
+  { label: 'Signal', glyph: '◉', from: '#e11d48', to: '#4c0519' },
+];
+
+/**
+ * Scaled replay of IOSHero's launch transition: tapping an icon measures
+ * its rect relative to the bounded stage, then AnimatePresence animates a
+ * panel from that exact rect to fill the stage. Same technique, smaller
+ * container, tap "back" to collapse it again instead of a real navigation.
+ */
+function SpringboardDemo() {
+  const [launching, setLaunching] = useState<Rect | null>(null);
+  const [open, setOpen] = useState(false);
+  const [openLabel, setOpenLabel] = useState('');
+  const stageRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
+
+  const launch = (e: React.MouseEvent<HTMLButtonElement>, label: string) => {
+    const el = e.currentTarget.getBoundingClientRect();
+    const host = stageRef.current?.getBoundingClientRect();
+    if (!host) return;
+    setLaunching({ top: el.top - host.top, left: el.left - host.left, width: el.width, height: el.height });
+    setOpen(true);
+    setOpenLabel(label);
+  };
+
+  return (
+    <div
+      ref={stageRef}
+      className="relative h-72 md:h-80 rounded-2xl border border-white/10 overflow-hidden bg-[radial-gradient(ellipse_at_50%_20%,#221a4d_0%,#07050f_60%)]"
+    >
+      <div className="relative h-full flex flex-col items-center justify-center gap-6 px-6">
+        <motion.p
+          className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30"
+          animate={{ opacity: open ? 0 : 1 }}
+        >
+          tap an app to open
+        </motion.p>
+
+        <motion.div
+          className="grid grid-cols-4 gap-4 sm:gap-6"
+          animate={
+            open
+              ? { scale: 1.08, opacity: 0, filter: 'blur(6px)' }
+              : { scale: 1, opacity: 1, filter: 'blur(0px)' }
+          }
+          transition={{ duration: 0.5, ease: [0.32, 0, 0.2, 1] }}
+        >
+          {DEMO_APPS.map((app) => (
+            <button
+              key={app.label}
+              onClick={(e) => launch(e, app.label)}
+              aria-label={`Open ${app.label}`}
+              className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-[22%] grid place-items-center text-xl text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform duration-200 active:scale-90 hover:scale-105"
+              style={{ background: `linear-gradient(150deg, ${app.from}, ${app.to})` }}
+            >
+              <span className="relative">{app.glyph}</span>
+            </button>
+          ))}
+        </motion.div>
+      </div>
+
+      <AnimatePresence>
+        {open && launching && !reduceMotion && (
+          <motion.div
+            className="absolute z-20 overflow-hidden bg-[#07050f] grid place-items-center"
+            initial={{ ...launching, borderRadius: '22%' }}
+            animate={{ top: 0, left: 0, width: '100%', height: '100%', borderRadius: 0 }}
+            transition={{ duration: 0.55, ease: [0.32, 0.72, 0, 1] }}
+          >
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.35 }}
+              onClick={() => { setOpen(false); setLaunching(null); }}
+              className="absolute inset-0 grid place-items-center text-white/70 font-mono text-xs uppercase tracking-[0.3em]"
+            >
+              {openLabel} — tap to go back
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {open && reduceMotion && (
+        <div className="absolute inset-0 z-20 bg-[#07050f] grid place-items-center">
+          <button
+            onClick={() => { setOpen(false); setLaunching(null); }}
+            className="text-white/70 font-mono text-xs uppercase tracking-[0.3em]"
+          >
+            {openLabel} — tap to go back
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Live pricing demo reading BASE_SERVICES straight from lib/pricing.ts —
+ * the exact same data backing /start and Stripe checkout. Selecting a
+ * service springs the price from its old value to its new one instead of
+ * cutting, and formats through the same formatCents used everywhere else.
+ */
+function PricingDemo() {
+  const [selected, setSelected] = useState<BaseService>('website');
+  const reduceMotion = useReducedMotion();
+
+  const targetCents = BASE_SERVICES[selected].price;
+  const spring = useSpring(targetCents, { stiffness: 90, damping: 20, mass: 0.6 });
+  const [display, setDisplay] = useState(formatCents(targetCents));
+
+  useEffect(() => {
+    spring.set(targetCents);
+  }, [targetCents, spring]);
+
+  useMotionValueEvent(spring, 'change', (v) => {
+    setDisplay(formatCents(Math.round(v)));
+  });
+
+  const entries = Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][];
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8">
+      <div className="flex flex-wrap gap-2 mb-8">
+        {entries.map(([key, svc]) => (
+          <button
+            key={key}
+            onClick={() => setSelected(key)}
+            className={`rounded-full border px-4 py-2 text-sm transition-all duration-300 ${
+              selected === key
+                ? 'border-sky-400/70 text-white bg-sky-400/10'
+                : 'border-white/12 text-white/50 hover:text-white hover:border-white/30'
+            }`}
+          >
+            {svc.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30 mb-2">
+        starting price
+      </p>
+      <p
+        className="font-bold tabular-nums text-white mb-6"
+        style={{ fontSize: 'clamp(2.5rem, 7vw, 4rem)' }}
+      >
+        {reduceMotion ? formatCents(targetCents) : display}
+      </p>
+
+      <p className="text-sm text-white/50 leading-relaxed max-w-lg">
+        {BASE_SERVICES[selected].description}
+      </p>
+    </div>
+  );
 }
 
 /** Scaled replay of ServicePage's stack-chip grid: two-axis stagger (column + per-chip) plus a hover lift. */
 function StackChipsDemo({ columns }: { columns: { heading: string; items: string[] }[] }) {
   return (
-    <div className="rounded-2xl border border-white/10 p-6 md:p-8 grid sm:grid-cols-2 gap-10">
+    <div className="rounded-2xl border border-white/10 p-6 md:p-8 grid grid-cols-1 sm:grid-cols-2 gap-10">
       {columns.map((col, idx) => (
         <motion.div
           key={col.heading}
@@ -431,7 +689,7 @@ function ScrollCompareDemo() {
   const filler = Array.from({ length: 8 });
 
   return (
-    <div className="grid sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="rounded-2xl border border-white/10 overflow-hidden">
         <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-300/70 border-b border-white/10">
           native
