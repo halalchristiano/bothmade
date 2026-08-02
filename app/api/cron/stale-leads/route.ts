@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notifyAdminsStaleLeads } from '@/lib/notify';
-import { syncBouncesForAllUsers } from '@/lib/bounce-sync';
+import { syncBouncesForAllUsers, syncRepliesForAllUsers } from '@/lib/bounce-sync';
 
 const STALE_DAYS = 5;
 
@@ -34,6 +34,13 @@ export async function GET(request: NextRequest) {
       console.error('Bounce sync failed during nightly job:', error);
     }
 
+    let replies = { flagged: 0, scanned: 0 };
+    try {
+      replies = await syncRepliesForAllUsers();
+    } catch (error) {
+      console.error('Reply sync failed during nightly job:', error);
+    }
+
     const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000);
 
     const staleLeads = await prisma.lead.findMany({
@@ -53,7 +60,12 @@ export async function GET(request: NextRequest) {
     await notifyAdminsStaleLeads(payload);
 
     return NextResponse.json(
-      { success: true, staleCount: payload.length, bouncesFlagged: bounces.flagged },
+      {
+        success: true,
+        staleCount: payload.length,
+        bouncesFlagged: bounces.flagged,
+        repliesFlagged: replies.flagged,
+      },
       { status: 200 }
     );
   } catch (error) {

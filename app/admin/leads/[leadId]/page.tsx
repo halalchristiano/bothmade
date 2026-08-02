@@ -330,17 +330,74 @@ export default function LeadDetailPage() {
     setCustomItems(sanitizeCustomItems(lead.proposalCustomItems || []));
   };
 
+  // A plain-text version of the proposal for pasting into a text/WhatsApp
+  // message — not every client checks email fast, and typing this out by
+  // hand is exactly the kind of busywork this button exists to remove.
+  const [copiedProposalText, setCopiedProposalText] = useState(false);
+  const handleCopyProposalText = async () => {
+    if (!lead) return;
+    const chargeNow = depositOnly ? depositAmount(proposalGrandTotal) : proposalGrandTotal;
+    const lines = [
+      `${lead.company} — ${BASE_SERVICES[proposalService].label}`,
+      proposalAddOns.length ? `Add-ons: ${proposalAddOns.map((k) => ADD_ONS[k].label).join(', ')}` : null,
+      customItems.length
+        ? `Extras: ${customItems.map((c) => `${c.label} (${formatCents(c.priceCents)})`).join(', ')}`
+        : null,
+      `Total: ${formatCents(proposalGrandTotal)}${depositOnly ? ` — ${formatCents(chargeNow)} deposit to start` : ''}`,
+      paymentLinkUrl ? `Review & pay: ${paymentLinkUrl}` : null,
+    ].filter(Boolean);
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCopiedProposalText(true);
+      setTimeout(() => setCopiedProposalText(false), 2500);
+    } catch {
+      setProposalError('Could not copy to clipboard — your browser may be blocking it.');
+    }
+  };
+
+  // Formats what he's typing as a price ("3000" -> "3,000") without
+  // fighting the cursor — only digits and a single decimal point survive,
+  // commas are inserted purely for display and stripped again on parse.
+  const formatCurrencyInputValue = (raw: string): string => {
+    const cleaned = raw.replace(/[^\d.]/g, '');
+    const firstDot = cleaned.indexOf('.');
+    const [intPart, ...rest] = firstDot === -1 ? [cleaned] : [cleaned.slice(0, firstDot), cleaned.slice(firstDot + 1)];
+    const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return firstDot === -1 ? withCommas : `${withCommas}.${rest.join('').slice(0, 2)}`;
+  };
+
   const addCustomItem = () => {
     const label = draftCustomLabel.trim();
-    const dollars = parseFloat(draftCustomPrice);
+    const dollars = parseFloat(draftCustomPrice.replace(/,/g, ''));
     if (!label || !Number.isFinite(dollars) || dollars <= 0) return;
     setCustomItems((prev) => [...prev, { label, priceCents: Math.round(dollars * 100) }]);
     setDraftCustomLabel('');
     setDraftCustomPrice('');
   };
 
+  // A deleted custom item stays recoverable for a few seconds instead of
+  // being gone the instant a trash icon gets tapped by mistake.
+  const [lastRemovedCustomItem, setLastRemovedCustomItem] = useState<{ item: CustomItem; index: number } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const removeCustomItem = (index: number) => {
-    setCustomItems((prev) => prev.filter((_, i) => i !== index));
+    setCustomItems((prev) => {
+      setLastRemovedCustomItem({ item: prev[index], index });
+      return prev.filter((_, i) => i !== index);
+    });
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => setLastRemovedCustomItem(null), 6000);
+  };
+
+  const undoRemoveCustomItem = () => {
+    if (!lastRemovedCustomItem) return;
+    setCustomItems((prev) => {
+      const next = [...prev];
+      next.splice(lastRemovedCustomItem.index, 0, lastRemovedCustomItem.item);
+      return next;
+    });
+    setLastRemovedCustomItem(null);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   };
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
@@ -907,6 +964,34 @@ export default function LeadDetailPage() {
     }
     return 'Next: build the proposal below, then click "Email Sign & Pay Link" to send it to the client.';
   })();
+
+  // True once there's something in the builder worth not losing — either a
+  // proposal that's diverged from what was actually sent, or real progress
+  // on one that's never been saved at all.
+  const hasUnsentProposalChanges = Boolean(
+    hydratedProposalRef.current &&
+      (proposalChangedSinceSent ||
+        (!hasSentProposal &&
+          (proposalAddOns.length > 0 ||
+            customItems.length > 0 ||
+            proposalService !== 'website' ||
+            proposalClientType !== 'smb' ||
+            proposalTimeline !== 'standard' ||
+            depositOnly)))
+  );
+
+  // A second safety net alongside the draft autosave — closing the tab or
+  // navigating away with unsent changes gets an explicit browser prompt,
+  // not just a silent trust that the draft will be there next time.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!hasUnsentProposalChanges) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsentProposalChanges]);
 
   const handleCreatePaymentLink = async () => {
     setProposalError('');
@@ -2741,6 +2826,19 @@ export default function LeadDetailPage() {
                   </div>
                 ))}
               </div>
+
+              {lastRemovedCustomItem && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-white/15 bg-white/5 p-2.5 mb-3 text-xs">
+                  <span className="text-white/60">Removed "{lastRemovedCustomItem.item.label}"</span>
+                  <button
+                    onClick={undoRemoveCustomItem}
+                    className="font-semibold text-sky-300 hover:text-sky-200 transition-colors"
+                  >
+                    Undo
+                  </button>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -2749,21 +2847,25 @@ export default function LeadDetailPage() {
                   onChange={(e) => setDraftCustomLabel(e.target.value)}
                   className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
                 />
-                <input
-                  type="number"
-                  placeholder="Price"
-                  min="0"
-                  step="1"
-                  value={draftCustomPrice}
-                  onChange={(e) => setDraftCustomPrice(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      addCustomItem();
-                    }
-                  }}
-                  className={`${inputClass.replace('w-full', '')} w-28 shrink-0`}
-                />
+                <span className="relative w-28 shrink-0">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">
+                    $
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={draftCustomPrice}
+                    onChange={(e) => setDraftCustomPrice(formatCurrencyInputValue(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addCustomItem();
+                      }
+                    }}
+                    className={`${inputClass.replace('w-full', '')} w-full pl-6`}
+                  />
+                </span>
                 <button
                   onClick={addCustomItem}
                   disabled={!draftCustomLabel.trim() || !draftCustomPrice}
@@ -2939,6 +3041,12 @@ export default function LeadDetailPage() {
                 className="w-full rounded-lg border border-white/20 px-5 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
               >
                 {creatingLink ? 'Creating...' : 'Just Generate the Link'}
+              </button>
+              <button
+                onClick={handleCopyProposalText}
+                className="w-full rounded-lg border border-white/20 px-5 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                {copiedProposalText ? '✓ Copied — paste into a text' : 'Copy as Text (for texting/WhatsApp)'}
               </button>
               <button
                 onClick={handleDownloadContract}

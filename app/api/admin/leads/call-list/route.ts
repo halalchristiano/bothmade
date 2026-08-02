@@ -36,6 +36,8 @@ const MAX_ROWS = 2000;
  * no lead can qualify for two and none can fall through to a default.
  */
 export type CallReason =
+  /** They wrote back. Nothing outranks this. */
+  | 'replied'
   | 'bounced'
   | 'overdue'
   | 'today'
@@ -45,16 +47,18 @@ export type CallReason =
   | 'scheduled';
 
 const REASON_RANK: Record<CallReason, number> = {
-  bounced: 0,
-  overdue: 1,
-  today: 2,
-  'no-follow-up': 3,
-  'never-contacted': 4,
-  scheduled: 5,
+  replied: 0,
+  bounced: 1,
+  overdue: 2,
+  today: 3,
+  'no-follow-up': 4,
+  'never-contacted': 5,
+  scheduled: 6,
 };
 
 /** The bands that make up the call list. `scheduled` is counted, not called. */
 const CALLABLE_REASONS: CallReason[] = [
+  'replied',
   'bounced',
   'overdue',
   'today',
@@ -103,6 +107,7 @@ export async function GET() {
         estimatedValue: true,
         nextFollowUpAt: true,
         emailDeliveryFailedAt: true,
+        replyReceivedAt: true,
         emailDeliveryFailedReason: true,
         coldEmailSentAt: true,
         salesNote: true,
@@ -119,6 +124,7 @@ export async function GET() {
       // Without an orderBy, Postgres returns an arbitrary set — which meant a
       // lead could appear one day and silently vanish the next.
       orderBy: [
+        { replyReceivedAt: { sort: 'desc', nulls: 'last' } },
         { emailDeliveryFailedAt: { sort: 'desc', nulls: 'last' } },
         { nextFollowUpAt: { sort: 'asc', nulls: 'last' } },
         { updatedAt: 'asc' },
@@ -143,7 +149,10 @@ export async function GET() {
       // First match wins, and the branches are exhaustive — every lead gets
       // exactly one reason, so the counts below can be trusted to add up.
       let reason: CallReason;
-      if (lead.emailDeliveryFailedAt) {
+      if (lead.replyReceivedAt) {
+        // Outranks a booked follow-up: they've moved, so the old plan is stale.
+        reason = 'replied';
+      } else if (lead.emailDeliveryFailedAt) {
         reason = 'bounced'; // email can't reach them at all, so the date is moot
       } else if (lead.nextFollowUpAt && lead.nextFollowUpAt < startOfToday) {
         reason = 'overdue';
