@@ -120,6 +120,15 @@ interface LeadDetail {
   estimateHighCents: number | null;
   assignedTo: { name: string | null } | null;
   activities: Activity[];
+  // What was actually saved the last time a sign-and-pay link was
+  // prepared/sent — the source of truth for whether the builder's current
+  // state still matches what the client can see.
+  proposalBaseService: string | null;
+  proposalAddOns: string;
+  proposalClientType: string | null;
+  proposalTimeline: string | null;
+  proposalDepositOnly: boolean;
+  proposalCustomItems?: Array<{ label: string; priceCents: number }>;
 }
 
 export default function LeadDetailPage() {
@@ -741,6 +750,47 @@ export default function LeadDetailPage() {
   const proposalCustomTotal = customItemsTotal(customItems);
   const proposalGrandTotal = proposalBreakdown.totalPrice + proposalCustomTotal;
 
+  // A link has gone out (or at least been generated) the moment a proposal
+  // is saved on the lead — before that there's nothing for "changed since
+  // sending" to compare against.
+  const hasSentProposal = Boolean(lead?.proposalBaseService);
+  const sameAddOns = (a: AddOnKey[], b: string) => {
+    const bSet = new Set(b.split(',').filter(Boolean));
+    return a.length === bSet.size && a.every((k) => bSet.has(k));
+  };
+  const sameCustomItems = (a: CustomItem[], b?: CustomItem[]) => {
+    const bItems = b || [];
+    if (a.length !== bItems.length) return false;
+    return a.every((item, i) => item.label === bItems[i]?.label && item.priceCents === bItems[i]?.priceCents);
+  };
+  const proposalChangedSinceSent =
+    hasSentProposal &&
+    lead &&
+    (proposalService !== lead.proposalBaseService ||
+      !sameAddOns(proposalAddOns, lead.proposalAddOns) ||
+      proposalClientType !== lead.proposalClientType ||
+      proposalTimeline !== lead.proposalTimeline ||
+      depositOnly !== lead.proposalDepositOnly ||
+      !sameCustomItems(customItems, lead.proposalCustomItems));
+
+  // One plain-English sentence for "what do I actually do next with this
+  // lead" — removes the need to piece it together from contract status,
+  // agreement timestamp, and pipeline stage separately.
+  const nextStepMessage: string | null = (() => {
+    if (!lead) return null;
+    if (lead.status === 'won') return null;
+    if (lead.status === 'lost') return null;
+    if (lead.agreementSignedAt) {
+      return "Next: they've signed and paid — hit \"Convert to Project\" below to kick off onboarding.";
+    }
+    if (hasSentProposal && lead.contractStatus === 'sent') {
+      return proposalChangedSinceSent
+        ? "Next: you've changed the scope since this went out — send it again so the client sees the update."
+        : 'Next: waiting on the client to review and sign. Nothing to do until they act, or follow up if it\'s been a few days.';
+    }
+    return 'Next: build the proposal below, then click "Email Sign & Pay Link" to send it to the client.';
+  })();
+
   const handleCreatePaymentLink = async () => {
     setProposalError('');
     setCreatingLink(true);
@@ -755,14 +805,22 @@ export default function LeadDetailPage() {
         setPaymentLinkUrl(data.signUrl);
         load();
       } else {
-        setProposalError(data.error || 'Failed to prepare sign-and-pay link');
+        setProposalError(data.error || 'Something went wrong generating this link — try again in a moment.');
       }
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setCreatingLink(false);
     }
   };
 
-  const handleEmailPaymentLink = async () => {
+  // Clicking "Email Sign & Pay Link" opens an inline confirmation instead of
+  // sending immediately — a wrong price or scope going straight to the
+  // client's inbox isn't something to find out about after the fact.
+  const [confirmingSend, setConfirmingSend] = useState(false);
+
+  const doEmailPaymentLink = async () => {
+    setConfirmingSend(false);
     setProposalError('');
     setLinkEmailStatus('');
     setEmailingLink(true);
@@ -784,8 +842,10 @@ export default function LeadDetailPage() {
         }
         load();
       } else {
-        setProposalError(data.error || 'Failed to prepare sign-and-pay link');
+        setProposalError(data.error || 'Something went wrong sending this — try again in a moment.');
       }
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setEmailingLink(false);
     }
@@ -805,8 +865,10 @@ export default function LeadDetailPage() {
       if (data.success && data.sent) {
         setInvoiceStatus(`Invoice emailed to ${data.toEmail}.`);
       } else {
-        setProposalError(data.error || 'Failed to send invoice');
+        setProposalError(data.error || 'Something went wrong sending the invoice — try again in a moment.');
       }
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setSendingInvoice(null);
     }
@@ -823,7 +885,7 @@ export default function LeadDetailPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setProposalError(data.error || 'Failed to generate contract');
+        setProposalError(data.error || 'Something went wrong generating the contract — try again in a moment.');
         return;
       }
       const blob = await response.blob();
@@ -834,6 +896,8 @@ export default function LeadDetailPage() {
       a.click();
       URL.revokeObjectURL(url);
       load();
+    } catch {
+      setProposalError('Could not reach the server — check your internet connection and try again.');
     } finally {
       setDownloadingContract(false);
     }
@@ -2411,9 +2475,15 @@ export default function LeadDetailPage() {
           </span>
           <h2 className="text-xl font-bold">Onboard This Customer</h2>
         </div>
-        <p className="text-sm text-white/40 mb-8 ml-11">
+        <p className="text-sm text-white/40 mb-4 ml-11">
           Configure exactly what they want, then send a payment link or generate a contract — no need to send them back to the pricing page.
         </p>
+
+        {nextStepMessage && (
+          <div className="ml-11 mb-8 rounded-lg border border-sky-400/30 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
+            {nextStepMessage}
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-8">
           {/* Left: configuration steps */}
@@ -2624,16 +2694,53 @@ export default function LeadDetailPage() {
               </label>
             </div>
 
+            {proposalChangedSinceSent && !confirmingSend && (
+              <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+                ⚠ You've changed something since this was last sent to {lead.email || 'the client'} — they're still seeing the old version until you send it again.
+              </div>
+            )}
+
             {proposalError && <p className="text-red-400 text-sm">{proposalError}</p>}
 
+            {confirmingSend ? (
+              <div className="rounded-lg border-2 border-sky-400/40 bg-sky-400/10 p-4 space-y-3">
+                <p className="text-sm">
+                  Send to <span className="font-semibold">{lead.email || '(no email on file)'}</span> for{' '}
+                  <span className="font-semibold">
+                    {formatCents(depositOnly ? depositAmount(proposalGrandTotal) : proposalGrandTotal)}
+                  </span>
+                  {depositOnly ? ' (deposit)' : ''}?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={doEmailPaymentLink}
+                    disabled={emailingLink}
+                    className="flex-1 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  >
+                    {emailingLink ? 'Sending...' : 'Yes, send it'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmingSend(false)}
+                    disabled={emailingLink}
+                    className="rounded-lg border border-white/20 px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  onClick={() => setConfirmingSend(true)}
+                  disabled={emailingLink || creatingLink}
+                  className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                >
+                  {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
+                </button>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <button
-                onClick={handleEmailPaymentLink}
-                disabled={emailingLink || creatingLink}
-                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
-              </button>
               <button
                 onClick={handleCreatePaymentLink}
                 disabled={creatingLink || emailingLink}
