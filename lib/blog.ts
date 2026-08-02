@@ -201,6 +201,58 @@ export type Project = {
       },
     ],
   },
+  {
+    slug: 'no-captcha-on-our-contact-form',
+    title: "Why our contact form doesn't have a CAPTCHA",
+    dek: "The honeypot field we actually ship instead — invisible to you, irresistible to a bot.",
+    tag: 'Engineering',
+    accent: 'sky',
+    date: '2026-08-30',
+    readMinutes: 4,
+    body: [
+      {
+        type: 'p',
+        text: "CAPTCHAs exist to answer one question — is a human filling out this form — and they answer it by making humans prove it, which is backwards. You get a puzzle, a delay, sometimes a third-party script loaded from someone else's server before you're even allowed to say hello. Most of that friction lands entirely on real visitors, because the bots it's meant to stop have gotten good at solving image grids. We wanted the spam filtered without asking a single real person to do anything at all.",
+      },
+      {
+        type: 'statement',
+        text: 'A honeypot field asks the bot to prove it’s a bot, instead of asking you to prove you’re not one.',
+      },
+      { type: 'heading', text: 'How it actually works' },
+      {
+        type: 'p',
+        text: 'The trick is one extra input field, hidden from sighted users with CSS and pulled out of the tab order so keyboard and screen-reader users never even land on it. A human filling out the form the normal way never sees it and never touches it. A bot scraping the page for form fields — which is most of them — has no way to know it’s not supposed to fill this one in, because it looks identical to every other input in the markup.',
+      },
+      {
+        type: 'code',
+        language: 'tsx',
+        code: `{/* Hidden from sighted users and screen readers alike, and
+    skipped by tab order — only a bot filling every field
+    will trip it. */}
+<div aria-hidden="true" className="absolute w-px h-px -left-[9999px] overflow-hidden">
+  <label htmlFor="website">Leave this field empty</label>
+  <input
+    id="website"
+    name="website"
+    type="text"
+    tabIndex={-1}
+    autoComplete="off"
+    value={formData.website}
+    onChange={handleChange}
+  />
+</div>`,
+      },
+      {
+        type: 'p',
+        text: "On submit, the server checks that field. Empty means a human filled this out the way it was intended. Anything in it means whatever submitted the form was filling in every input it could find, which no real visitor does — so we drop the submission silently and never bother you with a false 'we received your message.'",
+      },
+      { type: 'heading', text: 'What this costs' },
+      {
+        type: 'p',
+        text: "It won't stop a bot built specifically to target this one form, the way a CAPTCHA arguably tries to. It stops the generic spam scripts that account for the overwhelming majority of junk submissions, at zero cost to anyone actually trying to reach us. For a contact form on a studio site, that's the right trade — we'd rather block 95% of the noise for free than block 100% of it by taxing every real visitor to prove their humanity.",
+      },
+    ],
+  },
 ];
 
 export function getBlogPost(slug: string): BlogPost | undefined {
