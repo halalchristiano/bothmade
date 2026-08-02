@@ -200,6 +200,7 @@ export async function POST(
         timeline,
         basePrice: String(breakdown.basePrice),
         totalPrice: String(totalPrice),
+        customItems: JSON.stringify(customItems),
         paymentType: lead.proposalDepositOnly ? 'deposit' : 'full',
       },
     });

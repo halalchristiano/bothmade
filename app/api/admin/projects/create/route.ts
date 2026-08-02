@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession, generateRandomPassword, hashPassword } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
@@ -7,12 +8,14 @@ import {
   BASE_SERVICES,
   TIMELINES,
   calculatePrice,
+  customItemsTotal,
   isAddOnKey,
   isBaseService,
   isClientType,
   isTimelineKey,
   minAllowedPrice,
   formatCents,
+  sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
 
@@ -32,6 +35,7 @@ export async function POST(request: NextRequest) {
       addOns = [],
       clientType,
       timeline,
+      customItems: rawCustomItems = [],
       totalPriceOverride,
       convertedFromLeadId,
     } = await request.json();
@@ -54,8 +58,10 @@ export async function POST(request: NextRequest) {
     const addOnKeys: AddOnKey[] = Array.isArray(addOns)
       ? addOns.filter((a: string) => isAddOnKey(a))
       : [];
+    const customItems = sanitizeCustomItems(rawCustomItems);
 
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
+    const calculatedTotal = breakdown.totalPrice + customItemsTotal(customItems);
 
     // Sales can discount within the approved band without asking; anything
     // deeper needs an owner logged in to actually set that price.
@@ -63,13 +69,13 @@ export async function POST(request: NextRequest) {
       typeof totalPriceOverride === 'number' &&
       totalPriceOverride > 0 &&
       session.role === 'sales' &&
-      Math.round(totalPriceOverride) < minAllowedPrice(breakdown.totalPrice)
+      Math.round(totalPriceOverride) < minAllowedPrice(calculatedTotal)
     ) {
       return NextResponse.json(
         {
           error: `That's below what you're authorized to quote for this scope. Minimum is ${formatCents(
-            minAllowedPrice(breakdown.totalPrice)
-          )} (calculated: ${formatCents(breakdown.totalPrice)}). Ask Kiana if this deal needs a deeper discount.`,
+            minAllowedPrice(calculatedTotal)
+          )} (calculated: ${formatCents(calculatedTotal)}). Ask Kiana if this deal needs a deeper discount.`,
         },
         { status: 403 }
       );
@@ -78,7 +84,7 @@ export async function POST(request: NextRequest) {
     const totalPrice =
       typeof totalPriceOverride === 'number' && totalPriceOverride > 0
         ? Math.round(totalPriceOverride)
-        : breakdown.totalPrice;
+        : calculatedTotal;
 
     let client = await prisma.client.findUnique({ where: { email: clientEmail } });
     let generatedPassword: string | null = null;
@@ -122,6 +128,7 @@ export async function POST(request: NextRequest) {
         timeline: timelineLabel,
         basePrice: breakdown.basePrice,
         totalPrice,
+        customItems: customItems as unknown as Prisma.InputJsonValue,
         convertedFromLeadId: convertedFromLeadId || null,
       },
     });
