@@ -953,8 +953,13 @@ export default function LeadDetailPage() {
               )}
 
               {/* Quick note — jot their reaction to this exact item while on
-                  the call; logs straight to the lead's timeline. */}
-              <div className="mt-3 pt-3 border-t border-white/10">
+                  the call; logs straight to the lead's timeline. Its own
+                  high-contrast box, not just a thin divider, so it doesn't
+                  get lost under all the pitch copy above it. */}
+              <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
+                  <StickyNote size={13} /> Their feedback on this
+                </p>
                 {(() => {
                   const prefix = `[${i.point}]`;
                   const lastNote = lead.activities
@@ -962,10 +967,10 @@ export default function LeadDetailPage() {
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
                   if (!lastNote) return null;
                   return (
-                    <p className="text-[11px] text-white/40 leading-relaxed mb-2 break-words">
-                      <span className="font-semibold text-white/55">Last time: </span>
+                    <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">
+                      <span className="font-semibold text-white/80">Last time: </span>
                       {lastNote.content.slice(prefix.length).trim()}
-                      <span className="text-white/25"> · {new Date(lastNote.createdAt).toLocaleDateString()}</span>
+                      <span className="text-white/35"> · {new Date(lastNote.createdAt).toLocaleDateString()}</span>
                     </p>
                   );
                 })()}
@@ -974,12 +979,12 @@ export default function LeadDetailPage() {
                   onChange={(e) =>
                     setSectionNoteDrafts((prev) => ({ ...prev, [i.point]: e.target.value }))
                   }
-                  placeholder="Their feedback on this..."
+                  placeholder="What did they say about this?"
                   rows={2}
-                  className="w-full px-2.5 py-2 rounded-md bg-white/[0.03] border border-white/10 text-xs text-white placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-emerald-400/50 resize-none"
+                  className="w-full px-2.5 py-2 rounded-md bg-black/30 border border-sky-400/25 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/60 resize-none"
                 />
-                <div className="flex items-center justify-between mt-1.5">
-                  <label className="flex items-center gap-1.5 text-[11px] text-white/40 cursor-pointer select-none">
+                <div className="flex items-center justify-between mt-2">
+                  <label className="flex items-center gap-1.5 text-xs text-white/60 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={!!sectionNoteObjection[i.point]}
@@ -992,16 +997,16 @@ export default function LeadDetailPage() {
                   <button
                     onClick={() => handleLogSectionNote(i.point)}
                     disabled={sectionNoteSaving[i.point] || !(sectionNoteDrafts[i.point] || '').trim()}
-                    className="px-3 py-1 rounded-md bg-emerald-400 text-black text-[11px] font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                    className="px-4 py-1.5 rounded-md bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
                   >
                     {sectionNoteSaving[i.point] ? 'Logging...' : 'Log to timeline'}
                   </button>
                 </div>
                 {sectionNoteJustLogged[i.point] && (
-                  <p className="text-[11px] text-emerald-300 mt-1">Logged ✓</p>
+                  <p className="text-xs font-semibold text-emerald-300 mt-1.5">Logged ✓</p>
                 )}
                 {sectionNoteError[i.point] && (
-                  <p className="text-[11px] text-red-300 mt-1">{sectionNoteError[i.point]}</p>
+                  <p className="text-xs text-red-300 mt-1.5">{sectionNoteError[i.point]}</p>
                 )}
               </div>
             </div>
@@ -1473,9 +1478,9 @@ export default function LeadDetailPage() {
               onClick={() =>
                 document.getElementById('proposal-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }
-              className="w-full mb-4 flex items-center justify-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-lg border border-sky-400/25 bg-sky-400/5 text-sky-300 hover:bg-sky-400/10 transition-colors"
+              className="w-full mb-4 flex items-center justify-center gap-2 text-sm font-bold px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
             >
-              <FileSignature size={13} /> Jump to proposal
+              <FileSignature size={15} /> Jump to proposal
             </button>
 
             {lead.emailDeliveryFailedAt && (
