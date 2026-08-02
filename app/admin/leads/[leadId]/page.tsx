@@ -29,6 +29,8 @@ import {
   DollarSign,
   StickyNote,
   AlertTriangle,
+  MoreVertical,
+  Trash2,
 } from 'lucide-react';
 import {
   ADD_ON_CATEGORIES,
@@ -317,6 +319,7 @@ export default function LeadDetailPage() {
 
   const [confirmingDeleteLead, setConfirmingDeleteLead] = useState(false);
   const [deletingLead, setDeletingLead] = useState(false);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
 
   const handleSendColdDraft = async () => {
     if (!lead || !confirm(`Send the prepared cold email to ${lead.company} now?`)) return;
@@ -563,60 +566,83 @@ export default function LeadDetailPage() {
         >
           ← Back to Leads
         </Link>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           {lead.phone && (
             <a
               href={`tel:${lead.phone}`}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 transition-colors"
+              title="Call"
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 transition-colors"
             >
-              <Phone size={13} /> Call
+              <Phone size={15} />
             </a>
           )}
           {lead.email && lead.coldEmailDraft && !lead.coldEmailSentAt && !coldDraftSent && (
             <button
               onClick={handleSendColdDraft}
               disabled={sendingColdDraft}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              title="Send cold email"
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-emerald-300 disabled:opacity-50 hover:bg-emerald-400/20 transition-colors"
             >
-              <Send size={13} /> {sendingColdDraft ? 'Sending...' : 'Send cold email'}
+              <Send size={15} />
             </button>
           )}
           {(lead.coldEmailSentAt || coldDraftSent) && (
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-300/70">
-              <CheckCircle2 size={13} /> Cold email sent
+            <span title="Cold email sent" className="flex items-center justify-center w-9 h-9 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-300/70">
+              <CheckCircle2 size={15} />
             </span>
           )}
           <button
             onClick={() => setComposingEmail(true)}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
           >
-            <Mail size={13} /> Compose email
+            <Mail size={14} /> Compose email
           </button>
-          {confirmingDeleteLead ? (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-white/40">Delete {lead.company}?</span>
-              <button
-                onClick={handleDeleteLead}
-                disabled={deletingLead}
-                className="px-3 py-1.5 rounded-full bg-red-500/90 text-white text-xs font-semibold disabled:opacity-50 hover:bg-red-500 transition-colors"
-              >
-                {deletingLead ? 'Deleting...' : 'Confirm'}
-              </button>
-              <button
-                onClick={() => setConfirmingDeleteLead(false)}
-                className="px-3 py-1.5 rounded-full border border-white/15 text-xs hover:bg-white/5 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
+
+          <div className="relative">
             <button
-              onClick={() => setConfirmingDeleteLead(true)}
-              className="text-xs text-white/30 hover:text-red-300 transition-colors px-2"
+              onClick={() => setActionsMenuOpen((v) => !v)}
+              title="More actions"
+              className={`flex items-center justify-center w-9 h-9 rounded-full border transition-colors ${
+                actionsMenuOpen ? 'border-white/30 bg-white/10' : 'border-white/15 hover:bg-white/5'
+              }`}
             >
-              Delete lead
+              <MoreVertical size={15} />
             </button>
-          )}
+            {actionsMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setActionsMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#0b0714] shadow-xl z-20 p-1.5">
+                  {confirmingDeleteLead ? (
+                    <div className="p-2">
+                      <p className="text-xs text-white/50 mb-2">Delete {lead.company} permanently?</p>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={handleDeleteLead}
+                          disabled={deletingLead}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-red-500/90 text-white text-xs font-semibold disabled:opacity-50 hover:bg-red-500 transition-colors"
+                        >
+                          {deletingLead ? 'Deleting...' : 'Confirm'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmingDeleteLead(false)}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg border border-white/15 text-xs hover:bg-white/5 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingDeleteLead(true)}
+                      className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-sm text-red-300/80 hover:bg-red-400/10 hover:text-red-300 transition-colors"
+                    >
+                      <Trash2 size={14} /> Delete lead
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
