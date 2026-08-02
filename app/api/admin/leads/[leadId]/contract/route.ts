@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, ANY_STAFF } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { buildContractSections } from '@/lib/contract-terms';
 import { isFurtherAlong } from '@/lib/leads';
@@ -30,6 +31,8 @@ export async function POST(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { leadId } = await params;
     const { baseService, addOns = [], clientType, timeline } = await request.json();

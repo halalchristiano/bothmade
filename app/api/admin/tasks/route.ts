@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, ANY_STAFF } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 
 export async function GET() {
   try {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const tasks = await prisma.task.findMany({
       where: { assignedToId: session.userId },
@@ -24,6 +27,8 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { title, dueAt, assignedToId, relatedLeadId, relatedProjectId } = await request.json();
     if (!title || typeof title !== 'string' || !title.trim()) {

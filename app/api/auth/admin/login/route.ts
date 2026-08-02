@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, createToken } from '@/lib/auth';
+import {
+  checkLoginAllowed,
+  clearFailedLogins,
+  clientIp,
+  recordFailedLogin,
+  tooManyAttempts,
+} from '@/lib/login-guard';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,11 +20,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Throttled before the account is even looked up, so an attacker cannot
+    // grind guesses at network speed against a staff account.
+    const ip = clientIp(request);
+    const guard = await checkLoginAllowed(email, ip);
+    if (!guard.allowed) {
+      return tooManyAttempts(guard.retryAfterSeconds);
+    }
+
     // Every row in the User table is a Bothmade team member — any role
     // (owner, sales, admin, manager, support, ...) is valid staff access.
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
+      await recordFailedLogin(email, ip);
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -26,11 +42,16 @@ export async function POST(request: NextRequest) {
 
     const passwordValid = await verifyPassword(password, user.password);
     if (!passwordValid) {
+      await recordFailedLogin(email, ip);
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
     }
+
+    // A correct password clears the account's failure history, so a legitimate
+    // person who mistyped a few times isn't left throttled.
+    await clearFailedLogins(email);
 
     const token = createToken({
       userId: user.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, ANY_STAFF } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus } from '@/lib/leads';
 
@@ -10,6 +11,8 @@ export async function GET(request: NextRequest) {
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -39,6 +42,8 @@ export async function POST(request: NextRequest) {
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { company, contactName, email, phone, source, estimatedValue, painPoints, notes, status } =
       await request.json();

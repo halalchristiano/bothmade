@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, OPS } from '@/lib/authz';
+
+/** 500 MB. Generous for a design hand-off or a build archive, and finite. */
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 /**
  * Token endpoint for direct-to-Blob uploads from the admin deliverables UI.
@@ -20,8 +24,18 @@ export async function POST(request: Request) {
         if (!session || session.type !== 'user') {
           throw new Error('Unauthorized');
         }
+        // Deliverables are client project files, so this sits behind the same
+        // ops boundary as the rest of projects/**. This callback has to throw
+        // rather than return a response — handleUpload owns the response.
+        if (requireRole(session, OPS)) {
+          throw new Error('Forbidden');
+        }
         return {
-          allowedContentTypes: undefined, // allow any file type
+          // Deliverables are genuinely any type — a zip, a Sketch file, a
+          // video cut. Restricting the list would break real hand-offs, so
+          // the limit that matters here is size, not format.
+          allowedContentTypes: undefined,
+          maximumSizeInBytes: MAX_UPLOAD_BYTES,
           addRandomSuffix: true,
         };
       },

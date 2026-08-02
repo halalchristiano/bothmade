@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, OPS } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 
 export async function GET(
@@ -12,6 +13,8 @@ export async function GET(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const client = await prisma.client.findUnique({
       where: { id: (await params).clientId },
@@ -62,6 +65,8 @@ export async function PATCH(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { company, phone, contactName, archived } = await request.json();
 
@@ -105,6 +110,8 @@ export async function DELETE(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { clientId } = await params;
     const client = await prisma.client.findUnique({ where: { id: clientId } });

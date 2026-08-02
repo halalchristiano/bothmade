@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, OPS } from '@/lib/authz';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +13,8 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId');

@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, createToken } from '@/lib/auth';
+import {
+  checkLoginAllowed,
+  clearFailedLogins,
+  clientIp,
+  recordFailedLogin,
+  tooManyAttempts,
+} from '@/lib/login-guard';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +21,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Throttled before either branch looks anything up, so guesses cannot be
+    // ground out at network speed against client or staff accounts alike.
+    const ip = clientIp(request);
+    const guard = await checkLoginAllowed(email, ip);
+    if (!guard.allowed) {
+      return tooManyAttempts(guard.retryAfterSeconds);
+    }
+
     if (userType === 'client') {
       // Client login
       const client = await prisma.client.findUnique({
@@ -21,6 +36,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (!client) {
+        await recordFailedLogin(email, ip);
         return NextResponse.json(
           { error: 'Invalid credentials' },
           { status: 401 }
@@ -29,6 +45,7 @@ export async function POST(request: NextRequest) {
 
       const passwordValid = await verifyPassword(password, client.password);
       if (!passwordValid) {
+        await recordFailedLogin(email, ip);
         return NextResponse.json(
           { error: 'Invalid credentials' },
           { status: 401 }
@@ -55,6 +72,7 @@ export async function POST(request: NextRequest) {
         type: 'client',
       });
 
+      await clearFailedLogins(email);
       await setAuthCookie(token);
 
       return NextResponse.json(
@@ -76,6 +94,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (!user) {
+        await recordFailedLogin(email, ip);
         return NextResponse.json(
           { error: 'Invalid credentials' },
           { status: 401 }
@@ -84,6 +103,7 @@ export async function POST(request: NextRequest) {
 
       const passwordValid = await verifyPassword(password, user.password);
       if (!passwordValid) {
+        await recordFailedLogin(email, ip);
         return NextResponse.json(
           { error: 'Invalid credentials' },
           { status: 401 }
@@ -98,6 +118,7 @@ export async function POST(request: NextRequest) {
         type: 'user',
       });
 
+      await clearFailedLogins(email);
       await setAuthCookie(token);
 
       return NextResponse.json(

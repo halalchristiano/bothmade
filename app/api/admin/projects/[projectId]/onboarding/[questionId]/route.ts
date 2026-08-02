@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, OPS } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 
 export async function DELETE(
@@ -12,6 +13,8 @@ export async function DELETE(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { questionId } = await params;
     await prisma.onboardingQuestion.delete({ where: { id: questionId } });

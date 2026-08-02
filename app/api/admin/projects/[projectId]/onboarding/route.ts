@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, OPS } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 
 const VALID_TYPES = ['text', 'textarea', 'select'];
@@ -14,6 +15,8 @@ export async function GET(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { projectId } = await params;
 
@@ -39,6 +42,8 @@ export async function POST(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { projectId } = await params;
     const { question, type = 'text', options = '', order = 0 } = await request.json();

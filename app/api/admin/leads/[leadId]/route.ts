@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, ANY_STAFF } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 
@@ -13,6 +14,8 @@ export async function GET(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { leadId } = await params;
 
@@ -47,6 +50,8 @@ export async function PATCH(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { leadId } = await params;
     const body = await request.json();
@@ -183,6 +188,8 @@ export async function DELETE(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { leadId } = await params;
     await prisma.lead.delete({ where: { id: leadId } });

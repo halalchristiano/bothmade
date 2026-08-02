@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, OPS } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { sendMessageNotificationEmail } from '@/lib/email';
 
@@ -9,6 +10,8 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { content, segment = 'active' } = await request.json();
     if (!content || typeof content !== 'string' || !content.trim()) {

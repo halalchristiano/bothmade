@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requireRole, ANY_STAFF } from '@/lib/authz';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isLeadActivityType } from '@/lib/leads';
 import { sendEmail } from '@/lib/email';
@@ -14,6 +15,8 @@ export async function POST(
     if (!session || session.type !== 'user') {
       return unauthorizedResponse();
     }
+    const denied = requireRole(session, ANY_STAFF);
+    if (denied) return denied;
 
     const { leadId } = await params;
     const { type, content, url, sendEmailNow, emailSubject } = await request.json();

@@ -13,53 +13,53 @@ generator client {
 
 // User accounts (Bothmade team members)
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  password  String     // bcrypted
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String // bcrypted
   name      String?
-  role      String     @default("admin") // "owner" (Kiana — PM/ops), "sales" (Evan — CRM/closing), "admin" (generic)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  role      String   @default("admin") // "owner" (Kiana — PM/ops), "sales" (Evan — CRM/closing), "admin" (generic)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  clientMessages  ProjectMessage[] @relation("SentByUser")
-  adminUpdates    ProjectUpdate[]  @relation("CreatedByAdmin")
-  assignedLeads   Lead[]           @relation("AssignedLeads")
-  leadActivities  LeadActivity[]   @relation("LeadActivityAuthor")
-  teamNotes       TeamNote[]       @relation("TeamNoteAuthor")
-  tasks           Task[]           @relation("TaskAssignee")
-  createdTasks    Task[]           @relation("TaskCreator")
-  sentTeamMessages     TeamMessage[] @relation("TeamMessageSender")
-  receivedTeamMessages TeamMessage[] @relation("TeamMessageRecipient")
+  clientMessages       ProjectMessage[] @relation("SentByUser")
+  adminUpdates         ProjectUpdate[]  @relation("CreatedByAdmin")
+  assignedLeads        Lead[]           @relation("AssignedLeads")
+  leadActivities       LeadActivity[]   @relation("LeadActivityAuthor")
+  teamNotes            TeamNote[]       @relation("TeamNoteAuthor")
+  tasks                Task[]           @relation("TaskAssignee")
+  createdTasks         Task[]           @relation("TaskCreator")
+  sentTeamMessages     TeamMessage[]    @relation("TeamMessageSender")
+  receivedTeamMessages TeamMessage[]    @relation("TeamMessageRecipient")
 
   @@map("users")
 }
 
 // Clients who have signed up via Stripe
 model Client {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  password    String   // bcrypted - auto-generated on first signup
+  id          String  @id @default(cuid())
+  email       String  @unique
+  password    String // bcrypted - auto-generated on first signup
   company     String
   phone       String?
   contactName String?
 
   // Stripe integration
   stripeCustomerId String?
-  subscription     String?  // "starter", "pro", "enterprise"
-  subscriptionTier Int      @default(1) // 1 = Starter ($2500), 2 = Pro ($5000), 3 = Enterprise (custom)
+  subscription     String? // "starter", "pro", "enterprise"
+  subscriptionTier Int     @default(1) // 1 = Starter ($2500), 2 = Pro ($5000), 3 = Enterprise (custom)
 
   // Status
-  onboardingComplete Boolean  @default(false)
-  mustChangePassword Boolean  @default(true) // forces a password reset on first login after being auto-generated
+  onboardingComplete Boolean   @default(false)
+  mustChangePassword Boolean   @default(true) // forces a password reset on first login after being auto-generated
   lastLoginAt        DateTime?
   archivedAt         DateTime? // "decommissioned" — hidden from active lists, login blocked, but records kept intact
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   // Relations
   projects         Project[]
-  messages         ProjectMessage[] @relation("SentByClient")
+  messages         ProjectMessage[]  @relation("SentByClient")
   emailPreferences EmailPreferences?
 
   @@map("clients")
@@ -67,23 +67,23 @@ model Client {
 
 // Projects (deliverables for clients)
 model Project {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   name        String
   description String?
-  status      String   @default("discovery") // "discovery", "design", "build", "launch", "complete"
-  statusStage Int      @default(0) // 0-4 corresponding to status above
+  status      String  @default("discovery") // "discovery", "design", "build", "launch", "complete"
+  statusStage Int     @default(0) // 0-4 corresponding to status above
 
   // Project details
-  baseService String   // "website", "web-app", "ios-app", "macos-app", "visionos", "multi"
-  addOns      String   @default("") // comma-separated: "seo", "analytics", "maintenance", "hosting"
+  baseService String // "website", "web-app", "ios-app", "macos-app", "visionos", "multi"
+  addOns      String @default("") // comma-separated: "seo", "analytics", "maintenance", "hosting"
 
   // Timeline & pricing
-  timeline    String?  // "4 weeks", "8 weeks", "12 weeks", etc.
-  basePrice   Int      // in cents
-  totalPrice  Int      // in cents (including add-ons)
+  timeline   String? // "4 weeks", "8 weeks", "12 weeks", etc.
+  basePrice  Int // in cents
+  totalPrice Int // in cents (including add-ons)
 
   // Deliverables
   deliverables String? // JSON array of milestone/deliverable objects
@@ -94,12 +94,12 @@ model Project {
   // Sales handoff tracking — links back to the Lead this was converted from
   // (when it came through the sales CRM rather than a direct client signup),
   // and when ops acknowledged picking up a freshly-converted project.
-  convertedFromLeadId String?
+  convertedFromLeadId   String?
   handoffAcknowledgedAt DateTime?
 
   // Metadata
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   messages            ProjectMessage[]
@@ -113,20 +113,20 @@ model Project {
 
 // Messages between client and team in project thread
 model ProjectMessage {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   // Message content
-  content   String
+  content     String
   isFromAdmin Boolean @default(false) // true if from User (admin), false if from Client
 
   // Sender info
-  userId    String?
-  user      User?    @relation("SentByUser", fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  user   User?   @relation("SentByUser", fields: [userId], references: [id], onDelete: SetNull)
 
-  clientId  String?
-  client    Client?  @relation("SentByClient", fields: [clientId], references: [id], onDelete: SetNull)
+  clientId String?
+  client   Client? @relation("SentByClient", fields: [clientId], references: [id], onDelete: SetNull)
 
   // File attachments (URLs)
   attachments String @default("") // JSON array of { name, url }
@@ -138,28 +138,28 @@ model ProjectMessage {
 
 // Project status updates (visible to client in dashboard)
 model ProjectUpdate {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   title       String
   description String
-  statusStage String  // "discovery", "design", "build", "launch"
+  statusStage String // "discovery", "design", "build", "launch"
 
   // Who created this update (null for system-generated updates, e.g. post-checkout)
-  userId      String?
-  user        User?   @relation("CreatedByAdmin", fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  user   User?   @relation("CreatedByAdmin", fields: [userId], references: [id], onDelete: SetNull)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@map("project_updates")
 }
 
 // Email notification preferences
 model EmailPreferences {
-  id        String   @id @default(cuid())
-  clientId  String   @unique
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   notificationsEnabled Boolean @default(true)
   digestFrequency      String  @default("daily") // "immediate", "daily", "weekly"
@@ -174,25 +174,25 @@ model EmailPreferences {
 
 // Sales CRM: prospective clients Evan (or anyone on the team) is working
 model Lead {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   company        String
   contactName    String?
   email          String?
   phone          String?
-  status         String   @default("new") // "new", "contacted", "qualified", "proposal", "won", "lost"
+  status         String  @default("new") // "new", "contacted", "qualified", "proposal", "won", "lost"
   source         String? // "referral", "cold-outreach", "inbound", etc.
   estimatedValue Int? // cents
-  painPoints     String   @default("") // comma-separated tags, e.g. "no-mobile-app,slow-site"
+  painPoints     String  @default("") // comma-separated tags, e.g. "no-mobile-app,slow-site"
   notes          String? // freeform quick notes, separate from the activity timeline
 
   hotLead        Boolean   @default(false) // flagged by sales as a priority deal
-  lostReason     String?   // freeform reason captured when status is set to "lost"
+  lostReason     String? // freeform reason captured when status is set to "lost"
   nextFollowUpAt DateTime? // self-set reminder date for the next touch
   contractStatus String    @default("not_sent") // "not_sent", "sent", "signed"
 
   mockupRequested   Boolean   @default(false) // Evan asking Kiana to put together a mockup for this lead
   mockupRequestedAt DateTime?
-  mockupUrl         String?   // link to the finished mockup, once delivered
+  mockupUrl         String? // link to the finished mockup, once delivered
   mockupDeliveredAt DateTime?
 
   // BANT-style qualification — structured so "qualified" means something
@@ -207,12 +207,12 @@ model Lead {
 
   // The proposal Evan prepared, persisted so the public sign-and-pay page
   // can reconstruct the exact same pricing/contract without re-entering it.
-  proposalBaseService  String?
-  proposalAddOns       String  @default("") // comma-separated
-  proposalClientType   String?
-  proposalTimeline     String?
-  proposalTotalPrice   Int? // cents, overrides the computed total if set
-  proposalDepositOnly  Boolean @default(false)
+  proposalBaseService String?
+  proposalAddOns      String  @default("") // comma-separated
+  proposalClientType  String?
+  proposalTimeline    String?
+  proposalTotalPrice  Int? // cents, overrides the computed total if set
+  proposalDepositOnly Boolean @default(false)
 
   // Clickwrap agreement captured at the moment the client agrees to the
   // contract on the sign-and-pay page, right before checkout.
@@ -304,10 +304,10 @@ model Payment {
 // A personal to-do — assignable to any team member, optionally linked to a
 // lead or project so it shows up in context, but also usable standalone.
 model Task {
-  id      String  @id @default(cuid())
-  title   String
-  done    Boolean @default(false)
-  dueAt   DateTime?
+  id    String    @id @default(cuid())
+  title String
+  done  Boolean   @default(false)
+  dueAt DateTime?
 
   assignedToId String
   assignedTo   User   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
@@ -340,8 +340,8 @@ model TeamMessage {
   relatedLeadId    String?
   relatedProjectId String?
 
-  urgent   Boolean   @default(false) // a flagged question needing action, not just a casual chat message
-  resolved Boolean   @default(false)
+  urgent   Boolean @default(false) // a flagged question needing action, not just a casual chat message
+  resolved Boolean @default(false)
 
   readAt    DateTime?
   createdAt DateTime  @default(now())
@@ -361,4 +361,30 @@ model OnboardingResponse {
   updatedAt DateTime @updatedAt
 
   @@map("onboarding_responses")
+}
+
+// A failed sign-in attempt, kept just long enough to rate-limit brute force.
+//
+// This lives in the database rather than in a module-scope Map because the app
+// runs on serverless: an in-memory counter resets on every cold start and is
+// not shared between concurrent instances, so an attacker gets an unlimited
+// number of "first" guesses. Client passwords are generated by us and emailed,
+// and almost nobody changes them — they are effectively permanent credentials,
+// which makes an unthrottled login form the softest target in the system.
+//
+// Only failures are stored, and they are deleted the moment a sign-in
+// succeeds, so this table stays small and holds nothing about successful use.
+model LoginAttempt {
+  id String @id @default(cuid())
+
+  /// Lowercased email that was tried. Not a foreign key — attempts against
+  /// addresses that do not exist are exactly what we want to count.
+  identifier String
+  ip         String
+
+  createdAt DateTime @default(now())
+
+  @@index([identifier, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_attempts")
 }
