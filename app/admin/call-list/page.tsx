@@ -62,6 +62,9 @@ export default function CallListPage() {
   const router = useRouter();
   const [callable, setCallable] = useState<CallRow[]>([]);
   const [noPhone, setNoPhone] = useState<CallRow[]>([]);
+  const [meta, setMeta] = useState<{ totalOpen: number; scheduledLater: number; truncated: boolean } | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -84,6 +87,11 @@ export default function CallListPage() {
       if (data.success) {
         setCallable(data.callable);
         setNoPhone(data.noPhone);
+        setMeta({
+          totalOpen: data.totalOpen ?? 0,
+          scheduledLater: data.scheduledLater ?? 0,
+          truncated: !!data.truncated,
+        });
       }
     } finally {
       setLoading(false);
@@ -178,6 +186,15 @@ export default function CallListPage() {
               ? 'Nothing waiting on a call right now.'
               : `${total} ${total === 1 ? 'business' : 'businesses'} to ring, most urgent first. Work down the list.`}
           </p>
+          {/* Where the number came from. A work queue that shows a subset
+              without saying so reads as "this is everything". */}
+          {meta && meta.totalOpen > 0 && (
+            <p className="text-xs text-white/30 mt-1.5 leading-relaxed">
+              From {meta.totalOpen} open {meta.totalOpen === 1 ? 'lead' : 'leads'} (won and lost excluded)
+              {meta.scheduledLater > 0 && `, minus ${meta.scheduledLater} booked for a later date`}
+              {noPhone.length > 0 && `, minus ${noPhone.length} with no phone number`}.
+            </p>
+          )}
         </div>
         <button
           onClick={syncBounces}
@@ -256,6 +273,13 @@ export default function CallListPage() {
             </Link>
           </div>
         </div>
+      )}
+
+      {meta?.truncated && (
+        <p className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 mb-4">
+          You have more open leads than this page loads at once. The most urgent are shown — clear some down and
+          the rest will appear.
+        </p>
       )}
 
       {syncMessage && (
