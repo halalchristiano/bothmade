@@ -99,17 +99,39 @@ export async function GET(request: Request) {
       select: { id: true, company: true, mockupRequestedAt: true },
     });
 
-    const atRiskProjects = activeProjects
+    // "Nothing has happened for a week" covers two opposite situations: work
+    // that's been dropped, and work that can't move until the client comes
+    // back. One needs doing, the other needs chasing — and mixing them makes
+    // the whole list read as a guilt list, so the genuinely blocked ones never
+    // get chased because they look identical to everything else.
+    //
+    // Who spoke last decides it. Our message with no reply since means the
+    // ball is with them; anything else means it's with us.
+    const atRisk = activeProjects
       .filter((p) => p.updatedAt < staleThreshold)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        company: p.client.company,
-        status: p.status,
-        updatedAt: p.updatedAt,
-        daysSinceUpdate: Math.floor((now.getTime() - p.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
-      }))
+      .map((p) => {
+        const last = p.messages[0];
+        const waitingOnClient = !!last?.isFromAdmin;
+        return {
+          id: p.id,
+          name: p.name,
+          company: p.client.company,
+          status: p.status,
+          updatedAt: p.updatedAt,
+          daysSinceUpdate: Math.floor((now.getTime() - p.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          waitingOnClient,
+          // Days since we last chased — the number that matters when deciding
+          // whether to chase again.
+          daysSinceWeAsked: last
+            ? Math.floor((now.getTime() - last.createdAt.getTime()) / (24 * 60 * 60 * 1000))
+            : null,
+          neverMessaged: !last,
+        };
+      })
       .sort((a, b) => b.daysSinceUpdate - a.daysSinceUpdate);
+
+    const waitingOnClient = atRisk.filter((p) => p.waitingOnClient);
+    const atRiskProjects = atRisk.filter((p) => !p.waitingOnClient);
 
     const overdueBalances = await Promise.all(
       activeProjects.map(async (p) => {
@@ -161,6 +183,7 @@ export async function GET(request: Request) {
           })),
           newClientsThisWeek: newClientsInPeriod,
           atRiskProjects: atRiskProjects.slice(0, 40),
+          waitingOnClient: waitingOnClient.slice(0, 40),
           overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),

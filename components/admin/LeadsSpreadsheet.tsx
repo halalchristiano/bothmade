@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, RefreshCw, Download, Users, DollarSign, Trophy, Sparkles, Clock, X } from 'lucide-react';
+import { Search, RefreshCw, Download, Users, DollarSign, Trophy, Sparkles, Clock, X, Bookmark, Plus, Trash2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 
@@ -44,6 +44,15 @@ const COLUMNS: Array<{ key: SortKey | 'contact' | 'email' | 'phone' | 'source' |
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SAVED_VIEWS_KEY = 'bothmade_leads_saved_views';
+
+interface SavedView {
+  id: string;
+  name: string;
+  search: string;
+  sortKey: SortKey;
+  sortDir: 'asc' | 'desc';
+}
 
 function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -69,6 +78,10 @@ export function LeadsSpreadsheet() {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [namingView, setNamingView] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -87,7 +100,37 @@ export function LeadsSpreadsheet() {
       .then((r) => r.json())
       .then((data) => setTeam(data.users || []))
       .catch(() => {});
+    try {
+      const stored = localStorage.getItem(SAVED_VIEWS_KEY);
+      if (stored) setSavedViews(JSON.parse(stored));
+    } catch {
+      // Corrupt or missing local storage — just start with no saved views.
+    }
   }, []);
+
+  const persistViews = (views: SavedView[]) => {
+    setSavedViews(views);
+    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(views));
+  };
+
+  const handleSaveView = () => {
+    if (!newViewName.trim()) return;
+    const view: SavedView = { id: `${Date.now()}`, name: newViewName.trim(), search, sortKey, sortDir };
+    persistViews([...savedViews, view]);
+    setNewViewName('');
+    setNamingView(false);
+  };
+
+  const applyView = (view: SavedView) => {
+    setSearch(view.search);
+    setSortKey(view.sortKey);
+    setSortDir(view.sortDir);
+    setViewsOpen(false);
+  };
+
+  const deleteView = (id: string) => {
+    persistViews(savedViews.filter((v) => v.id !== id));
+  };
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -140,11 +183,27 @@ export function LeadsSpreadsheet() {
 
   const clearSelection = () => setSelected(new Set());
 
+  // Logs a note to team chat after a bulk action — bulk edits otherwise
+  // leave no trace anywhere else in the app the way a single-lead change
+  // does, so nobody can tell who reassigned or snoozed a batch of leads.
+  const logBulkAction = async (summary: string) => {
+    try {
+      await fetch('/api/admin/team-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: summary }),
+      });
+    } catch {
+      // Audit note is best-effort — never block the bulk action on it.
+    }
+  };
+
   const handleBulkAssign = async (assignedToId: string) => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
     setBulkBusy(true);
     const member = team.find((t) => t.id === assignedToId);
+    const companies = leads.filter((l) => ids.includes(l.id)).map((l) => l.company);
     setLeads((prev) =>
       prev.map((l) =>
         ids.includes(l.id) ? { ...l, assignedToId: assignedToId || null, assignedTo: member ? { name: member.name } : null } : l
@@ -160,6 +219,9 @@ export function LeadsSpreadsheet() {
           })
         )
       );
+      await logBulkAction(
+        `📋 Bulk-assigned ${ids.length} lead${ids.length === 1 ? '' : 's'} to ${member ? member.name || member.email : 'Unassigned'}: ${companies.slice(0, 8).join(', ')}${companies.length > 8 ? `, +${companies.length - 8} more` : ''}`
+      );
       clearSelection();
     } finally {
       setBulkBusy(false);
@@ -171,6 +233,7 @@ export function LeadsSpreadsheet() {
     if (ids.length === 0) return;
     setBulkBusy(true);
     const nextFollowUpAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const companies = leads.filter((l) => ids.includes(l.id)).map((l) => l.company);
     try {
       await Promise.all(
         ids.map((id) =>
@@ -180,6 +243,9 @@ export function LeadsSpreadsheet() {
             body: JSON.stringify({ nextFollowUpAt }),
           })
         )
+      );
+      await logBulkAction(
+        `📋 Bulk-snoozed ${ids.length} lead${ids.length === 1 ? '' : 's'} ${days} day${days === 1 ? '' : 's'}: ${companies.slice(0, 8).join(', ')}${companies.length > 8 ? `, +${companies.length - 8} more` : ''}`
       );
       clearSelection();
     } finally {
@@ -299,6 +365,67 @@ export function LeadsSpreadsheet() {
               placeholder="Search everything..."
               className="pl-8 pr-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 w-56"
             />
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setViewsOpen((v) => !v)}
+              title="Saved views"
+              className="p-2 rounded-xl border border-white/10 hover:bg-white/5 transition-colors"
+            >
+              <Bookmark size={14} />
+            </button>
+            {viewsOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-64 rounded-xl border border-white/10 bg-[#0d0a17] shadow-2xl z-30 p-2">
+                {savedViews.length === 0 && !namingView && (
+                  <p className="text-xs text-white/30 px-2 py-2">No saved views yet.</p>
+                )}
+                {savedViews.map((v) => (
+                  <div key={v.id} className="flex items-center gap-1 group">
+                    <button
+                      onClick={() => applyView(v)}
+                      className="flex-1 text-left text-sm px-2 py-1.5 rounded-lg hover:bg-white/[0.06] text-white/80 truncate"
+                    >
+                      {v.name}
+                    </button>
+                    <button
+                      onClick={() => deleteView(v.id)}
+                      title="Delete view"
+                      className="p-1.5 rounded-md text-white/20 hover:text-red-300 hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+                <div className="border-t border-white/10 mt-1.5 pt-1.5">
+                  {namingView ? (
+                    <div className="flex items-center gap-1.5 px-1">
+                      <input
+                        autoFocus
+                        value={newViewName}
+                        onChange={(e) => setNewViewName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveView()}
+                        placeholder="View name..."
+                        className="flex-1 px-2 py-1 rounded-md bg-white/[0.06] border border-white/10 text-xs text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-sky-400/50"
+                      />
+                      <button
+                        onClick={handleSaveView}
+                        disabled={!newViewName.trim()}
+                        className="text-xs px-2 py-1 rounded-md bg-sky-400 text-black font-semibold disabled:opacity-40"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setNamingView(true)}
+                      className="flex items-center gap-1.5 w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-white/[0.06] text-sky-300"
+                    >
+                      <Plus size={12} /> Save current search + sort
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={handleExport}

@@ -10,6 +10,7 @@ import {
   Percent,
   Flame,
   AlertTriangle,
+  Clock,
   XCircle,
   Radio,
   Building2,
@@ -190,6 +191,13 @@ interface OpsStats {
   }>;
   newClientsThisWeek: number;
   atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
+  waitingOnClient: Array<{
+    id: string;
+    name: string;
+    company: string;
+    daysSinceUpdate: number;
+    daysSinceWeAsked: number | null;
+  }>;
   overdueBalances: Array<{
     id: string;
     name: string;
@@ -1225,7 +1233,12 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
 
   return (
     <Card className="p-6" glow="red">
-      <CardHeader icon={AlertTriangle} tone="red" title="At-Risk Projects" subtitle="No update in 7+ days" />
+      <CardHeader
+        icon={AlertTriangle}
+        tone="red"
+        title="Needs you"
+        subtitle="Stalled 7+ days and the ball is with us"
+      />
       {projects.length === 0 ? (
         <EmptyState icon={AlertTriangle} text="Everything's current." tone="clear" />
       ) : (
@@ -1233,6 +1246,49 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
           <div className="space-y-0.5">
             {shown.map((p) => (
               <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
+            ))}
+          </div>
+          <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Projects stalled because the client hasn't come back, kept apart from the
+ * ones stalled on us. Same symptom, opposite action: these need chasing, not
+ * working on, and a rep-style guilt list buries that distinction.
+ */
+function WaitingOnClientCard({ projects }: { projects: OpsStats['waitingOnClient'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = projects.slice(0, visible);
+
+  return (
+    <Card className="p-6" glow="amber">
+      <CardHeader
+        icon={Clock}
+        tone="amber"
+        title="Waiting on them"
+        subtitle="You asked, they haven't come back — chase these"
+      />
+      {projects.length === 0 ? (
+        <EmptyState icon={Clock} text="Nobody's holding you up." />
+      ) : (
+        <>
+          <div className="space-y-0.5">
+            {shown.map((p) => (
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                subtitle={
+                  p.daysSinceWeAsked !== null
+                    ? `You messaged ${p.daysSinceWeAsked === 0 ? 'today' : `${p.daysSinceWeAsked}d ago`}`
+                    : undefined
+                }
+                trailing={<Badge tone="amber">{p.daysSinceUpdate}d</Badge>}
+              />
             ))}
           </div>
           <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
@@ -1392,6 +1448,7 @@ function OpsDashboard({
         </Card>
 
         <AtRiskProjectsCard projects={stats.atRiskProjects} />
+        <WaitingOnClientCard projects={stats.waitingOnClient ?? []} />
 
         <OverdueBalancesCard balances={stats.overdueBalances} />
       </div>
