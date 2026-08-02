@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { sendTemplatedEmail } from '@/lib/send-templated-email';
+import { createGmailBatchTransport } from '@/lib/mailer';
+import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 
 interface Recipient {
   leadId: string;
@@ -35,6 +38,18 @@ export async function POST(request: NextRequest) {
 
     const results: Array<{ leadId: string; company?: string; ok: boolean; error?: string }> = [];
 
+    // One pooled connection for the whole batch — sending each recipient
+    // through its own fresh SMTP login is what makes Gmail throttle a batch
+    // this size partway through, silently falling the rest back to Resend.
+    const sender = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { gmailAddress: true, gmailAppPassword: true },
+    });
+    const gmailTransport =
+      !isDomainDelegationConfigured() && sender?.gmailAddress && sender?.gmailAppPassword
+        ? createGmailBatchTransport(sender.gmailAddress, sender.gmailAppPassword)
+        : undefined;
+
     for (const recipient of recipients as Recipient[]) {
       if (!recipient.to || !recipient.leadId) {
         results.push({ leadId: recipient.leadId, company: recipient.company, ok: false, error: 'Missing recipient email' });
@@ -48,9 +63,12 @@ export async function POST(request: NextRequest) {
         company: recipient.company,
         fields: { ...(sharedFields || {}), ...(recipient.fields || {}) },
         leadId: recipient.leadId,
+        gmailTransport,
       });
       results.push({ leadId: recipient.leadId, company: recipient.company, ok: result.ok, error: result.error });
     }
+
+    gmailTransport?.close();
 
     const sentCount = results.filter((r) => r.ok).length;
     return NextResponse.json({ success: true, sentCount, total: results.length, results }, { status: 200 });

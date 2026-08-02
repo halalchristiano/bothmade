@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
-import { sendAsUser } from '@/lib/mailer';
+import { sendAsUser, createGmailBatchTransport } from '@/lib/mailer';
+import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { buildFallbackColdEmailDraft, advanceToContactedOnOutreach } from '@/lib/leads';
 
 const MAX_LEADS = 200;
@@ -53,6 +54,14 @@ export async function POST(request: NextRequest) {
 
     const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
 
+    // One pooled connection for the whole batch — see createGmailBatchTransport
+    // for why per-email connections silently fall over to Resend past the
+    // first few sends in a loop this size.
+    const gmailTransport =
+      !isDomainDelegationConfigured() && sender.gmailAddress && sender.gmailAppPassword
+        ? createGmailBatchTransport(sender.gmailAddress, sender.gmailAppPassword)
+        : undefined;
+
     for (const lead of leads) {
       if (!lead.email) {
         results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'No email on file — call instead' });
@@ -87,7 +96,8 @@ export async function POST(request: NextRequest) {
 
       const result = await sendAsUser(
         { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
-        { to: lead.email, subject, html }
+        { to: lead.email, subject, html },
+        { gmailTransport }
       );
 
       if (!result.ok) {
@@ -107,6 +117,8 @@ export async function POST(request: NextRequest) {
 
       results.push({ leadId: lead.id, company: lead.company, ok: true, sentVia: result.sentVia });
     }
+
+    gmailTransport?.close();
 
     const sentCount = results.filter((r) => r.ok).length;
     const sentViaResend = results.filter((r) => r.ok && r.sentVia === 'resend').length;

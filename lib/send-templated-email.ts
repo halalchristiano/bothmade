@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { getTemplate } from '@/lib/email-templates';
 import { renderShell } from '@/lib/email';
-import { sendAsUser } from '@/lib/mailer';
+import { sendAsUser, type createGmailBatchTransport } from '@/lib/mailer';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
 
 export interface SendTemplatedEmailInput {
@@ -12,6 +12,8 @@ export interface SendTemplatedEmailInput {
   company?: string;
   fields?: Record<string, string>;
   leadId?: string;
+  /** Pass one shared pooled transport (from createGmailBatchTransport) when sending many in a loop — see that function's docs for why. */
+  gmailTransport?: ReturnType<typeof createGmailBatchTransport>;
 }
 
 export interface SendTemplatedEmailResult {
@@ -72,7 +74,7 @@ export async function buildTemplatedEmail(
  * Compose Email flow and the bulk-send flow so both behave identically.
  */
 export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promise<SendTemplatedEmailResult> {
-  const { senderId, templateId, to, toName, company, fields, leadId } = input;
+  const { senderId, templateId, to, toName, company, fields, leadId, gmailTransport } = input;
 
   const template = getTemplate(templateId);
   if (!template) return { ok: false, error: 'Unknown template' };
@@ -108,7 +110,8 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
 
   const result = await sendAsUser(
     { name: sender.name, email: sender.email, gmailAddress: sender.gmailAddress, gmailAppPassword: sender.gmailAppPassword },
-    { to, subject: built.subject, html }
+    { to, subject: built.subject, html },
+    { gmailTransport }
   );
 
   if (!result.ok) return { ok: false, error: 'Failed to send email' };

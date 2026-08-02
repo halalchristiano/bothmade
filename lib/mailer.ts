@@ -22,6 +22,30 @@ export interface SendAsUserResult {
   sentVia: 'delegated' | 'gmail-app-password' | 'resend' | 'failed';
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type GmailTransport = nodemailer.Transporter<any, any>;
+
+/**
+ * Builds one pooled SMTP connection for a whole batch of sends, instead of
+ * every sendAsUser() call opening (and authenticating) its own connection.
+ * Gmail's abuse detection throttles rapid repeated logins from the same App
+ * Password — a 50-lead loop each doing its own createTransport+sendMail
+ * looks like exactly that, so the first handful send fine and the rest
+ * silently fail over to Resend. Reusing one pooled transport for the whole
+ * batch avoids the repeated-login pattern entirely. Callers must call
+ * transport.close() when the batch is done.
+ */
+export function createGmailBatchTransport(gmailAddress: string, encryptedAppPassword: string): GmailTransport {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    pool: true,
+    maxConnections: 1,
+    rateDelta: 1000,
+    rateLimit: 3, // stay well under Gmail's own per-second throttling
+    auth: { user: gmailAddress, pass: decryptSecret(encryptedAppPassword) },
+  });
+}
+
 /**
  * Sends a client-facing email as a specific team member, trying the best
  * available method in order:
@@ -29,11 +53,18 @@ export interface SendAsUserResult {
  *      the user's real Workspace address) — no per-user setup, lands in
  *      their actual Gmail Sent folder. Used automatically once configured.
  *   2. Their own connected Gmail app password (per-user opt-in, same effect).
+ *      Pass `gmailTransport` (from createGmailBatchTransport) when sending
+ *      many emails in one batch, so they share one pooled connection
+ *      instead of each opening/authenticating its own.
  *   3. The shared Resend sender, with their name and reply-to — always works,
  *      but doesn't land in their personal Sent folder, so callers should
  *      surface sentVia to explain that instead of leaving it a silent gap.
  */
-export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): Promise<SendAsUserResult> {
+export async function sendAsUser(
+  sender: SenderIdentity,
+  email: OutgoingEmail,
+  opts?: { gmailTransport?: GmailTransport }
+): Promise<SendAsUserResult> {
   if (sender.email && isDomainDelegationConfigured()) {
     const sent = await sendAsDelegatedUser(sender.email, {
       fromName: sender.name,
@@ -46,13 +77,15 @@ export async function sendAsUser(sender: SenderIdentity, email: OutgoingEmail): 
 
   if (sender.gmailAddress && sender.gmailAppPassword) {
     try {
-      const transport = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: sender.gmailAddress,
-          pass: decryptSecret(sender.gmailAppPassword),
-        },
-      });
+      const transport =
+        opts?.gmailTransport ??
+        nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: sender.gmailAddress,
+            pass: decryptSecret(sender.gmailAppPassword),
+          },
+        });
       await transport.sendMail({
         from: sender.name ? `${sender.name} <${sender.gmailAddress}>` : sender.gmailAddress,
         to: email.to,
