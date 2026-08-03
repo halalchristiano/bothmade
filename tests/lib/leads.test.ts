@@ -15,6 +15,7 @@ import {
   isPainPointKey,
   painPointSentence,
   parseSalesPoints,
+  formatSalesPoints,
 } from '@/lib/leads';
 
 /**
@@ -126,28 +127,30 @@ describe('buildFallbackColdEmailDraft', () => {
 });
 
 describe('parseSalesPoints', () => {
+  const unpriced = { priceCents: null, isCustom: false };
+
   it('splits on the first colon only', () => {
     expect(parseSalesPoints('Booking: they lose bookings after 6pm: nobody answers')).toEqual([
-      { point: 'Booking', explanation: 'they lose bookings after 6pm: nobody answers' },
+      { point: 'Booking', explanation: 'they lose bookings after 6pm: nobody answers', ...unpriced },
     ]);
   });
 
   it('keeps a colonless line as a point with no explanation', () => {
     expect(parseSalesPoints('No online booking')).toEqual([
-      { point: 'No online booking', explanation: null },
+      { point: 'No online booking', explanation: null, ...unpriced },
     ]);
   });
 
   it('recovers from a leading colon rather than emitting an empty point', () => {
     expect(parseSalesPoints(': the whole line is really the point')).toEqual([
-      { point: 'the whole line is really the point', explanation: null },
+      { point: 'the whole line is really the point', explanation: null, ...unpriced },
     ]);
   });
 
   it('drops blank lines and trims the rest', () => {
     expect(parseSalesPoints('  A: one  \n\n  B: two  ')).toEqual([
-      { point: 'A', explanation: 'one' },
-      { point: 'B', explanation: 'two' },
+      { point: 'A', explanation: 'one', ...unpriced },
+      { point: 'B', explanation: 'two', ...unpriced },
     ]);
   });
 
@@ -155,6 +158,45 @@ describe('parseSalesPoints', () => {
     expect(parseSalesPoints(null)).toEqual([]);
     expect(parseSalesPoints(undefined)).toEqual([]);
     expect(parseSalesPoints('')).toEqual([]);
+  });
+
+  // The price is what a rep reads out; getting it off the line and out of the
+  // explanation is the difference between quoting $900 and quoting "$900".
+  it('reads a trailing price off the line without swallowing the explanation', () => {
+    expect(parseSalesPoints('Booking: they lose the after-hours calls | $900')).toEqual([
+      {
+        point: 'Booking',
+        explanation: 'they lose the after-hours calls',
+        priceCents: 90000,
+        isCustom: false,
+      },
+    ]);
+  });
+
+  it('marks a price as custom when the line says so', () => {
+    expect(parseSalesPoints('Drone photography: nobody local offers it | custom $1,500')).toEqual([
+      {
+        point: 'Drone photography',
+        explanation: 'nobody local offers it',
+        priceCents: 150000,
+        isCustom: true,
+      },
+    ]);
+  });
+
+  it('leaves a pipe that is not a price alone', () => {
+    const [point] = parseSalesPoints('Hours: open Mon | Wed | Fri');
+    expect(point.priceCents).toBeNull();
+    expect(point.explanation).toBe('open Mon | Wed | Fri');
+  });
+
+  it('round-trips through formatSalesPoints', () => {
+    const source = 'Booking: after-hours calls | $900\nDrone: nobody offers it | custom $1,500';
+    expect(formatSalesPoints(parseSalesPoints(source))).toBe(source);
+  });
+
+  it('formats a point with no price as a plain line', () => {
+    expect(formatSalesPoints(parseSalesPoints('No online booking'))).toBe('No online booking');
   });
 });
 

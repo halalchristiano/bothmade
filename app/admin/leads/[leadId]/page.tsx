@@ -45,6 +45,7 @@ import {
   MailX,
   ChevronRight,
   FileSignature,
+  FileText,
 } from 'lucide-react';
 import {
   ADD_ONS,
@@ -103,6 +104,24 @@ interface LeadDetail {
   mockupRequestedAt: string | null;
   mockupUrl: string | null;
   mockupDeliveredAt: string | null;
+  mockups: Array<{ id: string; url: string; fileName: string | null; createdAt: string }>;
+  vercelDeployPassword: string | null;
+  invoicePdfUrl: string | null;
+  industry: string | null;
+  contactRole: string | null;
+  city: string | null;
+  region: string | null;
+  companySize: string | null;
+  employeeCount: number | null;
+  locationCount: number | null;
+  annualRevenueCents: number | null;
+  googleRating: number | null;
+  googleReviewCount: number | null;
+  tags: string;
+  doNotContact: boolean;
+  doNotContactReason: string | null;
+  addedAt: string;
+  clientTakenOnAt: string | null;
   agreementSignedAt: string | null;
   signedContractUrl?: string | null;
   /** Capability token for the public sign-and-pay link. */
@@ -138,6 +157,54 @@ interface LeadDetail {
   proposalTimeline: string | null;
   proposalDepositOnly: boolean;
   proposalCustomItems?: Array<{ label: string; priceCents: number }>;
+}
+
+/**
+ * A URL to a stored file, with the one-click Open button that's the entire
+ * point of storing it — a field you can only paste into is a place a link
+ * goes to be forgotten. The button reads from what was last saved, not from
+ * the input, so it never opens a half-typed URL.
+ */
+function FileField({
+  label,
+  hint,
+  value,
+  onChange,
+  saved,
+  inputClass,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  saved: string | null;
+  inputClass: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs text-white/50 mb-1 font-medium">{label}</p>
+      <p className="text-[11px] text-white/30 mb-1.5">{hint}</p>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://..."
+          aria-label={label}
+          className={`${inputClass} text-sm`}
+        />
+        {saved && (
+          <a
+            href={saved}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
+          >
+            <FileText size={13} /> Open
+          </a>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function LeadDetailPage() {
@@ -187,6 +254,14 @@ export default function LeadDetailPage() {
   const [originalWebsite, setOriginalWebsite] = useState('');
   const [salesNote, setSalesNote] = useState('');
   const [painPoints, setPainPoints] = useState<PainPointKey[]>([]);
+
+  // Deliverables and access, edited together because they arrive together —
+  // a mockup goes up, its PDF gets exported, and the deployment it lives on
+  // has a password. The invoice joins them once the deal is actually won.
+  const [mockupPdfUrl, setMockupPdfUrl] = useState('');
+  const [invoicePdfUrl, setInvoicePdfUrl] = useState('');
+  const [vercelDeployPassword, setVercelDeployPassword] = useState('');
+  const [savingFiles, setSavingFiles] = useState(false);
 
   const [qualNeed, setQualNeed] = useState('');
   const [qualAuthority, setQualAuthority] = useState('');
@@ -479,6 +554,12 @@ export default function LeadDetailPage() {
         setNotes(l.notes || '');
         setOriginalWebsite(l.originalWebsite || '');
         setSalesNote(l.salesNote || '');
+        // The PDF field starts empty rather than pre-filled: attaching one
+        // adds a version to the mockup list, so leaving the last URL sitting
+        // in the box would invite re-submitting the same file as version two.
+        setMockupPdfUrl('');
+        setInvoicePdfUrl(l.invoicePdfUrl || '');
+        setVercelDeployPassword(l.vercelDeployPassword || '');
         setPainPoints(
           l.painPoints
             .split(',')
@@ -707,6 +788,24 @@ export default function LeadDetailPage() {
       load();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveFiles = async () => {
+    setSavingFiles(true);
+    try {
+      await fetch(`/api/admin/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mockupPdfUrl: mockupPdfUrl.trim() || null,
+          invoicePdfUrl: invoicePdfUrl.trim() || null,
+          vercelDeployPassword: vercelDeployPassword.trim() || null,
+        }),
+      });
+      load();
+    } finally {
+      setSavingFiles(false);
     }
   };
 
@@ -1186,6 +1285,11 @@ export default function LeadDetailPage() {
       </div>
     );
   }
+
+  // A mockup that arrived as a file rather than a link is the downloadable
+  // copy — the one that still opens with no signal and no password. The list
+  // comes back newest first, so the first match is the current one.
+  const latestMockupPdf = lead.mockups.find((m) => m.fileName)?.url ?? null;
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10 overflow-x-hidden">
@@ -1749,9 +1853,19 @@ export default function LeadDetailPage() {
                   <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
                   <span className="shrink-0 flex items-center gap-1.5">
                     {i.priceCents !== null && i.priceCents > 0 ? (
-                      <span className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
-                        {tone === 'amber' ? '+' : ''}
-                        {formatCents(i.priceCents)}
+                      <span className="flex items-center gap-1.5">
+                        {/* A price we invented reads identically to one from
+                            the catalogue unless it says so. Saying so is the
+                            difference between quoting and guessing. */}
+                        {i.isCustom && (
+                          <span className="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">
+                            Custom
+                          </span>
+                        )}
+                        <span className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
+                          {tone === 'amber' ? '+' : ''}
+                          {formatCents(i.priceCents)}
+                        </span>
                       </span>
                     ) : i.priceCents === 0 ? (
                       // An umbrella line for the items beneath it — "$0" would
@@ -1847,8 +1961,13 @@ export default function LeadDetailPage() {
               </p>
             </div>
 
-            {(lead.originalWebsite || lead.mockupUrl) && (
-              <div className="flex flex-wrap gap-2 mb-5">
+            {/* Everything that can be opened or handed over, in one row, so
+                nothing has to be found mid-call. The mockup exists as both a
+                link and a PDF because the link needs signal and a password
+                and the PDF needs neither — the PDF is simply the newest
+                version in the list that came in as a file. */}
+            {(lead.originalWebsite || lead.mockupUrl || latestMockupPdf || lead.invoicePdfUrl) && (
+              <div className="flex flex-wrap gap-2 mb-3">
                 {lead.originalWebsite && (
                   <a
                     href={lead.originalWebsite}
@@ -1869,6 +1988,44 @@ export default function LeadDetailPage() {
                     <CheckCircle2 size={13} /> Open the mockup we sent
                   </a>
                 )}
+                {latestMockupPdf && (
+                  <a
+                    href={latestMockupPdf}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 bg-purple-400/10 px-3.5 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-400/20 transition-colors"
+                  >
+                    <FileText size={13} /> Mockup PDF
+                  </a>
+                )}
+                {lead.invoicePdfUrl && (
+                  <a
+                    href={lead.invoicePdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3.5 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-400/20 transition-colors"
+                  >
+                    <FileText size={13} /> Invoice PDF
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* The mockup deploys password-protected so their competitors
+                can't stumble across an unannounced redesign. That password is
+                useless if it isn't next to the link. */}
+            {lead.vercelDeployPassword && lead.mockupUrl && (
+              <div className="mb-5 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-white/40">Mockup password:</span>
+                <code className="rounded-md bg-white/[0.06] border border-white/10 px-2 py-1 font-mono text-white/80">
+                  {lead.vercelDeployPassword}
+                </code>
+                <button
+                  onClick={() => navigator.clipboard.writeText(lead.vercelDeployPassword!)}
+                  className="text-sky-300 hover:text-sky-200 transition-colors"
+                >
+                  Copy
+                </button>
               </div>
             )}
 
@@ -2699,6 +2856,105 @@ export default function LeadDetailPage() {
               <p className="text-xs text-white/30 mt-3">Now's the time to call, email, or follow up with this in hand.</p>
             )}
           </div>
+
+          {/* Files and access. The mockup link is upstairs because it's what
+              gets sent; this is everything that gets kept — the PDF copies,
+              and the password without which the link is a dead end. */}
+          {(() => {
+            // Line items the import couldn't price from the catalogue. They
+            // belong here, next to the PDF fields, because this is the moment
+            // somebody is about to put a number on paper — and these are the
+            // numbers that are still ours to decide.
+            const customLineItems = [
+              ...parseSalesPoints(lead.essentialPoints).map((p) => ({ ...p, kind: 'Must-have' })),
+              ...parseSalesPoints(lead.upsellPoints).map((p) => ({ ...p, kind: 'Extra' })),
+            ].filter((p) => p.isCustom);
+
+            return (
+              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+                <h2 className="text-lg font-bold mb-1">Files &amp; access</h2>
+                <p className="text-xs text-white/40 mb-4">
+                  The copies that outlive the deployment — downloadable any time, with or without signal.
+                </p>
+
+                <div className="space-y-3">
+                  <FileField
+                    label="Mockup PDF"
+                    hint="An export Evan can download and open on a call. Saving adds it to this lead's mockup versions rather than replacing the last one."
+                    value={mockupPdfUrl}
+                    onChange={setMockupPdfUrl}
+                    saved={latestMockupPdf}
+                    inputClass={inputClass}
+                  />
+                  <FileField
+                    label="Invoice PDF"
+                    hint="Left blank until the client is onboarded — then it's the copy to hand over."
+                    value={invoicePdfUrl}
+                    onChange={setInvoicePdfUrl}
+                    saved={lead.invoicePdfUrl}
+                    inputClass={inputClass}
+                  />
+                  <div>
+                    <p className="text-xs text-white/50 mb-1 font-medium">Vercel deployment password</p>
+                    <p className="text-[11px] text-white/30 mb-1.5">
+                      The mockup deploys protected so their competitors can't find it. Keep it here so it's next to
+                      the link.
+                    </p>
+                    <input
+                      value={vercelDeployPassword}
+                      onChange={(e) => setVercelDeployPassword(e.target.value)}
+                      placeholder="e.g. linpotia-2026"
+                      className={`${inputClass} text-sm font-mono`}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSaveFiles}
+                  disabled={savingFiles}
+                  className="mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                >
+                  {savingFiles ? 'Saving...' : 'Save'}
+                </button>
+
+                {customLineItems.length > 0 && (
+                  <div className="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] p-4">
+                    <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-amber-300 font-semibold">
+                      <AlertTriangle size={12} /> Prices still to agree
+                    </p>
+                    <p className="text-xs text-amber-100/60 mt-1 leading-relaxed">
+                      These aren't in our catalogue, so the figures below are suggestions sized to this business.
+                      Decide them before either PDF goes out — whatever you put on paper is what gets quoted.
+                    </p>
+                    <ul className="mt-3 space-y-2">
+                      {customLineItems.map((c, i) => (
+                        <li key={i} className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm text-white/85 break-words">
+                              <span className="text-[10px] uppercase tracking-wide text-white/35 mr-1.5">
+                                {c.kind}
+                              </span>
+                              {c.point}
+                            </p>
+                            {c.explanation && (
+                              <p className="text-xs text-white/45 leading-relaxed break-words">{c.explanation}</p>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-sm font-bold text-amber-200 whitespace-nowrap">
+                            {c.priceCents !== null ? formatCents(c.priceCents) : 'TBD'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-white/30 mt-3">
+                      Edit any of these on the line itself — the price is the bit after the <code>|</code>. Drop the
+                      word <code>custom</code> once the figure is agreed.
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <div className="flex items-center justify-between mb-1">

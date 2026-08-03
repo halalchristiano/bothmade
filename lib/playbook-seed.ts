@@ -555,6 +555,8 @@ export interface PricedItem {
   entry: PlaybookEntry | null;
   /** Scaled to this lead's quote — null when the item isn't in the playbook. */
   priceCents: number | null;
+  /** True when the price is ours to decide rather than one from the catalogue. */
+  isCustom?: boolean;
 }
 
 /**
@@ -569,23 +571,37 @@ export interface PricedItem {
  * ours, the total is whatever this lead is being quoted. Rounded to the
  * nearest £10 with the remainder pushed onto the largest item, so the column
  * always sums exactly rather than being one rounding step out.
+ *
+ * A point that arrived with its own recorded price is left exactly as it is
+ * and taken out of the quote before the rest are scaled. That price was
+ * either written into the sheet deliberately or agreed afterwards, and
+ * silently stretching it to make a range balance would misquote the one
+ * number somebody actually decided.
  */
 export function priceToTotal(
-  points: Array<{ point: string; explanation: string | null }>,
+  points: Array<{ point: string; explanation: string | null; priceCents?: number | null; isCustom?: boolean }>,
   playbook: Map<string, PlaybookEntry>,
   totalCents: number | null
 ): PricedItem[] {
   const items: PricedItem[] = points.map((p) => ({
-    ...p,
+    point: p.point,
+    explanation: p.explanation,
     entry: findPlaybookEntry(p.point, playbook),
-    priceCents: null,
+    priceCents: p.priceCents ?? null,
+    isCustom: p.isCustom ?? false,
   }));
 
-  const priced = items.filter((i) => i.entry);
+  // Fixed lines are already answered; only the unpriced remainder is up for
+  // scaling, against whatever's left of the quote after they're taken out.
+  const fixed = items.filter((i) => i.priceCents !== null);
+  const remainingTotal =
+    totalCents === null ? null : totalCents - fixed.reduce((s, i) => s + (i.priceCents ?? 0), 0);
+
+  const priced = items.filter((i) => i.priceCents === null && i.entry);
   if (priced.length === 0) return items;
 
   // With no quote to hit, the catalogue price is the honest answer.
-  if (!totalCents || totalCents <= 0) {
+  if (!remainingTotal || remainingTotal <= 0) {
     for (const i of priced) i.priceCents = i.entry!.priceCents;
     return items;
   }
@@ -601,10 +617,10 @@ export function priceToTotal(
       i.priceCents = 0; // umbrella line — shown as "priced below", not $0
       continue;
     }
-    const share = (i.entry!.priceCents / weight) * totalCents;
+    const share = (i.entry!.priceCents / weight) * remainingTotal;
     i.priceCents = Math.round(share / 1000) * 1000; // nearest $10
   }
-  const drift = totalCents - priced.reduce((s, i) => s + (i.priceCents ?? 0), 0);
+  const drift = remainingTotal - priced.reduce((s, i) => s + (i.priceCents ?? 0), 0);
   const biggest = priced
     .filter((i) => (i.priceCents ?? 0) > 0)
     .reduce((a, b) => ((a.priceCents ?? 0) >= (b.priceCents ?? 0) ? a : b), priced[0]);

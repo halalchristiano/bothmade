@@ -5,6 +5,7 @@ import { put } from '@vercel/blob';
 import { prisma } from '@/lib/prisma';
 import { buildContractSections } from '@/lib/contract-terms';
 import { buildContractPdf } from '@/lib/contract-pdf';
+import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
 import { isFurtherAlong } from '@/lib/leads';
 import { getAdminEmails } from '@/lib/notify';
 import { sendSignedContractCopyEmail } from '@/lib/email';
@@ -181,6 +182,38 @@ export async function POST(
         console.error('Failed to save signed contract copy:', pdfError);
       }
 
+      // The invoice for the same agreed figures, stored rather than only
+      // emailed. Until now it was generated on demand and sent — which meant
+      // that once the email was buried, the only way back to it was to
+      // reconstruct the proposal and regenerate it. Keeping a copy is what
+      // turns it into a button on the lead instead of a search through a
+      // mailbox. Like the contract above, a failure here must never stop
+      // somebody paying us, and it gets the same random suffix: an invoice
+      // on a public bucket names a client and a price.
+      let invoicePdfUrl: string | null = null;
+      try {
+        const invoiceBytes = await buildInvoiceForProposal({
+          leadId,
+          company: lead.company,
+          contactName: lead.contactName,
+          baseService,
+          addOnKeys,
+          clientType,
+          timeline,
+          customItems,
+          totalPrice,
+          depositOnly: lead.proposalDepositOnly,
+        });
+        const blob = await put(`invoices/${leadId}.pdf`, Buffer.from(invoiceBytes), {
+          access: 'public',
+          contentType: 'application/pdf',
+          addRandomSuffix: true,
+        });
+        invoicePdfUrl = blob.url;
+      } catch (invoiceError) {
+        console.error('Failed to save invoice copy:', invoiceError);
+      }
+
       const wasFurtherAlong = isFurtherAlong(lead.status, 'contract_signed');
       await prisma.lead.update({
         where: { id: leadId },
@@ -191,6 +224,8 @@ export async function POST(
           contractStatus: 'signed',
           status: wasFurtherAlong ? 'contract_signed' : undefined,
           signedContractUrl: signedContractUrl || undefined,
+          invoicePdfUrl: invoicePdfUrl || undefined,
+          invoicePdfUploadedAt: invoicePdfUrl ? signedAt : undefined,
         },
       });
 

@@ -23,6 +23,31 @@ interface SpreadsheetLead {
   assignedTo: { name: string | null } | null;
   updatedAt: string;
   createdAt: string;
+  // Carried for the export rather than the on-screen grid — the sheet is
+  // already as wide as it can usefully be, but an export that drops half the
+  // database isn't much of an export.
+  industry: string | null;
+  city: string | null;
+  region: string | null;
+  companySize: string | null;
+  employeeCount: number | null;
+  tags: string;
+  doNotContact: boolean;
+  mockupUrl: string | null;
+  invoicePdfUrl: string | null;
+  estimateLowCents: number | null;
+  estimateHighCents: number | null;
+  addedAt: string;
+  clientTakenOnAt: string | null;
+}
+
+/** DDMMYYYY — the format the team writes dates in and filters on. */
+function ddmmyyyy(value: string | null): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getUTCDate())}${pad(d.getUTCMonth() + 1)}${d.getUTCFullYear()}`;
 }
 
 interface TeamMember {
@@ -301,7 +326,32 @@ export function LeadsSpreadsheet() {
   }, [leads, search, sortKey, sortDir]);
 
   const handleExport = () => {
-    const headers = ['Company', 'Contact', 'Email', 'Phone', 'Status', 'Value', 'Source', 'Assigned', 'Added', 'Updated'];
+    // Dates go out as DDMMYYYY so an exported sheet can be filtered the same
+    // way the app filters, and re-imported without a format argument.
+    const headers = [
+      'Company',
+      'Contact',
+      'Email',
+      'Phone',
+      'Status',
+      'Value',
+      'Lowest estimate',
+      'Highest estimate',
+      'Source',
+      'Industry',
+      'City',
+      'State',
+      'Company size',
+      'Employees',
+      'Tags',
+      'Do not contact',
+      'Mockup URL',
+      'Invoice PDF URL',
+      'Assigned',
+      'Date added',
+      'Client taken on',
+      'Updated',
+    ];
     const rows = filtered.map((l) => [
       l.company,
       l.contactName || '',
@@ -309,10 +359,22 @@ export function LeadsSpreadsheet() {
       l.phone || '',
       LEAD_STATUS_LABELS[l.status],
       l.estimatedValue ? (l.estimatedValue / 100).toFixed(2) : '',
+      l.estimateLowCents ? (l.estimateLowCents / 100).toFixed(2) : '',
+      l.estimateHighCents ? (l.estimateHighCents / 100).toFixed(2) : '',
       l.source || '',
+      l.industry || '',
+      l.city || '',
+      l.region || '',
+      l.companySize || '',
+      l.employeeCount ?? '',
+      l.tags || '',
+      l.doNotContact ? 'yes' : '',
+      l.mockupUrl || '',
+      l.invoicePdfUrl || '',
       l.assignedTo?.name || '',
-      new Date(l.createdAt).toLocaleDateString(),
-      new Date(l.updatedAt).toLocaleDateString(),
+      ddmmyyyy(l.addedAt),
+      ddmmyyyy(l.clientTakenOnAt),
+      ddmmyyyy(l.updatedAt),
     ]);
     const csv = [headers, ...rows].map((row) => row.map((cell) => csvEscape(String(cell))).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });

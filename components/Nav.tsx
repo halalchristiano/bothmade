@@ -6,10 +6,11 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 const LINKS = [
-  { label: 'Work', href: '/work' },
   { label: 'Web', href: '/web' },
   { label: 'iOS', href: '/ios' },
   { label: 'Vision Pro', href: '/visionpro' },
+  { label: 'Work', href: '/work' },
+  { label: 'About', href: '/about' },
   { label: 'Blog', href: '/blog' },
   { label: 'Pricing', href: '/start' },
   { label: 'Contact', href: '/#contact' },

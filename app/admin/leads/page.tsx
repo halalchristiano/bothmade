@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock } from 'lucide-react';
+import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock, CalendarRange } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch, clickableRowProps } from '@/components/admin/ui';
@@ -153,10 +153,21 @@ export default function AdminLeadsPage() {
   const [previewingBatch, setPreviewingBatch] = useState<LeadRow[] | null>(null);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
 
+  // Date bounds live server-side rather than in the client-side filter chain,
+  // because the question they answer ("how many did we add in August") is
+  // about the whole database, not about the rows that happen to be loaded.
+  const [addedFrom, setAddedFrom] = useState('');
+  const [addedTo, setAddedTo] = useState('');
+  const [showDateFilter, setShowDateFilter] = useState(false);
+
   const load = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/leads');
+      const query = new URLSearchParams();
+      if (addedFrom.trim()) query.set('addedFrom', addedFrom.trim());
+      if (addedTo.trim()) query.set('addedTo', addedTo.trim());
+      const qs = query.toString();
+      const response = await fetch(`/api/admin/leads${qs ? `?${qs}` : ''}`);
       if (response.status === 401) {
         router.push('/admin/login');
         return;
@@ -405,6 +416,19 @@ export default function AdminLeadsPage() {
             ))}
           </select>
           <button
+            onClick={() => setShowDateFilter((v) => !v)}
+            title="Filter by when leads were added"
+            aria-label="Filter by when leads were added"
+            aria-expanded={showDateFilter}
+            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors whitespace-nowrap ${
+              addedFrom || addedTo
+                ? 'border-sky-400/40 bg-sky-400/10 text-sky-300'
+                : 'border-white/15 text-white/50 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <CalendarRange size={16} />
+          </button>
+          <button
             onClick={() => setShowImport(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 font-semibold hover:bg-white/5 transition-colors whitespace-nowrap"
           >
@@ -428,6 +452,62 @@ export default function AdminLeadsPage() {
           </button>
         </div>
       </div>
+
+      {showDateFilter && (
+        <Card className="p-4 mb-4">
+          <p className="text-xs font-semibold text-white/70 mb-1">Added between</p>
+          <p className="text-[11px] text-white/35 mb-3">
+            Dates as DDMMYYYY — 03082026 is the 3rd of August. Leave either end blank for "everything before" or
+            "everything since".
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={addedFrom}
+              onChange={(e) => setAddedFrom(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && load()}
+              placeholder="01082026"
+              aria-label="Added from"
+              inputMode="numeric"
+              className={`${inputClass} w-36 font-mono text-sm`}
+            />
+            <span className="text-white/30 text-sm">to</span>
+            <input
+              value={addedTo}
+              onChange={(e) => setAddedTo(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && load()}
+              placeholder="31082026"
+              aria-label="Added to"
+              inputMode="numeric"
+              className={`${inputClass} w-36 font-mono text-sm`}
+            />
+            <button
+              onClick={load}
+              className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+            >
+              Apply
+            </button>
+            {(addedFrom || addedTo) && (
+              <button
+                onClick={() => {
+                  setAddedFrom('');
+                  setAddedTo('');
+                  // Cleared state hasn't landed yet, so reload on the next
+                  // tick rather than re-sending the range we just dropped.
+                  setTimeout(load, 0);
+                }}
+                className="rounded-lg border border-white/15 px-3 py-2 text-sm text-white/60 hover:bg-white/5 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {(addedFrom || addedTo) && !loading && (
+            <p className="text-xs text-emerald-300 mt-3">
+              {leads.length} {leads.length === 1 ? 'business' : 'businesses'} added in that window.
+            </p>
+          )}
+        </Card>
+      )}
 
       <SearchFilter value={search} onChange={setSearch} count={filtered.length} total={byStatus.length} />
 
