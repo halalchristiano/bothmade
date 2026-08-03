@@ -31,7 +31,9 @@ the site is deployable after the first section.
       acknowledgement arrives at the address you submitted; and the enquiry is
       showing in `/admin/leads` with source `inbound`, assigned to Evan. The
       last one is the real check — the lead row is the record, the emails are
-      a notification about it.
+      a notification about it. Include the optional budget/timeline/phone
+      fields in the test submission and confirm they show in the lead's notes
+      and (budget) as the estimated value.
 
 ## Required before "Sign in with Google" works (admin → Who to call)
 
@@ -68,16 +70,23 @@ and Vercel — no amount of code changes fixes it.
       demo copy (Ridgeline / Cadence / Massing). Each is `status:
       'in-progress'`, which keeps it `noindex` — flip to `'live'` only when
       the entry describes something real. Never point paid traffic at
-      fiction.
-- [ ] **Write the About/credibility block.** The site never says who is
-      behind it — names, location, background. At high-ticket budgets this
-      is the biggest conversion leak. 3–4 honest sentences are enough; the
-      section will be designed around whatever is supplied.
+      fiction. In the meantime every entry is flagged `selfInitiated: true`,
+      which renders an explicit "our own product — not client work" label
+      and notice on both `/work` and the detail pages, so a human visitor
+      can't mistake them for client engagements.
+- [ ] **Finish the About/credibility block.** `components/About.tsx` now
+      ships on the homepage with the two of you by name, role, and direct
+      email — everything the repo could establish honestly. Still needed
+      from a human (see the EDIT ME banner in that file): real photos
+      (`public/team/…` + `photo` paths — honest monograms render until
+      then), 1–2 bio sentences each, and `LOCATION` if you want it shown.
 - [ ] **Add real screenshots** to case studies (`shots[].src`, files under
       `public/work/…`). Placeholder frames render until then.
-- [ ] **Analytics.** Nothing is installed. Easiest: enable Vercel Analytics
-      in the dashboard; privacy-friendlier: Plausible/Fathom. Needed to
-      judge ad spend at all.
+- [x] **Analytics.** Vercel Analytics is installed (`@vercel/analytics`,
+      mounted in `app/layout.tsx`). It records nothing until the project's
+      Analytics tab is enabled once in the Vercel dashboard — do that at
+      deploy time. Swap for Plausible/Fathom later if privacy posture
+      changes.
 
 ## Deliberately deferred engineering
 

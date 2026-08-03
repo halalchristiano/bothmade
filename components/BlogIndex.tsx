@@ -51,8 +51,8 @@ export function BlogIndex() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
           >
-            Decisions, tools, and tradeoffs from actual projects — no filler, no
-            listicles written to rank.
+            Decisions, tools, and tradeoffs from the products we&apos;re building —
+            no filler, no listicles written to rank.
           </motion.p>
         </div>
       </section>

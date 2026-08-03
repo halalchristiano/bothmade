@@ -172,6 +172,57 @@ describe('POST /api/contact — where the message goes', () => {
   });
 });
 
+describe('POST /api/contact — optional qualifiers', () => {
+  it('records budget, timeline and phone on the lead when given', async () => {
+    await POST(
+      request(
+        { ...VALID, budget: '10k-25k', timeline: 'asap', phone: '+1 555 000 1234' },
+        freshIp()
+      )
+    );
+
+    const { data } = leadCreate.mock.calls[0][0];
+    // The floor of the stated bracket — "at least this", never an invented figure.
+    expect(data.estimatedValue).toBe(1000000);
+    expect(data.phone).toBe('+1 555 000 1234');
+    expect(data.notes).toContain('Budget: $10k – $25k');
+    expect(data.notes).toContain('Timeline: As soon as possible');
+    expect(data.notes).toContain('Phone: +1 555 000 1234');
+  });
+
+  it('treats absent qualifiers as unanswered, not as an error', async () => {
+    const res = await POST(request(VALID, freshIp()));
+
+    expect(res.status).toBe(200);
+    const { data } = leadCreate.mock.calls[0][0];
+    expect(data.estimatedValue).toBeNull();
+    expect(data.phone).toBeNull();
+    expect(data.notes).not.toContain('Budget:');
+    expect(data.notes).not.toContain('Timeline:');
+  });
+
+  it('ignores qualifier values not on the whitelist', async () => {
+    const res = await POST(
+      request({ ...VALID, budget: '<script>', timeline: 'constructor' }, freshIp())
+    );
+
+    expect(res.status).toBe(200);
+    const { data } = leadCreate.mock.calls[0][0];
+    expect(data.estimatedValue).toBeNull();
+    expect(data.notes).not.toContain('Budget:');
+    expect(data.notes).not.toContain('<script>');
+  });
+
+  it('leaves estimatedValue unset for brackets with no honest floor', async () => {
+    await POST(request({ ...VALID, budget: 'unsure' }, freshIp()));
+
+    const { data } = leadCreate.mock.calls[0][0];
+    expect(data.estimatedValue).toBeNull();
+    // But the answer itself still reaches the rep.
+    expect(data.notes).toContain('Budget: Not sure yet');
+  });
+});
+
 describe('POST /api/contact — telling Evan', () => {
   it('emails the sales rep directly that this client reached out', async () => {
     await POST(request(VALID, freshIp()));

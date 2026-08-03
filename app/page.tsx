@@ -10,15 +10,61 @@ import { ServiceList } from '@/components/ServiceList';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ProcessTimeline } from '@/components/ProcessTimeline';
 import { WhyUs } from '@/components/WhyUs';
+import { About } from '@/components/About';
 import { Footer } from '@/components/Footer';
+
+/**
+ * Underline-styled select matching the form's text fields. appearance-none
+ * erases the native chevron, so each select draws its own — without one it
+ * reads as a text field, not a menu.
+ */
+function UnderlineSelect({
+  name,
+  ariaLabel,
+  value,
+  onChange,
+  className,
+  children,
+}: {
+  name: string;
+  ariaLabel: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  className: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="relative block">
+      <select
+        name={name}
+        aria-label={ariaLabel}
+        value={value}
+        onChange={onChange}
+        className={`${className} cursor-pointer appearance-none pr-8 ${value === '' ? 'text-black/25' : ''}`}
+      >
+        {children}
+      </select>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 12 8"
+        className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-2 text-black/40"
+      >
+        <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
 
 function ContactForm() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     company: '',
+    phone: '',
     message: '',
     service: 'web',
+    budget: '',   // optional — but the single best qualifier we can ask for
+    timeline: '', // optional — separates "ready" from "someday"
     website: '', // honeypot — hidden from humans, irresistible to bots
   });
   const [submitted, setSubmitted] = useState(false);
@@ -50,8 +96,11 @@ function ContactForm() {
           name: '',
           email: '',
           company: '',
+          phone: '',
           message: '',
           service: 'web',
+          budget: '',
+          timeline: '',
           website: '',
         });
         setTimeout(() => setSubmitted(false), 4000);
@@ -124,32 +173,65 @@ function ContactForm() {
           onChange={handleChange}
           className={field}
         />
-        <span className="relative block">
-          <select
-            name="service"
-            aria-label="What do you need built?"
-            value={formData.service}
-            onChange={handleChange}
-            className={`${field} cursor-pointer appearance-none pr-8`}
-          >
-            <option value="web">Web</option>
-            <option value="ios">iOS &amp; iPad</option>
-            <option value="mac">macOS</option>
-            <option value="visionpro">Vision Pro</option>
-            <option value="full-stack">Everything</option>
-            <option value="other">Something else</option>
-          </select>
-          {/* appearance-none erased the native chevron — without one this
-              reads as a text field, not a menu */}
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 12 8"
-            className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-2 text-black/40"
-          >
-            <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-          </svg>
-        </span>
+        <UnderlineSelect
+          name="service"
+          ariaLabel="What do you need built?"
+          value={formData.service}
+          onChange={handleChange}
+          className={field}
+        >
+          <option value="web">Web</option>
+          <option value="ios">iOS &amp; iPad</option>
+          <option value="mac">macOS</option>
+          <option value="visionpro">Vision Pro</option>
+          <option value="full-stack">Everything</option>
+          <option value="other">Something else</option>
+        </UnderlineSelect>
       </div>
+
+      {/* Qualification row. Both optional — a lead without a budget is still
+          a lead — but answered they route the enquiry straight into the
+          right conversation instead of a "so, what's your budget?" email. */}
+      <div className="grid md:grid-cols-2 gap-x-10">
+        <UnderlineSelect
+          name="budget"
+          ariaLabel="Rough budget (optional)"
+          value={formData.budget}
+          onChange={handleChange}
+          className={field}
+        >
+          <option value="">Budget (optional)</option>
+          <option value="under-3k">Under $3k</option>
+          <option value="3k-10k">$3k – $10k</option>
+          <option value="10k-25k">$10k – $25k</option>
+          <option value="25k-plus">$25k+</option>
+          <option value="unsure">Not sure yet</option>
+        </UnderlineSelect>
+        <UnderlineSelect
+          name="timeline"
+          ariaLabel="Timeline (optional)"
+          value={formData.timeline}
+          onChange={handleChange}
+          className={field}
+        >
+          <option value="">Timeline (optional)</option>
+          <option value="asap">As soon as possible</option>
+          <option value="1-3-months">Within 1–3 months</option>
+          <option value="flexible">Flexible</option>
+          <option value="exploring">Just exploring</option>
+        </UnderlineSelect>
+      </div>
+
+      <input
+        type="tel"
+        name="phone"
+        aria-label="Phone (optional)"
+        autoComplete="tel"
+        placeholder="Phone (optional)"
+        value={formData.phone}
+        onChange={handleChange}
+        className={field}
+      />
 
       <textarea
         name="message"
@@ -196,6 +278,17 @@ function ContactForm() {
         >
           {loading ? 'Sending…' : 'Send'}
         </button>
+        {/* Forms lose people; a plain address never does. */}
+        <p className="mt-6 text-sm text-black/40">
+          Prefer email?{' '}
+          <a
+            href="mailto:info@bothmade.studio"
+            className="text-black/70 hover:text-black transition-colors border-b border-black/20 hover:border-black/60 pb-0.5"
+          >
+            info@bothmade.studio
+          </a>
+          {' '}— we reply within 24 hours either way.
+        </p>
       </div>
     </form>
   );
@@ -258,8 +351,17 @@ export default function Home() {
                 One product, designed once, alive on every screen — no second agency, no
                 handoff tax, no drift between your web and your app.
               </p>
-              <PillCTA href="/#contact">Ask about the full build</PillCTA>
+              <div className="flex flex-wrap items-center gap-4">
+                <PillCTA href="/#contact">Ask about the full build</PillCTA>
+                <PillCTA href="/start" muted>See pricing</PillCTA>
+              </div>
             </div>
+
+            {/* Say the numbers before they have to ask. Figures mirror
+                BASE_SERVICES in lib/pricing.ts — update both together. */}
+            <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.25em] text-white/35">
+              Websites from $3,000 · iOS apps from $10,000 · the full build from $20,000
+            </p>
           </motion.div>
         </div>
       </section>
@@ -269,6 +371,10 @@ export default function Home() {
 
       {/* Why bothmade — honest boutique-studio positioning, no invented stats */}
       <WhyUs />
+
+      {/* Who's behind it — names and direct emails, right before we ask
+          them to introduce themselves. */}
+      <About />
 
       {/* Contact — inverted entirely. White field, dark text, form takes
           center stage. Sharp edges, generous space, no softness. */}
