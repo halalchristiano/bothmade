@@ -13,6 +13,7 @@ export const COMPANY_ADDRESS_LINES = [
   'Suite 695',
   '80A Ruskin Ave',
   'Welling DA16 3QQ',
+  'London',
   'United Kingdom',
 ] as const;
 
