@@ -3,6 +3,12 @@ import { Resend } from 'resend';
 import { prisma } from '@/lib/prisma';
 import { studioInbox } from '@/lib/email';
 import { escapeHtml } from '@/lib/html';
+import {
+  COMPANY_ADDRESS_INLINE,
+  COMPANY_EMAIL,
+  COMPANY_NAME,
+  COMPANY_WEBSITE,
+} from '@/lib/company';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
@@ -34,6 +40,18 @@ function resendClient(): Resend | null {
 // The address mail is sent *from*, which has to belong to a domain verified
 // in Resend. Where it's sent *to* is studioInbox().
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
+
+/**
+ * Sent with a display name, never as a bare address.
+ *
+ * `CONTACT_EMAIL` is a role mailbox — in production it is `notifications@` —
+ * and a bare address makes the client derive the sender name from the local
+ * part, so the acknowledgement arrived from a person called "notifications".
+ * Reads as a phishing attempt to anyone who did not just fill in the form,
+ * and an unrecognised sender name is a spam signal in its own right. Matches
+ * the `${fromName} <${address}>` shape lib/email.ts already sends with.
+ */
+const MAIL_FROM = `${COMPANY_NAME} <${CONTACT_EMAIL}>`;
 
 const SERVICES = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
 
@@ -317,13 +335,34 @@ export async function POST(request: NextRequest) {
       timeline: escapeHtml(cleanTimeline ? TIMELINE_LABELS[cleanTimeline] : 'Not provided'),
     };
 
+    /**
+     * The footer is not decoration. A transactional email with no postal
+     * address, no domain and no route to a human is the exact shape of a
+     * phishing attempt — recipients read it that way, and so do spam
+     * filters, which treat a verifiable sender identity as a positive
+     * signal. All of it comes from lib/company.ts, so the address here can
+     * never drift from the one on the invoices and the site footer.
+     */
     const shell = (inner: string) =>
-      `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;">${inner}<hr style="border:none;border-top:1px solid #eee;margin:30px 0;"><p style="color:#999;font-size:12px;">© 2026 Bothmade</p></div>`;
+      `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;color:#111;">
+         ${inner}
+         <hr style="border:none;border-top:1px solid #eee;margin:30px 0;">
+         <p style="color:#111;font-size:13px;font-weight:600;margin:0 0 6px;">${COMPANY_NAME}</p>
+         <p style="color:#999;font-size:12px;line-height:1.6;margin:0;">
+           ${escapeHtml(COMPANY_ADDRESS_INLINE)}<br>
+           <a href="mailto:${COMPANY_EMAIL}" style="color:#666;">${COMPANY_EMAIL}</a>
+           &nbsp;·&nbsp;
+           <a href="https://${COMPANY_WEBSITE}" style="color:#666;">${COMPANY_WEBSITE}</a>
+         </p>
+         <p style="color:#bbb;font-size:11px;margin:14px 0 0;">
+           You're receiving this because you sent us a message at ${COMPANY_WEBSITE}.
+         </p>
+       </div>`;
 
     // Notification to the studio — info@, evan@ and kiana@. Replying goes
     // straight back to whoever wrote in.
     const adminEmail = await resend.emails.send({
-      from: CONTACT_EMAIL,
+      from: MAIL_FROM,
       to: studioInbox(),
       replyTo: cleanEmail,
       subject: `New enquiry — ${cleanName} (${SERVICE_LABELS[cleanService]})`,
@@ -374,8 +413,12 @@ export async function POST(request: NextRequest) {
     // Acknowledgement to the sender. Best-effort: if it bounces, the enquiry
     // still reached the studio, so don't fail the request over it.
     const ackEmail = await resend.emails.send({
-      from: CONTACT_EMAIL,
+      from: MAIL_FROM,
       to: cleanEmail,
+      // The body invites a reply. Without this it goes to CONTACT_EMAIL —
+      // `notifications@` in production, which nobody reads — so the
+      // invitation was a dead end. Send replies where the studio is looking.
+      replyTo: COMPANY_EMAIL,
       subject: 'We received your message',
       html: shell(
         `<h2 style="color:#000;">Thanks for reaching out</h2>
