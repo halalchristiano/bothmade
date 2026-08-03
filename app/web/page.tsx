@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { ServicePage, type ServicePageData } from '@/components/ServicePage';
 import { WebHero } from '@/components/heroes/WebHero';
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+
 export const metadata: Metadata = {
   title: 'Web Development | Bothmade',
   description:
@@ -13,6 +15,14 @@ export const metadata: Metadata = {
       'Marketing sites, SaaS platforms, and dashboards built with React, Next.js, and TypeScript.',
     url: '/web',
     type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image` }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Web Development | Bothmade',
+    description:
+      'Marketing sites, SaaS platforms, and dashboards built with React, Next.js, and TypeScript.',
+    images: [`${SITE_URL}/opengraph-image`],
   },
 };
 

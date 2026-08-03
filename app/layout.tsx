@@ -41,12 +41,14 @@ export const metadata: Metadata = {
     title: "Bothmade | Web & Apple Native Development",
     description:
       "One studio for the web and every Apple platform. Web, iOS, iPad, Mac, and Vision Pro.",
+    images: [{ url: `${SITE_URL}/opengraph-image` }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Bothmade | Web & Apple Native Development",
     description:
       "One studio for the web and every Apple platform. Web, iOS, iPad, Mac, and Vision Pro.",
+    images: [`${SITE_URL}/opengraph-image`],
   },
   robots: { index: true, follow: true },
 };

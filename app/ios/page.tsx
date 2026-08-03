@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { ServicePage, type ServicePageData } from '@/components/ServicePage';
 import { IOSHero } from '@/components/heroes/IOSHero';
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+
 export const metadata: Metadata = {
   title: 'iOS, iPad & Mac App Development | Bothmade',
   description:
@@ -13,6 +15,14 @@ export const metadata: Metadata = {
       'Native Apple software in Swift and SwiftUI, built for App Store approval, retention, and revenue.',
     url: '/ios',
     type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image` }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'iOS, iPad & Mac App Development | Bothmade',
+    description:
+      'Native Apple software in Swift and SwiftUI, built for App Store approval, retention, and revenue.',
+    images: [`${SITE_URL}/opengraph-image`],
   },
 };
 

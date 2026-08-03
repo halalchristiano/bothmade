@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { ServicePage, type ServicePageData } from '@/components/ServicePage';
 import { VisionHero } from '@/components/heroes/VisionHero';
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+
 export const metadata: Metadata = {
   title: 'Apple Vision Pro & visionOS Development | Bothmade',
   description:
@@ -13,6 +15,14 @@ export const metadata: Metadata = {
       'Spatial computing apps for Apple Vision Pro, built in SwiftUI and RealityKit.',
     url: '/visionpro',
     type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image` }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Apple Vision Pro & visionOS Development | Bothmade',
+    description:
+      'Spatial computing apps for Apple Vision Pro, built in SwiftUI and RealityKit.',
+    images: [`${SITE_URL}/opengraph-image`],
   },
 };
 

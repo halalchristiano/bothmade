@@ -14,6 +14,14 @@ export const metadata: Metadata = {
       'Configure a Website, Web App, or iOS App and see transparent, itemized pricing update live.',
     url: '/start',
     type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image` }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Get a Price | Bothmade',
+    description:
+      'Configure a Website, Web App, or iOS App and see transparent, itemized pricing update live.',
+    images: [`${SITE_URL}/opengraph-image`],
   },
 };
 
