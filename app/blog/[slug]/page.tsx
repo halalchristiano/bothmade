@@ -17,6 +17,8 @@ export async function generateMetadata({
 
   if (!post) return { title: 'Not found | Bothmade' };
 
+  const ogImage = `${SITE_URL}/blog/${post.slug}/opengraph-image`;
+
   return {
     title: `${post.title} | Bothmade Blog`,
     description: post.dek,
@@ -27,6 +29,13 @@ export async function generateMetadata({
       url: `/blog/${post.slug}`,
       type: 'article',
       publishedTime: post.date,
+      images: [{ url: ogImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${post.title} | Bothmade Blog`,
+      description: post.dek,
+      images: [ogImage],
     },
   };
 }
@@ -51,6 +60,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
             '@type': 'BlogPosting',
             headline: post.title,
             description: post.dek,
+            image: `${SITE_URL}/blog/${post.slug}/opengraph-image`,
             datePublished: post.date,
             dateModified: post.date,
             url: `${SITE_URL}/blog/${post.slug}`,
