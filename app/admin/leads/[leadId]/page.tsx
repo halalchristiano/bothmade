@@ -1231,7 +1231,10 @@ export default function LeadDetailPage() {
           </button>
 
           <div
-            className="relative"
+            // z-40 lifts the whole popover subtree above the sticky tab bar
+            // below (z-30) — without it the tab bar's backdrop-blur paints
+            // over the open menu and smears the delete button unreadable.
+            className="relative z-40"
             onKeyDown={(e) => {
               if (e.key === 'Escape' && actionsMenuOpen) {
                 e.stopPropagation();
