@@ -1,5 +1,8 @@
 import { Resend } from 'resend';
 import { COMPANY_ADDRESS_INLINE, COMPANY_NAME } from '@/lib/company';
+// Leaf module — imports only googleapis and gmail-mime — so pulling it in
+// here does not create a cycle with lib/mailer.ts, which imports this file.
+import { isDomainDelegationConfigured, sendAsDelegatedUser } from '@/lib/gmail-delegated';
 import {
   esc,
   escMultiline,
@@ -103,6 +106,50 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
 
   const fromName = sanitizeDisplayName(data.fromName) || 'Bothmade';
   const replyTo = data.replyTo ? sanitizeEmailAddress(data.replyTo) : null;
+
+  /**
+   * Gmail first, Resend as the fallback.
+   *
+   * Sent through domain-wide delegation the message leaves from the real
+   * mailbox: it lands in that account's Sent folder, a reply threads onto
+   * something that exists, and it carries the sending domain's own Gmail
+   * reputation rather than a shared provider's. Observed in practice — the
+   * mail that reached the Sent folder landed in Primary, while the same
+   * content through the provider was filed as spam even with SPF, DKIM and
+   * DMARC all passing.
+   *
+   * Two things keep a message on the Resend path. Attachments, because the
+   * MIME builder here composes multipart/alternative only and silently
+   * dropping an invoice PDF is far worse than sending from the provider.
+   * And delegation not being configured at all, which is the local and
+   * preview case.
+   *
+   * Per recipient rather than one message to many, matching how the contact
+   * route already addresses the studio: the Gmail API takes a single
+   * message, and one To: header listing everyone is what put every internal
+   * address one Reply-all away from a customer.
+   */
+  const canDelegate = !data.attachments?.length && isDomainDelegationConfigured();
+  if (canDelegate) {
+    const results = await Promise.all(
+      recipients.map((recipient) =>
+        sendAsDelegatedUser(CONTACT_EMAIL, {
+          fromName,
+          to: recipient,
+          subject: sanitizeSubject(data.subject),
+          html: data.html,
+          replyTo,
+        })
+      )
+    );
+    if (results.every(Boolean)) return { sent: true };
+    // A partial or total failure falls through to Resend rather than
+    // reporting a send that didn't happen. A duplicate to whoever did get
+    // the delegated copy is the acceptable cost of not losing the message.
+    console.error(
+      `Delegated send failed for ${results.filter((ok) => !ok).length}/${results.length} recipients; falling back to Resend`
+    );
+  }
 
   try {
     const resend = resendClient();
