@@ -25,6 +25,7 @@ import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { PhoneField } from '@/components/admin/PhoneField';
+import { PdfOrLinkField } from '@/components/admin/PdfOrLinkField';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
@@ -173,6 +174,7 @@ function FileField({
   onChange,
   saved,
   inputClass,
+  leadId,
 }: {
   label: string;
   hint: string;
@@ -180,19 +182,24 @@ function FileField({
   onChange: (v: string) => void;
   saved: string | null;
   inputClass: string;
+  leadId: string;
 }) {
   return (
     <div>
       <p className="text-xs text-white/50 mb-1 font-medium">{label}</p>
       <p className="text-[11px] text-white/30 mb-1.5">{hint}</p>
       <div className="flex gap-2">
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="https://..."
-          aria-label={label}
-          className={`${inputClass} text-sm`}
-        />
+        {/* Either a pasted link or the PDF itself — the file is usually on
+            somebody's desktop, not already hosted somewhere. */}
+        <div className="flex-1 min-w-0">
+          <PdfOrLinkField
+            value={value}
+            onChange={onChange}
+            leadId={leadId}
+            label={label}
+            inputClass={`${inputClass} text-sm`}
+          />
+        </div>
         {saved && (
           <a
             href={saved}
@@ -2895,6 +2902,7 @@ export default function LeadDetailPage() {
                     onChange={setMockupPdfUrl}
                     saved={latestMockupPdf}
                     inputClass={inputClass}
+                    leadId={leadId}
                   />
                   <FileField
                     label="Invoice PDF"
@@ -2903,6 +2911,7 @@ export default function LeadDetailPage() {
                     onChange={setInvoicePdfUrl}
                     saved={lead.invoicePdfUrl}
                     inputClass={inputClass}
+                    leadId={leadId}
                   />
                   <div>
                     <p className="text-xs text-white/50 mb-1 font-medium">Vercel deployment password</p>
