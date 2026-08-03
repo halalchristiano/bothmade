@@ -56,7 +56,17 @@ vi.mock('@/lib/prisma', () => ({
 
 // The rep alert goes through lib/notify, which composes it and hands it to
 // sendEmail — mocked here so the assertions are about who gets told what.
+//
+// The sender's acknowledgement reaches the same function when it falls back
+// off Gmail, which it always does under test, so a bare call count would
+// conflate the two. repAlerts() picks out the mail addressed to a rep; that
+// is what every assertion in "telling Evan" actually means.
 const sendEmail = vi.fn();
+const REP_ADDRESSES = ['evan@bothmade.studio', 'someone-else@bothmade.studio'];
+const repAlerts = () =>
+  sendEmail.mock.calls
+    .map(([mail]) => mail)
+    .filter((mail) => REP_ADDRESSES.includes(mail?.to));
 vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendEmail: (...args: unknown[]) => sendEmail(...args),
@@ -227,8 +237,8 @@ describe('POST /api/contact — telling Evan', () => {
   it('emails the sales rep directly that this client reached out', async () => {
     await POST(request(VALID, freshIp()));
 
-    expect(sendEmail).toHaveBeenCalledOnce();
-    const alert = sendEmail.mock.calls[0][0];
+    expect(repAlerts()).toHaveLength(1);
+    const alert = repAlerts()[0];
     expect(alert.to).toBe('evan@bothmade.studio');
     expect(alert.subject).toBe('Kiana Arabpour at Random just reached out');
     expect(alert.replyTo).toBe(VALID.email);
@@ -287,7 +297,7 @@ describe('POST /api/contact — telling Evan', () => {
 
     await POST(request(VALID, freshIp()));
 
-    expect(sendEmail).not.toHaveBeenCalled();
+    expect(repAlerts()).toHaveLength(0);
     expect(send).toHaveBeenCalled(); // the group notification still goes out
   });
 });

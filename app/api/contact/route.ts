@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { prisma } from '@/lib/prisma';
-import { studioInbox } from '@/lib/email';
+import { renderShell, studioInbox } from '@/lib/email';
+import { sendAsUser } from '@/lib/mailer';
 import { escapeHtml } from '@/lib/html';
-import {
-  COMPANY_ADDRESS_INLINE,
-  COMPANY_EMAIL,
-  COMPANY_NAME,
-  COMPANY_WEBSITE,
-} from '@/lib/company';
+import { COMPANY_EMAIL, COMPANY_NAME, COMPANY_WEBSITE } from '@/lib/company';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
@@ -335,29 +331,14 @@ export async function POST(request: NextRequest) {
       timeline: escapeHtml(cleanTimeline ? TIMELINE_LABELS[cleanTimeline] : 'Not provided'),
     };
 
-    /**
-     * The footer is not decoration. A transactional email with no postal
-     * address, no domain and no route to a human is the exact shape of a
-     * phishing attempt — recipients read it that way, and so do spam
-     * filters, which treat a verifiable sender identity as a positive
-     * signal. All of it comes from lib/company.ts, so the address here can
-     * never drift from the one on the invoices and the site footer.
-     */
-    const shell = (inner: string) =>
-      `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;color:#111;">
-         ${inner}
-         <hr style="border:none;border-top:1px solid #eee;margin:30px 0;">
-         <p style="color:#111;font-size:13px;font-weight:600;margin:0 0 6px;">${COMPANY_NAME}</p>
-         <p style="color:#999;font-size:12px;line-height:1.6;margin:0;">
-           ${escapeHtml(COMPANY_ADDRESS_INLINE)}<br>
-           <a href="mailto:${COMPANY_EMAIL}" style="color:#666;">${COMPANY_EMAIL}</a>
-           &nbsp;·&nbsp;
-           <a href="https://${COMPANY_WEBSITE}" style="color:#666;">${COMPANY_WEBSITE}</a>
-         </p>
-         <p style="color:#bbb;font-size:11px;margin:14px 0 0;">
-           You're receiving this because you sent us a message at ${COMPANY_WEBSITE}.
-         </p>
-       </div>`;
+    // These two used to render through a bespoke inline wrapper — a bare
+    // white div with "© 2026 Bothmade" under a rule — which is why the
+    // acknowledgement read as a phishing attempt. renderShell() is the
+    // wrapper every other email on the site already uses, including all of
+    // EMAIL_TEMPLATES: the wordmark, the gradient header, the card, and a
+    // footer carrying the company name and postal address from
+    // lib/company.ts. There was never a reason for this route to have its
+    // own.
 
     // Notification to the studio — info@, evan@ and kiana@. Replying goes
     // straight back to whoever wrote in.
@@ -366,18 +347,19 @@ export async function POST(request: NextRequest) {
       to: studioInbox(),
       replyTo: cleanEmail,
       subject: `New enquiry — ${cleanName} (${SERVICE_LABELS[cleanService]})`,
-      html: shell(
-        `<h2 style="color:#000;">New contact form submission</h2>
-         <p><strong>Name:</strong> ${safe.name}</p>
-         <p><strong>Email:</strong> ${safe.email}</p>
-         <p><strong>Phone:</strong> ${safe.phone}</p>
-         <p><strong>Company:</strong> ${safe.company}</p>
-         <p><strong>Service:</strong> ${safe.service}</p>
-         <p><strong>Budget:</strong> ${safe.budget}</p>
-         <p><strong>Timeline:</strong> ${safe.timeline}</p>
-         <h3 style="color:#000;margin-top:20px;">Message</h3>
-         <p style="color:#666;white-space:pre-wrap;line-height:1.6;">${safe.message}</p>`
-      ),
+      html: renderShell({
+        eyebrow: 'New enquiry',
+        title: `${cleanName}${cleanCompany ? ` — ${cleanCompany}` : ''}`,
+        bodyHtml:
+          `<p style="margin:0 0 4px;"><strong style="color:#fff;">Email:</strong> ${safe.email}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Phone:</strong> ${safe.phone}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Company:</strong> ${safe.company}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Service:</strong> ${safe.service}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Budget:</strong> ${safe.budget}</p>
+           <p style="margin:0 0 20px;"><strong style="color:#fff;">Timeline:</strong> ${safe.timeline}</p>
+           <p style="margin:0 0 6px; color:#fff; font-weight:700;">Message</p>
+           <p style="margin:0; white-space:pre-wrap;">${safe.message}</p>`,
+      }),
     });
 
     if (adminEmail.error) {
@@ -412,26 +394,48 @@ export async function POST(request: NextRequest) {
 
     // Acknowledgement to the sender. Best-effort: if it bounces, the enquiry
     // still reached the studio, so don't fail the request over it.
-    const ackEmail = await resend.emails.send({
-      from: MAIL_FROM,
-      to: cleanEmail,
-      // The body invites a reply. Without this it goes to CONTACT_EMAIL —
-      // `notifications@` in production, which nobody reads — so the
-      // invitation was a dead end. Send replies where the studio is looking.
-      replyTo: COMPANY_EMAIL,
-      subject: 'We received your message',
-      html: shell(
-        `<h2 style="color:#000;">Thanks for reaching out</h2>
-         <p style="color:#666;line-height:1.6;">
-           Hi ${safe.name},<br/><br/>
-           We've received your message and will get back to you within 24 hours.
-           You can reply directly to this email if you'd like to add anything.
-         </p>`
-      ),
-    });
+    /**
+     * Sent *as* info@, not merely with info@ in the From line.
+     *
+     * sendAsUser prefers domain-wide delegation, which hands the message to
+     * Gmail as the real Workspace user — so it lands in info@'s own Sent
+     * folder and the thread is there when the customer replies, exactly as
+     * if someone had typed it. A Resend send would be invisible to that
+     * mailbox: the reply arrives with no outgoing message to attach to.
+     *
+     * Falls back to Resend when delegation isn't configured, which still
+     * gets the acknowledgement out — it just won't be in Sent.
+     */
+    const ack = await sendAsUser(
+      {
+        name: COMPANY_NAME,
+        email: COMPANY_EMAIL,
+        gmailAddress: null,
+        gmailAppPassword: null,
+      },
+      {
+        to: cleanEmail,
+        subject: 'We received your message',
+        html: renderShell({
+          eyebrow: 'Message received',
+          title: 'Thanks for reaching out',
+          bodyHtml:
+            `<p style="margin:0 0 14px;">Hi ${safe.name},</p>
+             <p style="margin:0;">
+               We've received your message and will get back to you within 24 hours.
+               You can reply directly to this email if you'd like to add anything.
+             </p>`,
+          footerNote: `${COMPANY_NAME} — ${COMPANY_WEBSITE}`,
+        }),
+      }
+    );
 
-    if (ackEmail.error) {
-      console.error('Acknowledgement email failed:', ackEmail.error);
+    if (!ack.ok) {
+      console.error('Acknowledgement email failed');
+    } else if (ack.sentVia === 'resend') {
+      // Worth knowing: the customer got the mail, but info@ has no record of
+      // having sent it, so a reply will look like it came out of nowhere.
+      console.warn('Acknowledgement sent via Resend — not in the info@ Sent folder');
     }
 
     return NextResponse.json(
