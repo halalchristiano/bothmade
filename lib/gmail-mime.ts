@@ -32,10 +32,23 @@ export function buildFromHeader(name: string | null | undefined, address: string
  * whoever's left, because "we sent it somewhere" is the failure mode worth
  * avoiding.
  */
-export function encodeMimeMessage(opts: { from: string; to: string; subject: string; html: string }): string {
+export function encodeMimeMessage(opts: {
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+  /**
+   * Where a reply should land when that is not the From: address — the
+   * inbound-enquiry alerts reply to the customer, not to the studio. Without
+   * this header the Gmail path silently reroutes those replies to the
+   * sender, which is a quieter failure than not sending at all.
+   */
+  replyTo?: string | null;
+}): string {
   const from = sanitizeHeaderValue(opts.from);
   const to = sanitizeEmailAddress(opts.to);
   const subject = sanitizeHeaderValue(opts.subject);
+  const replyTo = opts.replyTo ? sanitizeEmailAddress(opts.replyTo) : null;
 
   if (!to) {
     throw new Error('Refusing to build a message: recipient is not a valid email address');
@@ -70,6 +83,7 @@ export function encodeMimeMessage(opts: { from: string; to: string; subject: str
   const message = [
     `From: ${from}`,
     `To: ${to}`,
+    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
     `Subject: ${encodedSubject}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
