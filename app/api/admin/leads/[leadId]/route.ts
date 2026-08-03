@@ -198,6 +198,10 @@ export async function PATCH(
         contactName: contactName !== undefined ? contactName : undefined,
         email: email !== undefined ? email : undefined,
         phone: phone !== undefined ? phone : undefined,
+        // A new number clears the dead-number flag: a lead whose phone has
+        // been corrected is callable again, and would otherwise sit in
+        // "can't reach" forever with a number that works.
+        phoneInvalidAt: phone !== undefined && phone !== existing.phone ? null : undefined,
         status: status !== undefined ? status : autoStatus,
         source: source !== undefined ? source : undefined,
         estimatedValue: estimatedValue !== undefined ? estimatedValue : undefined,

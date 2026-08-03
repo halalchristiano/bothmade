@@ -44,6 +44,9 @@ export async function POST(
         status: previous.status ?? undefined,
         nextFollowUpAt: previous.nextFollowUpAt ? new Date(previous.nextFollowUpAt) : null,
         lostReason: previous.lostReason ?? null,
+        // Undoing a mis-tapped "wrong number" has to put the lead back in the
+        // callable band, or the undo only half-worked.
+        phoneInvalidAt: previous.phoneInvalidAt ? new Date(previous.phoneInvalidAt) : null,
         updatedAt: new Date(),
       },
     });

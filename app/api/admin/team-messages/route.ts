@@ -16,9 +16,18 @@ export async function GET() {
       },
     });
 
+    // Two different things, both needed. The first is a read receipt on a
+    // direct message, which the sender sees. The second is when *I* last
+    // opened the chat — that's what the unread badge counts against, so it
+    // clears for broadcasts too, which a per-message readAt never could.
     await prisma.teamMessage.updateMany({
       where: { toUserId: session.userId, readAt: null },
       data: { readAt: new Date() },
+    });
+
+    await prisma.user.update({
+      where: { id: session.userId },
+      data: { teamChatReadAt: new Date() },
     });
 
     return NextResponse.json({ success: true, messages }, { status: 200 });

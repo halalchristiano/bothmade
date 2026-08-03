@@ -67,6 +67,7 @@ export async function POST(
       status: lead.status,
       nextFollowUpAt: lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null,
       lostReason: lead.lostReason,
+      phoneInvalidAt: lead.phoneInvalidAt ? lead.phoneInvalidAt.toISOString() : null,
     };
 
     const [activity, updated] = await prisma.$transaction([
@@ -80,6 +81,9 @@ export async function POST(
           status: nextStatus,
           nextFollowUpAt,
           lostReason: outcome.status === 'lost' ? lostReason?.trim() || 'Not interested (by phone)' : undefined,
+          // A dead/wrong number pulls the lead out of the callable band, so
+          // nobody dials it again tomorrow expecting a different result.
+          phoneInvalidAt: outcome.phoneInvalid ? new Date() : undefined,
           updatedAt: new Date(),
         },
       }),

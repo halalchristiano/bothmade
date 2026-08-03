@@ -228,7 +228,7 @@ export async function POST(
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
-      success_url: `${siteUrl}/checkout/success`,
+      success_url: `${siteUrl}/checkout/success?type=welcome`,
       // Cancelling has to land back on a link that still works, so the
       // capability token rides along.
       cancel_url: buildSignUrl(leadId, lead.shareToken),

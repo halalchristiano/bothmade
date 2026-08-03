@@ -61,6 +61,13 @@ model User {
   // Opts out of the Friday weekly-digest email (everyone gets it by default).
   weeklyDigestOptOut Boolean @default(false)
 
+  // When this user last opened the team chat. A single per-user timestamp
+  // works because the chat is one flat thread, and unlike TeamMessage.readAt
+  // it can represent per-user read state for broadcast messages
+  // (toUserId = null), which a shared readAt could not — a broadcast marked
+  // read by one person was read for everybody.
+  teamChatReadAt DateTime?
+
   // Relations
   clientMessages       ProjectMessage[] @relation("SentByUser")
   adminUpdates         ProjectUpdate[]  @relation("CreatedByAdmin")
@@ -289,6 +296,12 @@ model Lead {
   // Cleared automatically the next time a send to this lead succeeds.
   emailDeliveryFailedAt     DateTime?
   emailDeliveryFailedReason String?
+
+  // The phone equivalent: set when a call reaches a dead or wrong number.
+  // A flagged lead drops out of the callable band instead of being re-dialed,
+  // but still shows under "can't reach" so it can be given a new number
+  // rather than silently disappearing.
+  phoneInvalidAt DateTime?
 
   // A short one-liner (not the full draft above) usable as the "personalized
   // observation" field the cold-outreach templates require — lets Compose
@@ -588,15 +601,15 @@ model TeamMessage {
 // Only the SHA-256 of the emailed token is stored, so a database read yields
 // no working reset links. Single-use is enforced by `usedAt`.
 model PasswordResetToken {
-  id        String    @id @default(cuid())
-  tokenHash String    @unique
-  email     String
-  userType  String // "user" (team member) | "client"
-  expiresAt DateTime
-  usedAt    DateTime?
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  email       String
+  userType    String // "user" (team member) | "client"
+  expiresAt   DateTime
+  usedAt      DateTime?
   // Kept for abuse investigation — who asked for the reset, not who used it.
   requestedIp String?
-  createdAt DateTime  @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([email, userType])
   @@index([expiresAt])

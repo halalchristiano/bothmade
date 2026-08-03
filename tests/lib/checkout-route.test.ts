@@ -149,7 +149,10 @@ describe('POST /api/checkout — the happy path', () => {
       clientEmail: 'frell@linpotia.com',
       company: 'Linpotia Cafe',
     });
-    expect(successUrl).toContain('/checkout/success?session_id={CHECKOUT_SESSION_ID}');
+    // type=welcome, because the success page is also where balance payments
+    // land: without it a first-time buyer would be shown the returning-client
+    // copy and never told a password was emailed to them.
+    expect(successUrl).toContain('/checkout/success?type=welcome&session_id={CHECKOUT_SESSION_ID}');
     expect(cancelUrl).toContain('/start');
   });
 
