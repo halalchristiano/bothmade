@@ -12,6 +12,7 @@ import {
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  depositAmount,
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
@@ -424,9 +425,22 @@ export default function StartPage() {
             </div>
           </div>
           <div className="flex justify-between items-center border-t border-white/10 mt-4 pt-4">
-            <span className="text-xl font-bold">Total</span>
+            <span className="text-xl font-bold">Project total</span>
             <span className="text-3xl font-bold">{formatCents(breakdown.totalPrice)}</span>
           </div>
+          {/* What the card is actually charged today. The total above is the
+              contract value; showing only that next to a checkout button
+              charging half is how a customer ends up surprised either way. */}
+          <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/5">
+            <span className="text-sm text-white/50">Due today — 50% deposit</span>
+            <span className="text-lg font-semibold text-emerald-300">
+              {formatCents(depositAmount(breakdown.totalPrice))}
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-white/35">
+            The remaining {formatCents(breakdown.totalPrice - depositAmount(breakdown.totalPrice))}{' '}
+            is due once Build is complete, before Launch.
+          </p>
         </section>
 
         {/* FAQ */}
@@ -498,10 +512,14 @@ export default function StartPage() {
             disabled={!canSubmit || loading}
             className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-4 font-semibold text-black disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
           >
-            {loading ? 'Processing...' : `Proceed to Checkout — ${formatCents(breakdown.totalPrice)}`}
+            {loading
+              ? 'Processing...'
+              : `Proceed to Checkout — ${formatCents(depositAmount(breakdown.totalPrice))} deposit`}
           </button>
 
-          <p className="text-center text-sm text-white/40 mt-3">Secure payment powered by Stripe</p>
+          <p className="text-center text-sm text-white/40 mt-3">
+            Secure payment powered by Stripe · 50% deposit today, balance before launch
+          </p>
 
           <div className="flex items-center gap-3 my-6">
             <div className="h-px flex-1 bg-white/10" />

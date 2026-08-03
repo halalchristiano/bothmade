@@ -145,7 +145,14 @@ export function Footer() {
           viewport={{ once: true }}
         >
           <p>© 2026 Bothmade. All rights reserved.</p>
-          <p>Built with obsessive attention to detail.</p>
+          <div className="flex gap-6">
+            <Link href="/privacy" className="hover:text-sky-300 transition">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-sky-300 transition">
+              Terms
+            </Link>
+          </div>
         </motion.div>
       </div>
     </footer>
