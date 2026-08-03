@@ -109,9 +109,12 @@ export function SnoozeButton({
           setOpen((v) => !v);
         }}
         title="Snooze follow-up"
+        aria-label="Snooze follow-up"
+        aria-haspopup="menu"
+        aria-expanded={open}
         className="p-1.5 rounded-md hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors"
       >
-        <Clock size={13} />
+        <Clock size={13} aria-hidden="true" />
       </button>
 
       {open &&
@@ -119,13 +122,23 @@ export function SnoozeButton({
         createPortal(
           <div
             ref={panelRef}
+            role="menu"
+            aria-label="Snooze follow-up"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setOpen(false);
+                buttonRef.current?.focus();
+              }
+            }}
             style={{ position: 'absolute', top: coords.top, left: coords.left }}
             className="w-40 rounded-lg border border-white/10 bg-[#0a0a0a] shadow-2xl z-[100] p-1.5"
           >
             {SNOOZE_OPTIONS.map((opt) => (
               <button
                 key={opt.days}
+                role="menuitem"
                 onClick={() => handleSnooze(opt)}
                 disabled={saving}
                 className="w-full text-left text-xs px-2.5 py-1.5 rounded-md text-white/70 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-40"

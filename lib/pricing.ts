@@ -569,17 +569,20 @@ export const CLIENT_TYPES: Record<
 > = {
   startup: {
     label: 'Startup',
-    description: 'Early stage, moving fast.',
+    description:
+      "Early stage, moving fast, comfortable trading a little polish for speed to launch. Priced lower because scope stays tight and decisions get made quickly, without layers of stakeholders to route every choice through.",
     multiplier: 0.9,
   },
   smb: {
     label: 'Small / Medium Business',
-    description: 'Established business, standard scope.',
+    description:
+      "An established business with a real customer base and a standard, well-defined scope — most projects fall here. Priced at the baseline: enough process to get it right, without the coordination overhead a larger org adds.",
     multiplier: 1,
   },
   enterprise: {
     label: 'Enterprise',
-    description: 'Larger org, added compliance and coordination needs.',
+    description:
+      "A larger organization where more people sign off, security and compliance reviews are real requirements, and integrating with existing systems takes coordination. The premium reflects that extra process, not extra work on the product itself.",
     multiplier: 1.25,
   },
 };
@@ -590,19 +593,22 @@ export const TIMELINES: Record<
 > = {
   flexible: {
     label: 'Flexible',
-    description: 'No firm deadline.',
+    description:
+      "No firm deadline — work gets slotted in around other projects rather than prioritized above them. A small discount for the schedule flexibility that gives us.",
     weeks: '12-16 weeks',
     multiplier: 0.95,
   },
   standard: {
     label: 'Standard',
-    description: 'Typical turnaround.',
+    description:
+      "The normal pace for a project this size, done properly — enough time for real design iteration and testing, without either rushing or dragging.",
     weeks: '8-12 weeks',
     multiplier: 1,
   },
   rush: {
     label: 'Rush',
-    description: 'Expedited delivery.',
+    description:
+      "A hard deadline that needs the timeline compressed — nights, weekends, and other work paused to hit it. The premium is what that actually costs, not a markup for asking.",
     weeks: '4-6 weeks',
     multiplier: 1.2,
   },
@@ -624,20 +630,31 @@ export interface PricingBreakdown {
   totalPrice: number;
 }
 
+/**
+ * `value in CATALOGUE` walks the prototype chain, so "toString",
+ * "constructor" and friends passed every one of these guards — and these
+ * guards are the only validation between a POST body and a Stripe line
+ * item. `ADD_ONS['toString'].price` is `undefined`, which turns the whole
+ * subtotal into NaN. An own-property check is the fix.
+ */
+function isCatalogueKey(catalogue: object, value: string): boolean {
+  return Object.prototype.hasOwnProperty.call(catalogue, value);
+}
+
 export function isBaseService(value: string): value is BaseService {
-  return value in BASE_SERVICES;
+  return isCatalogueKey(BASE_SERVICES, value);
 }
 
 export function isAddOnKey(value: string): value is AddOnKey {
-  return value in ADD_ONS;
+  return isCatalogueKey(ADD_ONS, value);
 }
 
 export function isClientType(value: string): value is ClientType {
-  return value in CLIENT_TYPES;
+  return isCatalogueKey(CLIENT_TYPES, value);
 }
 
 export function isTimelineKey(value: string): value is TimelineKey {
-  return value in TIMELINES;
+  return isCatalogueKey(TIMELINES, value);
 }
 
 export function calculatePrice(selection: PricingSelection): PricingBreakdown {

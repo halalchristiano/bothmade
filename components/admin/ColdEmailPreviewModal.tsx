@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, Send, Loader2, UserX, AlertTriangle } from 'lucide-react';
+import { Send, Loader2, UserX, AlertTriangle } from 'lucide-react';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
+import { FALLBACK_SENDER_NAME, renderColdEmail } from '@/lib/cold-email';
+import { Modal, ModalCloseButton } from './Modal';
 
 interface PreviewLead {
   id: string;
@@ -12,13 +14,6 @@ interface PreviewLead {
   coldEmailDraft: string | null;
   painPoints: string;
   personalizedObservation: string | null;
-}
-
-/** Mirrors the server's splitDraft() in send-cold-drafts/route.ts so the preview matches exactly what gets sent. */
-function splitDraft(draft: string, company: string): { subject: string; body: string } {
-  const match = draft.match(/^Subject:\s*(.+?)\r?\n+([\s\S]*)$/i);
-  if (match) return { subject: match[1].trim(), body: match[2].trim() };
-  return { subject: `Thoughts on ${company}`, body: draft.trim() };
 }
 
 export function ColdEmailPreviewModal({
@@ -35,7 +30,7 @@ export function ColdEmailPreviewModal({
   onConfirm: (leadIds: string[]) => void;
 }) {
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [senderFullName, setSenderFullName] = useState('The Bothmade Team');
+  const [senderFullName, setSenderFullName] = useState(FALLBACK_SENDER_NAME);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -59,8 +54,18 @@ export function ColdEmailPreviewModal({
   const included = leads.filter((l) => !excluded.has(l.id));
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl">
+    <Modal
+      title="Review before sending"
+      subtitle="Exactly what each recipient will get — uncheck any you want to skip."
+      onClose={onClose}
+      size="max-w-2xl"
+      panelClassName="max-h-[88vh] flex flex-col"
+      showHeader={false}
+      // Mid-review the selection of who to skip is real work; a stray click
+      // on the backdrop shouldn't throw it away.
+      closeOnBackdrop={false}
+    >
+      <>
         <div className="flex items-start justify-between gap-3 p-6 pb-4 border-b border-white/[0.06]">
           <div>
             <h2 className="text-lg font-bold">Review before sending</h2>
@@ -68,9 +73,7 @@ export function ColdEmailPreviewModal({
               Exactly what each recipient will get — uncheck any you want to skip.
             </p>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white shrink-0">
-            <X size={18} />
-          </button>
+          <ModalCloseButton onClose={onClose} />
         </div>
 
         {gmailConnected === false && (
@@ -94,11 +97,8 @@ export function ColdEmailPreviewModal({
                 painPoints: lead.painPoints,
                 personalizedObservation: lead.personalizedObservation,
               });
-            const { subject, body } = splitDraft(draft, lead.company);
-            const firstName = lead.contactName?.split(' ')[0] || 'there';
-            const personalizedBody = body
-              .replace(/\[First Name\]/gi, firstName)
-              .replace(/\[Sender Name\]/gi, senderFullName);
+            // Same call the send route makes, so this preview is the send.
+            const { subject, body } = renderColdEmail(draft, lead, senderFullName);
 
             return (
               <div
@@ -128,12 +128,12 @@ export function ColdEmailPreviewModal({
                         : 'border-red-400/20 text-red-300/70 hover:bg-red-400/10 hover:text-red-300'
                     }`}
                   >
-                    <UserX size={11} /> {isExcluded ? 'Skipped' : 'Skip'}
+                    <UserX size={11} aria-hidden="true" /> {isExcluded ? 'Skipped' : 'Skip'}
                   </button>
                 </div>
                 <p className="text-sm font-medium text-white/80 mb-1">{subject}</p>
                 <p className="text-xs text-white/50 whitespace-pre-line leading-relaxed max-h-32 overflow-y-auto">
-                  {personalizedBody}
+                  {body}
                 </p>
               </div>
             );
@@ -157,12 +157,16 @@ export function ColdEmailPreviewModal({
               disabled={sending || included.length === 0}
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 px-5 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
-              {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+              {sending ? (
+                <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Send size={15} aria-hidden="true" />
+              )}
               {sending ? 'Sending...' : `Send ${included.length} now`}
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

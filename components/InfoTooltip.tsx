@@ -26,19 +26,27 @@ export default function InfoTooltip({ text }: { text: string }) {
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <button
-        type="button"
+      <span
+        role="button"
+        tabIndex={0}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setOpen((v) => !v);
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }
+        }}
         aria-label="More info"
         aria-expanded={open}
-        className="flex h-4 w-4 items-center justify-center rounded-full border border-white/30 text-[10px] leading-none text-white/50 hover:border-white/60 hover:text-white/80 transition-colors"
+        className="flex h-4 w-4 items-center justify-center rounded-full border border-white/30 text-[10px] leading-none text-white/50 hover:border-white/60 hover:text-white/80 transition-colors cursor-pointer"
       >
         i
-      </button>
+      </span>
       {open && (
         <span
           role="tooltip"

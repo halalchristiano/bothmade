@@ -8,21 +8,9 @@ import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
 import { decryptSecret } from '@/lib/crypto';
 import { buildFallbackColdEmailDraft, advanceToContactedOnOutreach } from '@/lib/leads';
+import { FALLBACK_SENDER_NAME, renderColdEmail } from '@/lib/cold-email';
 
 const MAX_LEADS = 200;
-
-/**
- * Splits a "Subject: ...\n\n<body>" draft into its parts. Falls back to a
- * generic subject if the draft doesn't start with a Subject line, since
- * research-imported drafts should always have one but the field is freeform.
- */
-function splitDraft(draft: string, company: string): { subject: string; body: string } {
-  const match = draft.match(/^Subject:\s*(.+?)\r?\n+([\s\S]*)$/i);
-  if (match) {
-    return { subject: match[1].trim(), body: match[2].trim() };
-  }
-  return { subject: `Thoughts on ${company}`, body: draft.trim() };
-}
 
 /**
  * Sends every selected lead's cold email draft one click, no per-recipient
@@ -88,14 +76,9 @@ export async function POST(request: NextRequest) {
           personalizedObservation: lead.personalizedObservation,
         });
 
-      const { subject, body } = splitDraft(draft, lead.company);
-      const firstName = lead.contactName?.split(' ')[0] || 'there';
-      const senderFullName = sender.name || 'The Bothmade Team';
-      const personalizedBody = body
-        .replace(/\[First Name\]/gi, firstName)
-        .replace(/\[Sender Name\]/gi, senderFullName);
+      const { subject, body } = renderColdEmail(draft, lead, sender.name || FALLBACK_SENDER_NAME);
 
-      const bodyHtml = personalizedBody
+      const bodyHtml = body
         .split(/\n{2,}/)
         .map((para) => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
         .join('');

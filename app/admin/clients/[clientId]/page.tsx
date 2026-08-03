@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare, Archive, ArchiveRestore, Trash2, AlertTriangle, Mail } from 'lucide-react';
 import { Card, CardHeader, PageIn, EmptyState, Badge } from '@/components/admin/ui';
 import { EmailComposer } from '@/components/admin/EmailComposer';
+import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 
 interface ClientDetail {
   id: string;
@@ -37,9 +38,6 @@ export default function AdminClientDetailPage() {
   const [contactName, setContactName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const [broadcastContent, setBroadcastContent] = useState('');
-  const [broadcasting, setBroadcasting] = useState(false);
-  const [message, setMessage] = useState('');
 
   const [archiving, setArchiving] = useState(false);
   const [confirmDeleteText, setConfirmDeleteText] = useState('');
@@ -87,26 +85,6 @@ export default function AdminClientDetailPage() {
       }
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleBroadcast = async () => {
-    if (!broadcastContent.trim()) return;
-    setBroadcasting(true);
-    setMessage('');
-    try {
-      const response = await fetch(`/api/admin/clients/${clientId}/broadcast`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: broadcastContent }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setMessage(`Sent to ${data.projectsNotified} project(s).`);
-        setBroadcastContent('');
-      }
-    } finally {
-      setBroadcasting(false);
     }
   };
 
@@ -276,21 +254,12 @@ export default function AdminClientDetailPage() {
 
       <Card className="p-6 md:p-8">
         <CardHeader icon={MessageSquare} tone="emerald" title="Message All Projects" subtitle="Sends to every project thread for this client" />
-        <textarea
-          value={broadcastContent}
-          onChange={(e) => setBroadcastContent(e.target.value)}
-          rows={3}
-          className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent resize-none mb-4 transition-all"
+        <BroadcastForm
+          endpoint={`/api/admin/clients/${clientId}/broadcast`}
           placeholder="Type a message to send to all their projects..."
+          submitLabel="Send to All Projects"
+          describeResult={describeBroadcast}
         />
-        {message && <p className="text-emerald-300 text-sm mb-4">{message}</p>}
-        <button
-          onClick={handleBroadcast}
-          disabled={broadcasting || !broadcastContent.trim()}
-          className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-        >
-          {broadcasting ? 'Sending...' : 'Send to All Projects'}
-        </button>
       </Card>
 
       <Card className="p-6 md:p-8" glow="red">

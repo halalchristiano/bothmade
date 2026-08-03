@@ -330,6 +330,7 @@ export default function AdminSettingsPage() {
             onClick={() => avatarInputRef.current?.click()}
             disabled={uploadingAvatar}
             title="Change photo"
+            aria-label="Change profile photo"
             className="relative shrink-0 w-16 h-16 rounded-full overflow-hidden border border-white/15 bg-white/5 flex items-center justify-center group disabled:opacity-50"
           >
             {avatarUrl ? (

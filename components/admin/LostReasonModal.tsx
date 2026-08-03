@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
 import { LOST_REASON_PRESETS } from '@/lib/leads';
+import { Modal } from './Modal';
 
 /**
  * Shared "why did this deal die" picker — replaces window.prompt everywhere
@@ -27,19 +27,13 @@ export function LostReasonModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onCancel}>
-      <div
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0812] p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-start mb-1">
-          <h2 className="text-lg font-bold">Mark {companyName} as lost</h2>
-          <button onClick={onCancel} className="text-white/40 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-        <p className="text-sm text-white/40 mb-4">Why didn't this one work out? Helps spot patterns later.</p>
-
+    <Modal
+      title={`Mark ${companyName} as lost`}
+      subtitle="Why didn't this one work out? Helps spot patterns later."
+      onClose={onCancel}
+      size="max-w-md"
+    >
+      <>
         <div className="space-y-1.5 mb-3">
           {LOST_REASON_PRESETS.map((reason) => (
             <label
@@ -92,7 +86,7 @@ export function LostReasonModal({
             Mark as Lost
           </button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

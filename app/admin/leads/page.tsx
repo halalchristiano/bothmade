@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
-import { Card, PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { Card, PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch, clickableRowProps } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
@@ -13,6 +13,7 @@ import { ImportLeadsModal } from '@/components/admin/ImportLeadsModal';
 import { ImportHistoryModal } from '@/components/admin/ImportHistoryModal';
 import { BulkEmailComposer } from '@/components/admin/BulkEmailComposer';
 import { ColdEmailPreviewModal } from '@/components/admin/ColdEmailPreviewModal';
+import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 
 interface LeadRow {
   id: string;
@@ -96,6 +97,7 @@ function QuickActions({ lead, onLogged }: { lead: LeadRow; onLogged?: () => void
         <a
           href={`tel:${lead.phone}`}
           title={`Call ${lead.phone}`}
+          aria-label={`Call ${lead.company}`}
           className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
         >
           <Phone size={14} />
@@ -105,6 +107,7 @@ function QuickActions({ lead, onLogged }: { lead: LeadRow; onLogged?: () => void
         <a
           href={`mailto:${lead.email}`}
           title={`Email ${lead.email}`}
+          aria-label={`Email ${lead.company}`}
           className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
         >
           <Mail size={14} />
@@ -138,7 +141,6 @@ export default function AdminLeadsPage() {
   const [showImportHistory, setShowImportHistory] = useState(false);
   const [showBulkEmail, setShowBulkEmail] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [lostTarget, setLostTarget] = useState<LeadRow | null>(null);
   const [sendingColdDrafts, setSendingColdDrafts] = useState(false);
   const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[]; sentViaResend: number } | null>(null);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
@@ -225,52 +227,16 @@ export default function AdminLeadsPage() {
   const needsCallLeads = useMemo(() => leads.filter((l) => !l.email && l.coldEmailDraft), [leads]);
   const emailFailedLeads = useMemo(() => leads.filter((l) => l.emailDeliveryFailedAt), [leads]);
 
-  const handleStatusChange = async (lead: LeadRow, status: LeadStatus) => {
-    if (status === 'lost') {
-      setLostTarget(lead);
-      return;
-    }
-    const previousStatus = lead.status;
-    setListError('');
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status } : l)));
-    try {
-      const res = await fetch(`/api/admin/leads/${lead.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) {
-        setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status: previousStatus } : l)));
-        setListError(`Couldn't update ${lead.company} — the change didn't save. Try again.`);
-      }
-    } catch {
-      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status: previousStatus } : l)));
-      setListError('Could not reach the server — check your connection and try again.');
-    }
-  };
-
-  const handleConfirmLost = async (reason: string) => {
-    if (!lostTarget) return;
-    const id = lostTarget.id;
-    const previousStatus = lostTarget.status;
-    setListError('');
-    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: 'lost' } : l)));
-    setLostTarget(null);
-    try {
-      const res = await fetch(`/api/admin/leads/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'lost', lostReason: reason }),
-      });
-      if (!res.ok) {
-        setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: previousStatus } : l)));
-        setListError("Couldn't mark that lead lost — the change didn't save. Try again.");
-      }
-    } catch {
-      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: previousStatus } : l)));
-      setListError('Could not reach the server — check your connection and try again.');
-    }
-  };
+  const {
+    changeStatus: handleStatusChange,
+    lostTarget,
+    confirmLost: handleConfirmLost,
+    cancelLost,
+    error: statusError,
+  } = useLeadStatusChange<LeadRow>({
+    applyStatus: (lead, status) =>
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status } : l))),
+  });
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
@@ -448,6 +414,7 @@ export default function AdminLeadsPage() {
           <button
             onClick={() => setShowImportHistory(true)}
             title="View past CSV imports"
+            aria-label="View past CSV imports"
             className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-white/50 hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap"
           >
             <FileClock size={16} />
@@ -543,9 +510,9 @@ export default function AdminLeadsPage() {
         </Card>
       )}
 
-      {listError && (
+      {(listError || statusError) && (
         <p className="text-sm text-red-300 mb-4" role="alert">
-          {listError}
+          {listError || statusError}
         </p>
       )}
 
@@ -716,8 +683,9 @@ export default function AdminLeadsPage() {
             {filtered.map((lead) => (
               <div
                 key={lead.id}
-                onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                className={`rounded-xl border backdrop-blur-xl p-4 transition-colors cursor-pointer ${
+                role="link"
+                {...clickableRowProps(() => router.push(`/admin/leads/${lead.id}`), `Open ${lead.company}`)}
+                className={`rounded-xl border backdrop-blur-xl p-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 ${
                   lead.emailDeliveryFailedAt
                     ? 'border-red-400/40 bg-red-400/[0.06] hover:border-red-400/60'
                     : 'border-white/[0.08] bg-white/[0.04] hover:border-white/20'
@@ -788,8 +756,8 @@ export default function AdminLeadsPage() {
                   {filtered.map((lead) => (
                     <tr
                       key={lead.id}
-                      onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                      className={`border-b last:border-0 transition-colors cursor-pointer ${
+                      {...clickableRowProps(() => router.push(`/admin/leads/${lead.id}`), `Open ${lead.company}`)}
+                      className={`border-b last:border-0 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400/60 ${
                         lead.emailDeliveryFailedAt
                           ? 'border-white/5 bg-red-400/[0.06] hover:bg-red-400/10'
                           : 'border-white/5 hover:bg-white/5'
@@ -886,7 +854,7 @@ export default function AdminLeadsPage() {
       {lostTarget && (
         <LostReasonModal
           companyName={lostTarget.company}
-          onCancel={() => setLostTarget(null)}
+          onCancel={cancelLost}
           onConfirm={handleConfirmLost}
         />
       )}

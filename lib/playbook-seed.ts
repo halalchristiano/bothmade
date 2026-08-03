@@ -139,6 +139,16 @@ export const PLAYBOOK_SEED: PlaybookSeedItem[] = [
     undefined
   ),
 
+  item(
+    'Lead-generation rebuild',
+    'essential',
+    0,
+    "The whole job in one line — rebuilding the site so that the people already finding this business turn into enquiries, rather than looking and leaving. It's the summary of everything listed under it, not a separate item to charge for.",
+    "What I'm describing is one job, not a shopping list: rebuilding the site around turning the people already finding you into actual enquiries.",
+    "Priced as the items beneath it rather than on its own — this is the headline, and the detail is what you're quoting.",
+    '"So what does that actually mean?" — Point at the list underneath. This line is the summary; those are the parts.'
+  ),
+
   // ---------- Local service business: upsells ----------
   item(
     'Customer portal',
@@ -229,6 +239,16 @@ export const PLAYBOOK_SEED: PlaybookSeedItem[] = [
     "Rather than build it and leave you, we keep improving it monthly and show you what changed and what it did.",
     "A site left alone decays as competitors move and Google changes. Ongoing work protects the investment already made rather than watching it slide.",
     '"Can we do this later?" — Yes. It is genuinely optional, and better started once results are showing.'
+  ),
+
+  item(
+    'Customer follow-up and retention system',
+    'upsell',
+    0,
+    "The umbrella name for keeping in touch after the job — review requests, reminders, repeat bookings. It's the summary of the extras listed under it, not a separate charge.",
+    "Once the core is live, the next win is the customers you already have — staying in front of them so they come back and refer you.",
+    "Priced as whichever of the pieces below they actually take, not as a lump.",
+    '"How much is all that?" — It depends which parts they want. Price the pieces underneath, not this line.'
   ),
 
   // ---------- B2B / industrial: essentials ----------
@@ -492,6 +512,43 @@ export function playbookSlug(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * Different dossiers name the same piece of work differently — "CRM lead
+ * routing", "CRM and lead capture", "CRM setup". Without this they miss the
+ * playbook entirely and the rep gets a line with no price, no explanation and
+ * nothing to say, which is worse than not listing the item at all.
+ */
+const SLUG_ALIASES: Record<string, string> = {
+  crmandleadcapture: 'crmleadrouting',
+  crmleadcapture: 'crmleadrouting',
+  crmcapture: 'crmleadrouting',
+  crmsetup: 'crmleadrouting',
+  crmandleadrouting: 'crmleadrouting',
+  leadcapture: 'crmleadrouting',
+  crmleadcapturesetup: 'crmleadrouting',
+  analytics: 'analyticssetup',
+  analyticsandtracking: 'analyticssetup',
+  localseoandgooglebusinessprofile: 'localseo',
+  googlebusinessprofile: 'localseo',
+  seo: 'technicalseo',
+  seosetup: 'technicalseo',
+  onlinebooking: 'bookingorestimateworkflow',
+  bookingsystem: 'bookingorestimateworkflow',
+  mobilefirstdesign: 'mobileoptimisation',
+  mobileoptimization: 'mobileoptimisation',
+  copywriting: 'professionalcopywriting',
+  websiteredesignandrebuild: 'websiteredesign',
+};
+
+/** Resolves an item's name to a playbook entry, allowing for naming drift. */
+export function findPlaybookEntry(
+  label: string,
+  playbook: Map<string, PlaybookEntry>
+): PlaybookEntry | null {
+  const slug = playbookSlug(label);
+  return playbook.get(slug) ?? playbook.get(SLUG_ALIASES[slug] ?? '') ?? null;
+}
+
 export interface PricedItem {
   point: string;
   explanation: string | null;
@@ -520,7 +577,7 @@ export function priceToTotal(
 ): PricedItem[] {
   const items: PricedItem[] = points.map((p) => ({
     ...p,
-    entry: playbook.get(playbookSlug(p.point)) ?? null,
+    entry: findPlaybookEntry(p.point, playbook),
     priceCents: null,
   }));
 
@@ -533,15 +590,24 @@ export function priceToTotal(
     return items;
   }
 
+  // A zero-price entry is an umbrella line for the items beneath it, so it
+  // must not absorb any of the quote — otherwise the parts silently shrink to
+  // make room for a heading.
   const weight = priced.reduce((s, i) => s + i.entry!.priceCents, 0);
   if (weight <= 0) return items;
 
   for (const i of priced) {
+    if (i.entry!.priceCents === 0) {
+      i.priceCents = 0; // umbrella line — shown as "priced below", not $0
+      continue;
+    }
     const share = (i.entry!.priceCents / weight) * totalCents;
     i.priceCents = Math.round(share / 1000) * 1000; // nearest $10
   }
   const drift = totalCents - priced.reduce((s, i) => s + (i.priceCents ?? 0), 0);
-  const biggest = priced.reduce((a, b) => ((a.priceCents ?? 0) >= (b.priceCents ?? 0) ? a : b));
+  const biggest = priced
+    .filter((i) => (i.priceCents ?? 0) > 0)
+    .reduce((a, b) => ((a.priceCents ?? 0) >= (b.priceCents ?? 0) ? a : b), priced[0]);
   biggest.priceCents = (biggest.priceCents ?? 0) + drift;
 
   return items;

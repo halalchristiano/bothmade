@@ -127,6 +127,11 @@ model Project {
   // reassurance — set manually by the team, not derived/computed.
   estimatedCompletionDate DateTime?
 
+  // The actual deployed/shipped product — set once, when there's finally
+  // something real to point at. Powers the "your project is live" delivery
+  // moment on the client dashboard once status reaches Complete.
+  liveUrl String?
+
   // Deliverables
   deliverables String? // JSON array of milestone/deliverable objects
 

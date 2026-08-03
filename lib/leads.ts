@@ -157,7 +157,9 @@ export const LOST_REASON_PRESETS = [
 ] as const;
 
 export function isPainPointKey(value: string): value is PainPointKey {
-  return value in PAIN_POINTS;
+  // Own-property check, not `in` — otherwise "toString" and "constructor"
+  // read as valid pain points and index into Object.prototype.
+  return Object.prototype.hasOwnProperty.call(PAIN_POINTS, value);
 }
 
 // Turns a lead's comma-separated pain point keys into a natural-language

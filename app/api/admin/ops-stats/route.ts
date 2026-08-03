@@ -106,6 +106,17 @@ export async function GET(request: Request) {
       select: { id: true, company: true, mockupRequestedAt: true },
     });
 
+    // A project can reach Complete with nobody having actually pointed the
+    // client's dashboard at the shipped site — the celebratory "delivery
+    // moment" quietly ships without its CTA. This is the one thing left to
+    // do after everything else is done, so it needs its own nudge.
+    const readyToDeliver = await prisma.project.findMany({
+      where: { statusStage: { gte: 4 }, liveUrl: null },
+      orderBy: { updatedAt: 'desc' },
+      take: 20,
+      include: { client: { select: { company: true } } },
+    });
+
     // "Nothing has happened for a week" covers two opposite situations: work
     // that's been dropped, and work that can't move until the client comes
     // back. One needs doing, the other needs chasing — and mixing them makes
@@ -208,6 +219,7 @@ export async function GET(request: Request) {
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
           pendingMockups: pendingMockups.map((l) => ({ id: l.id, company: l.company, mockupRequestedAt: l.mockupRequestedAt })),
+          readyToDeliver: readyToDeliver.map((p) => ({ id: p.id, name: p.name, company: p.client.company, updatedAt: p.updatedAt })),
           revenueThisMonth,
           revenueLastMonth,
           revenueHistory,

@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import InfoTooltip from '@/components/InfoTooltip';
 import {
   LEAD_STATUSES,
   LEAD_STATUS_LABELS,
@@ -26,6 +25,9 @@ import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
+import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
+import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 import {
   Mail,
   Phone,
@@ -41,10 +43,10 @@ import {
   MoreVertical,
   Trash2,
   MailX,
+  ChevronRight,
   FileSignature,
 } from 'lucide-react';
 import {
-  ADD_ON_CATEGORIES,
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
@@ -66,7 +68,6 @@ import {
   isTimelineKey,
   sanitizeCustomItems,
   withBaseIncludes,
-  type AddOnCategory,
   type AddOnKey,
   type BaseService,
   type ClientType,
@@ -705,27 +706,34 @@ export default function LeadDetailPage() {
   // desk days later. Stacked vertically that meant scrolling past a proposal
   // builder to reach a note field mid-call.
   const [tab, setTab] = useState<'brief' | 'call' | 'proposal'>('brief');
+  // Tracks what's been collapsed, not what's been expanded: every item shows
+  // its full coaching detail by default, because a rep new to this needs the
+  // words in front of him, not one tap away.
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
+  const [allCollapsed, setAllCollapsed] = useState(false);
+  const [foldedSteps, setFoldedSteps] = useState<Set<number>>(new Set());
   const [showScript, setShowScript] = useState(false);
   const [scriptCopied, setScriptCopied] = useState(false);
 
-  const [pendingLostStatus, setPendingLostStatus] = useState(false);
+  // This page reloads from the server rather than holding a local list, so
+  // the hook does no optimistic write here — just the PATCH, the rollback-free
+  // refresh, and the shared "lost needs a reason" gate.
+  const {
+    changeStatus,
+    lostTarget: pendingLostStatus,
+    confirmLost: handleConfirmLost,
+    cancelLost,
+    error: statusError,
+  } = useLeadStatusChange<{ id: string; company: string; status: LeadStatus }>({
+    onSaved: () => load(),
+  });
 
-  const handleStatusChange = async (status: LeadStatus) => {
-    if (status === 'lost') {
-      setPendingLostStatus(true);
-      return;
-    }
-    await fetch(`/api/admin/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    load();
+  const handleStatusChange = (status: LeadStatus) => {
+    if (!lead) return;
+    changeStatus({ id: lead.id, company: lead.company, status: lead.status }, status);
   };
 
   const [requestingMockup, setRequestingMockup] = useState(false);
-  const [mockupLinkDraft, setMockupLinkDraft] = useState('');
-  const [deliveringMockup, setDeliveringMockup] = useState(false);
 
   const handleRequestMockup = async () => {
     setRequestingMockup(true);
@@ -738,22 +746,6 @@ export default function LeadDetailPage() {
       load();
     } finally {
       setRequestingMockup(false);
-    }
-  };
-
-  const handleDeliverMockup = async () => {
-    if (!mockupLinkDraft.trim()) return;
-    setDeliveringMockup(true);
-    try {
-      await fetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mockupUrl: mockupLinkDraft.trim() }),
-      });
-      setMockupLinkDraft('');
-      load();
-    } finally {
-      setDeliveringMockup(false);
     }
   };
 
@@ -807,16 +799,6 @@ export default function LeadDetailPage() {
     } finally {
       setDeletingLead(false);
     }
-  };
-
-  const handleConfirmLost = async (reason: string) => {
-    setPendingLostStatus(false);
-    await fetch(`/api/admin/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'lost', lostReason: reason }),
-    });
-    load();
   };
 
   const handleToggleHot = async () => {
@@ -1179,6 +1161,7 @@ export default function LeadDetailPage() {
             <a
               href={`tel:${lead.phone}`}
               title="Call"
+              aria-label={`Call ${lead.company}`}
               className="flex items-center justify-center w-9 h-9 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 transition-colors"
             >
               <Phone size={15} />
@@ -1189,6 +1172,7 @@ export default function LeadDetailPage() {
               onClick={handleSendColdDraft}
               disabled={sendingColdDraft}
               title="Send cold email"
+              aria-label="Send cold email"
               className="flex items-center justify-center w-9 h-9 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-emerald-300 disabled:opacity-50 hover:bg-emerald-400/20 transition-colors"
             >
               <Send size={15} />
@@ -1206,20 +1190,38 @@ export default function LeadDetailPage() {
             <Mail size={14} /> Compose email
           </button>
 
-          <div className="relative">
+          <div
+            className="relative"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && actionsMenuOpen) {
+                e.stopPropagation();
+                setActionsMenuOpen(false);
+                setConfirmingDeleteLead(false);
+              }
+            }}
+          >
             <button
               onClick={() => setActionsMenuOpen((v) => !v)}
               title="More actions"
+              aria-label="More actions"
+              aria-haspopup="menu"
+              aria-expanded={actionsMenuOpen}
               className={`flex items-center justify-center w-9 h-9 rounded-full border transition-colors ${
                 actionsMenuOpen ? 'border-white/30 bg-white/10' : 'border-white/15 hover:bg-white/5'
               }`}
             >
-              <MoreVertical size={15} />
+              <MoreVertical size={15} aria-hidden="true" />
             </button>
             {actionsMenuOpen && (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setActionsMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#0b0714] shadow-xl z-20 p-1.5">
+                {/* Click-outside catcher. aria-hidden so it isn't announced
+                    as an empty region sitting over the whole page. */}
+                <div aria-hidden="true" className="fixed inset-0 z-10" onClick={() => setActionsMenuOpen(false)} />
+                <div
+                  role="menu"
+                  aria-label="Lead actions"
+                  className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#0b0714] shadow-xl z-20 p-1.5"
+                >
                   {confirmingDeleteLead ? (
                     <div className="p-2">
                       <p className="text-xs text-white/50 mb-2">Delete {lead.company} permanently?</p>
@@ -1241,10 +1243,11 @@ export default function LeadDetailPage() {
                     </div>
                   ) : (
                     <button
+                      role="menuitem"
                       onClick={() => setConfirmingDeleteLead(true)}
                       className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-sm text-red-300/80 hover:bg-red-400/10 hover:text-red-300 transition-colors"
                     >
-                      <Trash2 size={14} /> Delete lead
+                      <Trash2 size={14} aria-hidden="true" /> Delete lead
                     </button>
                   )}
                 </div>
@@ -1522,6 +1525,40 @@ export default function LeadDetailPage() {
 
         // Essentials add up to the low figure, upsells make up the rest to the
         // high figure, so the itemised column always agrees with the headline.
+        // The derived path used to render a stripped-down card with no plain
+        // English, no words to say and no note box — so any lead imported
+        // without dossier columns gave the rep none of the help. Same card
+        // for both now: where the playbook has no row for a catalogue add-on,
+        // one is built from the add-on's own copy, whose benefit line is
+        // already written addressed to the customer and reads as a pitch.
+        const asPricedItem = (
+          it: { key: AddOnKey; label: string; description: string; price: number; becauseOf: string[] },
+          kind: 'essential' | 'upsell'
+        ): PricedItem => {
+          const fromPlaybook = playbookMap.get(it.key.replace(/[^a-z0-9]/g, ''));
+          return {
+            point: it.label,
+            explanation: it.becauseOf.length
+              ? `${kind === 'essential' ? 'Needed because' : 'Worth pitching because'}: ${it.becauseOf
+                  .join(', ')
+                  .toLowerCase()}`
+              : null,
+            priceCents: it.price,
+            entry:
+              fromPlaybook ?? {
+                slug: it.key,
+                label: it.label,
+                kind,
+                priceCents: it.price,
+                whatItIs: it.description,
+                benefit: '',
+                pitch: ADD_ONS[it.key]?.benefit ?? '',
+                justification: '',
+                objection: null,
+              },
+          };
+        };
+
         const pricedNeeds = priceToTotal(writtenNeeds, playbookMap, hasRange ? low : null);
         const pricedUpsell = priceToTotal(writtenUpsell, playbookMap, hasRange ? Math.max(0, high - low) : null);
 
@@ -1547,41 +1584,173 @@ export default function LeadDetailPage() {
           high,
         });
 
-        const Step = ({ n, title, hint }: { n: number; title: string; hint: string }) => (
-          <div className="flex items-start gap-3 mb-3">
-            <span className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-white/10 text-[11px] font-bold text-white/70">
-              {n}
-            </span>
-            <div className="min-w-0">
-              <h3 className="text-sm font-bold text-white/90">{title}</h3>
-              <p className="text-xs text-white/40 mt-0.5">{hint}</p>
-            </div>
-          </div>
+        // Each step folds away so a long brief can be skimmed. Open by
+        // default — nothing is hidden unless he chooses to hide it.
+        const Step = ({ n, title, hint }: { n: number; title: string; hint: string }) => {
+          const folded = foldedSteps.has(n);
+          return (
+            <button
+              onClick={() =>
+                setFoldedSteps((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(n)) next.delete(n);
+                  else next.add(n);
+                  return next;
+                })
+              }
+              className="w-full flex items-start gap-3 mb-3 text-left"
+            >
+              <span className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-white/10 text-[11px] font-bold text-white/70">
+                {n}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-bold text-white/90">{title}</h3>
+                <p className="text-xs text-white/40 mt-0.5">{hint}</p>
+              </div>
+              <ChevronRight
+                size={16}
+                className={`shrink-0 mt-0.5 text-white/30 transition-transform ${folded ? '' : 'rotate-90'}`}
+              />
+            </button>
+          );
+        };
+        const stepOpen = (n: number) => !foldedSteps.has(n);
+
+
+        /**
+         * One note box, shared by every card in the brief. Pain points had no
+         * way to record what was said about them while the priced items did —
+         * so the same conversation got written down in one place and lost in
+         * the other, depending on which box prompted it.
+         */
+        const SectionNote = ({ pointKey }: { pointKey: string }) => (
+  <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
+                    <StickyNote size={13} /> Their feedback on this
+                  </p>
+                  {(() => {
+                    const prefix = `[${pointKey}]`;
+                    const lastNote = lead.activities
+                      .filter((a) => a.content.startsWith(prefix))
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+                    if (!lastNote) return null;
+                    return (
+                      <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">
+                        <span className="font-semibold text-white/80">Last time: </span>
+                        {lastNote.content.slice(prefix.length).trim()}
+                        <span className="text-white/35"> · {new Date(lastNote.createdAt).toLocaleDateString()}</span>
+                      </p>
+                    );
+                  })()}
+                  <textarea
+                    value={sectionNoteDrafts[pointKey] || ''}
+                    onChange={(e) =>
+                      setSectionNoteDrafts((prev) => ({ ...prev, [pointKey]: e.target.value }))
+                    }
+                    placeholder="What did they say about this?"
+                    rows={2}
+                    className="w-full px-2.5 py-2 rounded-md bg-black/30 border border-sky-400/25 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/60 resize-none"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <label className="flex items-center gap-1.5 text-xs text-white/60 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={!!sectionNoteObjection[pointKey]}
+                        onChange={(e) =>
+                          setSectionNoteObjection((prev) => ({ ...prev, [pointKey]: e.target.checked }))
+                        }
+                      />
+                      This was an objection
+                    </label>
+                    <button
+                      onClick={() => handleLogSectionNote(pointKey)}
+                      disabled={sectionNoteSaving[pointKey] || !(sectionNoteDrafts[pointKey] || '').trim()}
+                      className="px-4 py-1.5 rounded-md bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                    >
+                      {sectionNoteSaving[pointKey] ? 'Logging...' : 'Log to timeline'}
+                    </button>
+                  </div>
+                  {sectionNoteJustLogged[pointKey] && (
+                    <p className="text-xs font-semibold text-emerald-300 mt-1.5">Logged ✓</p>
+                  )}
+                  {sectionNoteError[pointKey] && (
+                    <p className="text-xs text-red-300 mt-1.5">{sectionNoteError[pointKey]}</p>
+                  )}
+                </div>
         );
 
         // A priced line item: their bespoke wording, then everything a rep
         // needs if the customer pushes back on it — cost, what it actually
         // is, the words to sell it, and why the price is fair.
         const PricedCard = ({ i, tone }: { i: PricedItem; tone: 'green' | 'amber' }) => {
+          // Everything shows by default. Collapsing is there for scanning a
+          // long list, not a default — hiding the pitch and the note box to
+          // save scrolling removed the reason the page exists.
+          const open = !collapsedItems.has(i.point);
+          const toggle = () =>
+            setCollapsedItems((prev) => {
+              const next = new Set(prev);
+              if (next.has(i.point)) next.delete(i.point);
+              else next.add(i.point);
+              return next;
+            });
           const c =
             tone === 'green'
               ? { box: 'border-emerald-400/20 bg-emerald-400/[0.05]', head: 'text-emerald-100', price: 'text-emerald-300' }
               : { box: 'border-amber-400/20 bg-amber-400/[0.05]', head: 'text-amber-100', price: 'text-amber-300' };
           return (
-            <div className={`rounded-xl border p-3.5 min-w-0 ${c.box}`}>
-              <div className="flex items-start justify-between gap-3">
-                <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
-                {i.priceCents !== null && (
-                  <p className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
-                    {tone === 'amber' ? '+' : ''}
-                    {formatCents(i.priceCents)}
+            <div className={`rounded-xl border p-3 min-w-0 ${c.box}`}>
+              <button onClick={toggle} className="w-full text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
+                  <span className="shrink-0 flex items-center gap-1.5">
+                    {i.priceCents !== null && i.priceCents > 0 ? (
+                      <span className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
+                        {tone === 'amber' ? '+' : ''}
+                        {formatCents(i.priceCents)}
+                      </span>
+                    ) : i.priceCents === 0 ? (
+                      // An umbrella line for the items beneath it — "$0" would
+                      // read as free, which is the opposite of what it means.
+                      <span className="text-xs font-semibold whitespace-nowrap text-white/35">Priced below</span>
+                    ) : (
+                      // A blank where a price should be reads as an oversight,
+                      // and leaves the rep with nothing to say if asked.
+                      <span className="text-xs font-bold whitespace-nowrap text-white/45">Price: TBD</span>
+                    )}
+                    {i.entry && (
+                      <ChevronRight
+                        size={13}
+                        className={`text-white/30 transition-transform ${open ? 'rotate-90' : ''}`}
+                      />
+                    )}
+                  </span>
+                </div>
+                {i.explanation && (
+                  <p
+                    className={`text-xs text-white/60 leading-relaxed mt-1.5 break-words ${
+                      open ? '' : 'line-clamp-1'
+                    }`}
+                  >
+                    {i.explanation}
                   </p>
                 )}
-              </div>
-              {i.explanation && (
-                <p className="text-xs text-white/60 leading-relaxed mt-1.5 break-words">{i.explanation}</p>
+
+              </button>
+              {i.priceCents === null && open && (
+                <div className="mt-2.5 rounded-lg border-l-2 border-amber-400/50 bg-white/[0.03] px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-amber-300/80 font-semibold mb-1">
+                    If they ask what this costs
+                  </p>
+                  <p className="text-xs text-white/80 italic leading-relaxed break-words">
+                    "This one depends on how much there is to do — how many pages, how much of your data moves
+                    across, that sort of thing. I'll come back to you with a figure once I know, and it's fixed
+                    before we start. You won't get a surprise on the invoice."
+                  </p>
+                </div>
               )}
-              {i.entry && (
+
+              {i.entry && open && (
                 <>
                   <div className="mt-2.5 rounded-lg bg-white/[0.03] px-3 py-2.5">
                     <p className="text-[10px] uppercase tracking-wide text-white/40 font-semibold mb-1">
@@ -1618,63 +1787,8 @@ export default function LeadDetailPage() {
                 </>
               )}
 
-              {/* Quick note — jot their reaction to this exact item while on
-                  the call; logs straight to the lead's timeline. Its own
-                  high-contrast box, not just a thin divider, so it doesn't
-                  get lost under all the pitch copy above it. */}
-              <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
-                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
-                  <StickyNote size={13} /> Their feedback on this
-                </p>
-                {(() => {
-                  const prefix = `[${i.point}]`;
-                  const lastNote = lead.activities
-                    .filter((a) => a.content.startsWith(prefix))
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-                  if (!lastNote) return null;
-                  return (
-                    <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">
-                      <span className="font-semibold text-white/80">Last time: </span>
-                      {lastNote.content.slice(prefix.length).trim()}
-                      <span className="text-white/35"> · {new Date(lastNote.createdAt).toLocaleDateString()}</span>
-                    </p>
-                  );
-                })()}
-                <textarea
-                  value={sectionNoteDrafts[i.point] || ''}
-                  onChange={(e) =>
-                    setSectionNoteDrafts((prev) => ({ ...prev, [i.point]: e.target.value }))
-                  }
-                  placeholder="What did they say about this?"
-                  rows={2}
-                  className="w-full px-2.5 py-2 rounded-md bg-black/30 border border-sky-400/25 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/60 resize-none"
-                />
-                <div className="flex items-center justify-between mt-2">
-                  <label className="flex items-center gap-1.5 text-xs text-white/60 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={!!sectionNoteObjection[i.point]}
-                      onChange={(e) =>
-                        setSectionNoteObjection((prev) => ({ ...prev, [i.point]: e.target.checked }))
-                      }
-                    />
-                    This was an objection
-                  </label>
-                  <button
-                    onClick={() => handleLogSectionNote(i.point)}
-                    disabled={sectionNoteSaving[i.point] || !(sectionNoteDrafts[i.point] || '').trim()}
-                    className="px-4 py-1.5 rounded-md bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
-                  >
-                    {sectionNoteSaving[i.point] ? 'Logging...' : 'Log to timeline'}
-                  </button>
-                </div>
-                {sectionNoteJustLogged[i.point] && (
-                  <p className="text-xs font-semibold text-emerald-300 mt-1.5">Logged ✓</p>
-                )}
-                {sectionNoteError[i.point] && (
-                  <p className="text-xs text-red-300 mt-1.5">{sectionNoteError[i.point]}</p>
-                )}
-              </div>
+              <SectionNote pointKey={i.point} />
+
             </div>
           );
         };
@@ -1870,6 +1984,7 @@ export default function LeadDetailPage() {
                   title="What's wrong with their business right now"
                   hint="Their problems, in plain English. Open the call with these — not with what we sell."
                 />
+                {stepOpen(1) && (
                 <div className="space-y-2.5 mb-6">
                   {writtenPains.map((item, i) => {
                     // Their bespoke wording stays the headline and the body;
@@ -1899,6 +2014,7 @@ export default function LeadDetailPage() {
                             "{painPointPitch(item, lead.company)}"
                           </p>
                         </div>
+                        <SectionNote pointKey={item.point} />
                       </div>
                     );
                   })}
@@ -1942,19 +2058,37 @@ export default function LeadDetailPage() {
                                 "{brief.sayThis}"
                               </p>
                             </div>
+                            <SectionNote pointKey={PAIN_POINTS[key]} />
                           </div>
                         );
                       })}
                     </>
                   )}
                 </div>
+                )}
 
                 {/* ---- Step 2: the core sell ---- */}
+                <div className="flex justify-end -mb-1">
+                  <button
+                    onClick={() => {
+                      const next = !allCollapsed;
+                      setAllCollapsed(next);
+                      setCollapsedItems(
+                        next ? new Set([...pricedNeeds, ...pricedUpsell].map((i) => i.point)) : new Set()
+                      );
+                    }}
+                    className="text-[11px] font-semibold text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    {allCollapsed ? 'Show all the detail' : 'Collapse to just names and prices'}
+                  </button>
+                </div>
+
                 <Step
                   n={2}
                   title="What they definitely need"
                   hint="This is the actual deal. Without these the problems above aren't fixed — don't discount it away."
                 />
+                {stepOpen(2) && (
                 <div className="space-y-2.5 mb-3">
                   {useWrittenNeeds ? (
                     pricedNeeds.map((item, i) => <PricedCard key={i} i={item} tone="green" />)
@@ -1979,28 +2113,12 @@ export default function LeadDetailPage() {
                         </p>
                       </div>
                       {recs.needs.map((item) => (
-                        <div
-                          key={item.key}
-                          className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] p-3.5 min-w-0"
-                        >
-                          <div className="flex items-start justify-between gap-3 mb-1">
-                            <p className="text-sm font-bold text-emerald-100 break-words">{item.label}</p>
-                            <p className="text-sm font-bold text-emerald-300 whitespace-nowrap">
-                              {formatCents(item.price)}
-                            </p>
-                          </div>
-                          <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">
-                            {item.description}
-                          </p>
-                          <p className="text-xs text-emerald-200/70 leading-relaxed break-words">
-                            <span className="font-semibold">Needed because: </span>
-                            {item.becauseOf.join(', ').toLowerCase()}
-                          </p>
-                        </div>
+                        <PricedCard key={item.key} i={asPricedItem(item, 'essential')} tone="green" />
                       ))}
                     </>
                   )}
                 </div>
+                )}
 
                 {/* ---- Step 3: upsells ---- */}
                 {(useWrittenUpsell || recs.upsell.length > 0) && (
@@ -2010,30 +2128,19 @@ export default function LeadDetailPage() {
                       title="Extras you can add on"
                       hint="Only raise these once they've agreed to the main build. Too early and the price just looks scary."
                     />
+                    {stepOpen(3) && (
                     <div className="space-y-2.5 mb-3">
                       {useWrittenUpsell
                         ? pricedUpsell.map((item, i) => <PricedCard key={i} i={item} tone="amber" />)
                         : recs.upsell.map((item) => (
-                            <div
+                            <PricedCard
                               key={item.key}
-                              className="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3.5 min-w-0"
-                            >
-                              <div className="flex items-start justify-between gap-3 mb-1">
-                                <p className="text-sm font-bold text-amber-100 break-words">{item.label}</p>
-                                <p className="text-sm font-bold text-amber-300 whitespace-nowrap">
-                                  +{formatCents(item.price)}
-                                </p>
-                              </div>
-                              <p className="text-xs text-white/60 leading-relaxed mb-1.5 break-words">
-                                {item.description}
-                              </p>
-                              <p className="text-xs text-amber-200/70 leading-relaxed break-words">
-                                <span className="font-semibold">Worth pitching because: </span>
-                                {item.becauseOf.join(', ').toLowerCase()}
-                              </p>
-                            </div>
+                              i={asPricedItem(item, 'upsell')}
+                              tone="amber"
+                            />
                           ))}
                     </div>
+                    )}
                   </>
                 )}
 
@@ -2043,6 +2150,7 @@ export default function LeadDetailPage() {
                   title="What to quote"
                   hint="Say the lower number first. The higher one is only if they take every extra."
                 />
+                {stepOpen(4) && (
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3.5 min-w-0">
                     <p className="text-[11px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
@@ -2061,6 +2169,7 @@ export default function LeadDetailPage() {
                     <p className="text-[11px] text-amber-200/60 mt-1 leading-snug">Core plus every extra above</p>
                   </div>
                 </div>
+                )}
                 {glossary.length > 0 && (
                   <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
                     <button
@@ -2150,6 +2259,7 @@ export default function LeadDetailPage() {
                 <select
                   value={lead.status}
                   onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
+                  aria-label="Lead status"
                   className={`${inputClass} w-full min-w-0 border-purple-400/20 focus:ring-purple-400/50`}
                 >
                   {LEAD_STATUSES.map((s) => (
@@ -2158,6 +2268,13 @@ export default function LeadDetailPage() {
                     </option>
                   ))}
                 </select>
+                {/* A stage change that didn't save used to fail silently here
+                    — the select simply snapped back on the next reload. */}
+                {statusError && (
+                  <p role="alert" className="text-xs text-red-300 mt-1.5">
+                    {statusError}
+                  </p>
+                )}
               </div>
               <div className="min-w-0 relative">
                 <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-sky-300/70 mb-1.5">
@@ -2535,21 +2652,11 @@ export default function LeadDetailPage() {
                 <p className="text-xs text-amber-300 mb-3">
                   Requested {lead.mockupRequestedAt ? new Date(lead.mockupRequestedAt).toLocaleDateString() : ''} — waiting on the team.
                 </p>
-                <div className="flex gap-2">
-                  <input
-                    value={mockupLinkDraft}
-                    onChange={(e) => setMockupLinkDraft(e.target.value)}
-                    placeholder="Paste the finished mockup link here once it's ready..."
-                    className={`${inputClass} text-sm`}
-                  />
-                  <button
-                    onClick={handleDeliverMockup}
-                    disabled={deliveringMockup || !mockupLinkDraft.trim()}
-                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-colors whitespace-nowrap"
-                  >
-                    {deliveringMockup ? 'Saving...' : 'Mark Delivered'}
-                  </button>
-                </div>
+                <MockupDeliveryForm
+                  leadId={leadId}
+                  onDelivered={load}
+                  placeholder="Paste the finished mockup link here once it's ready..."
+                />
               </>
             ) : (
               <>
@@ -2754,84 +2861,17 @@ export default function LeadDetailPage() {
           <div className="space-y-8">
             <div>
               <StepLabel n={1} label="Base Service" />
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
-                  ([key, service]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setProposalService(key)}
-                      className={`text-left rounded-xl p-4 border transition-all ${
-                        proposalService === key
-                          ? 'bg-gradient-to-br from-sky-400/20 to-purple-500/20 border-sky-400/50 shadow-[0_0_0_1px_rgba(56,189,248,0.3)]'
-                          : 'border-white/10 hover:border-white/25 hover:bg-white/[0.03]'
-                      }`}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <span className="font-semibold text-sm">{service.label}</span>
-                        <InfoTooltip text={`${service.description} Best for: ${service.bestFor}`} />
-                      </span>
-                      <p className="text-xs text-white/40 mt-0.5">{formatCents(service.price)}</p>
-                    </button>
-                  )
-                )}
-              </div>
+              <BaseServicePicker value={proposalService} onChange={setProposalService} columns={3} />
             </div>
 
             <div>
               <StepLabel n={2} label="Add-Ons" hint={`${proposalAddOns.length} selected`} />
-              <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
-                {(Object.entries(ADD_ON_CATEGORIES) as [AddOnCategory, (typeof ADD_ON_CATEGORIES)[AddOnCategory]][]).map(
-                  ([catKey, cat]) => {
-                    const entries = (Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).filter(
-                      ([, a]) => a.category === catKey
-                    );
-                    return (
-                      <div key={catKey}>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/35 mb-2">
-                          {cat.label}
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {entries.map(([key, addOn]) => {
-                            const includedInBase = isIncludedInBase(proposalService, key);
-                            return (
-                            <label
-                              key={key}
-                              className={`flex items-start gap-2 rounded-lg p-3 border transition-colors ${
-                                includedInBase ? 'cursor-default' : 'cursor-pointer'
-                              } ${
-                                proposalAddOns.includes(key)
-                                  ? 'bg-gradient-to-r from-sky-400/15 to-purple-500/15 border-sky-400/40'
-                                  : 'border-white/10 hover:border-white/25'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                className="mt-0.5"
-                                checked={proposalAddOns.includes(key)}
-                                onChange={() => toggleProposalAddOn(key)}
-                                disabled={includedInBase}
-                              />
-                              <span className="flex-1">
-                                <span className="text-sm flex items-center gap-1.5">
-                                  {addOn.label}
-                                  <InfoTooltip text={`${addOn.description} ${addOn.benefit}`} />
-                                </span>
-                                <span className="text-xs text-white/35">{addOn.description}</span>
-                              </span>
-                              {includedInBase ? (
-                                <span className="text-xs text-emerald-300 whitespace-nowrap">Included</span>
-                              ) : (
-                                <span className="text-xs text-white/40 whitespace-nowrap">+{formatCents(addOn.price)}</span>
-                              )}
-                            </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  }
-                )}
+              <div className="max-h-80 overflow-y-auto pr-1">
+                <AddOnPicker
+                  baseService={proposalService}
+                  selected={proposalAddOns}
+                  onToggle={toggleProposalAddOn}
+                />
               </div>
             </div>
 
@@ -3170,10 +3210,10 @@ export default function LeadDetailPage() {
 
       )}
 
-      {pendingLostStatus && lead && (
+      {pendingLostStatus && (
         <LostReasonModal
-          companyName={lead.company}
-          onCancel={() => setPendingLostStatus(false)}
+          companyName={pendingLostStatus.company}
+          onCancel={cancelLost}
           onConfirm={handleConfirmLost}
         />
       )}

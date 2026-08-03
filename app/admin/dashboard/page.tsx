@@ -34,6 +34,8 @@ import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { UndoToast } from '@/components/admin/UndoToast';
+import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
@@ -80,6 +82,7 @@ function RefreshIndicator({
       disabled={refreshing}
       className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-60"
       title="Refresh dashboard data"
+      aria-label="Refresh dashboard data"
     >
       <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
       {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
@@ -304,6 +307,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                     <a
                       href={`tel:${a.phone}`}
                       title={`Call ${a.phone}`}
+                      aria-label={`Call ${a.company}`}
                       className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors"
                     >
                       <Phone size={13} />
@@ -313,6 +317,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
                     <a
                       href={`mailto:${a.email}`}
                       title={`Email ${a.email}`}
+                      aria-label={`Email ${a.company}`}
                       className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
                     >
                       <Mail size={13} />
@@ -700,6 +705,7 @@ function SalesDashboard({
                         <a
                           href={`tel:${l.phone}`}
                           title={`Call ${l.phone}`}
+                          aria-label={`Call ${l.company}`}
                           className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors"
                         >
                           <Phone size={13} />
@@ -709,6 +715,7 @@ function SalesDashboard({
                         <a
                           href={`mailto:${l.email}`}
                           title={`Email ${l.email}`}
+                          aria-label={`Email ${l.company}`}
                           className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
                         >
                           <Mail size={13} />
@@ -749,29 +756,6 @@ function SalesDashboard({
 
 function BroadcastComposer() {
   const [open, setOpen] = useState(false);
-  const [content, setContent] = useState('');
-  const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState('');
-
-  const handleSend = async () => {
-    if (!content.trim()) return;
-    setSending(true);
-    setStatus('');
-    try {
-      const response = await fetch('/api/admin/broadcast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, segment: 'active' }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setStatus(`Sent to ${data.projectsNotified} project${data.projectsNotified === 1 ? '' : 's'} (${data.emailsSent} email${data.emailsSent === 1 ? '' : 's'} sent).`);
-        setContent('');
-      }
-    } finally {
-      setSending(false);
-    }
-  };
 
   if (!open) {
     return (
@@ -793,21 +777,13 @@ function BroadcastComposer() {
           Cancel
         </button>
       </div>
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
+      <BroadcastForm
+        endpoint="/api/admin/broadcast"
+        body={{ segment: 'active' }}
         placeholder="e.g. We'll be closed for the holiday on Dec 25 — replies may be a day slower than usual."
-        rows={3}
-        className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 resize-none focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all mb-3"
+        submitLabel="Send to All Active Clients"
+        describeResult={describeBroadcast}
       />
-      {status && <p className="text-sm text-emerald-300 mb-3">{status}</p>}
-      <button
-        onClick={handleSend}
-        disabled={sending || !content.trim()}
-        className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-      >
-        {sending ? 'Sending...' : 'Send to All Active Clients'}
-      </button>
     </Card>
   );
 }
@@ -820,33 +796,6 @@ function MockupRequestRow({
   onDelivered: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSave = async () => {
-    if (!url.trim()) return;
-    setSaving(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/admin/leads/${request.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mockupUrl: url.trim() }),
-      });
-      if (!res.ok) {
-        setError("Couldn't save that link — try again.");
-        return;
-      }
-      setUrl('');
-      setOpen(false);
-      onDelivered();
-    } catch {
-      setError('Could not reach the server — check your connection.');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <div className="rounded-xl border border-white/10 px-3 py-2.5">
@@ -860,6 +809,7 @@ function MockupRequestRow({
           </span>
           <button
             onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
             className="text-xs px-2.5 py-1 rounded-lg border border-white/20 hover:bg-white/5 transition-colors whitespace-nowrap"
           >
             {open ? 'Cancel' : 'Add Link'}
@@ -867,24 +817,19 @@ function MockupRequestRow({
         </div>
       </div>
       {open && (
-        <div className="flex gap-2 mt-2">
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste mockup link..."
+        <div className="mt-2">
+          <MockupDeliveryForm
+            leadId={request.id}
+            onDelivered={() => {
+              setOpen(false);
+              onDelivered();
+            }}
+            submitLabel="Deliver"
+            size="sm"
             autoFocus
-            className="flex-1 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/50"
           />
-          <button
-            onClick={handleSave}
-            disabled={saving || !url.trim()}
-            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
-          >
-            {saving ? 'Saving...' : 'Deliver'}
-          </button>
         </div>
       )}
-      {error && <p className="text-xs text-red-300 mt-1.5">{error}</p>}
     </div>
   );
 }

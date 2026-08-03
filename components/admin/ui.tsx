@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { Search, X, type LucideIcon } from 'lucide-react';
 
@@ -262,8 +262,19 @@ export function ViewTabs({
   );
 }
 
-/** Fade+rise entrance wrapper for page content — subtle, not distracting. */
+/**
+ * Fade+rise entrance wrapper for page content — subtle, not distracting.
+ *
+ * Nothing moves for anyone who's asked their OS not to animate things: for
+ * a vestibular disorder, "subtle" is not the relevant axis, and every admin
+ * page navigation runs this. The content still arrives, just without the
+ * travel — so the guard costs nothing to the people who don't need it.
+ */
 export function PageIn({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) {
+    return <div className={className}>{children}</div>;
+  }
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -365,15 +376,24 @@ export function MiniBarChart({
   selectedIndex?: number | null;
 }) {
   const max = Math.max(...data.map((d) => d.value), 1);
+  const reduceMotion = useReducedMotion();
   return (
     <div className="flex items-end gap-2 h-28">
       {data.map((d, i) => {
         const isSelected = selectedIndex === i;
         const Wrapper = onBarClick ? 'button' : 'div';
+        const height = `${Math.max((d.value / max) * 100, 3)}%`;
         return (
           <Wrapper
             key={i}
-            {...(onBarClick ? { onClick: () => onBarClick(i), type: 'button' } : {})}
+            {...(onBarClick
+              ? {
+                  onClick: () => onBarClick(i),
+                  type: 'button' as const,
+                  'aria-pressed': isSelected,
+                  'aria-label': `${d.label}: ${formatValue ? formatValue(d.value) : d.value}`,
+                }
+              : {})}
             className={`flex-1 flex flex-col items-center gap-1.5 group ${onBarClick ? 'cursor-pointer' : ''}`}
           >
             <span
@@ -383,10 +403,14 @@ export function MiniBarChart({
             >
               {formatValue ? formatValue(d.value) : d.value}
             </span>
+            {/* Bars grow into place, unless motion is turned down — a row of
+                staggered rising bars is exactly the sort of thing the
+                preference exists to stop. Reduced motion draws them full
+                height immediately; the chart is identical once settled. */}
             <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: `${Math.max((d.value / max) * 100, 3)}%` }}
-              transition={{ duration: 0.5, ease: 'easeOut', delay: i * 0.05 }}
+              initial={reduceMotion ? false : { height: 0 }}
+              animate={{ height }}
+              transition={reduceMotion ? { duration: 0 } : { duration: 0.5, ease: 'easeOut', delay: i * 0.05 }}
               className={`w-full rounded-t-sm transition-colors ${
                 isSelected
                   ? 'bg-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.6)] ring-1 ring-sky-200/60'
@@ -453,6 +477,46 @@ export function SearchFilter({
       )}
     </div>
   );
+}
+
+/** Anything inside a row that has its own click behaviour and must keep it. */
+const INTERACTIVE_CHILD = 'a, button, input, select, textarea, label, [role="button"], [role="menuitem"]';
+
+/**
+ * Makes a whole row or card openable from the keyboard, the way it already
+ * is with a mouse. Table rows and lead cards across the admin carried a bare
+ * `onClick` that navigated — invisible to anyone who can't point at it, and
+ * unreachable by Tab.
+ *
+ * Enter and Space both activate, matching what a link and a button do
+ * respectively. Events that came from a control inside the row are left
+ * alone: a row's status dropdown or select-checkbox has to work without
+ * also navigating away from the list. That covers the keyboard path too,
+ * where ticking a checkbox with Space dispatches a *click* that bubbles —
+ * the reason call sites were sprinkled with one-off `stopPropagation`
+ * handlers, inconsistently, and missed a few.
+ */
+export function clickableRowProps(onActivate: () => void, label: string) {
+  const fromInnerControl = (e: React.SyntheticEvent) => {
+    const target = e.target as HTMLElement | null;
+    return !!target && target !== e.currentTarget && !!target.closest(INTERACTIVE_CHILD);
+  };
+
+  return {
+    tabIndex: 0,
+    'aria-label': label,
+    onClick: (e: React.MouseEvent) => {
+      if (fromInnerControl(e)) return;
+      onActivate();
+    },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onActivate();
+      }
+    },
+  };
 }
 
 /**

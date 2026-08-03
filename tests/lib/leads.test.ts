@@ -1,0 +1,205 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ACTIVE_LEAD_STATUSES,
+  LEAD_STATUSES,
+  LEAD_STATUS_COLORS,
+  LEAD_STATUS_LABELS,
+  LEAD_STATUS_SHORT_LABELS,
+  PAIN_POINTS,
+  QUICK_ADD_STATUSES,
+  advanceToContactedOnOutreach,
+  buildFallbackColdEmailDraft,
+  isFurtherAlong,
+  isLeadActivityType,
+  isLeadStatus,
+  isPainPointKey,
+  painPointSentence,
+  parseSalesPoints,
+} from '@/lib/leads';
+
+/**
+ * The lead pipeline is the sales side of the money path: a stage that moves
+ * backwards, or a won deal that gets quietly re-opened by a routine email,
+ * is a deal someone stops chasing.
+ */
+
+describe('isFurtherAlong', () => {
+  it('is true only when the target is later in the pipeline', () => {
+    expect(isFurtherAlong('new', 'contacted')).toBe(true);
+    expect(isFurtherAlong('contacted', 'new')).toBe(false);
+    expect(isFurtherAlong('qualified', 'qualified')).toBe(false);
+  });
+
+  it('never re-opens a closed deal', () => {
+    // Generating a contract for a won lead must not drag it back to
+    // "contract sent", and a lost lead stays lost.
+    expect(isFurtherAlong('won', 'contract_sent')).toBe(false);
+    expect(isFurtherAlong('lost', 'contract_sent')).toBe(false);
+    expect(isFurtherAlong('won', 'lost')).toBe(false);
+  });
+
+  it('treats an unrecognised current status as behind everything', () => {
+    // indexOf returns -1, so any real target is "further along" — the safe
+    // direction, since the alternative is silently refusing to advance.
+    expect(isFurtherAlong('garbage', 'contacted')).toBe(true);
+  });
+
+  it('can advance to won from any active stage', () => {
+    for (const status of ACTIVE_LEAD_STATUSES) {
+      expect(isFurtherAlong(status, 'won'), status).toBe(true);
+    }
+  });
+});
+
+describe('advanceToContactedOnOutreach', () => {
+  it('moves an untouched lead to contacted when outreach goes out', () => {
+    expect(advanceToContactedOnOutreach('new')).toBe('contacted');
+    expect(advanceToContactedOnOutreach('researched')).toBe('contacted');
+  });
+
+  it('never drags a further-along lead backwards', () => {
+    for (const status of ['replied', 'qualified', 'proposal_sent', 'won', 'lost']) {
+      expect(advanceToContactedOnOutreach(status), status).toBe(status);
+    }
+  });
+});
+
+describe('painPointSentence', () => {
+  it('returns null when nothing is tagged', () => {
+    expect(painPointSentence('')).toBeNull();
+    expect(painPointSentence('not-a-real-key')).toBeNull();
+  });
+
+  it('reads as one clause for a single point', () => {
+    expect(painPointSentence('slow-site')).toBe('slow loading times');
+  });
+
+  it('joins two with "and", and three with an Oxford comma', () => {
+    expect(painPointSentence('slow-site,poor-seo')).toBe('slow loading times and poor / no seo');
+    expect(painPointSentence('slow-site,poor-seo,no-app')).toBe(
+      'slow loading times, poor / no seo, and no mobile app'
+    );
+  });
+
+  it('tolerates whitespace and skips unknown keys', () => {
+    expect(painPointSentence(' slow-site , nonsense , no-app ')).toBe(
+      'slow loading times and no mobile app'
+    );
+  });
+});
+
+describe('buildFallbackColdEmailDraft', () => {
+  const base = { company: 'Linpotia Cafe', painPoints: '', personalizedObservation: null };
+
+  it('always produces a parseable Subject line', () => {
+    expect(buildFallbackColdEmailDraft(base).startsWith('Subject: Thoughts on Linpotia Cafe')).toBe(true);
+  });
+
+  it('leaves the personalization tokens for send time to resolve', () => {
+    const draft = buildFallbackColdEmailDraft(base);
+    expect(draft).toContain('[First Name]');
+    expect(draft).toContain('[Sender Name]');
+  });
+
+  it('prefers a hand-written observation over the pain-point list', () => {
+    const draft = buildFallbackColdEmailDraft({
+      ...base,
+      painPoints: 'slow-site',
+      personalizedObservation: 'your booking form 404s on mobile',
+    });
+
+    expect(draft).toContain('your booking form 404s on mobile');
+    expect(draft).not.toContain('slow loading times');
+  });
+
+  it('falls back to the pain points when there is no observation', () => {
+    const draft = buildFallbackColdEmailDraft({ ...base, painPoints: 'slow-site,poor-seo' });
+    expect(draft).toContain('slow loading times and poor / no seo');
+  });
+
+  it('still writes a usable email with no personalization at all', () => {
+    const draft = buildFallbackColdEmailDraft(base);
+    expect(draft).toContain('Linpotia Cafe');
+    expect(draft).not.toContain('undefined');
+    expect(draft).not.toContain('null');
+  });
+});
+
+describe('parseSalesPoints', () => {
+  it('splits on the first colon only', () => {
+    expect(parseSalesPoints('Booking: they lose bookings after 6pm: nobody answers')).toEqual([
+      { point: 'Booking', explanation: 'they lose bookings after 6pm: nobody answers' },
+    ]);
+  });
+
+  it('keeps a colonless line as a point with no explanation', () => {
+    expect(parseSalesPoints('No online booking')).toEqual([
+      { point: 'No online booking', explanation: null },
+    ]);
+  });
+
+  it('recovers from a leading colon rather than emitting an empty point', () => {
+    expect(parseSalesPoints(': the whole line is really the point')).toEqual([
+      { point: 'the whole line is really the point', explanation: null },
+    ]);
+  });
+
+  it('drops blank lines and trims the rest', () => {
+    expect(parseSalesPoints('  A: one  \n\n  B: two  ')).toEqual([
+      { point: 'A', explanation: 'one' },
+      { point: 'B', explanation: 'two' },
+    ]);
+  });
+
+  it('returns nothing for empty input', () => {
+    expect(parseSalesPoints(null)).toEqual([]);
+    expect(parseSalesPoints(undefined)).toEqual([]);
+    expect(parseSalesPoints('')).toEqual([]);
+  });
+});
+
+describe('status vocabulary', () => {
+  it('labels, short labels and colors cover every status', () => {
+    for (const status of LEAD_STATUSES) {
+      expect(LEAD_STATUS_LABELS[status], status).toBeTruthy();
+      expect(LEAD_STATUS_SHORT_LABELS[status], status).toBeTruthy();
+      expect(LEAD_STATUS_COLORS[status], status).toBeTruthy();
+    }
+  });
+
+  it('excludes the terminal states from the active pipeline', () => {
+    expect(ACTIVE_LEAD_STATUSES).not.toContain('won');
+    expect(ACTIVE_LEAD_STATUSES).not.toContain('lost');
+    expect(ACTIVE_LEAD_STATUSES).toHaveLength(LEAD_STATUSES.length - 2);
+  });
+
+  it('offers only early stages when quick-adding', () => {
+    const deepStages = LEAD_STATUSES.indexOf('discovery_scheduled');
+    for (const status of QUICK_ADD_STATUSES) {
+      expect(LEAD_STATUSES.indexOf(status), status).toBeLessThan(deepStages);
+    }
+  });
+});
+
+describe('type guards', () => {
+  it('accepts real values', () => {
+    expect(isLeadStatus('qualified')).toBe(true);
+    expect(isLeadActivityType('call')).toBe(true);
+    expect(isPainPointKey('slow-site')).toBe(true);
+  });
+
+  it('rejects made-up values and prototype properties', () => {
+    expect(isLeadStatus('extremely_qualified')).toBe(false);
+    expect(isLeadActivityType('telepathy')).toBe(false);
+    expect(isPainPointKey('not-a-pain')).toBe(false);
+    expect(isPainPointKey('toString')).toBe(false);
+    expect(isPainPointKey('constructor')).toBe(false);
+  });
+
+  it('labels every pain point it claims to know', () => {
+    for (const [key, label] of Object.entries(PAIN_POINTS)) {
+      expect(isPainPointKey(key)).toBe(true);
+      expect(label).toBeTruthy();
+    }
+  });
+});
