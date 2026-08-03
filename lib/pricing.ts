@@ -457,17 +457,20 @@ export const CLIENT_TYPES: Record<
 > = {
   startup: {
     label: 'Startup',
-    description: 'Early stage, moving fast.',
+    description:
+      "Early stage, moving fast, comfortable trading a little polish for speed to launch. Priced lower because scope stays tight and decisions get made quickly, without layers of stakeholders to route every choice through.",
     multiplier: 0.9,
   },
   smb: {
     label: 'Small / Medium Business',
-    description: 'Established business, standard scope.',
+    description:
+      "An established business with a real customer base and a standard, well-defined scope — most projects fall here. Priced at the baseline: enough process to get it right, without the coordination overhead a larger org adds.",
     multiplier: 1,
   },
   enterprise: {
     label: 'Enterprise',
-    description: 'Larger org, added compliance and coordination needs.',
+    description:
+      "A larger organization where more people sign off, security and compliance reviews are real requirements, and integrating with existing systems takes coordination. The premium reflects that extra process, not extra work on the product itself.",
     multiplier: 1.25,
   },
 };
@@ -478,19 +481,22 @@ export const TIMELINES: Record<
 > = {
   flexible: {
     label: 'Flexible',
-    description: 'No firm deadline.',
+    description:
+      "No firm deadline — work gets slotted in around other projects rather than prioritized above them. A small discount for the schedule flexibility that gives us.",
     weeks: '12-16 weeks',
     multiplier: 0.95,
   },
   standard: {
     label: 'Standard',
-    description: 'Typical turnaround.',
+    description:
+      "The normal pace for a project this size, done properly — enough time for real design iteration and testing, without either rushing or dragging.",
     weeks: '8-12 weeks',
     multiplier: 1,
   },
   rush: {
     label: 'Rush',
-    description: 'Expedited delivery.',
+    description:
+      "A hard deadline that needs the timeline compressed — nights, weekends, and other work paused to hit it. The premium is what that actually costs, not a markup for asking.",
     weeks: '4-6 weeks',
     multiplier: 1.2,
   },
