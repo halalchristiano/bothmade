@@ -4,10 +4,40 @@ import { useEffect, useRef, useState } from 'react';
 
 const INTERACTIVE = 'a, button, [role="slider"], input, select, textarea';
 
+/**
+ * Whether the surface under the pointer is light enough that a sky-300 dot
+ * would disappear into it.
+ *
+ * Measured rather than declared. The alternative is tagging every light
+ * section by hand, which is correct exactly until somebody adds one and
+ * doesn't know the cursor needs telling — and the failure is invisible to
+ * whoever ships it, because they are looking at the section, not the
+ * pointer. Walking up for the nearest painted ancestor costs one
+ * getComputedStyle per element boundary crossed, not per frame.
+ *
+ * Backgrounds below 0.5 alpha are treated as see-through and skipped: a
+ * white/5 overlay on near-black is still a dark surface.
+ */
+function isOnLightSurface(start: Element | null): boolean {
+  for (let el = start; el && el !== document.documentElement; el = el.parentElement) {
+    const parts = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+    if (!parts) continue;
+
+    const [r, g, b, a = '1'] = parts;
+    if (Number(a) < 0.5) continue;
+
+    // Relative luminance, the same weighting the contrast maths uses.
+    const luminance = (0.2126 * Number(r) + 0.7152 * Number(g) + 0.0722 * Number(b)) / 255;
+    return luminance > 0.55;
+  }
+  return false;
+}
+
 export function LuxuryCursor() {
   const dotRef = useRef<HTMLDivElement>(null);
   const trailRef = useRef<HTMLDivElement>(null);
   const [hovering, setHovering] = useState(false);
+  const [onLight, setOnLight] = useState(false);
 
   useEffect(() => {
     const dot = dotRef.current;
@@ -42,6 +72,7 @@ export function LuxuryCursor() {
     const onOver = (e: MouseEvent) => {
       const target = e.target as Element | null;
       setHovering(Boolean(target?.closest?.(INTERACTIVE)));
+      setOnLight(isOnLightSurface(target));
     };
 
     const onLeave = () => {
@@ -82,18 +113,42 @@ export function LuxuryCursor() {
 
   return (
     <>
+      {/* Two palettes, because one cursor crosses both grounds. sky-300 is
+          the brand blue and reads well on the near-black the site mostly
+          is, but it sits at about 1.3:1 against the white contact panel —
+          and the hover state made it white on white, which is how it came
+          to erase the placeholder it was resting on rather than sit over
+          it. On a light surface it keeps the blue and drops to sky-600
+          (~4.4:1 on white), and the hover state inverts to black, mirroring
+          what white does against the dark. */}
       <div
         ref={dotRef}
         aria-hidden="true"
-        className={`lux-cursor fixed top-0 left-0 pointer-events-none z-[70] rounded-full bg-sky-300 opacity-0 transition-[width,height,background-color] duration-200 ${
-          hovering ? 'w-4 h-4 bg-white' : 'w-1.5 h-1.5'
+        className={`lux-cursor fixed top-0 left-0 pointer-events-none z-[70] rounded-full opacity-0 transition-[width,height,background-color] duration-200 ${
+          hovering ? 'w-4 h-4' : 'w-1.5 h-1.5'
+        } ${
+          onLight
+            ? hovering
+              ? 'bg-black'
+              : 'bg-sky-600'
+            : hovering
+              ? 'bg-white'
+              : 'bg-sky-300'
         }`}
       />
       <div
         ref={trailRef}
         aria-hidden="true"
         className={`lux-cursor fixed top-0 left-0 pointer-events-none z-[69] rounded-full border opacity-0 transition-[width,height,border-color] duration-300 ${
-          hovering ? 'w-14 h-14 border-white/50' : 'w-9 h-9 border-sky-300/35'
+          hovering ? 'w-14 h-14' : 'w-9 h-9'
+        } ${
+          onLight
+            ? hovering
+              ? 'border-black/45'
+              : 'border-sky-600/45'
+            : hovering
+              ? 'border-white/50'
+              : 'border-sky-300/35'
         }`}
       />
     </>
