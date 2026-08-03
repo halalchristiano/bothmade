@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { PillCTA } from '@/components/ui';
+import { COMPANY_ADDRESS_LINES, COMPANY_EMAIL } from '@/lib/company';
 
 const WORD = 'BOTHMADE';
 
@@ -92,19 +93,22 @@ export function Footer() {
             <p className="text-white/40 text-sm max-w-xs">
               Web and native Apple development. One team, from first sketch to App Store.
             </p>
-            {/* A real address is a trust signal all on its own. */}
+            {/* A real address is a trust signal all on its own — and it's the
+                same one the invoices carry, so a client checking one against
+                the other finds them identical. */}
             <address className="mt-5 not-italic text-white/30 text-xs leading-relaxed">
-              Suite 695, 80A Ruskin Ave
-              <br />
-              Welling DA16 3QQ, United Kingdom
-              <br />
+              {COMPANY_ADDRESS_LINES.map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
               <span className="text-white/25">London · Delaware</span>
             </address>
             <a
-              href="mailto:info@bothmade.studio"
+              href={`mailto:${COMPANY_EMAIL}`}
               className="mt-3 inline-block text-xs text-white/40 hover:text-sky-300 transition"
             >
-              info@bothmade.studio
+              {COMPANY_EMAIL}
             </a>
           </div>
 
