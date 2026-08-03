@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus } from '@/lib/leads';
+import type { Prisma } from '@prisma/client';
+import { pageMeta, parsePageParams, searchFilter } from '@/lib/pagination';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,20 +15,51 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
+    const assignedToId = searchParams.get('assignedToId');
+    const hotOnly = searchParams.get('hot') === 'true';
 
-    const where: Record<string, string> = {};
-    if (status && isLeadStatus(status)) where.status = status;
+    // Search moves server-side with the paging. Filtering an array the
+    // client no longer holds in full would silently search one page.
+    const search = searchFilter(searchParams.get('q'), [
+      'company',
+      'contactName',
+      'email',
+      'phone',
+    ] as const);
 
-    const leads = await prisma.lead.findMany({
-      where,
-      include: {
-        assignedTo: { select: { id: true, name: true, email: true } },
-        activities: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+    const where: Prisma.LeadWhereInput = {
+      ...(status && isLeadStatus(status) ? { status } : {}),
+      ...(assignedToId
+        ? { assignedToId: assignedToId === 'unassigned' ? null : assignedToId }
+        : {}),
+      ...(hotOnly ? { hotLead: true } : {}),
+      ...(search ?? {}),
+    };
 
-    return NextResponse.json({ success: true, leads }, { status: 200 });
+    const params = parsePageParams(searchParams);
+
+    // Count and page in parallel — the count is what lets the UI show
+    // "1–50 of 3,200" instead of pretending the page is the whole set.
+    const [total, leads] = await Promise.all([
+      prisma.lead.count({ where }),
+      prisma.lead.findMany({
+        where,
+        include: {
+          assignedTo: { select: { id: true, name: true, email: true } },
+          activities: { orderBy: { createdAt: 'desc' }, take: 1 },
+        },
+        // id breaks ties so rows can't shuffle between pages when two
+        // leads share an updatedAt.
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip: params.skip,
+        take: params.take,
+      }),
+    ]);
+
+    return NextResponse.json(
+      { success: true, leads, ...pageMeta(params, total) },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Get leads error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

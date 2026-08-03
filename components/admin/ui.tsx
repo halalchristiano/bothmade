@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { Search, X, type LucideIcon } from 'lucide-react';
 
@@ -264,10 +264,14 @@ export function ViewTabs({
 
 /** Fade+rise entrance wrapper for page content — subtle, not distracting. */
 export function PageIn({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  // Someone who has asked their OS for reduced motion has asked for a
+  // reason — vestibular disorders, migraine, motion sickness. A page that
+  // slides in on every navigation ignores that request.
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+      animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       className={className}
     >
@@ -365,6 +369,7 @@ export function MiniBarChart({
   selectedIndex?: number | null;
 }) {
   const max = Math.max(...data.map((d) => d.value), 1);
+  const reduceMotion = useReducedMotion();
   return (
     <div className="flex items-end gap-2 h-28">
       {data.map((d, i) => {
@@ -384,7 +389,7 @@ export function MiniBarChart({
               {formatValue ? formatValue(d.value) : d.value}
             </span>
             <motion.div
-              initial={{ height: 0 }}
+              initial={reduceMotion ? false : { height: 0 }}
               animate={{ height: `${Math.max((d.value / max) * 100, 3)}%` }}
               transition={{ duration: 0.5, ease: 'easeOut', delay: i * 0.05 }}
               className={`w-full rounded-t-sm transition-colors ${

@@ -12,8 +12,11 @@ export async function PATCH(
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
     const { taskId } = await params;
+    // Assignee or creator. The list shows both, so the guard has to accept
+    // both — otherwise a task you delegated appears on your board and then
+    // refuses every action you take on it.
     const task = await prisma.task.findUnique({ where: { id: taskId } });
-    if (!task || task.assignedToId !== session.userId) {
+    if (!task || (task.assignedToId !== session.userId && task.createdById !== session.userId)) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
@@ -43,8 +46,11 @@ export async function DELETE(
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
     const { taskId } = await params;
+    // Assignee or creator. The list shows both, so the guard has to accept
+    // both — otherwise a task you delegated appears on your board and then
+    // refuses every action you take on it.
     const task = await prisma.task.findUnique({ where: { id: taskId } });
-    if (!task || task.assignedToId !== session.userId) {
+    if (!task || (task.assignedToId !== session.userId && task.createdById !== session.userId)) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 

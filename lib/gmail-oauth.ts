@@ -242,6 +242,7 @@ export async function scanBouncedAddresses(
     const messages = list.messages ?? [];
 
     const addresses = new Set<string>();
+    let automated = 0;
     for (const msg of messages) {
       if (!msg.id) continue;
       const { data: full } = await gmail.users.messages.get({
@@ -297,6 +298,8 @@ export interface ReplyScanResult {
   /** Lowercased addresses that have written to us. */
   addresses: string[];
   scanned: number;
+  /** Out-of-office and similar, deliberately not counted as replies. */
+  automatedSkipped?: number;
   needsReconnect?: boolean;
   error?: string;
 }
@@ -313,6 +316,38 @@ export interface ReplyScanResult {
  * all that's needed is who replied. What they said is in the mailbox where it
  * already is.
  */
+/**
+ * Headers and subject shapes that mean "a machine answered", not a person.
+ *
+ * An out-of-office is not a buying signal, but it looked exactly like one:
+ * the lead was flagged "wrote back", jumped to the top of the call list,
+ * and — worse — the reply cleared any bounce flag on the address, because a
+ * reply is normally proof the address works. A holiday auto-reply from a
+ * mailbox that later hard-bounces would therefore un-flag a dead address
+ * and put it back into rotation.
+ *
+ * RFC 3834 gives us Auto-Submitted; Microsoft and Google both set
+ * X-Auto-Response-Suppress or Precedence on generated mail. Subject
+ * matching is the last resort for senders that set no headers at all.
+ */
+const AUTO_REPLY_SUBJECT = /\b(out of (the )?office|auto[- ]?(reply|response)|automatic reply|away from (my )?(desk|email)|on (annual |parental |maternity |paternity )?leave|vacation (reply|response)|no longer (with|at) (the )?(company|us)|thank you for (your )?(email|message|enquiry|inquiry)[.!]?$|we have received your)/i;
+
+function isAutomatedReply(headers: Array<{ name?: string | null; value?: string | null }>): boolean {
+  const get = (name: string) =>
+    headers.find((h) => h.name?.toLowerCase() === name)?.value?.toLowerCase() ?? '';
+
+  // "auto-replied" / "auto-generated" — anything but "no" means a machine.
+  const autoSubmitted = get('auto-submitted');
+  if (autoSubmitted && autoSubmitted !== 'no') return true;
+
+  if (get('x-autoreply') || get('x-autorespond') || get('x-auto-response-suppress')) return true;
+  if (/^(auto_reply|bulk|junk|list)$/.test(get('precedence'))) return true;
+  // Set by most mailing-list software; a list blast is not a reply either.
+  if (get('list-id') || get('list-unsubscribe')) return true;
+
+  return AUTO_REPLY_SUBJECT.test(get('subject'));
+}
+
 export async function scanReplyAddresses(
   client: GmailOAuthClient,
   opts: { maxMessages?: number; newerThanDays?: number } = {}
@@ -332,21 +367,45 @@ export async function scanReplyAddresses(
     const messages = list.messages ?? [];
 
     const addresses = new Set<string>();
+    let automated = 0;
     for (const msg of messages) {
       if (!msg.id) continue;
       const { data } = await gmail.users.messages.get({
         userId: 'me',
         id: msg.id,
         format: 'metadata',
-        metadataHeaders: ['From'],
+        metadataHeaders: [
+          'From',
+          'Subject',
+          'Auto-Submitted',
+          'Precedence',
+          'X-Autoreply',
+          'X-Autorespond',
+          'X-Auto-Response-Suppress',
+          'List-Id',
+          'List-Unsubscribe',
+        ],
       });
-      const from = data.payload?.headers?.find((h) => h.name?.toLowerCase() === 'from')?.value ?? '';
+      const headers = data.payload?.headers ?? [];
+
+      // An out-of-office is not somebody writing back.
+      if (isAutomatedReply(headers)) {
+        automated += 1;
+        continue;
+      }
+
+      const from = headers.find((h) => h.name?.toLowerCase() === 'from')?.value ?? '';
       // "Dave Duran <dave@example.com>" -> dave@example.com
       const match = from.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
       if (match) addresses.add(match[0].toLowerCase());
     }
 
-    return { ok: true, addresses: Array.from(addresses), scanned: messages.length };
+    return {
+      ok: true,
+      addresses: Array.from(addresses),
+      scanned: messages.length,
+      automatedSkipped: automated,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const needsReconnect = /insufficient|scope|forbidden|403/i.test(message);

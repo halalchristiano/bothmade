@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { pageMeta, parsePageParams } from '@/lib/pagination';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,6 +21,9 @@ export async function GET(request: NextRequest) {
     const where: Record<string, string> = {};
     if (clientId) where.clientId = clientId;
     if (status) where.status = status;
+
+    const params = parsePageParams(searchParams);
+    const total = await prisma.project.count({ where });
 
     const projects = await prisma.project.findMany({
       where,
@@ -45,11 +49,13 @@ export async function GET(request: NextRequest) {
           select: { amount: true },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: params.skip,
+      take: params.take,
     });
 
     return NextResponse.json(
-      { success: true, projects },
+      { success: true, projects, ...pageMeta(params, total) },
       { status: 200 }
     );
   } catch (error) {

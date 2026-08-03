@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { touchProject } from '@/lib/project-status';
 import { getCurrentSession } from '@/lib/auth';
 import { sendMessageNotificationEmail } from '@/lib/email';
 import { notifyAdminsNewClientMessage } from '@/lib/notify';
@@ -130,6 +131,10 @@ export async function POST(
         },
       },
     });
+
+    // Writing a child row doesn't advance the project's own updatedAt,
+    // so without this a project with a live conversation reads as silent.
+    await touchProject(projectId);
 
     // Send notification email if from admin to client
     if (session.type === 'user' && project.client) {

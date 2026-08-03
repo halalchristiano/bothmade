@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { touchProject } from '@/lib/project-status';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { sendMessageNotificationEmail } from '@/lib/email';
@@ -43,6 +44,10 @@ export async function POST(
         user: { select: { id: true, name: true, email: true } },
       },
     });
+
+    // Writing a child row doesn't advance the project's own updatedAt,
+    // so without this a project with a live conversation reads as silent.
+    await touchProject((await params).projectId);
 
     const prefs = await prisma.emailPreferences.findUnique({
       where: { clientId: project.clientId },

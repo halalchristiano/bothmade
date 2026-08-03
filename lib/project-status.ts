@@ -1,3 +1,5 @@
+import { prisma } from '@/lib/prisma';
+
 /**
  * The project lifecycle, in one place.
  *
@@ -41,4 +43,29 @@ export function stageIndexFor(status: ProjectStatus): number {
 export function statusForStageIndex(index: number): ProjectStatus {
   const clamped = Math.min(Math.max(index, 0), PROJECT_STAGES.length - 1);
   return PROJECT_STAGES[clamped];
+}
+
+/**
+ * Marks a project as having just had something happen to it.
+ *
+ * `updatedAt` is `@updatedAt`, so Prisma only advances it when a column on
+ * the project row itself changes — writing a message, a note, or an update
+ * left it untouched. Anything keyed off "when did this last move" therefore
+ * read a project with a live conversation as silent. The at-risk query now
+ * also considers the newest message and update directly, but internal notes
+ * have no such fallback, and every other consumer of updatedAt benefits
+ * from it being true.
+ *
+ * Best-effort by design: a client's message must not fail because the
+ * bookkeeping write did.
+ */
+export async function touchProject(projectId: string): Promise<void> {
+  try {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { updatedAt: new Date() },
+    });
+  } catch (error) {
+    console.error('Failed to touch project timestamp:', projectId, error);
+  }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { touchProject } from '@/lib/project-status';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 
@@ -49,6 +50,10 @@ export async function POST(
       data: { projectId, content, authorId: session.userId },
       include: { author: { select: { id: true, name: true } } },
     });
+
+    // Writing a child row doesn't advance the project's own updatedAt,
+    // so without this a project with a live conversation reads as silent.
+    await touchProject(projectId);
 
     return NextResponse.json({ success: true, note }, { status: 201 });
   } catch (error) {

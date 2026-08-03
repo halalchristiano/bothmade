@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { ConfirmDialog } from '@/components/admin/Modal';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
@@ -133,6 +134,12 @@ export default function AdminProjectDetailPage() {
   const [newQuestionOptions, setNewQuestionOptions] = useState('');
   const [questionSaving, setQuestionSaving] = useState(false);
 
+  // Pending destructive actions, held until confirmed.
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<{ id: string; name: string } | null>(null);
+  const [pendingDeleteQuestion, setPendingDeleteQuestion] = useState<{ id: string; question: string } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
+
   const [collectingBalance, setCollectingBalance] = useState(false);
   const [balanceLinkUrl, setBalanceLinkUrl] = useState('');
   const [balanceError, setBalanceError] = useState('');
@@ -221,9 +228,28 @@ export default function AdminProjectDetailPage() {
     }
   };
 
-  const handleDeleteQuestion = async (questionId: string) => {
-    await fetch(`/api/admin/projects/${projectId}/onboarding/${questionId}`, { method: 'DELETE' });
-    loadQuestions();
+  const handleDeleteQuestion = async () => {
+    const question = pendingDeleteQuestion;
+    if (!question) return;
+    setConfirmBusy(true);
+    setConfirmError('');
+    try {
+      const res = await fetch(
+        `/api/admin/projects/${projectId}/onboarding/${question.id}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setConfirmError(body?.error ?? "Couldn't remove that question. Try again.");
+        return;
+      }
+      setPendingDeleteQuestion(null);
+      loadQuestions();
+    } catch {
+      setConfirmError('Could not reach the server — nothing was removed.');
+    } finally {
+      setConfirmBusy(false);
+    }
   };
 
   const handleCollectBalance = async () => {
@@ -406,11 +432,30 @@ export default function AdminProjectDetailPage() {
     }
   };
 
-  const handleDeleteDeliverable = async (id: string) => {
-    await fetch(`/api/admin/projects/${projectId}/deliverables?id=${id}`, {
-      method: 'DELETE',
-    });
-    loadProject();
+  // Deleting a delivered file used to happen on the click, with no
+  // confirmation and no undo — a mis-click on a dense list permanently
+  // removed something the client had already been sent.
+  const handleDeleteDeliverable = async () => {
+    const file = pendingDeleteFile;
+    if (!file) return;
+    setConfirmBusy(true);
+    setConfirmError('');
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/deliverables?id=${file.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setConfirmError(body?.error ?? "Couldn't delete that file. Try again.");
+        return;
+      }
+      setPendingDeleteFile(null);
+      loadProject();
+    } catch {
+      setConfirmError('Could not reach the server — nothing was deleted.');
+    } finally {
+      setConfirmBusy(false);
+    }
   };
 
   if (loading || !project) {
@@ -846,8 +891,9 @@ export default function AdminProjectDetailPage() {
                       {file.name}
                     </a>
                     <button
-                      onClick={() => handleDeleteDeliverable(file.id)}
+                      onClick={() => setPendingDeleteFile({ id: file.id, name: file.name })}
                       className="text-xs text-red-400 hover:underline shrink-0"
+                      aria-label={`Delete ${file.name}`}
                     >
                       Delete
                     </button>
@@ -917,8 +963,9 @@ export default function AdminProjectDetailPage() {
                   <div className="flex justify-between items-start gap-2">
                     <p className="text-sm font-medium">{q.question}</p>
                     <button
-                      onClick={() => handleDeleteQuestion(q.id)}
+                      onClick={() => setPendingDeleteQuestion({ id: q.id, question: q.question })}
                       className="text-xs text-red-400 hover:underline shrink-0"
+                      aria-label={`Delete question: ${q.question}`}
                     >
                       Delete
                     </button>
@@ -967,6 +1014,34 @@ export default function AdminProjectDetailPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDeleteFile !== null}
+        onCancel={() => {
+          setPendingDeleteFile(null);
+          setConfirmError('');
+        }}
+        onConfirm={handleDeleteDeliverable}
+        title="Delete this file?"
+        description={`"${pendingDeleteFile?.name ?? ''}" will be removed from the client's dashboard. If they've already been told it's there, they'll find it gone. This can't be undone.`}
+        confirmLabel="Delete file"
+        busy={confirmBusy}
+        error={confirmError}
+      />
+
+      <ConfirmDialog
+        open={pendingDeleteQuestion !== null}
+        onCancel={() => {
+          setPendingDeleteQuestion(null);
+          setConfirmError('');
+        }}
+        onConfirm={handleDeleteQuestion}
+        title="Remove this question?"
+        description={`"${pendingDeleteQuestion?.question ?? ''}" will be removed from the onboarding form, along with any answer the client has already given. This can't be undone.`}
+        confirmLabel="Remove question"
+        busy={confirmBusy}
+        error={confirmError}
+      />
     </div>
   );
 }

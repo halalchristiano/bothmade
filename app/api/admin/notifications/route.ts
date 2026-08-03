@@ -10,6 +10,30 @@ export interface NotificationItem {
   detail: string;
   href: string;
   severity: 'info' | 'warning' | 'urgent';
+  /** Overlaid from the Notification table, not derived. */
+  readAt?: string | null;
+  snoozedUntil?: string | null;
+}
+
+/**
+ * Notifications are *derived* on every request from whatever currently
+ * looks overdue, which is what makes them self-healing — deal with the
+ * underlying thing and the item disappears on its own.
+ *
+ * The cost was that they had no state: the same five items greeted you
+ * every morning, unreadable and undismissable, until the underlying fact
+ * changed. That is how a person learns to stop looking at a bell.
+ *
+ * So: still derived, with per-user read/dismiss/snooze state overlaid from
+ * the Notification table. The derived id ("followup-<leadId>") is stable,
+ * and splits into the (kind, subjectId) pair the table is keyed on, so
+ * state survives across requests without persisting the item itself.
+ */
+export function splitNotificationId(id: string): { kind: string; subjectId: string } {
+  const idx = id.indexOf('-');
+  return idx === -1
+    ? { kind: id, subjectId: '' }
+    : { kind: id.slice(0, idx), subjectId: id.slice(idx + 1) };
 }
 
 export async function GET() {
@@ -147,7 +171,40 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({ success: true, items, count: items.length }, { status: 200 });
+    // Overlay the persisted state and drop anything dismissed or still
+    // snoozed. A snooze that has expired simply stops matching, so the item
+    // comes back on its own with no sweeper job required.
+    const states = await prisma.notification.findMany({
+      where: { userId: session.userId },
+      select: {
+        kind: true,
+        subjectId: true,
+        readAt: true,
+        dismissedAt: true,
+        snoozedUntil: true,
+      },
+    });
+    const stateByKey = new Map(states.map((n) => [`${n.kind}-${n.subjectId ?? ''}`, n]));
+
+    const visible: NotificationItem[] = [];
+    for (const item of items) {
+      const state = stateByKey.get(item.id);
+      if (state?.dismissedAt) continue;
+      if (state?.snoozedUntil && state.snoozedUntil > now) continue;
+      visible.push({
+        ...item,
+        readAt: state?.readAt?.toISOString() ?? null,
+        snoozedUntil: state?.snoozedUntil?.toISOString() ?? null,
+      });
+    }
+
+    // The badge counts what still needs attention, not the whole list.
+    const unreadCount = visible.filter((i) => !i.readAt).length;
+
+    return NextResponse.json(
+      { success: true, items: visible, count: visible.length, unreadCount },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Get notifications error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
