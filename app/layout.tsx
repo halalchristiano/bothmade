@@ -74,6 +74,10 @@ export default function RootLayout({
               name: 'Bothmade',
               url: SITE_URL,
               email: 'info@bothmade.studio',
+              logo: `${SITE_URL}/icon`,
+              image: `${SITE_URL}/opengraph-image`,
+              // Signals the bracket without publishing a rate card in schema.
+              priceRange: '$$$',
               address: {
                 '@type': 'PostalAddress',
                 streetAddress: 'Suite 695, 80A Ruskin Ave',
