@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
+import { BUSINESS_TIMEZONE, startOfBusinessMonthOffset } from '@/lib/business-time';
 
 const RANGE_LABELS: Record<StatsRange, string> = {
   week: 'This Week',
@@ -84,10 +85,17 @@ export async function GET(request: Request) {
     ]);
 
     // Last 6 months of revenue, oldest first, for the trend chart.
+    // Anchored to the studio's timezone: on a UTC server these buckets
+    // straddled the month boundary and revenue landed in the wrong bar.
     const monthStarts = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      const next = new Date(now.getFullYear(), now.getMonth() - (5 - i) + 1, 1);
-      return { start: d, end: next, label: d.toLocaleDateString('en-US', { month: 'short' }) };
+      const monthsAgo = 5 - i;
+      const start = startOfBusinessMonthOffset(monthsAgo, now);
+      const end = startOfBusinessMonthOffset(monthsAgo - 1, now);
+      return {
+        start,
+        end,
+        label: start.toLocaleDateString('en-US', { month: 'short', timeZone: BUSINESS_TIMEZONE }),
+      };
     });
     const revenueHistory = await Promise.all(
       monthStarts.map(async ({ start, end, label }) => {

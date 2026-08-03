@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useDialogA11y } from '@/components/admin/Modal';
 import { X, Send, Loader2, UserX, AlertTriangle } from 'lucide-react';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
+import { buildColdEmail } from '@/lib/cold-email';
 
 interface PreviewLead {
   id: string;
@@ -12,13 +14,6 @@ interface PreviewLead {
   coldEmailDraft: string | null;
   painPoints: string;
   personalizedObservation: string | null;
-}
-
-/** Mirrors the server's splitDraft() in send-cold-drafts/route.ts so the preview matches exactly what gets sent. */
-function splitDraft(draft: string, company: string): { subject: string; body: string } {
-  const match = draft.match(/^Subject:\s*(.+?)\r?\n+([\s\S]*)$/i);
-  if (match) return { subject: match[1].trim(), body: match[2].trim() };
-  return { subject: `Thoughts on ${company}`, body: draft.trim() };
 }
 
 export function ColdEmailPreviewModal({
@@ -58,9 +53,17 @@ export function ColdEmailPreviewModal({
 
   const included = leads.filter((l) => !excluded.has(l.id));
 
+  // Deliberately no backdrop-click dismiss: this is the last look at
+  // cold email before it reaches strangers, and losing the review to a
+  // stray click is worse than an extra keystroke. Escape still works.
+  const { dialogProps } = useDialogA11y(onClose);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl">
+      <div
+        {...dialogProps}
+        className="w-full max-w-2xl max-h-[88vh] flex flex-col rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl focus:outline-none"
+      >
         <div className="flex items-start justify-between gap-3 p-6 pb-4 border-b border-white/[0.06]">
           <div>
             <h2 className="text-lg font-bold">Review before sending</h2>
@@ -94,11 +97,15 @@ export function ColdEmailPreviewModal({
                 painPoints: lead.painPoints,
                 personalizedObservation: lead.personalizedObservation,
               });
-            const { subject, body } = splitDraft(draft, lead.company);
-            const firstName = lead.contactName?.split(' ')[0] || 'there';
-            const personalizedBody = body
-              .replace(/\[First Name\]/gi, firstName)
-              .replace(/\[Sender Name\]/gi, senderFullName);
+            // Same function the send route calls, so the preview cannot
+            // drift from what actually leaves. This is the studio's only
+            // check on a cold email before a stranger reads it.
+            const { subject, body: personalizedBody } = buildColdEmail({
+              draft,
+              company: lead.company,
+              contactName: lead.contactName,
+              senderName: senderFullName,
+            });
 
             return (
               <div

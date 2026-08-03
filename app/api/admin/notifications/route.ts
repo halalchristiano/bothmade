@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { startOfBusinessDay } from '@/lib/business-time';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 
@@ -42,7 +43,7 @@ export async function GET() {
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfToday = startOfBusinessDay(now);
     const staleThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const items: NotificationItem[] = [];

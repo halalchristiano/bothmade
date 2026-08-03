@@ -225,3 +225,83 @@ export function ConfirmDialog({
     </Modal>
   );
 }
+
+/**
+ * The dialog behaviours, as a hook, for the modals that already have their
+ * own markup and layout.
+ *
+ * Six modals in the admin app predate <Modal /> and each render their own
+ * backdrop. Rewriting their internals wholesale is a lot of churn for no
+ * visual change; adopting this hook gives them the same four contracts —
+ * announced as a dialog, focus trapped, focus returned, Escape to close —
+ * with a handful of lines each.
+ *
+ * Spread the returned `dialogProps` onto the panel element.
+ */
+export function useDialogA11y(onClose: () => void, opts?: { labelledById?: string }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  const focusables = useCallback((): HTMLElement[] => {
+    const root = panelRef.current;
+    if (!root) return [];
+    return Array.from(
+      root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+  }, []);
+
+  useEffect(() => {
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    const id = requestAnimationFrame(() => {
+      const [first] = focusables();
+      (first ?? panelRef.current)?.focus();
+    });
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !panelRef.current?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+
+    return () => {
+      cancelAnimationFrame(id);
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused.current?.focus?.();
+    };
+  }, [onClose, focusables]);
+
+  return {
+    dialogProps: {
+      ref: panelRef,
+      role: 'dialog' as const,
+      'aria-modal': true,
+      'aria-labelledby': opts?.labelledById,
+      tabIndex: -1,
+    },
+  };
+}

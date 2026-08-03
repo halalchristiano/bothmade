@@ -47,6 +47,25 @@ and Vercel — no amount of code changes fixes it.
 - [ ] **Verify**: open `/admin/settings`, the amber "isn't set up yet"
       notice should be gone and "Sign in with Google" should be clickable.
 
+## Required for the dashboard numbers to be right
+
+- [ ] **Set `BUSINESS_TIMEZONE`** in Vercel to an IANA zone name
+      (`Europe/London`, `America/New_York`, …). Vercel runs in UTC, so
+      without this every day/week/month boundary is the server's, not
+      yours. At UTC-5 that means "today" starts at 7pm the previous
+      evening: calls logged after 7pm count toward tomorrow, and month-end
+      revenue lands in the wrong month for five hours a day. Defaults to
+      UTC, which is at least explicit.
+- [ ] **Set `RESEND_WEBHOOK_SECRET`** and add the webhook at resend.com →
+      Webhooks pointing at `/api/webhooks/resend`. Bounces and spam
+      complaints do nothing until this exists. Verification **fails closed**
+      without the secret — the endpoint turns unauthenticated input into
+      "stop emailing this person", so an open one would let anyone suppress
+      your entire client list.
+
+Optional, with sensible defaults: `DAILY_SEND_CAP` (120), `SEND_DELAY_MS`
+(2500), `SEND_JITTER_MS` (3500).
+
 ## Required before sending another cold email
 
 - [ ] **Set `BOTHMADE_POSTAL_ADDRESS`** in Vercel to a real physical mailing

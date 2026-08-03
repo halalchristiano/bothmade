@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDialogA11y } from '@/components/admin/Modal';
 import { X, Send, Loader2, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
 import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
@@ -148,10 +149,15 @@ export function BulkEmailComposer({
     }
   };
 
+  // Escape, focus trap, focus return, and scroll lock — the dialog
+  // contracts this modal's hand-rolled backdrop never had.
+  const { dialogProps } = useDialogA11y(onClose);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div
-        className="w-full max-w-5xl max-h-[90vh] rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl overflow-hidden flex flex-col"
+        {...dialogProps}
+        className="w-full max-w-5xl max-h-[90vh] rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl overflow-hidden flex flex-col focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start p-6 pb-4 shrink-0">

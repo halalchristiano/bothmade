@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import {
+  businessDateParts,
+  startOfBusinessDay,
+  startOfBusinessDayOffset,
+  startOfBusinessMonth,
+  startOfBusinessMonthOffset,
+} from '@/lib/business-time';
 import { dealValue, leadConversionRate, winRate, wonDate } from '@/lib/sales-metrics';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
@@ -37,10 +44,22 @@ const RANGE_LABELS: Record<StatsRange, string> = {
   quarter: 'This Quarter',
 };
 
+/**
+ * Period boundaries in the studio's timezone, not the server's.
+ *
+ * These were `new Date(y, m, 1)`, which uses the server's zone — UTC on
+ * Vercel. At UTC-5 that puts the month boundary at 7pm on the last evening
+ * of the previous month, so an evening's work landed in the wrong month
+ * every month, and "this month's revenue" was wrong for five hours a day.
+ */
 export function getPeriodStart(range: StatsRange, now: Date): Date {
-  if (range === 'month') return new Date(now.getFullYear(), now.getMonth(), 1);
-  if (range === 'quarter') return new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-  return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (range === 'month') return startOfBusinessMonth(now);
+  if (range === 'quarter') {
+    const { month } = businessDateParts(now);
+    // Back up to the first month of this quarter, then take its start.
+    return startOfBusinessMonthOffset((month - 1) % 3, now);
+  }
+  return startOfBusinessDayOffset(7, now);
 }
 
 export async function GET(request: Request) {
@@ -53,7 +72,7 @@ export async function GET(request: Request) {
     const range: StatsRange = rangeParam === 'month' || rangeParam === 'quarter' ? rangeParam : 'week';
 
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfToday = startOfBusinessDay(now);
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
     const periodStart = getPeriodStart(range, now);
     const staleThreshold = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
@@ -61,15 +80,46 @@ export async function GET(request: Request) {
     // "My" leads: assigned to me, or unassigned (so nothing falls through the cracks).
     const mine = { OR: [{ assignedToId: session.userId }, { assignedToId: null }] };
 
-    const [allMine, wonAllTime, lostAllTime, newInPeriod, activityInPeriod] = await Promise.all([
-      prisma.lead.findMany({ where: mine }),
-      prisma.lead.findMany({ where: { ...mine, status: 'won' } }),
-      prisma.lead.findMany({ where: { ...mine, status: 'lost' } }),
+    // Three full-row loads of the same table, then filtered in JS — the
+    // won and lost sets are subsets of the first, and every row came back
+    // with all forty-odd columns including the long research text fields.
+    // One query, the columns actually used, partitioned in memory.
+    //
+    // Kept as a load rather than pushed fully into groupBy because the
+    // period and stage arithmetic below needs per-row dates; the win is
+    // dropping two redundant queries and the text columns, which is where
+    // the payload actually was.
+    const [allMine, newInPeriod, activityInPeriod] = await Promise.all([
+      prisma.lead.findMany({
+        where: mine,
+        select: {
+          id: true,
+          company: true,
+          status: true,
+          estimatedValue: true,
+          proposalTotalPrice: true,
+          hotLead: true,
+          phone: true,
+          email: true,
+          source: true,
+          lostReason: true,
+          nextFollowUpAt: true,
+          contractStatus: true,
+          replyReceivedAt: true,
+          proposalClientType: true,
+          wonAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
       prisma.lead.count({ where: { ...mine, createdAt: { gte: periodStart } } }),
       prisma.leadActivity.count({
         where: { createdAt: { gte: periodStart }, createdById: session.userId },
       }),
     ]);
+
+    const wonAllTime = allMine.filter((l) => l.status === 'won');
+    const lostAllTime = allMine.filter((l) => l.status === 'lost');
 
     const pipeline = ACTIVE_STATUSES.map((status) => {
       const leads = allMine.filter((l) => l.status === status);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { startOfBusinessDay } from '@/lib/business-time';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 
@@ -108,8 +109,9 @@ export async function GET() {
 
     // Calls logged today, by this person. A rep working a long list has no
     // sense of progress otherwise — the list only ever shows what's left.
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    // The rep's day, not the server's: at UTC-5 a call logged after 7pm
+    // counted toward tomorrow and the day's tally read zero all evening.
+    const startOfDay = startOfBusinessDay();
     const callsToday = await prisma.leadActivity.count({
       where: { type: 'call', createdById: session.userId, createdAt: { gte: startOfDay } },
     });
@@ -155,10 +157,8 @@ export async function GET() {
 
     // Compare on date, not timestamp — a follow-up set for "today" shouldn't
     // read as overdue just because it was stored at midnight.
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(startOfToday);
-    endOfToday.setDate(endOfToday.getDate() + 1);
+    const startOfToday = startOfBusinessDay();
+    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
 
     const rows = leads.map((lead) => {
       // "Contacted" means anyone actually reached out — an email that went, or

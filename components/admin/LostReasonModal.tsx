@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useDialogA11y } from '@/components/admin/Modal';
 import { X } from 'lucide-react';
 import { LOST_REASON_PRESETS } from '@/lib/leads';
 
@@ -26,10 +27,15 @@ export function LostReasonModal({
     onConfirm(reason || 'No reason recorded');
   };
 
+  // Escape, focus trap, focus return, and scroll lock — the dialog
+  // contracts this modal's hand-rolled backdrop never had.
+  const { dialogProps } = useDialogA11y(onCancel);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onCancel}>
       <div
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0812] p-6 shadow-2xl"
+        {...dialogProps}
+        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0812] p-6 shadow-2xl focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-1">

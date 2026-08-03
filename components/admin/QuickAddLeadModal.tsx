@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useDialogA11y } from '@/components/admin/Modal';
 import { X } from 'lucide-react';
 import { QUICK_ADD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 
@@ -84,10 +85,15 @@ export function QuickAddLeadModal({
     }
   };
 
+  // Escape, focus trap, focus return, and scroll lock — the dialog
+  // contracts this modal's hand-rolled backdrop never had.
+  const { dialogProps } = useDialogA11y(onClose);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div
-        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0a0812] p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+        {...dialogProps}
+        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0a0812] p-6 shadow-2xl max-h-[85vh] overflow-y-auto focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-4">

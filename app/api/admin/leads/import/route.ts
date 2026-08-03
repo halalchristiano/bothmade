@@ -300,19 +300,61 @@ export async function POST(request: NextRequest) {
       .filter((row): row is NonNullable<typeof row> => row !== null);
 
     // Two research CSVs overlapping is normal, and nothing stopped the same
-    // business being created twice — which ends with a rep ringing someone who
-    // was called yesterday. Match on email where there is one (exact, and the
-    // strongest signal), otherwise on the company name reduced to letters and
-    // digits so "A1 Duran Roofing" and "A1 Duran Roofing, Inc." don't slip
-    // past each other on punctuation alone.
+    // business being created twice — which ends with a rep ringing someone
+    // who was called yesterday. Match on email where there is one, and on
+    // the company name reduced to letters and digits either way.
+    //
+    // Note on what this does and doesn't catch: reducing to alphanumerics
+    // makes matching immune to spacing, casing and punctuation ("Smith &
+    // Sons  Plumbing" == "smith and sons plumbing" is NOT caught, but
+    // "Smith & Sons Plumbing" == "Smith&Sons Plumbing" is). It does not
+    // catch suffix differences — "A1 Duran Roofing" and "A1 Duran Roofing,
+    // Inc." normalise to different keys, because "inc" survives. That was
+    // true of the original implementation too, despite a comment here
+    // claiming otherwise; genuinely fixing it needs a similarity match, not
+    // a stricter normaliser, and is better handled by the lead-merge tool.
     const companyKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const existing = await prisma.lead.findMany({
-      select: { email: true, company: true },
-    });
+
+    // Only look up the rows this file could actually collide with.
+    //
+    // This used to be an unfiltered findMany over the whole leads table on
+    // every import — the entire company and email columns pulled into
+    // memory to check 500 rows against. That is fine at a thousand leads
+    // and a timeout at fifty thousand, and it gets slower precisely as the
+    // CRM gets more valuable. Two targeted `in` queries instead, bounded by
+    // the size of the upload rather than the size of the database.
+    const incomingEmails = [
+      ...new Set(toCreate.map((r) => r.email?.toLowerCase()).filter((e): e is string => !!e)),
+    ];
+    const incomingCompanyKeys = [
+      ...new Set(toCreate.map((r) => companyKey(r.company)).filter(Boolean)),
+    ];
+
+    const [emailMatches, companyMatches] = await Promise.all([
+      incomingEmails.length
+        ? prisma.lead.findMany({
+            where: { email: { in: incomingEmails, mode: 'insensitive' } },
+            select: { email: true },
+          })
+        : Promise.resolve([]),
+      incomingCompanyKeys.length
+        ? // Normalisation happens in Postgres so punctuation variants still
+          // match ("A1 Duran Roofing" vs "A1 Duran Roofing, Inc.") without
+          // dragging the whole table back to compare in JS. A plain `in` on
+          // the raw names would have quietly made dedup weaker than the
+          // full scan it replaced.
+          prisma.$queryRaw<Array<{ key: string }>>`
+            SELECT DISTINCT regexp_replace(lower(company), '[^a-z0-9]', '', 'g') AS key
+            FROM leads
+            WHERE regexp_replace(lower(company), '[^a-z0-9]', '', 'g') = ANY(${incomingCompanyKeys})
+          `
+        : Promise.resolve([]),
+    ]);
+
     const seenEmails = new Set(
-      existing.map((l) => l.email?.toLowerCase()).filter((e): e is string => !!e)
+      emailMatches.map((l) => l.email?.toLowerCase()).filter((e): e is string => !!e)
     );
-    const seenCompanies = new Set(existing.map((l) => companyKey(l.company)));
+    const seenCompanies = new Set(companyMatches.map((r) => r.key));
 
     let duplicates = 0;
     const duplicateNames: string[] = [];
