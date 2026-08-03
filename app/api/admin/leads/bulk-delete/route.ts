@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { forbiddenResponse, requireOwner, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 
 const MAX_LEADS = 500;
 
 /** Deletes every selected lead — for cleaning up a bad CSV import in one shot instead of one at a time. */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    // Owner-only. Deleting up to 500 lead records in one request — along
+    // with their whole activity history, via the cascade — is the most
+    // destructive thing the CRM can do, and it is not part of a rep's job.
+    if (!(await requireStaff())) return unauthorizedResponse();
+    if (!(await requireOwner())) {
+      return forbiddenResponse('Only an owner can bulk-delete leads. Ask Kiana to run this one.');
+    }
 
     const { leadIds } = await request.json();
     if (!Array.isArray(leadIds) || leadIds.length === 0) {

@@ -169,7 +169,10 @@ export function ServiceList() {
   if (reduceMotion) return <StaticWorlds />;
 
   return (
-    <section id="services" ref={containerRef} className="relative h-[500vh]">
+    // 300vh, not 500 — long enough for the sheet mechanic to read, short
+    // enough that the offer below it is still reachable on a phone without
+    // committing to five screens of scroll.
+    <section id="services" ref={containerRef} className="relative h-[300vh]">
       <div className="sticky top-0 h-screen overflow-hidden">
         {/* header, floating above every world */}
         <div className="absolute top-24 inset-x-0 z-40 px-6">
@@ -351,16 +354,27 @@ function WorldSheet({
               <p className="max-w-md text-sm md:text-base text-white/55 leading-relaxed">
                 {world.blurb}
               </p>
-              <Link
-                href={world.href}
-                tabIndex={interactive ? 0 : -1}
-                className="group inline-flex items-center gap-3 text-sm font-medium text-white/80 hover:text-white transition-colors w-fit"
-              >
-                <span className="border-b border-white/30 group-hover:border-white pb-0.5 transition-colors">
-                  Enter {world.title.toLowerCase()}
-                </span>
-                <span className="transition-transform duration-300 group-hover:translate-x-1.5">→</span>
-              </Link>
+              {/* Two exits from every world: deeper in, or straight to a
+                  conversation — nobody should need the whole tour to act. */}
+              <span className={`flex flex-wrap items-center gap-6 ${index % 2 === 0 ? '' : 'justify-end'}`}>
+                <Link
+                  href={world.href}
+                  tabIndex={interactive ? 0 : -1}
+                  className="group inline-flex items-center gap-3 text-sm font-medium text-white/80 hover:text-white transition-colors w-fit"
+                >
+                  <span className="border-b border-white/30 group-hover:border-white pb-0.5 transition-colors">
+                    Enter {world.title.toLowerCase()}
+                  </span>
+                  <span className="transition-transform duration-300 group-hover:translate-x-1.5">→</span>
+                </Link>
+                <Link
+                  href="/#contact"
+                  tabIndex={interactive ? 0 : -1}
+                  className="text-sm text-white/45 hover:text-white transition-colors border-b border-transparent hover:border-white/40 pb-0.5 w-fit"
+                >
+                  Talk to us
+                </Link>
+              </span>
             </div>
           </div>
         </motion.div>
@@ -391,9 +405,14 @@ function StaticWorlds() {
               {world.title}
             </h3>
             <p className="mt-6 max-w-md text-white/55">{world.blurb}</p>
-            <Link href={world.href} className="mt-6 inline-block text-white/80 underline underline-offset-4">
-              Enter {world.title.toLowerCase()} →
-            </Link>
+            <div className="mt-6 flex flex-wrap items-center gap-6">
+              <Link href={world.href} className="inline-block text-white/80 underline underline-offset-4">
+                Enter {world.title.toLowerCase()} →
+              </Link>
+              <Link href="/#contact" className="inline-block text-white/50 hover:text-white underline underline-offset-4">
+                Talk to us
+              </Link>
+            </div>
           </div>
         </div>
       ))}

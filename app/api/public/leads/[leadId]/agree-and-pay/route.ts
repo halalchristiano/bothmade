@@ -8,6 +8,8 @@ import { buildContractPdf } from '@/lib/contract-pdf';
 import { isFurtherAlong } from '@/lib/leads';
 import { getAdminEmails } from '@/lib/notify';
 import { sendSignedContractCopyEmail } from '@/lib/email';
+import { buildSignUrl, readShareToken, shareTokenMatches } from '@/lib/share-links';
+import { RATE_LIMITS, checkRateLimit, enforceRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -35,6 +37,21 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
  * "I agree": logs the clickwrap agreement (IP, timestamp, hash of the exact
  * contract text they saw) and immediately opens a Stripe Checkout Session
  * for the same amount — one link, sign then pay, no separate steps.
+ *
+ * Three things guard this now, none of which it had:
+ *
+ *  - **A capability token.** This endpoint *creates a signature* attributed
+ *    to the client. Knowing a lead's cuid — which is in every admin URL —
+ *    was enough to produce one. It now requires the same secret as the link
+ *    we emailed them.
+ *  - **A rate limit.** It writes a row, renders a PDF, uploads a blob, and
+ *    opens a Stripe session per call. Unauthenticated and unbounded, that is
+ *    a bill and a mailbox full of "contract signed" alerts.
+ *  - **A replay guard.** Every POST used to overwrite `agreementSignedAt`,
+ *    `agreementIp`, `agreementHash`, and `signedContractUrl`. Whoever hit
+ *    the link last became the signature of record, and the original
+ *    evidence — the thing that makes a clickwrap enforceable — was gone.
+ *    A second POST now leaves the recorded signature exactly as it was.
  */
 export async function POST(
   request: NextRequest,
@@ -42,9 +59,19 @@ export async function POST(
 ) {
   try {
     const { leadId } = await params;
+
+    // Per source address, and per lead — one link being hammered must not
+    // depend on the caller keeping the same IP.
+    const message = 'Too many attempts. Please wait a moment and try again.';
+    const limited = await enforceRateLimit(request, 'agree-and-pay', RATE_LIMITS.publicWrite, message);
+    if (limited) return limited;
+
+    const perLead = await checkRateLimit(`agree-and-pay:lead:${leadId}`, RATE_LIMITS.publicWrite);
+    if (!perLead.allowed) return rateLimitResponse(perLead, message);
+
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
 
-    if (!lead) {
+    if (!lead || !shareTokenMatches(lead.shareToken, readShareToken(request))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     if (
@@ -111,69 +138,100 @@ export async function POST(
       request.headers.get('x-real-ip') ||
       'unknown';
 
-    // Save a PDF copy of exactly what they agreed to — same sections that
-    // were hashed above — so there's a real document backing the clickwrap,
-    // not just a hash. Failure here shouldn't block the client from paying.
-    const signedAt = new Date();
-    let signedContractUrl: string | null = null;
-    try {
-      const pdfBytes = await buildContractPdf({
-        company: lead.company,
-        contactName: lead.contactName,
-        serviceLabel,
-        addOnLabels,
-        timelineLabel,
-        basePrice: formatCents(breakdown.basePrice),
-        addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
-        totalPrice: formatCents(totalPrice),
-        depositAmount: formatCents(deposit),
-        sections,
-        signedOnline: { at: signedAt, ip },
+    // A signature is recorded once. Coming back to this page after
+    // abandoning checkout — or refreshing it, or being sent the link a
+    // second time — must not restate when the client agreed, from where, or
+    // to which version of the contract. (Changing the scope clears these
+    // fields on the admin proposal route, which is the one path that
+    // legitimately requires a fresh agreement.)
+    const alreadySigned = Boolean(lead.agreementSignedAt);
+
+    if (!alreadySigned) {
+      // Save a PDF copy of exactly what they agreed to — same sections that
+      // were hashed above — so there's a real document backing the
+      // clickwrap, not just a hash. Failure here shouldn't block the client
+      // from paying.
+      const signedAt = new Date();
+      let signedContractUrl: string | null = null;
+      try {
+        const pdfBytes = await buildContractPdf({
+          company: lead.company,
+          contactName: lead.contactName,
+          serviceLabel,
+          addOnLabels,
+          timelineLabel,
+          basePrice: formatCents(breakdown.basePrice),
+          addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
+          totalPrice: formatCents(totalPrice),
+          depositAmount: formatCents(deposit),
+          sections,
+          signedOnline: { at: signedAt, ip },
+        });
+        // addRandomSuffix, because the path was otherwise derivable from a
+        // lead ID plus a timestamp, and these blobs are public URLs holding
+        // a client's name, scope, and price. A guessable path on a public
+        // bucket is a directory listing with extra steps.
+        const blob = await put(`contracts/${leadId}.pdf`, Buffer.from(pdfBytes), {
+          access: 'public',
+          contentType: 'application/pdf',
+          addRandomSuffix: true,
+        });
+        signedContractUrl = blob.url;
+      } catch (pdfError) {
+        console.error('Failed to save signed contract copy:', pdfError);
+      }
+
+      const wasFurtherAlong = isFurtherAlong(lead.status, 'contract_signed');
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          agreementSignedAt: signedAt,
+          agreementIp: ip,
+          agreementHash: contractHash,
+          contractStatus: 'signed',
+          status: wasFurtherAlong ? 'contract_signed' : undefined,
+          signedContractUrl: signedContractUrl || undefined,
+        },
       });
-      const blob = await put(
-        `contracts/${leadId}-${signedAt.getTime()}.pdf`,
-        Buffer.from(pdfBytes),
-        { access: 'public', contentType: 'application/pdf' }
-      );
-      signedContractUrl = blob.url;
-    } catch (pdfError) {
-      console.error('Failed to save signed contract copy:', pdfError);
-    }
 
-    const wasFurtherAlong = isFurtherAlong(lead.status, 'contract_signed');
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        agreementSignedAt: signedAt,
-        agreementIp: ip,
-        agreementHash: contractHash,
-        contractStatus: 'signed',
-        status: wasFurtherAlong ? 'contract_signed' : undefined,
-        signedContractUrl: signedContractUrl || undefined,
-      },
-    });
+      await prisma.leadActivity.create({
+        data: {
+          leadId,
+          type: 'proposal',
+          content: `Contract agreed to online (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
+          url: signedContractUrl || undefined,
+        },
+      });
 
-    await prisma.leadActivity.create({
-      data: {
-        leadId,
-        type: 'proposal',
-        content: `Contract agreed to online (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
-        url: signedContractUrl || undefined,
-      },
-    });
-
-    if (signedContractUrl) {
-      const teamEmails = await getAdminEmails();
-      await sendSignedContractCopyEmail(teamEmails, lead.company, signedContractUrl, formatCents(totalPrice)).catch(
-        (e) => console.error('Failed to email signed contract copy:', e)
-      );
+      if (signedContractUrl) {
+        const teamEmails = await getAdminEmails();
+        await sendSignedContractCopyEmail(teamEmails, lead.company, signedContractUrl, formatCents(totalPrice)).catch(
+          (e) => console.error('Failed to email signed contract copy:', e)
+        );
+      }
+    } else {
+      // Still worth a line on the timeline — "they came back to pay" is
+      // useful to a rep — but no signature fields, no second PDF, and no
+      // second "contract signed" alert to the team.
+      await prisma.leadActivity
+        .create({
+          data: {
+            leadId,
+            type: 'proposal',
+            content: `Returned to the signed proposal (IP ${ip}) — reopened checkout for ${formatCents(chargeAmount)}.`,
+            url: lead.signedContractUrl || undefined,
+          },
+        })
+        .catch(() => null);
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       success_url: `${siteUrl}/checkout/success`,
-      cancel_url: `${siteUrl}/sign/${leadId}`,
+      // Cancelling has to land back on a link that still works, so the
+      // capability token rides along.
+      cancel_url: buildSignUrl(leadId, lead.shareToken),
       customer_email: lead.email,
       line_items: [
         {

@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Team management is the first thing in this codebase with real authorization
- * — every other admin route asks only "are you signed in as staff". These
- * tests are about who is refused, and about the two ways a team page can
- * destroy its own means of recovery: locking out every privileged account, or
- * letting someone demote themselves out of the page they are standing on.
+ * Team management is gated on `requireOwner` — per lib/middleware.ts, staff
+ * share the whole admin surface and the role only decides the few actions
+ * where `sales` is deliberately constrained. Deciding who else gets an
+ * account is one of them.
+ *
+ * These tests are about who is refused, and about the two ways a team page
+ * can destroy its own means of recovery: locking out every owner, or letting
+ * someone demote themselves out of the page they are standing on.
  */
 
 const userFindUnique = vi.fn();
@@ -48,11 +51,10 @@ function ctx(userId: string) {
 const OWNER = { id: 'u_kiana', role: 'owner' };
 const REP = { id: 'u_evan', role: 'sales' };
 
-/** Signed in as this user, and that's who the DB reports when asked. */
 function signedInAs(user: { id: string; role: string }) {
-  getCurrentSession.mockResolvedValue({ type: 'user', userId: user.id });
+  getCurrentSession.mockResolvedValue({ type: 'user', userId: user.id, role: user.role });
   userFindUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-    where.id === user.id ? user : { id: where.id, role: 'admin' }
+    where.id === user.id ? user : { id: where.id, role: 'sales' }
   );
 }
 
@@ -60,7 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   signedInAs(OWNER);
-  // Two privileged accounts by default, so nothing trips the lockout guard.
+  // Two owners by default, so nothing trips the lockout guard.
   userFindMany.mockResolvedValue([{ id: 'u_kiana' }, { id: 'u_other' }]);
   userCreate.mockResolvedValue({ id: 'u_new', email: 'new@bothmade.studio', role: 'sales' });
   userUpdate.mockResolvedValue({ id: 'u_evan', role: 'sales' });
@@ -80,6 +82,15 @@ describe('team management — who is allowed', () => {
     expect(userDelete).not.toHaveBeenCalled();
   });
 
+  it('refuses a plain admin account — staff, but not owner', async () => {
+    signedInAs({ id: 'u_admin', role: 'admin' });
+
+    expect((await POST(body({ email: 'x@y.com', role: 'sales' }))).status).toBe(403);
+    expect((await PATCH(body({ role: 'owner' }), ctx('u_other'))).status).toBe(403);
+    expect(userCreate).not.toHaveBeenCalled();
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
   it('refuses a signed-out caller', async () => {
     getCurrentSession.mockResolvedValue(null);
     expect((await POST(body({ email: 'x@y.com', role: 'admin' }))).status).toBe(403);
@@ -90,40 +101,33 @@ describe('team management — who is allowed', () => {
     expect((await POST(body({ email: 'x@y.com', role: 'admin' }))).status).toBe(403);
   });
 
-  it('reads the role from the database, not the token', async () => {
-    // Demoted after signing in: the JWT still claims owner, the row says sales.
-    getCurrentSession.mockResolvedValue({ type: 'user', userId: 'u_evan', role: 'owner' });
-    userFindUnique.mockResolvedValue({ id: 'u_evan', role: 'sales' });
-
-    expect((await POST(body({ email: 'x@y.com', role: 'admin' }))).status).toBe(403);
-  });
 });
 
 describe('team management — not locking yourself out', () => {
-  it('refuses to demote the last privileged account', async () => {
-    userFindMany.mockResolvedValue([{ id: 'u_kiana' }]);
-    signedInAs({ id: 'u_admin', role: 'admin' });
+  it('refuses to demote the last owner', async () => {
+    userFindMany.mockResolvedValue([{ id: 'u_other' }]);
+    signedInAs(OWNER);
     userFindUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === 'u_admin' ? { id: 'u_admin', role: 'admin' } : { id: 'u_kiana', role: 'owner' }
+      where.id === 'u_kiana' ? OWNER : { id: 'u_other', role: 'owner' }
     );
 
-    const res = await PATCH(body({ role: 'sales' }), ctx('u_kiana'));
+    const res = await PATCH(body({ role: 'sales' }), ctx('u_other'));
 
     expect(res.status).toBe(409);
     expect(userUpdate).not.toHaveBeenCalled();
   });
 
-  it('refuses to delete the last privileged account', async () => {
-    userFindMany.mockResolvedValue([{ id: 'u_kiana' }]);
-    signedInAs({ id: 'u_admin', role: 'admin' });
+  it('refuses to delete the last owner', async () => {
+    userFindMany.mockResolvedValue([{ id: 'u_other' }]);
+    signedInAs(OWNER);
 
-    const res = await DELETE(body({}), ctx('u_kiana'));
+    const res = await DELETE(body({}), ctx('u_other'));
 
     expect(res.status).toBe(409);
     expect(userDelete).not.toHaveBeenCalled();
   });
 
-  it('allows a demotion while another privileged account remains', async () => {
+  it('allows a demotion while another owner remains', async () => {
     const res = await PATCH(body({ role: 'sales' }), ctx('u_other'));
 
     expect(res.status).toBe(200);

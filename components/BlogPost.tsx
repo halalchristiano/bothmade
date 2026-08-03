@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
+import { CtaBand } from '@/components/CtaBand';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ScrollProgress } from '@/components/ScrollProgress';
 import { CountUp, FocusRow, ScrubText, GridBackdrop } from '@/components/ui';
@@ -122,6 +123,12 @@ export function BlogPostPage({
           })}
         </div>
       </article>
+
+      {/* The post earned their attention; don't spend it on a dead end. */}
+      <CtaBand
+        title="Want this kind of thinking on your project?"
+        sub="This is how we work through real decisions. If you're weighing a build of your own, tell us about it — we reply within 24 hours."
+      />
 
       {/* Prev / next */}
       {(prev || next) && (

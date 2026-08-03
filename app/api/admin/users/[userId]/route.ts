@@ -1,27 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { forbiddenResponse, requireTeamManager } from '@/lib/middleware';
-import { isPrivilegedRole, isUserRole } from '@/lib/roles';
+import { forbiddenResponse, requireOwner } from '@/lib/middleware';
+import { isUserRole } from '@/lib/roles';
 
 /**
- * Would this change leave nobody able to manage the team?
+ * Would this change leave nobody holding `owner`?
  *
- * The team page is the only way back in, so demoting or deleting the last
- * privileged account locks the CRM's user management behind a database
- * console — exactly the situation this feature exists to end. Counting is
+ * This page is the only way back in, and only an owner can use it — so
+ * demoting or deleting the last one locks user management behind a database
+ * console, exactly the situation this feature exists to end. Counting is
  * cheap; recovering is not.
  */
 async function wouldOrphanTeam(targetId: string, nextRole: string | null): Promise<boolean> {
-  const privileged = await prisma.user.findMany({
-    where: { role: { in: ['owner', 'admin'] } },
+  const owners = await prisma.user.findMany({
+    where: { role: 'owner' },
     select: { id: true },
   });
 
-  const remaining = privileged.filter((u) => u.id !== targetId).length;
+  const remaining = owners.filter((u) => u.id !== targetId).length;
   // nextRole null means the account is going away entirely.
-  const targetStaysPrivileged = nextRole !== null && isPrivilegedRole(nextRole);
+  const targetStaysOwner = nextRole === 'owner';
 
-  return remaining === 0 && !targetStaysPrivileged;
+  return remaining === 0 && !targetStaysOwner;
 }
 
 /** Change a teammate's role, name or title. */
@@ -30,8 +30,8 @@ export async function PATCH(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const manager = await requireTeamManager();
-    if (!manager) return forbiddenResponse();
+    const session = await requireOwner();
+    if (!session) return forbiddenResponse('Only an owner can change a teammate.');
 
     const { userId } = await params;
     const { name, role, title } = await request.json();
@@ -60,16 +60,16 @@ export async function PATCH(
 
       // Changing your own role is how you accidentally demote yourself out of
       // the page you are standing on. Someone else with the rights can do it.
-      if (userId === manager.userId && role !== target.role) {
+      if (userId === session.userId && role !== target.role) {
         return NextResponse.json(
-          { error: "You can't change your own role. Ask another owner or admin." },
+          { error: "You can't change your own role. Ask another owner." },
           { status: 409 }
         );
       }
 
       if (await wouldOrphanTeam(userId, role)) {
         return NextResponse.json(
-          { error: 'Someone has to keep owner or admin access. Promote another account first.' },
+          { error: 'Someone has to stay an owner. Promote another account first.' },
           { status: 409 }
         );
       }
@@ -100,12 +100,12 @@ export async function DELETE(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const manager = await requireTeamManager();
-    if (!manager) return forbiddenResponse();
+    const session = await requireOwner();
+    if (!session) return forbiddenResponse('Only an owner can remove a teammate.');
 
     const { userId } = await params;
 
-    if (userId === manager.userId) {
+    if (userId === session.userId) {
       return NextResponse.json(
         { error: "You can't remove your own account." },
         { status: 409 }
@@ -122,7 +122,7 @@ export async function DELETE(
 
     if (await wouldOrphanTeam(userId, null)) {
       return NextResponse.json(
-        { error: 'Someone has to keep owner or admin access. Promote another account first.' },
+        { error: 'Someone has to stay an owner. Promote another account first.' },
         { status: 409 }
       );
     }

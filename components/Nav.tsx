@@ -106,11 +106,19 @@ export function Nav() {
                 </Link>
               );
             })}
+            {/* The one pill in the nav belongs to new business, not to
+                people who have already paid. */}
             <Link
               href="/client/login"
-              className="text-sm rounded-full border border-white/20 px-4 py-1.5 text-white/70 hover:text-white hover:border-white/40 transition-colors"
+              className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               Client Login
+            </Link>
+            <Link
+              href="/start"
+              className="text-sm font-medium rounded-full bg-white text-black px-4 py-1.5 hover:bg-white/85 transition-colors"
+            >
+              Start a project
             </Link>
           </div>
 
@@ -178,9 +186,23 @@ export function Nav() {
                 transition={{ delay: LINKS.length * 0.07, duration: 0.3 }}
               >
                 <Link
+                  href="/start"
+                  onClick={() => setOpen(false)}
+                  className="block text-4xl font-bold py-3 bg-gradient-to-r from-sky-300 to-purple-400 bg-clip-text text-transparent"
+                >
+                  Start a project
+                </Link>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, x: -30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -30 }}
+                transition={{ delay: (LINKS.length + 1) * 0.07, duration: 0.3 }}
+              >
+                <Link
                   href="/client/login"
                   onClick={() => setOpen(false)}
-                  className="block text-4xl font-bold py-3 text-gray-300 hover:text-sky-300 transition-colors"
+                  className="block text-lg py-3 text-gray-400 hover:text-white transition-colors"
                 >
                   Client Login
                 </Link>

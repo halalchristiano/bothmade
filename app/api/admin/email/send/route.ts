@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendTemplatedEmail } from '@/lib/send-templated-email';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { templateId, to, toName, company, fields, leadId } = await request.json();
 

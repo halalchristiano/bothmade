@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { ScrollReset } from "@/components/ScrollReset";
 import { ScrollProgress } from "@/components/ScrollProgress";
@@ -72,6 +73,14 @@ export default function RootLayout({
               '@type': 'ProfessionalService',
               name: 'Bothmade',
               url: SITE_URL,
+              email: 'info@bothmade.studio',
+              address: {
+                '@type': 'PostalAddress',
+                streetAddress: 'Suite 695, 80A Ruskin Ave',
+                addressLocality: 'Welling',
+                postalCode: 'DA16 3QQ',
+                addressCountry: 'GB',
+              },
               description:
                 'Web and native Apple development studio. Websites, iOS and iPad apps, macOS software, and Vision Pro experiences — designed and shipped by one team.',
               knowsAbout: [
@@ -95,6 +104,9 @@ export default function RootLayout({
         <ScrollReset />
         <ScrollSeamIndicator />
         {children}
+        {/* Page views + conversion data. No-op outside Vercel deployments,
+            so local dev and CI stay clean. */}
+        <Analytics />
       </body>
     </html>
   );

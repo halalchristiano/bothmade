@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireCronAuth } from '@/lib/cron-auth';
 import { notifyAdminsStaleLeads } from '@/lib/notify';
 import { syncBouncesForAllUsers, syncRepliesForAllUsers } from '@/lib/bounce-sync';
 
@@ -20,10 +21,8 @@ export const maxDuration = 60;
  * and shows up at the top of the call list the same morning.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     // One mailbox failing must not stop the stale-lead digest going out.

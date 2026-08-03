@@ -19,29 +19,28 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
 };
 
-/** Shown next to each option so the choice isn't a guess. */
+/**
+ * Shown next to each option so the choice isn't a guess. Worded against what
+ * is actually enforced (see lib/middleware.ts): every staff account reaches
+ * the whole admin surface, and the role only decides the few places where
+ * that isn't true.
+ */
 export const USER_ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-  owner: 'Full access, including projects, clients and the team.',
-  sales: 'Inbound leads are assigned here. Sees the pipeline, not delivery.',
-  admin: 'Full access. Same as owner, without being the account holder.',
+  owner: 'Staff, plus the owner-only actions: managing the team and quoting below the floor.',
+  sales: 'Staff, and inbound leads are assigned here. Cannot quote below the calculated floor.',
+  admin: 'Staff. The full admin surface, without the owner-only actions.',
 };
 
 /**
- * Who can add, remove or re-role a teammate.
+ * Who can add, remove or re-role a teammate — the UI mirror of
+ * `requireOwner()`, which is where it is actually enforced.
  *
- * Deliberately not `sales`: inbound is assigned to that role, so letting it
- * edit roles would let a rep hand themselves every lead, or lock out the
- * people who could undo it.
+ * Owner-only, matching the role split in lib/middleware.ts: staff share the
+ * admin surface, and the exceptions are the handful of actions where `sales`
+ * is deliberately constrained. Deciding who else gets an account is one of
+ * them — inbound is assigned to whoever holds `sales`, so a rep who could
+ * edit roles could hand themselves every lead.
  */
 export function canManageTeam(role: string | null | undefined): boolean {
-  return role === 'owner' || role === 'admin';
-}
-
-/**
- * Roles that keep the CRM usable — at least one has to survive every delete
- * and every role change, or the team page locks itself out and only a
- * database console can reopen it.
- */
-export function isPrivilegedRole(role: string | null | undefined): boolean {
-  return canManageTeam(role);
+  return role === 'owner';
 }

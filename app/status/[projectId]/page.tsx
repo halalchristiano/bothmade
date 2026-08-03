@@ -17,13 +17,22 @@ const STATUS_STAGES = ['Discovery', 'Design', 'Build', 'Launch', 'Complete'];
 export default function PublicStatusPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  // The capability token from the shared link — the project ID on its own
+  // isn't enough to read this page any more. Read off window rather than
+  // useSearchParams() so this page needs no Suspense boundary to prerender.
+  const [shareToken, setShareToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    setShareToken(new URLSearchParams(window.location.search).get('t') || '');
+  }, []);
 
   const [project, setProject] = useState<PublicProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch(`/api/public/projects/${projectId}/status`)
+    if (shareToken === null) return;
+    fetch(`/api/public/projects/${projectId}/status?t=${encodeURIComponent(shareToken)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -34,7 +43,7 @@ export default function PublicStatusPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load project status'))
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, shareToken]);
 
   if (loading) {
     return (

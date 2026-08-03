@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
+import { requirePrincipal } from '@/lib/middleware';
 import { sendMessageNotificationEmail } from '@/lib/email';
 import { notifyAdminsNewClientMessage } from '@/lib/notify';
 
@@ -9,14 +9,8 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const { session, response } = await requirePrincipal();
+    if (!session) return response;
 
     const { projectId } = await params;
 
@@ -71,14 +65,8 @@ export async function POST(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const { session, response } = await requirePrincipal();
+    if (!session) return response;
 
     const { projectId } = await params;
     const { content, attachments = [] } = await request.json();

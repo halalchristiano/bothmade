@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireClient } from '@/lib/middleware';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-
-    if (!session || session.type !== 'client') {
-      return unauthorizedResponse();
-    }
+    const { session, response } = await requireClient();
+    if (!session) return response;
 
     const projects = await prisma.project.findMany({
       where: { clientId: session.clientId },

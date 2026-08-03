@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from './prisma';
 
 /**
  * One rate limiter for every public endpoint.
@@ -9,16 +10,16 @@ import { NextRequest, NextResponse } from 'next/server';
  * unauthenticated brute-force path into a CRM holding client contact
  * details and payment records.
  *
- * The store is chosen at call time:
+ * The counter lives in Postgres, in the same database the app already has a
+ * connection to on every one of these routes. A per-process counter is
+ * worthless on serverless — a cold start hands the caller a fresh budget —
+ * and reaching for a second datastore to hold a handful of integers means
+ * another service to provision, pay for and watch. One indexed upsert is
+ * noise next to the queries these routes already run.
  *
- *  - Upstash Redis over its REST API when `UPSTASH_REDIS_REST_URL` and
- *    `UPSTASH_REDIS_REST_TOKEN` are set. Shared across every serverless
- *    instance and survives cold starts, which is the only way a limit on a
- *    platform like Vercel means anything. No SDK — it's one fetch.
- *  - An in-memory sliding window otherwise, and whenever Redis is
- *    unreachable. Weaker (per-instance, resets on cold start) but it keeps
- *    working with no configuration, and it degrades rather than either
- *    locking everyone out or waving everyone through.
+ * A per-instance window remains as the fallback for when the database is
+ * unreachable, so an outage degrades the limit rather than either locking
+ * everyone out or waving everyone through.
  */
 
 export interface RateLimitRule {
@@ -32,13 +33,17 @@ export interface RateLimitResult {
   /** Seconds until the caller may retry. 0 when allowed. */
   retryAfterSeconds: number;
   /** Which store answered — surfaced for tests and for logging. */
-  store: 'redis' | 'memory';
+  store: 'db' | 'memory';
 }
 
 /** Sensible defaults, named so the intent of each number is visible at the call site. */
 export const RATE_LIMITS = {
   /** Credential guessing. Deliberately tight — a real person mistypes a password twice, not ten times. */
   login: { max: 8, windowMs: 10 * 60 * 1000 },
+  /** Unauthenticated reads on a public share link (proposal, project status). */
+  publicRead: { max: 60, windowMs: 10 * 60 * 1000 },
+  /** Unauthenticated writes on a public share link — agree-and-pay renders a PDF and opens a Stripe session per call. */
+  publicWrite: { max: 10, windowMs: 10 * 60 * 1000 },
   /** Account creation from one address. */
   signup: { max: 5, windowMs: 60 * 60 * 1000 },
   /** Reset mail is sent to someone else's inbox, so this is an abuse vector even when it "fails". */
@@ -50,7 +55,7 @@ export const RATE_LIMITS = {
 } as const satisfies Record<string, RateLimitRule>;
 
 // ---------------------------------------------------------------------------
-// In-memory store
+// In-memory fallback
 // ---------------------------------------------------------------------------
 
 const hits = new Map<string, number[]>();
@@ -88,75 +93,85 @@ function checkInMemory(key: string, rule: RateLimitRule, now: number): RateLimit
 }
 
 // ---------------------------------------------------------------------------
-// Redis store
+// Postgres store
 // ---------------------------------------------------------------------------
 
-/** How long to wait on Redis before giving up and using the local window. */
-const REDIS_TIMEOUT_MS = 1500;
-
-function redisConfig(): { url: string; token: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return { url: url.replace(/\/$/, ''), token };
-}
-
-/** True when a durable store is configured — useful for a health check or a startup log. */
-export function hasDurableRateLimitStore(): boolean {
-  return redisConfig() !== null;
+interface CounterRow {
+  count: number;
+  windowStart: Date;
 }
 
 /**
- * Fixed window via INCR + PEXPIRE NX, which is atomic in one round trip.
- * A fixed window permits up to 2× the limit across a window boundary; for
- * slowing down credential guessing that is an acceptable trade for not
- * needing a Lua script or a sorted set per key.
+ * Counts one hit and returns the resulting window, in a single statement.
+ *
+ * Everything happens inside one `INSERT ... ON CONFLICT DO UPDATE`, which
+ * takes a row lock, so two instances racing on the same key cannot both read
+ * the same count and each let a request through. Doing this as a read then a
+ * write would be exactly that race, and the race is the whole attack.
+ *
+ * A window that has already lapsed resets to 1 rather than being deleted and
+ * re-inserted, which keeps it to the one statement.
  */
-async function checkRedis(
-  key: string,
-  rule: RateLimitRule,
-  config: { url: string; token: string }
-): Promise<RateLimitResult | null> {
+async function checkDatabase(key: string, rule: RateLimitRule): Promise<RateLimitResult | null> {
   try {
-    const response = await fetch(`${config.url}/pipeline`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([
-        ['INCR', key],
-        ['PEXPIRE', key, String(rule.windowMs), 'NX'],
-        ['PTTL', key],
-      ]),
-      // Never let a slow limiter become the slowest part of a login.
-      signal: AbortSignal.timeout(REDIS_TIMEOUT_MS),
-      cache: 'no-store',
-    });
+    const rows = await prisma.$queryRaw<CounterRow[]>`
+      INSERT INTO "rate_limits" ("key", "count", "windowStart")
+      VALUES (${key}, 1, NOW())
+      ON CONFLICT ("key") DO UPDATE SET
+        "count" = CASE
+          WHEN "rate_limits"."windowStart" <= NOW() - ${rule.windowMs}::double precision * INTERVAL '1 millisecond'
+            THEN 1
+          ELSE "rate_limits"."count" + 1
+        END,
+        "windowStart" = CASE
+          WHEN "rate_limits"."windowStart" <= NOW() - ${rule.windowMs}::double precision * INTERVAL '1 millisecond'
+            THEN NOW()
+          ELSE "rate_limits"."windowStart"
+        END
+      RETURNING "count", "windowStart"
+    `;
 
-    if (!response.ok) return null;
+    const row = rows[0];
+    if (!row || typeof row.count !== 'number') return null;
 
-    const body = (await response.json()) as Array<{ result?: unknown; error?: string }>;
-    if (!Array.isArray(body) || body.length < 3 || body.some((step) => step?.error)) return null;
-
-    const count = Number(body[0]?.result);
-    const pttl = Number(body[2]?.result);
-    if (!Number.isFinite(count)) return null;
-
-    if (count <= rule.max) {
-      return { allowed: true, retryAfterSeconds: 0, store: 'redis' };
+    if (row.count <= rule.max) {
+      void sweepLapsedRows();
+      return { allowed: true, retryAfterSeconds: 0, store: 'db' };
     }
 
-    // A missing or already-expired TTL shouldn't produce a nonsense header.
-    const remainingMs = Number.isFinite(pttl) && pttl > 0 ? pttl : rule.windowMs;
+    const elapsed = Date.now() - new Date(row.windowStart).getTime();
+    const remainingMs = Math.max(0, rule.windowMs - elapsed);
     return {
       allowed: false,
       retryAfterSeconds: Math.max(1, Math.ceil(remainingMs / 1000)),
-      store: 'redis',
+      store: 'db',
     };
-  } catch {
-    // Timeout, DNS failure, malformed body — fall through to the local window.
+  } catch (error) {
+    console.error('[rate-limit] database counter failed:', error);
     return null;
+  }
+}
+
+/**
+ * Deletes rows nothing will read again. Runs on roughly one request in two
+ * hundred and is never awaited, so it costs the caller nothing; the table
+ * would otherwise accumulate a row per address seen, forever.
+ *
+ * The 24h cutoff is far longer than the longest window, so this can never
+ * delete a counter that is still holding somebody back.
+ */
+let sweeping = false;
+async function sweepLapsedRows(): Promise<void> {
+  if (sweeping || Math.random() > 0.005) return;
+  sweeping = true;
+  try {
+    await prisma.rateLimit.deleteMany({
+      where: { windowStart: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    });
+  } catch {
+    // Housekeeping — a failure here must never affect the request.
+  } finally {
+    sweeping = false;
   }
 }
 
@@ -171,15 +186,13 @@ async function checkRedis(
  * doesn't spend the caller's contact-form budget — `rateLimitKey()` builds it.
  */
 export async function checkRateLimit(key: string, rule: RateLimitRule): Promise<RateLimitResult> {
-  const config = redisConfig();
-  if (config) {
-    const result = await checkRedis(key, rule, config);
-    if (result) return result;
-    // Redis is configured but unreachable. Degrading to the per-instance
-    // window keeps some protection in place; refusing every request would
-    // turn a cache outage into a total outage.
-    console.warn('[rate-limit] Redis unavailable, falling back to in-memory window');
-  }
+  const result = await checkDatabase(key, rule);
+  if (result) return result;
+
+  // The database is unreachable. Most of these routes are about to fail
+  // anyway, but degrading to the per-instance window keeps some limit in
+  // place rather than turning a database blip into an open door.
+  console.warn('[rate-limit] falling back to the in-memory window');
   return checkInMemory(key, rule, Date.now());
 }
 

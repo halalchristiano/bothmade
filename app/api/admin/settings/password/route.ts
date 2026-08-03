@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { hashPassword, verifyPassword } from '@/lib/auth';
+import { checkPasswordStrength } from '@/lib/password-policy';
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { currentPassword, newPassword } = await request.json();
     if (!currentPassword || !newPassword) {
       return NextResponse.json({ error: 'Current and new password are required' }, { status: 400 });
     }
-    if (newPassword.length < 8) {
-      return NextResponse.json({ error: 'New password must be at least 8 characters' }, { status: 400 });
+
+    const strength = checkPasswordStrength(newPassword, session.email);
+    if (!strength.ok) {
+      return NextResponse.json({ error: strength.error }, { status: 400 });
     }
 
     const user = await prisma.user.findUnique({ where: { id: session.userId } });

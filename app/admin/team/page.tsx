@@ -321,7 +321,7 @@ export default function TeamPage() {
                     onChange={(e) => changeRole(member.id, e.target.value)}
                     title={
                       member.id === myId
-                        ? 'Another owner or admin has to change your role'
+                        ? 'Another owner has to change your role'
                         : undefined
                     }
                     className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[13px] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:border-white/30"
@@ -357,7 +357,8 @@ export default function TeamPage() {
 
         {!loading && !canManage && (
           <p className="text-[13px] text-white/35 mt-5 pt-4 border-t border-white/[0.06]">
-            Only an owner or admin can add, remove or re-role a teammate.
+            Only an owner can add, remove or re-role a teammate. Everything else in the
+            admin is open to every staff account.
           </p>
         )}
       </Card>

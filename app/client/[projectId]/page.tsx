@@ -51,6 +51,8 @@ interface Project {
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
   estimatedCompletionDate: string | null;
   liveUrl: string | null;
+  /** Capability token for the public /status link — see lib/share-links.ts. */
+  shareToken?: string;
   createdAt: string;
   updatedAt: string;
   messages: any[];
@@ -155,6 +157,8 @@ export default function ClientDashboard() {
 
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [revokingLink, setRevokingLink] = useState(false);
+  const [linkRevoked, setLinkRevoked] = useState(false);
 
   useEffect(() => {
     const storageKey = `bothmade_last_visit_${projectId}`;
@@ -238,6 +242,13 @@ export default function ClientDashboard() {
         return;
       }
       const data = await response.json();
+      // 403 covers two different things — "this isn't your project" and
+      // "replace the temporary password first". Only the second is a
+      // redirect; the code tells them apart.
+      if (data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+        router.push('/client/settings?force=1');
+        return;
+      }
       if (data.success) {
         setProject(data.project);
       } else {
@@ -276,6 +287,8 @@ export default function ClientDashboard() {
         const blob = await upload(fileToAttach.name, fileToAttach, {
           access: 'public',
           handleUploadUrl: '/api/client/upload',
+          // Scopes the token to this project — the server checks we own it.
+          clientPayload: JSON.stringify({ projectId }),
         });
         attachments = [{ name: fileToAttach.name, url: blob.url }];
       }
@@ -349,6 +362,11 @@ export default function ClientDashboard() {
   const currentStage = STATUS_STAGES[Math.min(project.statusStage, 4)];
   const progressPct = ((Math.min(project.statusStage + 1, 5)) / 5) * 100;
 
+  // The public status link carries a capability token, so the project ID
+  // alone doesn't open it. Without the token there's nothing to share.
+  const shareUrl = () =>
+    project?.shareToken ? `${window.location.origin}/status/${projectId}?t=${project.shareToken}` : '';
+
   const handleCopySummary = () => {
     const latestUpdate = project.updates[0];
     const lines = [
@@ -360,7 +378,7 @@ export default function ClientDashboard() {
       `Balance due: $${(project.balanceDue / 100).toLocaleString()}`,
       latestUpdate ? `Latest update: ${latestUpdate.title} (${new Date(latestUpdate.createdAt).toLocaleDateString()})` : null,
       '',
-      `View live: ${typeof window !== 'undefined' ? `${window.location.origin}/status/${projectId}` : ''}`,
+      `View live: ${typeof window !== 'undefined' ? shareUrl() : ''}`,
     ].filter(Boolean);
 
     navigator.clipboard.writeText(lines.join('\n'));
@@ -369,9 +387,34 @@ export default function ClientDashboard() {
   };
 
   const handleCopyShareLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/status/${projectId}`);
+    navigator.clipboard.writeText(shareUrl());
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
+  };
+
+  // The client is the one who forwards this link, so the client is the one
+  // who finds out it reached somebody it shouldn't have. Revoking issues a
+  // new token, which kills every copy already sent.
+  const handleRevokeShareLink = async () => {
+    if (!confirm('Turn off the current status link?\n\nAnyone you have already sent it to will no longer be able to open it. You will get a fresh link to share instead.')) return;
+    setRevokingLink(true);
+    try {
+      const res = await fetch('/api/share-links/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'project', id: projectId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setProject((prev) => (prev ? { ...prev, shareToken: data.shareToken } : prev));
+        setLinkRevoked(true);
+        setTimeout(() => setLinkRevoked(false), 4000);
+      }
+    } catch {
+      // Non-fatal: the old link simply keeps working and they can retry.
+    } finally {
+      setRevokingLink(false);
+    }
   };
 
   return (
@@ -426,6 +469,17 @@ export default function ClientDashboard() {
                 className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors whitespace-nowrap"
               >
                 {linkCopied ? 'Copied ✓' : 'Share status link'}
+              </motion.button>
+              <motion.button
+                onClick={handleRevokeShareLink}
+                disabled={revokingLink}
+                whileHover={{ scale: 1.03, y: -1 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                title="Stop the link you've already shared from working, and get a new one"
+                className="rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white/45 hover:text-white/80 hover:border-white/30 hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {revokingLink ? 'Turning off…' : linkRevoked ? 'Old link off ✓' : 'Turn off old link'}
               </motion.button>
               <motion.button
                 onClick={handleCopySummary}

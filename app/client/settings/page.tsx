@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { ClientHeader } from '@/components/portal/ClientHeader';
+import { checkPasswordStrength, MIN_PASSWORD_LENGTH } from '@/lib/password-policy';
 
 interface Preferences {
   notificationsEnabled: boolean;
@@ -112,6 +113,13 @@ function ClientSettingsInner() {
 
     if (newPassword !== confirmPassword) {
       setPasswordError('New passwords do not match');
+      return;
+    }
+
+    // Mirrors the server check so the client sees the rule before sending.
+    const strength = checkPasswordStrength(newPassword);
+    if (!strength.ok) {
+      setPasswordError(strength.error || 'Choose a stronger password');
       return;
     }
 
@@ -269,7 +277,7 @@ function ClientSettingsInner() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className={inputClass}
-                minLength={8}
+                minLength={MIN_PASSWORD_LENGTH}
                 required
               />
             </div>
@@ -280,7 +288,7 @@ function ClientSettingsInner() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className={inputClass}
-                minLength={8}
+                minLength={MIN_PASSWORD_LENGTH}
                 required
               />
             </div>

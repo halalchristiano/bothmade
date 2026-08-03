@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession, hashPassword, generateRandomPassword } from '@/lib/auth';
-import { forbiddenResponse, requireTeamManager, unauthorizedResponse } from '@/lib/middleware';
+import { hashPassword, generateRandomPassword } from '@/lib/auth';
+import { forbiddenResponse, requireOwner, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isUserRole } from '@/lib/roles';
 
 /**
- * Team-member list. Any signed-in staff account can read it — assignment
- * dropdowns across the admin depend on it — but `role` is included now that
- * there is a page which shows and edits it.
+ * Team-member list. Any staff account can read it — assignment dropdowns
+ * across the admin depend on it — but `role` is included now that there is a
+ * page which shows and edits it.
  */
 export async function GET() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const users = await prisma.user.findMany({
       select: {
@@ -34,14 +34,18 @@ export async function GET() {
 }
 
 /**
- * Add a teammate. Returns the generated password once, in this response and
- * nowhere else — only a bcrypt hash is stored, so if it is not handed over
- * now the account needs a reset instead.
+ * Add a teammate. Owner-only, per the role split in lib/middleware.ts: staff
+ * share the admin surface, and the exceptions are the actions where `sales`
+ * is deliberately constrained. Deciding who else gets an account is one.
+ *
+ * Returns the generated password once, in this response and nowhere else —
+ * only a bcrypt hash is stored, so if it isn't handed over now the account
+ * needs a reset instead.
  */
 export async function POST(request: NextRequest) {
   try {
-    const manager = await requireTeamManager();
-    if (!manager) return forbiddenResponse();
+    const session = await requireOwner();
+    if (!session) return forbiddenResponse('Only an owner can add a teammate.');
 
     const { name, email, role, title, password } = await request.json();
 

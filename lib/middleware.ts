@@ -1,69 +1,136 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from './auth';
+import { NextResponse } from 'next/server';
 import { prisma } from './prisma';
-import { canManageTeam } from './roles';
+import { getCurrentSession, type AuthPayload, type ClientAuthPayload } from './auth';
 
 /**
- * Protect a route - requires authentication
- * Returns user/client session or null if not authenticated
+ * Route guards.
+ *
+ * These used to be three unused helpers, one of which was actively wrong:
+ * `requireAdmin` rejected any session whose role wasn't the literal string
+ * `'admin'`, which excluded the two roles the app actually issues — `owner`
+ * (Kiana) and `sales` (Evan). Had anything adopted it, the owner would have
+ * been locked out of her own admin API while a generic account sailed
+ * through. Every admin route instead hand-rolled `session.type !== 'user'`,
+ * so the helper's bug stayed invisible.
+ *
+ * Owner-vs-sales, decided: **every row in the User table is staff, and staff
+ * see the whole admin surface.** That's a two-person studio where both people
+ * cover for each other; pretending otherwise would be a permission model
+ * nobody enforces. What is *not* shared is the small set of actions where the
+ * two roles have different authority — approving a discount below the floor,
+ * deleting records in bulk. Those go through `requireOwner`, and that is the
+ * only role distinction enforced anywhere. `sales` is a real, checked
+ * constraint; it is not decoration.
+ *
+ * The names below say what they check, so a call site can't be wrong about it.
+ * Two more helpers that lived here — a bare `requireAuth` and an
+ * `isClientAuthorized` that was a one-line `===` — are gone rather than
+ * fixed: nothing called either, and an unused guard is just a guard nobody
+ * has checked. Ownership is enforced where the query is (`findFirst` scoped
+ * by `clientId`), which is harder to forget than a comparison helper.
  */
-export async function requireAuth(request: NextRequest) {
+
+/**
+ * Any Bothmade team member, regardless of role. This is the guard for the
+ * admin API surface — it replaces the old, broken `requireAdmin`.
+ */
+export async function requireStaff(): Promise<AuthPayload | null> {
   const session = await getCurrentSession();
-
-  if (!session) {
-    return null;
-  }
-
+  if (!session || session.type !== 'user') return null;
   return session;
 }
 
 /**
- * Protect a route - requires a role that can manage the team.
- *
- * The role is read from the database rather than the session, because the JWT
- * carries whatever the role was at login. Someone demoted an hour ago would
- * otherwise keep write access until their token expired — and the first thing
- * this guards is the page that does the demoting.
- *
- * Returns the caller's id and role, or null when they may not manage the team.
+ * Staff with owner authority. The only actions gated on this are ones where
+ * `sales` is deliberately constrained — pricing below the authorized floor,
+ * and destructive bulk operations.
  */
-export async function requireTeamManager(): Promise<{
-  userId: string;
-  role: string;
-} | null> {
-  const session = await getCurrentSession();
-  if (!session || session.type !== 'user') return null;
+export async function requireOwner(): Promise<AuthPayload | null> {
+  const session = await requireStaff();
+  if (!session) return null;
+  return session.role === 'owner' ? session : null;
+}
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { id: true, role: true },
-  });
-  if (!user || !canManageTeam(user.role)) return null;
-
-  return { userId: user.id, role: user.role };
+/** True when this staff session may quote below the calculated floor. */
+export function canOverridePricing(session: AuthPayload): boolean {
+  return session.role !== 'sales';
 }
 
 /**
- * Protect a route - requires client role
+ * A discriminated union rather than two nullable fields, so `if (!session)
+ * return response` narrows to a real Response at every call site instead of
+ * `Response | null`.
  */
-export async function requireClient(request: NextRequest) {
+export type ClientSessionCheck =
+  | { session: ClientAuthPayload; response: null }
+  | { session: null; response: NextResponse };
+
+/**
+ * A logged-in client, with the first-login password change enforced here
+ * rather than in the browser.
+ *
+ * `mustChangePassword` was previously a hint the login page used to pick a
+ * redirect. A client who ignored the redirect — or who never used the
+ * browser at all — kept full API access on the auto-generated password we
+ * emailed them in plaintext. Now the server refuses everything except the
+ * routes needed to actually change it.
+ *
+ * Pass `allowPasswordChange: true` on those routes (client settings, /auth/me).
+ */
+export async function requireClient(
+  opts: { allowPasswordChange?: boolean } = {}
+): Promise<ClientSessionCheck> {
   const session = await getCurrentSession();
 
   if (!session || session.type !== 'client') {
-    return null;
+    return { session: null, response: unauthorizedResponse() };
   }
 
-  return session;
+  const client = await prisma.client.findUnique({
+    where: { id: session.clientId },
+    select: { archivedAt: true, mustChangePassword: true },
+  });
+
+  // Deleted or decommissioned since the token was minted — a 7-day JWT
+  // outlives an offboarding, so re-check rather than trusting the claim.
+  if (!client || client.archivedAt) {
+    return { session: null, response: unauthorizedResponse() };
+  }
+
+  if (client.mustChangePassword && !opts.allowPasswordChange) {
+    return { session: null, response: passwordChangeRequiredResponse() };
+  }
+
+  return { session, response: null };
 }
 
+export type PrincipalCheck =
+  | { session: AuthPayload | ClientAuthPayload; response: null }
+  | { session: null; response: NextResponse };
+
 /**
- * Check authorization - match client to resource
+ * Any authenticated principal, with the client-side rules applied when the
+ * principal is a client. Use on routes both staff and clients hit (project
+ * detail, messages, onboarding) so the forced password change can't be
+ * sidestepped by calling the API directly.
  */
-export function isClientAuthorized(
-  clientId: string,
-  sessionClientId: string
-): boolean {
-  return clientId === sessionClientId;
+export async function requirePrincipal(
+  opts: { allowPasswordChange?: boolean } = {}
+): Promise<PrincipalCheck> {
+  const session = await getCurrentSession();
+
+  if (!session) return { session: null, response: unauthorizedResponse() };
+  if (session.type === 'user') return { session, response: null };
+
+  return requireClient(opts);
+}
+
+/** 403 telling the client (and the browser) to go set a real password first. */
+export function passwordChangeRequiredResponse() {
+  return NextResponse.json(
+    { error: 'Set your own password before continuing.', code: 'PASSWORD_CHANGE_REQUIRED' },
+    { status: 403 }
+  );
 }
 
 /**
@@ -79,9 +146,9 @@ export function unauthorizedResponse() {
 /**
  * Create a forbidden response
  */
-export function forbiddenResponse() {
+export function forbiddenResponse(message = 'Forbidden') {
   return NextResponse.json(
-    { error: 'Forbidden' },
+    { error: message },
     { status: 403 }
   );
 }

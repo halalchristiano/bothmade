@@ -5,16 +5,6 @@ import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
-    // Staff login is the most valuable door in the app — it reaches every
-    // client's contact details and payment history. It had no limit at all.
-    const limited = await enforceRateLimit(
-      request,
-      'admin-login',
-      RATE_LIMITS.login,
-      'Too many sign-in attempts. Please wait a few minutes and try again.'
-    );
-    if (limited) return limited;
-
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -23,6 +13,14 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Staff credentials open every lead, client and contract in the
+    // business. Keyed by source address only — see the note on the client
+    // login route for why there is no per-account counter here.
+    const message = 'Too many login attempts. Please wait and try again.';
+    const limited = await enforceRateLimit(request, 'admin-login', RATE_LIMITS.login, message);
+    if (limited) return limited;
+
 
     // Every row in the User table is a Bothmade team member — any role
     // (owner, sales, admin, manager, support, ...) is valid staff access.
@@ -42,6 +40,7 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
 
     const token = createToken({
       userId: user.id,
