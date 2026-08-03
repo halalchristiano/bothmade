@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { FAQ_ITEMS } from '@/lib/start-faq';
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
 /**
  * /start is a client component (the configurator is all state), and a client
@@ -25,5 +28,27 @@ export const metadata: Metadata = {
 };
 
 export default function StartLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return (
+    <>
+      {/* FAQPage structured data, generated from the same array the page
+          renders — the two can't drift, and these are exactly the questions
+          someone types into a search box before hiring a studio. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            url: `${SITE_URL}/start`,
+            mainEntity: FAQ_ITEMS.map((item) => ({
+              '@type': 'Question',
+              name: item.q,
+              acceptedAnswer: { '@type': 'Answer', text: item.a },
+            })),
+          }),
+        }}
+      />
+      {children}
+    </>
+  );
 }
