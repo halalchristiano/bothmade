@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
-import { forbiddenResponse, unauthorizedResponse } from '@/lib/middleware';
+import { forbiddenResponse, requirePrincipal, unauthorizedResponse } from '@/lib/middleware';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-
-    if (!session) {
-      return unauthorizedResponse();
-    }
+    const { session, response } = await requirePrincipal();
+    if (!session) return response;
 
     const { projectId } = await params;
 
@@ -104,6 +101,11 @@ export async function GET(
             ? JSON.parse(project.deliverables)
             : [],
           contractUrl: project.contractUrl,
+          // Capability token for the public /status link. Only handed to
+          // people already authorized to see the project — it's the secret
+          // that makes the shared link work, so it travels no further than
+          // the dashboard that offers "copy share link".
+          shareToken: project.shareToken,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt,
           client: clientData,

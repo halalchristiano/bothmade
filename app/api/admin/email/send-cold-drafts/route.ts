@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
+import { escParagraphs } from '@/lib/html';
 import { sendAsUser, createGmailBatchTransport } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
@@ -23,8 +23,8 @@ const MAX_LEADS = 200;
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { leadIds } = await request.json();
     if (!Array.isArray(leadIds) || leadIds.length === 0) {
@@ -78,10 +78,10 @@ export async function POST(request: NextRequest) {
 
       const { subject, body } = renderColdEmail(draft, lead, sender.name || FALLBACK_SENDER_NAME);
 
-      const bodyHtml = body
-        .split(/\n{2,}/)
-        .map((para) => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
-        .join('');
+      // The draft comes from a research CSV someone imported and the
+      // substituted name from the lead record — neither is markup, and both
+      // end up in a client's inbox.
+      const bodyHtml = escParagraphs(body);
 
       const html = renderShell({
         title: subject,

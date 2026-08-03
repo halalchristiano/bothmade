@@ -3,6 +3,8 @@
 // Bothmade email, so whatever Evan or Kiana sends looks consistent with the
 // rest of the brand, not a plain-text scrawl.
 
+import { esc, escMultiline, escParagraphs, safeUrl } from '@/lib/html';
+
 export interface TemplateField {
   key: string;
   label: string;
@@ -70,19 +72,27 @@ const LOOM_FIELD: TemplateField = {
   placeholder: 'https://www.loom.com/share/...',
 };
 
+// Everything a `build()` interpolates into `bodyHtml` is escaped, because
+// all of it is typed by a person: a rep filling in the composer, or a
+// company/contact name imported from a research CSV. `subject`, `title`,
+// `eyebrow`, `ctaLabel`, and `ctaUrl` are deliberately left raw here —
+// renderShell() escapes those and runs ctaUrl through safeUrl(), and
+// escaping twice would put &amp; in front of the client.
 function withLoom(bodyHtml: string, loomUrl?: string): string {
-  if (!loomUrl) return bodyHtml;
+  const href = safeUrl(loomUrl);
+  if (!href) return bodyHtml;
   return `
     ${bodyHtml}
     <div style="margin-top:20px; padding:14px 18px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px;">
       <p style="margin:0 0 8px 0; font-size:13px; color:rgba(255,255,255,0.5);">A short video walkthrough:</p>
-      <a href="${loomUrl}" style="color:#7dd3fc; font-size:14px; font-weight:600; text-decoration:none;">${loomUrl}</a>
+      <a href="${href}" style="color:#7dd3fc; font-size:14px; font-weight:600; text-decoration:none;">${esc(loomUrl)}</a>
     </div>
   `;
 }
 
+/** Escaped — this always lands in bodyHtml, never in a header. */
 function greeting(name: string): string {
-  return name && name.trim() ? name.trim() : 'there';
+  return name && name.trim() ? esc(name.trim()) : 'there';
 }
 
 export const EMAIL_TEMPLATES: EmailTemplate[] = [
@@ -121,12 +131,9 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
         title: headline,
         bodyHtml: withLoom(
           `<p>Hi ${greeting(recipientName)},</p>` +
-            fields.body
-              .split('\n\n')
-              .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
-              .join('') +
-            `<p style="margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.08);">Best,<br/><strong style="color:#fff;">${full}</strong>${
-              fields.senderTitle ? `<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">${fields.senderTitle}</span>` : ''
+            escParagraphs(fields.body) +
+            `<p style="margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.08);">Best,<br/><strong style="color:#fff;">${esc(full)}</strong>${
+              fields.senderTitle ? `<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">${esc(fields.senderTitle)}</span>` : ''
             }<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">Bothmade Studio</span></p>`,
           fields.loomUrl
         ),
@@ -174,14 +181,14 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
         title: 'Something worth flagging',
         bodyHtml:
           `<p>Hi ${greeting(recipientName)},</p>` +
-          `<p>I'm ${first}, ${title} at Bothmade Studio.</p>` +
-          `<p>I came across ${company} while researching businesses in your industry and spent some time looking through your website.</p>` +
-          `<p style="color:#fff; font-weight:600;">One thing stood out to me: ${fields.observation}</p>` +
+          `<p>I'm ${esc(first)}, ${esc(title)} at Bothmade Studio.</p>` +
+          `<p>I came across ${esc(company)} while researching businesses in your industry and spent some time looking through your website.</p>` +
+          `<p style="color:#fff; font-weight:600;">One thing stood out to me: ${escMultiline(fields.observation)}</p>` +
           `<p>Rather than sending a generic sales email, we'd like to earn the opportunity to work with you by creating a bespoke homepage concept for your business.</p>` +
           `<p>We'll research your company, your customers and your competitors, then walk you through our thinking on a short call. There's no obligation — we simply believe it's the best way to demonstrate how we work.</p>` +
           `<p>If you like the direction, we can discuss taking it further. If not, you'll still leave with ideas you can use.</p>` +
           `<p>Would you be open to a quick 15-minute conversation next week?</p>` +
-          `<p>Kind regards,<br/>${full}<br/>${title}<br/>Bothmade Studio</p>`,
+          `<p>Kind regards,<br/>${esc(full)}<br/>${esc(title)}<br/>Bothmade Studio</p>`,
       };
     },
   },
@@ -217,14 +224,14 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
         title: 'Something worth flagging',
         bodyHtml:
           `<p>Hi ${greeting(recipientName)},</p>` +
-          `<p>I'm ${first}, ${title} at Bothmade Studio.</p>` +
-          `<p>I've spent some time looking into ${company}, your website and how you're positioned online.</p>` +
-          `<p style="color:#fff; font-weight:600;">It struck me that ${fields.observation}</p>` +
+          `<p>I'm ${esc(first)}, ${esc(title)} at Bothmade Studio.</p>` +
+          `<p>I've spent some time looking into ${esc(company)}, your website and how you're positioned online.</p>` +
+          `<p style="color:#fff; font-weight:600;">It struck me that ${escMultiline(fields.observation)}</p>` +
           `<p>We've already identified several opportunities that could make a meaningful difference, and rather than trying to explain them over email, we'd like to build a bespoke homepage concept and walk you through the thinking behind it.</p>` +
           `<p>No templates. No obligation. Just a genuine demonstration of how we'd approach your business if we were fortunate enough to work together.</p>` +
           `<p>If it isn't for you, that's absolutely fine. At the very least, you'll leave with ideas you can use.</p>` +
-          `<p>Would ${fields.callDays || 'next week'} work for a brief 15-minute conversation?</p>` +
-          `<p>Kind regards,<br/>${full}<br/>${title}<br/>Bothmade Studio</p>`,
+          `<p>Would ${esc(fields.callDays) || 'next week'} work for a brief 15-minute conversation?</p>` +
+          `<p>Kind regards,<br/>${esc(full)}<br/>${esc(title)}<br/>Bothmade Studio</p>`,
       };
     },
   },
@@ -240,7 +247,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: `Circling back on ${company}`,
       bodyHtml:
         `<p>Hi ${greeting(recipientName)},</p>` +
-        `<p>Wanted to circle back on my last note about ${company}'s site — know inboxes get busy, so no worries if this got buried.</p>` +
+        `<p>Wanted to circle back on my last note about ${esc(company)}'s site — know inboxes get busy, so no worries if this got buried.</p>` +
         `<p>Happy to answer anything about scope or pricing whenever it's useful, or just send a couple of relevant examples if that's easier.</p>`,
     }),
   },
@@ -296,7 +303,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
         `<p>Hi ${greeting(recipientName)},</p>` +
         `<p>Appreciate you being upfront about it. A lot of clients start with a smaller core version and layer on features later once the return proves out, rather than committing to everything at once.</p>` +
         (fields.lighterOption
-          ? `<p>For your project, that could look like <strong style="color:#fff;">${fields.lighterOption}</strong>, with room to expand later.</p>`
+          ? `<p>For your project, that could look like <strong style="color:#fff;">${esc(fields.lighterOption)}</strong>, with room to expand later.</p>`
           : '') +
         `<p>Want me to put together that lighter-weight version so you can compare it directly?</p>`,
     }),
@@ -379,7 +386,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: 'A quick heads-up on timing',
       bodyHtml:
         `<p>Hi ${greeting(recipientName)},</p>` +
-        `<p>I can hold this scope and price for ${fields.holdWindow || 'the next week or so'} — after that I'd need to re-quote, since the schedule fills up fast.</p>` +
+        `<p>I can hold this scope and price for ${esc(fields.holdWindow) || 'the next week or so'} — after that I'd need to re-quote, since the schedule fills up fast.</p>` +
         `<p>No pressure either way — just didn't want the timing to catch you off guard. Let me know if you'd like to move ahead.</p>`,
     }),
   },
@@ -402,8 +409,8 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: 'Got 15 minutes?',
       bodyHtml: withLoom(
         `<p>Hi ${greeting(recipientName)},</p>
-         <p>I'd love to grab a quick call about ${fields.purpose}.</p>
-         <p style="color:rgba(255,255,255,0.6);">${fields.proposedTimes.replace(/\n/g, '<br/>')}</p>
+         <p>I'd love to grab a quick call about ${esc(fields.purpose)}.</p>
+         <p style="color:rgba(255,255,255,0.6);">${escMultiline(fields.proposedTimes)}</p>
          <p>Let me know what works, or just grab a slot below.</p>`,
         fields.loomUrl
       ),
@@ -428,8 +435,8 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: fields.meetingDateTime,
       bodyHtml: withLoom(
         `<p>Hi ${greeting(recipientName)},</p>
-         <p>Confirming our call for <strong style="color:#fff;">${fields.meetingDateTime}</strong>.</p>
-         ${fields.agenda ? `<div style="background:rgba(255,255,255,0.05); border-left:3px solid #38bdf8; border-radius:8px; padding:14px 16px; margin:16px 0;"><p style="margin:0 0 6px 0; font-weight:700; color:#fff; font-size:13px;">On the agenda</p><p style="margin:0; color:rgba(255,255,255,0.7);">${fields.agenda.replace(/\n/g, '<br/>')}</p></div>` : ''}
+         <p>Confirming our call for <strong style="color:#fff;">${esc(fields.meetingDateTime)}</strong>.</p>
+         ${fields.agenda ? `<div style="background:rgba(255,255,255,0.05); border-left:3px solid #38bdf8; border-radius:8px; padding:14px 16px; margin:16px 0;"><p style="margin:0 0 6px 0; font-weight:700; color:#fff; font-size:13px;">On the agenda</p><p style="margin:0; color:rgba(255,255,255,0.7);">${escMultiline(fields.agenda)}</p></div>` : ''}
          <p>Talk soon.</p>`,
         fields.loomUrl
       ),
@@ -455,8 +462,8 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: 'Let’s get your project details',
       bodyHtml: withLoom(
         `<p>Hi ${greeting(recipientName)},</p>
-         <p>To get ${company}'s project moving, we just need a bit more detail from your side — a short form covering the essentials.</p>
-         ${fields.deadline ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">If you can get this to us ${fields.deadline}, we can keep things on schedule.</p>` : ''}`,
+         <p>To get ${esc(company)}'s project moving, we just need a bit more detail from your side — a short form covering the essentials.</p>
+         ${fields.deadline ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">If you can get this to us ${esc(fields.deadline)}, we can keep things on schedule.</p>` : ''}`,
         fields.loomUrl
       ),
       ctaLabel: 'Fill out requirements',
@@ -479,7 +486,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: 'Still good to move forward?',
       bodyHtml: withLoom(
         `<p>Hi ${greeting(recipientName)},</p>
-         <p>Wanted to check in on the proposal for ${company}. ${fields.note ? fields.note.replace(/\n/g, '<br/>') : "Happy to answer any questions before you sign off."}</p>`,
+         <p>Wanted to check in on the proposal for ${esc(company)}. ${fields.note ? escMultiline(fields.note) : "Happy to answer any questions before you sign off."}</p>`,
         fields.loomUrl
       ),
       ctaLabel: 'Review & sign',
@@ -501,7 +508,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: 'Your agreement is ready',
       bodyHtml: withLoom(
         `<p>Hi ${greeting(recipientName)},</p>
-         <p>Just a reminder that ${company}'s project agreement is ready and waiting for your review whenever you get a chance.</p>`,
+         <p>Just a reminder that ${esc(company)}'s project agreement is ready and waiting for your review whenever you get a chance.</p>`,
         fields.loomUrl
       ),
       ctaLabel: 'Review & sign',
@@ -522,10 +529,10 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       subject: `${company}: ${fields.updateTitle}`,
       eyebrow: 'Project update',
       title: company,
-      bodyHtml: `<p>Hi ${greeting(recipientName)},</p><p>There's a new update on <strong style="color:#fff;">${company}</strong>.</p>
+      bodyHtml: `<p>Hi ${greeting(recipientName)},</p><p>There's a new update on <strong style="color:#fff;">${esc(company)}</strong>.</p>
         <div style="background:rgba(255,255,255,0.05); border-left:3px solid #38bdf8; border-radius:8px; padding:16px 18px; margin:20px 0;">
-          <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${fields.updateTitle}</p>
-          <p style="margin:0; color:rgba(255,255,255,0.7);">${fields.updateDetail.replace(/\n/g, '<br/>')}</p>
+          <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${esc(fields.updateTitle)}</p>
+          <p style="margin:0; color:rgba(255,255,255,0.7);">${escMultiline(fields.updateDetail)}</p>
         </div>`,
       ctaLabel: fields.dashboardUrl ? 'View in dashboard' : undefined,
       ctaUrl: fields.dashboardUrl || undefined,
@@ -543,7 +550,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       title: `${company} is live`,
       bodyHtml:
         `<p>Hi ${greeting(recipientName)},</p>` +
-        `<p><strong style="color:#fff;">${company}</strong> is officially live. It's been a pleasure building this with you, and we hope it makes a real difference for the business.</p>` +
+        `<p><strong style="color:#fff;">${esc(company)}</strong> is officially live. It's been a pleasure building this with you, and we hope it makes a real difference for the business.</p>` +
         `<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:16px 18px; margin:20px 0; color:rgba(255,255,255,0.75); font-size:14px;">
            <p style="margin:0 0 6px 0;"><strong style="color:#fff;">What's next:</strong></p>
            <p style="margin:0 0 4px 0;">A 30-day Warranty Period is now active — anything that breaks, we fix at no charge.</p>
@@ -568,11 +575,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       subject: 'Checking in',
       title: 'Checking in',
       bodyHtml: withLoom(
-        `<p>Hi ${greeting(recipientName)},</p>` +
-          fields.message
-            .split('\n\n')
-            .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
-            .join(''),
+        `<p>Hi ${greeting(recipientName)},</p>` + escParagraphs(fields.message),
         fields.loomUrl
       ),
     }),

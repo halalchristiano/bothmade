@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { encodeMimeMessage } from '@/lib/gmail-mime';
+import { buildFromHeader, encodeMimeMessage } from '@/lib/gmail-mime';
 
 const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
 
@@ -40,7 +40,7 @@ export async function sendAsDelegatedUser(
     const gmail = google.gmail({ version: 'v1', auth: jwtClient });
 
     const raw = encodeMimeMessage({
-      from: opts.fromName ? `${opts.fromName} <${userEmail}>` : userEmail,
+      from: buildFromHeader(opts.fromName, userEmail),
       to: opts.to,
       subject: opts.subject,
       html: opts.html,

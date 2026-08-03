@@ -5,14 +5,6 @@ import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
-    const limited = await enforceRateLimit(
-      request,
-      'login',
-      RATE_LIMITS.login,
-      'Too many sign-in attempts. Please wait a few minutes and try again.'
-    );
-    if (limited) return limited;
-
     const { email, password, userType = 'user' } = await request.json();
 
     // Validate input
@@ -22,6 +14,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Keyed by source address only, deliberately. A per-account counter
+    // would stop distributed guessing at one inbox, but it also hands
+    // anyone who knows an email address a way to lock its owner out on
+    // demand — and that trade is settled in tests/lib/auth-rate-limit.ts
+    // ('does not let one attacker lock out a different address').
+    const message = 'Too many login attempts. Please wait and try again.';
+    const limited = await enforceRateLimit(request, 'login', RATE_LIMITS.login, message);
+    if (limited) return limited;
+
 
     if (userType === 'client') {
       // Client login
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+
 
       // Update last login
       await prisma.client.update({
@@ -98,6 +101,7 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         );
       }
+
 
       // Create auth token
       const token = createToken({

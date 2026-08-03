@@ -66,6 +66,12 @@ export default function ClientProjectsPage() {
           return;
         }
         const data = await projectsRes.json();
+        // The server now refuses everything but the settings page until the
+        // auto-generated password is replaced — follow it there.
+        if (data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+          router.push('/client/settings?force=1');
+          return;
+        }
         if (data.success) {
           setProjects(data.projects);
           setUnseenIds(

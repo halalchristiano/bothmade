@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 
 /**
@@ -69,8 +68,8 @@ const CALLABLE_REASONS: CallReason[] = [
 
 export async function GET() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },

@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 
 export async function GET() {
   try {
-    const session = await getCurrentSession();
+    const session = await requireStaff();
 
-    if (!session || session.type !== 'user') {
+    if (!session) {
       return unauthorizedResponse();
     }
 

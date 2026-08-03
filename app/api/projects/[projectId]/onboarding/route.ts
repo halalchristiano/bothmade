@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse, forbiddenResponse } from '@/lib/middleware';
+import { requirePrincipal, unauthorizedResponse, forbiddenResponse } from '@/lib/middleware';
 
 async function assertAccess(projectId: string) {
-  const session = await getCurrentSession();
-  if (!session) return { session: null, project: null };
+  const { session, response } = await requirePrincipal();
+  if (!session) return { session: null, project: null, response };
 
   const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project) return { session, project: null };
+  if (!project) return { session, project: null, response: null };
 
   if (session.type === 'client' && project.clientId !== session.clientId) {
-    return { session, project: null };
+    return { session, project: null, response: null };
   }
 
-  return { session, project };
+  return { session, project, response: null };
 }
 
 export async function GET(
@@ -23,8 +22,8 @@ export async function GET(
 ) {
   try {
     const { projectId } = await params;
-    const { session, project } = await assertAccess(projectId);
-    if (!session) return unauthorizedResponse();
+    const { session, project, response } = await assertAccess(projectId);
+    if (!session) return response ?? unauthorizedResponse();
     if (!project) return forbiddenResponse();
 
     const questions = await prisma.onboardingQuestion.findMany({
@@ -46,8 +45,8 @@ export async function POST(
 ) {
   try {
     const { projectId } = await params;
-    const { session, project } = await assertAccess(projectId);
-    if (!session) return unauthorizedResponse();
+    const { session, project, response: denied } = await assertAccess(projectId);
+    if (!session) return denied ?? unauthorizedResponse();
     if (!project) return forbiddenResponse();
 
     const { questionId, answer } = await request.json();

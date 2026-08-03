@@ -1,9 +1,9 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
+import { jwtSecret } from '@/lib/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'your-session-secret';
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'auth_token';
 const AUTH_COOKIE_MAX_AGE = parseInt(
   process.env.AUTH_COOKIE_MAX_AGE || '604800'
@@ -44,7 +44,7 @@ export async function verifyPassword(
  * Create a JWT token for a user or client
  */
 export function createToken(payload: AuthPayload | ClientAuthPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, jwtSecret(), { expiresIn: '7d' });
 }
 
 /**
@@ -54,7 +54,7 @@ export function verifyToken(
   token: string
 ): (AuthPayload | ClientAuthPayload) | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, jwtSecret());
     return decoded as AuthPayload | ClientAuthPayload;
   } catch (error) {
     return null;
@@ -68,12 +68,12 @@ export function verifyToken(
  * Google and back.
  */
 export function createOAuthState(userId: string): string {
-  return jwt.sign({ userId, purpose: 'gmail-oauth' }, JWT_SECRET, { expiresIn: '10m' });
+  return jwt.sign({ userId, purpose: 'gmail-oauth' }, jwtSecret(), { expiresIn: '10m' });
 }
 
 export function verifyOAuthState(state: string): string | null {
   try {
-    const decoded = jwt.verify(state, JWT_SECRET) as { userId: string; purpose: string };
+    const decoded = jwt.verify(state, jwtSecret()) as { userId: string; purpose: string };
     return decoded.purpose === 'gmail-oauth' ? decoded.userId : null;
   } catch {
     return null;
@@ -122,14 +122,24 @@ export async function getCurrentSession(): Promise<
 }
 
 /**
- * Generate a random password for new clients
+ * Generate a random password for new clients.
+ *
+ * crypto.randomBytes, not Math.random: this is the only credential a client
+ * ever gets handed, it's emailed to them in plaintext, and Math.random is a
+ * seeded PRNG whose output stream is recoverable from a handful of samples.
+ * Two clients onboarded from the same warm serverless instance would have
+ * had related passwords.
+ *
+ * crypto.randomInt rejects out-of-range draws internally, so no modulo bias.
  */
-export function generateRandomPassword(): string {
-  const chars =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+export function generateRandomPassword(length = 20): string {
+  // Unambiguous alphabet — no 0/O or 1/l/I, since these get read off a
+  // screen and typed by hand. Symbols kept to ones that survive a copy-paste
+  // out of an email client without being mangled.
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*-_';
   let password = '';
-  for (let i = 0; i < 16; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < length; i++) {
+    password += chars.charAt(crypto.randomInt(chars.length));
   }
   return password;
 }
