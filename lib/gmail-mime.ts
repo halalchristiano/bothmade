@@ -1,4 +1,9 @@
-import { sanitizeDisplayName, sanitizeEmailAddress, sanitizeHeaderValue } from '@/lib/html';
+import {
+  htmlToPlainText,
+  sanitizeDisplayName,
+  sanitizeEmailAddress,
+  sanitizeHeaderValue,
+} from '@/lib/html';
 
 /**
  * `Name <address>`, with the display name stripped of the characters that
@@ -43,14 +48,45 @@ export function encodeMimeMessage(opts: { from: string; to: string; subject: str
   // accents) don't corrupt the header — most subjects here are plain ASCII
   // but this keeps it safe either way.
   const encodedSubject = `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
+
+  /**
+   * multipart/alternative, not text/html alone.
+   *
+   * These messages went out HTML-only, which is a scored spam signal in its
+   * own right: genuine transactional senders offer a plaintext alternative
+   * and bulk phishing typically doesn't. Authentication was already clean
+   * (SPF, DKIM aligned to the sending domain, DMARC all passing) and Gmail
+   * was still filing these as phishing, so the remaining levers are the
+   * message's own shape and the domain's age. This is the half we control.
+   *
+   * The boundary is fixed rather than random: these messages are assembled
+   * from our own templates, so there is no attacker-supplied content that
+   * could contain it, and a constant keeps the output deterministic for
+   * tests.
+   */
+  const boundary = '----=_bothmade_alt_boundary';
+  const text = htmlToPlainText(opts.html);
+
   const message = [
     `From: ${from}`,
     `To: ${to}`,
     `Subject: ${encodedSubject}`,
     'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    // Least-preferred part first: a client picks the last one it can render.
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    '',
+    text,
+    '',
+    `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
     '',
     opts.html,
+    '',
+    `--${boundary}--`,
+    '',
   ].join('\r\n');
 
   return Buffer.from(message)
