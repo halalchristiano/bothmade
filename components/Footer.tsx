@@ -148,7 +148,17 @@ export function Footer() {
           viewport={{ once: true }}
         >
           <p>© 2026 Bothmade. All rights reserved.</p>
-          <p>Built with obsessive attention to detail.</p>
+          {/* Ad platforms require a reachable privacy policy, and a policy
+              nothing links to is not reachable — the footer is where people
+              and reviewers both look for it. */}
+          <nav aria-label="Legal" className="flex items-center gap-5">
+            <Link href="/privacy" className="hover:text-sky-300 transition">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-sky-300 transition">
+              Terms
+            </Link>
+          </nav>
         </motion.div>
       </div>
     </footer>
