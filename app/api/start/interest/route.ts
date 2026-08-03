@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail, studioInbox } from '@/lib/email';
+import { escapeHtml } from '@/lib/html';
+import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { prisma } from '@/lib/prisma';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
@@ -15,15 +17,6 @@ import {
   isTimelineKey,
   type AddOnKey,
 } from '@/lib/pricing';
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -82,19 +75,25 @@ export async function POST(request: NextRequest) {
     // Same reasoning as /api/contact: the lead row is the record, the email is
     // the notification. Someone who priced a project and asked to talk is the
     // warmest inbound there is — it does not belong only in an inbox.
+    let leadId: string | null = null;
+    let returning = false;
+    let rep: SalesRep | null = null;
+
+    const summary = [
+      `Configured on the pricing calculator: ${BASE_SERVICES[baseService].label}`,
+      `Add-ons: ${addOnKeys.map((key) => ADD_ONS[key].label).join(', ') || 'None'}`,
+      `Client type: ${CLIENT_TYPES[clientType].label}`,
+      `Timeline: ${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
+      `Estimated total: ${formatCents(breakdown.totalPrice)}`,
+    ].join('\n');
+
     try {
+      rep = await findSalesRep();
+
       const existing = await prisma.lead.findFirst({
         where: { email },
         select: { id: true },
       });
-
-      const summary = [
-        `Configured on the pricing calculator: ${BASE_SERVICES[baseService].label}`,
-        `Add-ons: ${addOnKeys.map((key) => ADD_ONS[key].label).join(', ') || 'None'}`,
-        `Client type: ${CLIENT_TYPES[clientType].label}`,
-        `Timeline: ${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
-        `Estimated total: ${formatCents(breakdown.totalPrice)}`,
-      ].join('\n');
 
       if (existing) {
         await prisma.leadActivity.create({
@@ -104,8 +103,10 @@ export async function POST(request: NextRequest) {
           where: { id: existing.id },
           data: { replyReceivedAt: new Date() },
         });
+        leadId = existing.id;
+        returning = true;
       } else {
-        await prisma.lead.create({
+        const lead = await prisma.lead.create({
           data: {
             company,
             contactName,
@@ -115,8 +116,13 @@ export async function POST(request: NextRequest) {
             source: 'inbound-pricing',
             estimatedValue: breakdown.totalPrice,
             notes: summary,
+            // Same as the contact form: unassigned inbound never reaches the
+            // call list or the follow-up digest, both of which are per-rep.
+            assignedToId: rep.id,
           },
+          select: { id: true },
         });
+        leadId = lead.id;
       }
     } catch (error) {
       console.error('Failed to record pricing interest as a lead:', error);
@@ -127,6 +133,26 @@ export async function POST(request: NextRequest) {
       subject: `Pricing interest: ${company} — ${BASE_SERVICES[baseService].label}`,
       html,
     });
+
+    // Evan specifically — the lead is his, and this one arrives with a budget
+    // already attached, so it is the most actionable mail the studio gets.
+    if (leadId && rep) {
+      const sent = await notifyRepInboundEnquiry({
+        toEmail: rep.email,
+        repName: rep.name,
+        leadId,
+        contactName,
+        company,
+        email,
+        serviceLabel: `${BASE_SERVICES[baseService].label} — ${formatCents(breakdown.totalPrice)}`,
+        message: summary,
+        returning,
+        via: 'the pricing calculator',
+      });
+      if (!sent) {
+        console.error(`Sales alert to ${rep.email} failed for lead ${leadId}`);
+      }
+    }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

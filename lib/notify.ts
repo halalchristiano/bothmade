@@ -1,12 +1,50 @@
 import { prisma } from './prisma';
 import { sendEmail } from './email';
+import { escapeHtml } from './html';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+/**
+ * Read at call time, not at import. A module-level const freezes whatever the
+ * environment held when the bundle first loaded, which silently produces
+ * localhost links in a deployed build and is invisible until someone clicks one.
+ */
+function siteUrl(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+}
+
+/**
+ * Where the "someone reached out" alert goes when no User row is marked
+ * `sales` — a hardcoded address still beats nobody being told. Override
+ * with SALES_EMAIL.
+ */
+function salesFallbackEmail(): string {
+  return process.env.SALES_EMAIL || 'evan@bothmade.studio';
+}
 
 /** Every admin/team account's email — the audience for internal alerts. */
 export async function getAdminEmails(): Promise<string[]> {
   const users = await prisma.user.findMany({ select: { email: true } });
   return users.map((u) => u.email);
+}
+
+export interface SalesRep {
+  id: string | null;
+  email: string;
+  name: string | null;
+}
+
+/**
+ * Whoever works inbound — the `sales` account (Evan). Returns the fallback
+ * address with a null id when there is no such row, so the alert still sends
+ * even though there is nobody to assign the lead to.
+ */
+export async function findSalesRep(): Promise<SalesRep> {
+  const user = await prisma.user.findFirst({
+    where: { role: 'sales' },
+    select: { id: true, email: true, name: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return user ?? { id: null, email: salesFallbackEmail(), name: null };
 }
 
 /** Same as getAdminEmails() but respects the per-user weekly-digest opt-out. */
@@ -45,6 +83,58 @@ async function notifyAdmins(subject: string, html: string): Promise<void> {
   await sendEmail({ to: emails, subject, html });
 }
 
+/**
+ * "This client reached out." Sent to the sales rep alone, separately from the
+ * shared studio notification, because the two say different things: the group
+ * mail is news, this one is an assignment with the lead's page one click away.
+ *
+ * Every interpolated value here came from a public form, so all of it is
+ * escaped — including the company name, which reaches us via the same input.
+ */
+export async function notifyRepInboundEnquiry(params: {
+  toEmail: string;
+  repName?: string | null;
+  leadId: string;
+  contactName: string;
+  company: string;
+  email: string;
+  serviceLabel: string;
+  message: string;
+  /** True when this address already existed in the pipeline. */
+  returning: boolean;
+  /** What brought them in, e.g. "the contact form" or "the pricing calculator". */
+  via: string;
+}): Promise<boolean> {
+  const greeting = params.repName ? `${escapeHtml(params.repName)} — ` : '';
+  const who = `<strong>${escapeHtml(params.contactName)}</strong> at <strong>${escapeHtml(params.company)}</strong>`;
+
+  const html = wrap(
+    params.returning ? 'A lead just reached out again' : 'A new client just reached out',
+    `<p>${greeting}${who} came in through ${escapeHtml(params.via)} and is asking about
+      <strong>${escapeHtml(params.serviceLabel)}</strong>.</p>
+     <p style="margin:0 0 4px;color:#555;">What they wrote:</p>
+     <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;white-space:pre-wrap;">${escapeHtml(
+       params.message
+     )}</blockquote>
+     <p>Reply to them directly at
+       <a href="mailto:${encodeURI(params.email)}">${escapeHtml(params.email)}</a>.</p>
+     ${
+       params.returning
+         ? '<p style="color:#555;">This address was already in the pipeline — the message is on their existing lead rather than a new one.</p>'
+         : ''
+     }`,
+    `${siteUrl()}/admin/leads/${encodeURIComponent(params.leadId)}`,
+    'Open the lead'
+  );
+
+  return sendEmail({
+    to: params.toEmail,
+    replyTo: params.email,
+    subject: `${params.contactName} at ${params.company} just reached out`,
+    html,
+  });
+}
+
 export async function notifyAdminsNewClientMessage(params: {
   projectId: string;
   projectName: string;
@@ -55,7 +145,7 @@ export async function notifyAdminsNewClientMessage(params: {
     'New client message',
     `<p><strong>${params.clientCompany}</strong> sent a message on <strong>${params.projectName}</strong>:</p>
      <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;">${params.preview}</blockquote>`,
-    `${SITE_URL}/admin/projects/${params.projectId}`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
     'Reply'
   );
   await notifyAdmins(`New message: ${params.projectName}`, html);
@@ -70,7 +160,7 @@ export async function notifyAdminsPaymentReceived(params: {
   const html = wrap(
     'Payment received',
     `<p><strong>${params.clientCompany}</strong> paid <strong>${params.amountLabel}</strong> for <strong>${params.projectName}</strong>.</p>`,
-    `${SITE_URL}/admin/projects/${params.projectId}`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
     'View Project'
   );
   await notifyAdmins(`Payment received: ${params.projectName}`, html);
@@ -83,13 +173,13 @@ export async function notifyAdminsStaleLeads(
   const rows = leads
     .map(
       (l) =>
-        `<li><a href="${SITE_URL}/admin/leads/${l.id}">${l.company}</a> — ${l.daysSinceActivity} days since last activity</li>`
+        `<li><a href="${siteUrl()}/admin/leads/${l.id}">${l.company}</a> — ${l.daysSinceActivity} days since last activity</li>`
     )
     .join('');
   const html = wrap(
     'Leads going cold',
     `<p>These leads haven't had any activity in 5+ days:</p><ul>${rows}</ul>`,
-    `${SITE_URL}/admin/leads`,
+    `${siteUrl()}/admin/leads`,
     'View Leads'
   );
   await notifyAdmins(`${leads.length} lead${leads.length === 1 ? '' : 's'} going cold`, html);
@@ -108,7 +198,7 @@ export async function notifyUserFollowUpDigest(
   const rows = leads
     .map(
       (l) =>
-        `<li><a href="${SITE_URL}/admin/leads/${l.id}">${l.company}</a> — ${
+        `<li><a href="${siteUrl()}/admin/leads/${l.id}">${l.company}</a> — ${
           l.overdue ? `overdue since ${l.nextFollowUpAt.toLocaleDateString()}` : 'due today'
         }</li>`
     )
@@ -119,7 +209,7 @@ export async function notifyUserFollowUpDigest(
     `<p>You have ${leads.length} follow-up${leads.length === 1 ? '' : 's'} due${
       overdueCount > 0 ? `, ${overdueCount} of them overdue` : ''
     }:</p><ul>${rows}</ul>`,
-    `${SITE_URL}/admin/call-list`,
+    `${siteUrl()}/admin/call-list`,
     'Open Call List'
   );
   return sendEmail({

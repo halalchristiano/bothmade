@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { prisma } from '@/lib/prisma';
 import { studioInbox } from '@/lib/email';
+import { escapeHtml } from '@/lib/html';
+import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -36,16 +38,6 @@ const LIMITS = {
   message: 4000,
 } as const;
 
-/** Anything user-supplied is escaped before it reaches an HTML email body. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function isValidEmail(value: string): boolean {
   // Deliberately conservative: no display names, no comments, no newlines.
   return /^[^\s@<>"']+@[^\s@<>"'.]+\.[^\s@<>"']{2,}$/.test(value);
@@ -59,6 +51,12 @@ interface Enquiry {
   service: Service;
 }
 
+interface RecordedEnquiry {
+  leadId: string;
+  /** True when this address was already in the pipeline. */
+  returning: boolean;
+}
+
 /**
  * Put the enquiry in the CRM. This is the durable record — the emails below
  * are a notification about it, not the thing itself. An inbox is not a
@@ -69,7 +67,10 @@ interface Enquiry {
  * Someone who writes in twice is one lead with two messages, not two leads,
  * so a repeat from a known address becomes an activity on the existing row.
  */
-async function recordEnquiry(enquiry: Enquiry): Promise<void> {
+async function recordEnquiry(
+  enquiry: Enquiry,
+  assignToId: string | null
+): Promise<RecordedEnquiry> {
   const detail = [
     `Service requested: ${SERVICE_LABELS[enquiry.service]}`,
     '',
@@ -91,14 +92,15 @@ async function recordEnquiry(enquiry: Enquiry): Promise<void> {
     });
     // They came to us — the strongest buying signal there is, and the sales
     // views sort on it. Touch updatedAt so this lead surfaces to the top.
+    // Assignment is left alone: whoever already owns this lead keeps it.
     await prisma.lead.update({
       where: { id: existing.id },
       data: { replyReceivedAt: new Date() },
     });
-    return;
+    return { leadId: existing.id, returning: true };
   }
 
-  await prisma.lead.create({
+  const lead = await prisma.lead.create({
     data: {
       // `company` is required on Lead but optional on the form; their name is
       // a better placeholder than an empty string in a list of businesses.
@@ -108,8 +110,15 @@ async function recordEnquiry(enquiry: Enquiry): Promise<void> {
       status: 'new',
       source: 'inbound',
       notes: detail,
+      // Unassigned inbound is invisible where it matters: the call list
+      // filters to the rep's own leads, and the follow-up digest is built
+      // per-assignee. An alert nobody can action is just more mail.
+      assignedToId: assignToId,
     },
+    select: { id: true },
   });
+
+  return { leadId: lead.id, returning: false };
 }
 
 export async function POST(request: NextRequest) {
@@ -162,16 +171,20 @@ export async function POST(request: NextRequest) {
     // Capture before notifying. If the mail leg fails the enquiry is still
     // in the pipeline; if this leg fails we can still fall back to email.
     // Losing both is the only outcome the visitor needs to hear about.
-    let recorded = false;
+    let recorded: RecordedEnquiry | null = null;
+    let rep: SalesRep | null = null;
     try {
-      await recordEnquiry({
-        name: cleanName,
-        email: cleanEmail,
-        company: cleanCompany,
-        message: cleanMessage,
-        service: cleanService,
-      });
-      recorded = true;
+      rep = await findSalesRep();
+      recorded = await recordEnquiry(
+        {
+          name: cleanName,
+          email: cleanEmail,
+          company: cleanCompany,
+          message: cleanMessage,
+          service: cleanService,
+        },
+        rep.id
+      );
     } catch (error) {
       console.error('Failed to record contact enquiry as a lead:', error);
     }
@@ -221,6 +234,28 @@ export async function POST(request: NextRequest) {
       // Only a dead end if the CRM write failed too.
       if (!recorded) {
         return NextResponse.json({ error: 'Failed to send message.' }, { status: 502 });
+      }
+    }
+
+    // Evan specifically: this client reached out, the lead is yours, here it
+    // is. Separate from the group mail above, which is only news — this one
+    // links straight to the lead and matches the assignment just made.
+    // Needs the lead id, so it can only go out if the CRM write succeeded.
+    if (recorded && rep) {
+      const sent = await notifyRepInboundEnquiry({
+        toEmail: rep.email,
+        repName: rep.name,
+        leadId: recorded.leadId,
+        contactName: cleanName,
+        company: cleanCompany || cleanName,
+        email: cleanEmail,
+        serviceLabel: SERVICE_LABELS[cleanService],
+        message: cleanMessage,
+        returning: recorded.returning,
+        via: 'the contact form',
+      });
+      if (!sent) {
+        console.error(`Sales alert to ${rep.email} failed for lead ${recorded.leadId}`);
       }
     }
 

@@ -20,12 +20,18 @@ the site is deployable after the first section.
       enquiry emails don't land in spam. Note this has to be
       **bothmade.studio** — mail sent from an unverified domain is rejected
       outright, not merely spam-filed.
+- [ ] **Give Evan's account the `sales` role.** Inbound leads are assigned to
+      whoever holds it, and the "this client reached out" alert is sent to
+      them. Without it the alert falls back to `evan@bothmade.studio` and the
+      lead stays unassigned — which keeps it out of the call list and the
+      follow-up digest, both of which filter per rep. Check `/admin/users`.
 - [ ] **Test the form once on production** — submit it yourself, then confirm
-      all three: the notification arrives at info@, evan@ and kiana@; the
+      all four: the notification arrives at info@, evan@ and kiana@; Evan gets
+      the separate "just reached out" alert whose button opens the lead; the
       acknowledgement arrives at the address you submitted; and the enquiry is
-      showing in `/admin/leads` with source `inbound`. The last one is the
-      real check — the lead row is the record, the emails are a notification
-      about it.
+      showing in `/admin/leads` with source `inbound`, assigned to Evan. The
+      last one is the real check — the lead row is the record, the emails are
+      a notification about it.
 
 ## Required before "Sign in with Google" works (admin → Who to call)
 
