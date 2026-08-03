@@ -30,6 +30,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
+import { BroadcastComposer } from '@/components/admin/BroadcastComposer';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
@@ -753,31 +754,8 @@ function SalesDashboard({
   );
 }
 
-function BroadcastComposer() {
+function DashboardBroadcast() {
   const [open, setOpen] = useState(false);
-  const [content, setContent] = useState('');
-  const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState('');
-
-  const handleSend = async () => {
-    if (!content.trim()) return;
-    setSending(true);
-    setStatus('');
-    try {
-      const response = await fetch('/api/admin/broadcast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, segment: 'active' }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setStatus(`Sent to ${data.projectsNotified} project${data.projectsNotified === 1 ? '' : 's'} (${data.emailsSent} email${data.emailsSent === 1 ? '' : 's'} sent).`);
-        setContent('');
-      }
-    } finally {
-      setSending(false);
-    }
-  };
 
   if (!open) {
     return (
@@ -799,21 +777,13 @@ function BroadcastComposer() {
           Cancel
         </button>
       </div>
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        placeholder="e.g. We'll be closed for the holiday on Dec 25 — replies may be a day slower than usual."
-        rows={3}
-        className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 resize-none focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all mb-3"
+      <BroadcastComposer
+        endpoint="/api/admin/broadcast"
+        body={{ segment: 'active' }}
+        title="Broadcast to all active clients"
+        warning="Goes to every client with an active project — e.g. holiday closures. Each client gets one email."
+        compact
       />
-      {status && <p className="text-sm text-emerald-300 mb-3">{status}</p>}
-      <button
-        onClick={handleSend}
-        disabled={sending || !content.trim()}
-        className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-      >
-        {sending ? 'Sending...' : 'Send to All Active Clients'}
-      </button>
     </Card>
   );
 }
@@ -1399,7 +1369,7 @@ function OpsDashboard({
         </div>
         <div className="flex items-center gap-3">
           <RangePicker range={range} onChange={onRangeChange} />
-          <BroadcastComposer />
+          <DashboardBroadcast />
         </div>
       </div>
       <div className="flex justify-end mb-6">

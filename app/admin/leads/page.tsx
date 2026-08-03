@@ -151,23 +151,52 @@ export default function AdminLeadsPage() {
   const [previewingBatch, setPreviewingBatch] = useState<LeadRow[] | null>(null);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
 
-  const load = async () => {
+  // Server-side paging and search. The endpoint stopped returning the whole
+  // table when it gained pagination; keeping the old single unparameterised
+  // fetch here would have silently shown page one forever and searched only
+  // the rows that happened to be loaded. The quick-filter tabs still apply
+  // client-side to the loaded page — their counts say so.
+  const [page, setPage] = useState(1);
+  const [pageMeta, setPageMeta] = useState<{ total: number; totalPages: number } | null>(null);
+  const PAGE_SIZE = 200;
+
+  const load = async (targetPage = page, query = search) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/leads');
+      const params = new URLSearchParams({ page: String(targetPage), pageSize: String(PAGE_SIZE) });
+      if (query.trim()) params.set('q', query.trim());
+      const response = await fetch(`/api/admin/leads?${params}`);
       if (response.status === 401) {
         router.push('/admin/login');
         return;
       }
       const data = await response.json();
-      if (data.success) setLeads(data.leads);
+      if (data.success) {
+        setLeads(data.leads);
+        setPageMeta({ total: data.total, totalPages: data.totalPages });
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // Debounced: a keystroke shouldn't cost a round-trip, but the search has
+  // to reach the server or it only ever searches the loaded page.
   useEffect(() => {
-    load();
+    const t = setTimeout(() => {
+      setPage(1);
+      void load(1, search);
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  useEffect(() => {
+    void load(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  useEffect(() => {
     fetch('/api/admin/settings/preferences')
       .then((r) => r.json())
       .then((data) => setPreviewBeforeBulkSend(data.previewBeforeBulkSend))
@@ -463,6 +492,28 @@ export default function AdminLeadsPage() {
       </div>
 
       <SearchFilter value={search} onChange={setSearch} count={filtered.length} total={byStatus.length} />
+      {pageMeta && pageMeta.totalPages > 1 && (
+        <div className="mt-2 flex items-center gap-3 text-xs text-white/40">
+          <span>
+            Page {page} of {pageMeta.totalPages} — {pageMeta.total.toLocaleString()} leads match on the
+            server; the tabs below filter this page.
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loading}
+            className="rounded-md border border-white/15 px-2 py-1 font-semibold disabled:opacity-30 hover:bg-white/5 transition-colors"
+          >
+            ← Prev
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.min(pageMeta.totalPages, p + 1))}
+            disabled={page >= pageMeta.totalPages || loading}
+            className="rounded-md border border-white/15 px-2 py-1 font-semibold disabled:opacity-30 hover:bg-white/5 transition-colors"
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       {(coldReadyLeads.length > 0 || needsCallLeads.length > 0) && (
         <Card className="p-5 mb-6" glow="emerald">

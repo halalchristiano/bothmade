@@ -80,6 +80,7 @@ export function LogTouchPopover({ leadId, onLogged }: { leadId: string; onLogged
     <>
       <button
         ref={buttonRef}
+        data-log-touch-trigger
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);

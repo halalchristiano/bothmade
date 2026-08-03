@@ -78,6 +78,30 @@ export default function PipelinePage() {
   const [moveError, setMoveError] = useState('');
   const [hideClosedColumns, setHideClosedColumns] = useState(false);
 
+  // HTML5 drag-and-drop — no library, and it deliberately reuses the exact
+  // same applyStatusChange/handleMove policy as the arrow buttons, so a
+  // drag can't do anything the keyboard path can't (and terminal columns
+  // stay terminal either way). Dropping onto Lost still asks for a reason.
+  const [draggingLead, setDraggingLead] = useState<LeadCard | null>(null);
+  const [dropTarget, setDropTarget] = useState<LeadStatus | null>(null);
+
+  // A column showing 30 cards is a board; one showing 300 is a rendering
+  // problem and unreadable anyway. Capped per column, extendable.
+  const COLUMN_CAP = 30;
+  const [columnLimit, setColumnLimit] = useState<Partial<Record<LeadStatus, number>>>({});
+
+  const handleDrop = (status: LeadStatus) => {
+    const lead = draggingLead;
+    setDraggingLead(null);
+    setDropTarget(null);
+    if (!lead || lead.status === status || isTerminal(lead.status)) return;
+    if (status === 'lost') {
+      setPendingLostMove(lead);
+      return;
+    }
+    applyStatusChange(lead.id, status);
+  };
+
   const load = async () => {
     try {
       const response = await fetch('/api/admin/leads');
@@ -219,8 +243,27 @@ export default function PipelinePage() {
           const columnLeads = columns[status];
           const totalValue = columnLeads.reduce((s, l) => s + (l.estimatedValue || 0), 0);
           return (
-            <div key={status} className="flex-shrink-0 w-64">
-              <div className={`rounded-2xl border-t-2 ${COLUMN_ACCENT[status]} bg-white/[0.03] border border-white/[0.07] p-3 h-full`}>
+            <div
+              key={status}
+              className="flex-shrink-0 w-64"
+              onDragOver={(e) => {
+                if (!draggingLead || isTerminal(draggingLead.status)) return;
+                e.preventDefault(); // required, or the drop event never fires
+                if (dropTarget !== status) setDropTarget(status);
+              }}
+              onDragLeave={(e) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                setDropTarget((t) => (t === status ? null : t));
+              }}
+              onDrop={() => handleDrop(status)}
+            >
+              <div
+                className={`rounded-2xl border-t-2 ${COLUMN_ACCENT[status]} bg-white/[0.03] border p-3 h-full transition-colors ${
+                  dropTarget === status && draggingLead && draggingLead.status !== status
+                    ? 'border-sky-400/60 bg-sky-400/[0.06]'
+                    : 'border-white/[0.07]'
+                }`}
+              >
                 <div className="flex items-center justify-between mb-3 px-1">
                   <h2 className="text-sm font-semibold">{LEAD_STATUS_SHORT_LABELS[status]}</h2>
                   <span className="text-xs text-white/40">{columnLeads.length}</span>
@@ -228,13 +271,32 @@ export default function PipelinePage() {
                 {totalValue > 0 && <p className="text-xs text-white/30 px-1 mb-3">{formatCents(totalValue)}</p>}
 
                 <div className="space-y-2 min-h-[100px]">
-                  {columnLeads.map((lead) => (
+                  {columnLeads.slice(0, columnLimit[status] ?? COLUMN_CAP).map((lead) => (
                     <motion.div
                       key={lead.id}
                       layout
                       initial={{ opacity: 0, scale: 0.96 }}
-                      animate={{ opacity: movingId === lead.id ? 0.5 : 1, scale: 1 }}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] hover:border-white/20 p-3 transition-colors group"
+                      animate={{
+                        opacity: movingId === lead.id || draggingLead?.id === lead.id ? 0.5 : 1,
+                        scale: 1,
+                      }}
+                      draggable={!isTerminal(lead.status)}
+                      // Capture variants, not onDragStart/onDragEnd: framer
+                      // reserves those prop names for its own pan-gesture
+                      // system and never forwards them to the DOM, so the
+                      // plain handlers would simply never fire on a native
+                      // HTML5 drag. The capture props pass straight through.
+                      onDragStartCapture={(e: React.DragEvent) => {
+                        e.dataTransfer?.setData('text/plain', lead.id);
+                        setDraggingLead(lead);
+                      }}
+                      onDragEndCapture={() => {
+                        setDraggingLead(null);
+                        setDropTarget(null);
+                      }}
+                      className={`rounded-xl border border-white/10 bg-white/[0.04] hover:border-white/20 p-3 transition-colors group ${
+                        isTerminal(lead.status) ? '' : 'cursor-grab active:cursor-grabbing'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-1 mb-1">
                         <Link href={`/admin/leads/${lead.id}`} className="font-medium text-sm hover:underline flex items-center gap-1 min-w-0">
@@ -316,6 +378,20 @@ export default function PipelinePage() {
                   ))}
                   {columnLeads.length === 0 && (
                     <p className="text-xs text-white/20 text-center py-6">Nothing here</p>
+                  )}
+                  {columnLeads.length > (columnLimit[status] ?? COLUMN_CAP) && (
+                    <button
+                      onClick={() =>
+                        setColumnLimit((prev) => ({
+                          ...prev,
+                          [status]: (prev[status] ?? COLUMN_CAP) + COLUMN_CAP,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-dashed border-white/15 py-1.5 text-xs font-semibold text-white/45 hover:text-white hover:border-white/30 transition-colors"
+                    >
+                      Show {Math.min(COLUMN_CAP, columnLeads.length - (columnLimit[status] ?? COLUMN_CAP))} more
+                      of {columnLeads.length}
+                    </button>
                   )}
                 </div>
               </div>

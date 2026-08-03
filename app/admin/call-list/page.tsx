@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -340,6 +340,65 @@ export default function CallListPage() {
   const total = visible.length;
   const nextUp = sortRows(visible)[0] ?? null;
 
+  // ── Keyboard driving ──────────────────────────────────────────────
+  // A rep working a 40-lead list shouldn't need the mouse between calls:
+  // j/k walk the list in its rendered order, Enter opens the lead, c
+  // dials (when there's a number), and l opens the log-call popover on the
+  // selected row. Inert while anything focusable has focus, so typing a
+  // note never navigates.
+  const orderedIds = grouped.flatMap((g) => g.rows.map((r) => r.id));
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const orderedIdsRef = useRef(orderedIds);
+  orderedIdsRef.current = orderedIds;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const ids = orderedIdsRef.current;
+      if (ids.length === 0) return;
+      const current = selectedIdRef.current;
+      const idx = current ? ids.indexOf(current) : -1;
+
+      const select = (nextIdx: number) => {
+        const id = ids[Math.max(0, Math.min(ids.length - 1, nextIdx))];
+        setSelectedId(id);
+        document
+          .querySelector(`[data-lead-row="${id}"]`)
+          ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      };
+
+      if (e.key === 'j') select(idx + 1);
+      else if (e.key === 'k') select(idx <= 0 ? 0 : idx - 1);
+      else if (e.key === 'Enter' && current) {
+        router.push(`/admin/leads/${current}`);
+      } else if (e.key === 'c' && current) {
+        const tel = document.querySelector<HTMLAnchorElement>(
+          `[data-lead-row="${current}"] a[href^="tel:"]`
+        );
+        tel?.click();
+      } else if (e.key === 'l' && current) {
+        // The popover trigger lives inside the row; driving it through its
+        // own button keeps one code path for mouse and keyboard.
+        const btn = document.querySelector<HTMLButtonElement>(
+          `[data-lead-row="${current}"] [data-log-touch-trigger]`
+        );
+        btn?.click();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [router]);
+
   return (
     <PageIn className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
@@ -594,6 +653,12 @@ export default function CallListPage() {
         </div>
       )}
 
+      <p className="mt-4 hidden md:block text-[11px] text-white/25">
+        Keyboard: <kbd className="text-white/45">j</kbd>/<kbd className="text-white/45">k</kbd> next/previous ·{' '}
+        <kbd className="text-white/45">Enter</kbd> open · <kbd className="text-white/45">c</kbd> call ·{' '}
+        <kbd className="text-white/45">l</kbd> log the call
+      </p>
+
       <div className="mt-6 space-y-7">
         {grouped.map(({ reason, rows }) => {
           const meta = REASONS[reason];
@@ -625,7 +690,13 @@ export default function CallListPage() {
                   return (
                     <div
                       key={row.id}
-                      className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3.5 min-w-0"
+                      data-lead-row={row.id}
+                      onClick={() => setSelectedId(row.id)}
+                      className={`rounded-xl border p-3.5 min-w-0 transition-shadow ${
+                        selectedId === row.id
+                          ? 'border-sky-400/50 bg-white/[0.05] ring-1 ring-sky-400/30'
+                          : 'border-white/[0.08] bg-white/[0.03]'
+                      }`}
                     >
                       {/* On the row, not just the band header — the header
                           disappears the moment a different sort is chosen. */}

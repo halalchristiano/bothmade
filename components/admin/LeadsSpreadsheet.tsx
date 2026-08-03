@@ -261,6 +261,18 @@ export function LeadsSpreadsheet() {
     return { total: leads.length, totalValue, won, newThisWeek };
   }, [leads]);
 
+  // Windowed rendering. Rendering every row at once is where the
+  // first-paint jank lived — each row is ~15 interactive cells. A slice
+  // that grows on demand keeps real <table> semantics (true virtualisation
+  // of a table means absolute positioning that destroys them for screen
+  // readers) while bounding the DOM. Reset whenever the visible set
+  // changes, so a new search starts from the top window again.
+  const RENDER_CHUNK = 100;
+  const [renderLimit, setRenderLimit] = useState(RENDER_CHUNK);
+  useEffect(() => {
+    setRenderLimit(RENDER_CHUNK);
+  }, [search, leads.length]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let rows = leads;
@@ -520,7 +532,7 @@ export function LeadsSpreadsheet() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((lead, i) => {
+            {filtered.slice(0, renderLimit).map((lead, i) => {
               const rowBg = i % 2 === 0 ? '#0d0a17' : '#100c1c';
               const recentlyTouched = Date.now() - new Date(lead.updatedAt).getTime() < DAY_MS;
               return (
@@ -606,6 +618,19 @@ export function LeadsSpreadsheet() {
               <tr>
                 <td colSpan={COLUMNS.length + 1} className="px-3 py-8 text-center text-white/40">
                   {search ? 'No leads match your search.' : 'No leads yet.'}
+                </td>
+              </tr>
+            )}
+            {filtered.length > renderLimit && (
+              <tr>
+                <td colSpan={99} className="px-3 py-3 text-center">
+                  <button
+                    onClick={() => setRenderLimit((n) => n + RENDER_CHUNK)}
+                    className="text-xs font-semibold text-sky-300 hover:underline"
+                  >
+                    Show {Math.min(RENDER_CHUNK, filtered.length - renderLimit)} more of{' '}
+                    {filtered.length.toLocaleString()} rows
+                  </button>
                 </td>
               </tr>
             )}
