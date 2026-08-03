@@ -45,14 +45,17 @@ const DATA: ServicePageData = {
   stack: [
     {
       heading: 'Language',
+      desc: "Swift and SwiftUI are Apple's own — the same language and framework Apple's own apps are built in, updated the same day iOS is. That means your app looks and moves like it belongs on the device, instead of a few versions behind the platform.",
       items: ['Swift', 'SwiftUI', 'UIKit & AppKit', 'Combine'],
     },
     {
       heading: 'Data',
+      desc: "Where your users' information actually lives, chosen for what the app needs to do — CloudKit syncs across a user's own devices for free, Keychain keeps credentials genuinely secure instead of sitting in a plain file. The right choice here is invisible when it works and very visible when it doesn't.",
       items: ['SwiftData & Core Data', 'CloudKit', 'Realm', 'Keychain'],
     },
     {
       heading: 'Pipeline',
+      desc: "How the app actually reaches the App Store, repeatably, without a manual checklist someone forgets a step of. TestFlight gets builds to real testers before launch; Fastlane means submitting an update is a command, not an afternoon.",
       items: ['Xcode Cloud', 'TestFlight', 'Fastlane', 'App Store Connect'],
     },
   ],
