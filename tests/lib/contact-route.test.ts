@@ -396,3 +396,64 @@ describe('POST /api/contact — rejections', () => {
     expect(rateLimitKey('contact', req as never)).not.toBe(rateLimitKey('interest', req as never));
   });
 });
+
+/**
+ * The acknowledgement quotes the enquiry back.
+ *
+ * Partly because it is a better email — someone who filled in a form wants
+ * to see the right thing arrived — and partly because the previous version
+ * was byte-identical on every send, which is the shape a spam filter
+ * distrusts. It was landing in spam while the invoice mail, dense with real
+ * names and figures, reached the inbox from the same domain.
+ */
+describe('POST /api/contact — the acknowledgement', () => {
+  const ackTo = (email: string) =>
+    sendEmail.mock.calls.map(([mail]) => mail).find((mail) => mail?.to === email);
+
+  it('reads their own message back to them', async () => {
+    await POST(request(VALID, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack).toBeTruthy();
+    expect(ack.html).toContain('I want an app');
+    expect(ack.html).toContain('Kiana Arabpour');
+  });
+
+  it('names what they asked about and who is replying', async () => {
+    await POST(request(VALID, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack.html).toContain('Web');
+    expect(ack.html).toContain('Evan');
+  });
+
+  it('puts their company in the subject, so it is not identical every send', async () => {
+    await POST(request(VALID, freshIp()));
+
+    expect(ackTo(VALID.email).subject).toBe('We received your message — Random');
+  });
+
+  it('falls back to a plain subject when no company was given', async () => {
+    const { company: _company, ...noCompany } = VALID;
+    await POST(request(noCompany, freshIp()));
+
+    expect(ackTo(VALID.email).subject).toBe('We received your message');
+  });
+
+  it('omits budget and timeline rows rather than printing "Not provided" at the customer', async () => {
+    await POST(request(VALID, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack.html).not.toContain('Not provided');
+    expect(ack.html).not.toContain('Budget');
+    expect(ack.html).not.toContain('Timeline');
+  });
+
+  it('shows budget and timeline when they were answered', async () => {
+    await POST(request({ ...VALID, budget: '10k-25k', timeline: '1-3-months' }, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack.html).toContain('Budget');
+    expect(ack.html).toContain('Timeline');
+  });
+});
