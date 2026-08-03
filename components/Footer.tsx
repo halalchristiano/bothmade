@@ -102,7 +102,6 @@ export function Footer() {
                   {line}
                 </span>
               ))}
-              <span className="text-white/25">London · Delaware</span>
             </address>
             <a
               href={`mailto:${COMPANY_EMAIL}`}

@@ -27,3 +27,9 @@ export const COMPANY_ADDRESS_INLINE = COMPANY_ADDRESS_LINES.join(', ');
 export const COMPANY_EMAIL = 'info@bothmade.studio';
 
 export const COMPANY_WEBSITE = 'bothmade.studio';
+
+/**
+ * Where the studio is, as a visitor-facing line — distinct from the postal
+ * address above, which is the mailing address the documents are issued from.
+ */
+export const COMPANY_LOCATION = 'London';
