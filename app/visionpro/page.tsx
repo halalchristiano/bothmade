@@ -41,14 +41,17 @@ const DATA: ServicePageData = {
   stack: [
     {
       heading: 'Frameworks',
+      desc: "RealityKit and ARKit are Apple's own spatial engines — built for this headset specifically, not retrofitted from a game engine or a phone AR kit. That's what makes hand tracking and gaze targeting feel instant instead of laggy and approximate.",
       items: ['visionOS SDK', 'RealityKit', 'SwiftUI', 'ARKit'],
     },
     {
       heading: 'Content',
+      desc: "The 3D assets and audio that make a space feel real instead of like a floating window. Getting materials and audio right is most of what separates an immersive app from a slideshow you happen to be standing inside.",
       items: ['USDZ / Reality Composer', 'Blender pipelines', 'PBR materials', 'Spatial audio'],
     },
     {
       heading: 'Delivery',
+      desc: "Vision Pro hardware is expensive and not everyone testing your app owns one — the simulator and on-device profiling catch problems before a real headset ever needs to be in the room, so testing doesn't bottleneck on hardware access.",
       items: ['Vision Pro simulator', 'On-device profiling', 'TestFlight', 'App Store Connect'],
     },
   ],
