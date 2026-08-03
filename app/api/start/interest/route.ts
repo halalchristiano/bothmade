@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, studioInbox } from '@/lib/email';
+import { prisma } from '@/lib/prisma';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
   ADD_ONS,
@@ -14,8 +15,6 @@ import {
   isTimelineKey,
   type AddOnKey,
 } from '@/lib/pricing';
-
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.CONTACT_EMAIL || 'contact@bothmade.com';
 
 function escapeHtml(value: string): string {
   return value
@@ -80,8 +79,51 @@ export async function POST(request: NextRequest) {
   </body>
 </html>`;
 
+    // Same reasoning as /api/contact: the lead row is the record, the email is
+    // the notification. Someone who priced a project and asked to talk is the
+    // warmest inbound there is — it does not belong only in an inbox.
+    try {
+      const existing = await prisma.lead.findFirst({
+        where: { email },
+        select: { id: true },
+      });
+
+      const summary = [
+        `Configured on the pricing calculator: ${BASE_SERVICES[baseService].label}`,
+        `Add-ons: ${addOnKeys.map((key) => ADD_ONS[key].label).join(', ') || 'None'}`,
+        `Client type: ${CLIENT_TYPES[clientType].label}`,
+        `Timeline: ${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
+        `Estimated total: ${formatCents(breakdown.totalPrice)}`,
+      ].join('\n');
+
+      if (existing) {
+        await prisma.leadActivity.create({
+          data: { leadId: existing.id, type: 'note', content: summary },
+        });
+        await prisma.lead.update({
+          where: { id: existing.id },
+          data: { replyReceivedAt: new Date() },
+        });
+      } else {
+        await prisma.lead.create({
+          data: {
+            company,
+            contactName,
+            email,
+            phone: phone || null,
+            status: 'new',
+            source: 'inbound-pricing',
+            estimatedValue: breakdown.totalPrice,
+            notes: summary,
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Failed to record pricing interest as a lead:', error);
+    }
+
     await sendEmail({
-      to: ADMIN_EMAIL,
+      to: studioInbox(),
       subject: `Pricing interest: ${company} — ${BASE_SERVICES[baseService].label}`,
       html,
     });

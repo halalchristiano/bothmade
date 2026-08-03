@@ -8,16 +8,24 @@ the site is deployable after the first section.
 - [ ] **Deploy to Vercel.** Push this repo to GitHub, import it at
       vercel.com/new, accept the defaults (Next.js is auto-detected).
 - [ ] **Set `NEXT_PUBLIC_SITE_URL`** in Vercel → Project → Settings →
-      Environment Variables to the real domain (e.g. `https://bothmade.com`).
+      Environment Variables to the real domain (`https://bothmade.studio`).
       Until this is set, canonical URLs, Open Graph tags, sitemap, robots,
       and JSON-LD all publish localhost links.
 - [ ] **Set `RESEND_API_KEY`** (from resend.com → API Keys) and
-      **`CONTACT_EMAIL`** in the same place. The contact form validates and
-      rate-limits today but cannot deliver mail without the key.
+      **`CONTACT_EMAIL`** in the same place. `CONTACT_EMAIL` is the address
+      mail is sent *from* and defaults to `info@bothmade.studio`. Without the
+      key an enquiry is still recorded as a lead — nobody is just notified
+      about it. See `.env.example` for every variable the app reads.
 - [ ] **Verify the sending domain in Resend** (SPF + DKIM records) so
-      enquiry emails don't land in spam.
-- [ ] **Test the form once on production** — submit it yourself, confirm both
-      the studio notification and the acknowledgement arrive.
+      enquiry emails don't land in spam. Note this has to be
+      **bothmade.studio** — mail sent from an unverified domain is rejected
+      outright, not merely spam-filed.
+- [ ] **Test the form once on production** — submit it yourself, then confirm
+      all three: the notification arrives at info@, evan@ and kiana@; the
+      acknowledgement arrives at the address you submitted; and the enquiry is
+      showing in `/admin/leads` with source `inbound`. The last one is the
+      real check — the lead row is the record, the emails are a notification
+      about it.
 
 ## Required before "Sign in with Google" works (admin → Who to call)
 
@@ -85,6 +93,12 @@ and Vercel — no amount of code changes fixes it.
       (see `next.config.ts`), but CSP is absent on purpose — Next's inline
       runtime needs nonce plumbing, and a half-done CSP breaks pages
       silently. Treat as its own task.
+- [ ] **Honeypot false positives.** `/api/contact` discards a submission whose
+      hidden `website` field is filled, and returns 200 so bots learn nothing —
+      which means a false positive looks exactly like success to a real
+      visitor. It logs a warning now (grep Vercel logs for "honeypot tripped"),
+      but if iOS autofill ever starts populating that field the fix is a
+      server-side signal that isn't a hidden input.
 
 ### Done
 
