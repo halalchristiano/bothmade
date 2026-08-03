@@ -73,21 +73,44 @@ and Vercel — no amount of code changes fixes it.
       in the dashboard; privacy-friendlier: Plausible/Fathom. Needed to
       judge ad spend at all.
 
+## Recommended before the site takes real traffic
+
+- [ ] **Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`** in
+      Vercel → Settings → Environment Variables (create a free database at
+      upstash.com → Redis, then copy the two REST values).
+
+      Every public endpoint — sign-in, sign-up, password reset, the contact
+      form, the quote form — is rate-limited by `lib/rate-limit.ts`. With
+      these two variables set, the limits are shared across every serverless
+      instance and survive cold starts. Without them the code still works and
+      still limits, but only per running instance, which on Vercel means an
+      attacker gets a fresh budget with each new instance. Nothing breaks if
+      you skip this; the sign-in limit just stops being worth much.
+
 ## Deliberately deferred engineering
 
 - [ ] **Content-Security-Policy.** Baseline security headers are shipped
       (see `next.config.ts`), but CSP is absent on purpose — Next's inline
       runtime needs nonce plumbing, and a half-done CSP breaks pages
       silently. Treat as its own task.
-- [ ] **Durable rate limiting.** The contact API's limiter is in-memory and
-      resets on serverless cold starts. Fine against casual abuse; move to
-      Upstash Redis if the endpoint ever gets targeted.
 - [ ] **Honeypot false positives.** `/api/contact` discards a submission whose
       hidden `website` field is filled, and returns 200 so bots learn nothing —
       which means a false positive looks exactly like success to a real
       visitor. It logs a warning now (grep Vercel logs for "honeypot tripped"),
       but if iOS autofill ever starts populating that field the fix is a
       server-side signal that isn't a hidden input.
+
+### Done
+
+- [x] **Durable rate limiting.** `lib/rate-limit.ts` backs onto Upstash Redis
+      when configured (see above) and falls back to a per-instance window
+      otherwise — including when Redis is unreachable, so a cache outage
+      degrades the limit rather than locking everyone out. Applied to the
+      auth routes, which previously had no limit at all.
+- [x] **Tests.** `npm test` runs the suite (Vitest); `.github/workflows/ci.yml`
+      runs it plus a typecheck on every pull request. Coverage is aimed at
+      the money path — pricing, `/api/checkout`, the Stripe webhook, CSV
+      import, the lead pipeline, cold-email rendering, rate limiting.
 
 ## Design decisions (resolved 2026-07-27)
 

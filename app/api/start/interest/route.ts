@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail, studioInbox } from '@/lib/email';
 import { prisma } from '@/lib/prisma';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -15,35 +16,6 @@ import {
   type AddOnKey,
 } from '@/lib/pricing';
 
-/**
- * Per-instance sliding window — same tradeoff as /api/contact: blunts casual
- * abuse, resets on cold start, not meant to stop a determined attacker.
- */
-const RATE_LIMIT = { max: 5, windowMs: 10 * 60 * 1000 };
-const hits = new Map<string, number[]>();
-
-function isRateLimited(key: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < RATE_LIMIT.windowMs);
-  if (recent.length >= RATE_LIMIT.max) {
-    hits.set(key, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(key, recent);
-  if (hits.size > 5000) {
-    for (const [k, times] of hits) {
-      if (times.every((t) => now - t >= RATE_LIMIT.windowMs)) hits.delete(k);
-    }
-  }
-  return false;
-}
-
-function clientKey(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  return forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -55,12 +27,13 @@ function escapeHtml(value: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    if (isRateLimited(clientKey(request))) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { status: 429 }
-      );
-    }
+    const limited = await enforceRateLimit(
+      request,
+      'interest',
+      RATE_LIMITS.interest,
+      'Too many requests. Please try again later.'
+    );
+    if (limited) return limited;
 
     const {
       contactName,

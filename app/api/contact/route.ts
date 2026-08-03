@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { prisma } from '@/lib/prisma';
 import { studioInbox } from '@/lib/email';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -48,41 +49,6 @@ function escapeHtml(value: string): string {
 function isValidEmail(value: string): boolean {
   // Deliberately conservative: no display names, no comments, no newlines.
   return /^[^\s@<>"']+@[^\s@<>"'.]+\.[^\s@<>"']{2,}$/.test(value);
-}
-
-/**
- * Per-instance sliding window. Serverless means this resets on cold start and
- * isn't shared across instances — it blunts casual abuse, not a determined
- * attacker. Move to Upstash/Redis if this endpoint ever gets targeted.
- */
-const RATE_LIMIT = { max: 3, windowMs: 10 * 60 * 1000 };
-const hits = new Map<string, number[]>();
-
-function isRateLimited(key: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < RATE_LIMIT.windowMs);
-
-  if (recent.length >= RATE_LIMIT.max) {
-    hits.set(key, recent);
-    return true;
-  }
-
-  recent.push(now);
-  hits.set(key, recent);
-
-  // Opportunistic cleanup so the map can't grow without bound.
-  if (hits.size > 5000) {
-    for (const [k, times] of hits) {
-      if (times.every((t) => now - t >= RATE_LIMIT.windowMs)) hits.delete(k);
-    }
-  }
-
-  return false;
-}
-
-function clientKey(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  return forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
 }
 
 interface Enquiry {
@@ -148,12 +114,13 @@ async function recordEnquiry(enquiry: Enquiry): Promise<void> {
 
 export async function POST(request: NextRequest) {
   try {
-    if (isRateLimited(clientKey(request))) {
-      return NextResponse.json(
-        { error: 'Too many messages. Please try again later.' },
-        { status: 429 }
-      );
-    }
+    const limited = await enforceRateLimit(
+      request,
+      'contact',
+      RATE_LIMITS.contact,
+      'Too many messages. Please try again later.'
+    );
+    if (limited) return limited;
 
     const body = await request.json();
     const { name, email, company, message, service, website } = body ?? {};

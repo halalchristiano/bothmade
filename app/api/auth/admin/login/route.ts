@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, createToken } from '@/lib/auth';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    // Staff login is the most valuable door in the app — it reaches every
+    // client's contact details and payment history. It had no limit at all.
+    const limited = await enforceRateLimit(
+      request,
+      'admin-login',
+      RATE_LIMITS.login,
+      'Too many sign-in attempts. Please wait a few minutes and try again.'
+    );
+    if (limited) return limited;
+
     const { email, password } = await request.json();
 
     if (!email || !password) {
