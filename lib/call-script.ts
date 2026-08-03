@@ -1,5 +1,5 @@
 import { PAIN_POINT_BRIEFS, classifyWrittenPoint, formatCents } from '@/lib/pricing';
-import type { SalesPoint } from '@/lib/leads';
+import type { WrittenPoint } from '@/lib/leads';
 
 /**
  * A ready-to-read phone script, assembled from everything already known
@@ -27,10 +27,10 @@ export interface CallScriptInput {
   company: string;
   contactName: string | null;
   repName: string | null;
-  writtenPains: SalesPoint[];
+  writtenPains: WrittenPoint[];
   checklistPainKeys: string[];
-  essentials: SalesPoint[];
-  upsells: SalesPoint[];
+  essentials: WrittenPoint[];
+  upsells: WrittenPoint[];
   low: number;
   high: number;
 }
@@ -86,7 +86,7 @@ export function toSpokenLine(explanation: string, company: string): string {
 }
 
 /** The line to say for one pain point — the written script if we have a confident match, otherwise one built from the research note itself. */
-export function painPointPitch(point: SalesPoint, company: string): string {
+export function painPointPitch(point: WrittenPoint, company: string): string {
   const matched = classifyWrittenPoint(point.point, point.explanation);
   if (matched) return PAIN_POINT_BRIEFS[matched].sayThis;
   if (point.explanation) {

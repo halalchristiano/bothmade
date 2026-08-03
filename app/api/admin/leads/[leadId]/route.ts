@@ -151,6 +151,25 @@ export async function PATCH(
       upsellPoints,
       estimateLowCents,
       estimateHighCents,
+      mockupPdfUrl,
+      invoicePdfUrl,
+      vercelDeployPassword,
+      industry,
+      contactRole,
+      address,
+      city,
+      region,
+      postalCode,
+      country,
+      companySize,
+      employeeCount,
+      locationCount,
+      annualRevenueCents,
+      tags,
+      doNotContact,
+      doNotContactReason,
+      leadScore,
+      clientTakenOnAt,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -228,6 +247,49 @@ export async function PATCH(
         upsellPoints: upsellPoints !== undefined ? upsellPoints : undefined,
         estimateLowCents: estimateLowCents !== undefined ? estimateLowCents : undefined,
         estimateHighCents: estimateHighCents !== undefined ? estimateHighCents : undefined,
+
+        // Stored deliverables. The uploaded-at stamps only move when a URL
+        // actually changes, so re-saving the same link doesn't rewrite the
+        // history of when it first landed.
+        mockupPdfUrl: mockupPdfUrl !== undefined ? mockupPdfUrl : undefined,
+        mockupPdfUploadedAt:
+          mockupPdfUrl !== undefined && mockupPdfUrl && mockupPdfUrl !== existing.mockupPdfUrl
+            ? new Date()
+            : undefined,
+        invoicePdfUrl: invoicePdfUrl !== undefined ? invoicePdfUrl : undefined,
+        invoicePdfUploadedAt:
+          invoicePdfUrl !== undefined && invoicePdfUrl && invoicePdfUrl !== existing.invoicePdfUrl
+            ? new Date()
+            : undefined,
+        vercelDeployPassword: vercelDeployPassword !== undefined ? vercelDeployPassword : undefined,
+
+        industry: industry !== undefined ? industry : undefined,
+        contactRole: contactRole !== undefined ? contactRole : undefined,
+        address: address !== undefined ? address : undefined,
+        city: city !== undefined ? city : undefined,
+        region: region !== undefined ? region : undefined,
+        postalCode: postalCode !== undefined ? postalCode : undefined,
+        country: country !== undefined ? country : undefined,
+        companySize: companySize !== undefined ? companySize : undefined,
+        employeeCount: employeeCount !== undefined ? employeeCount : undefined,
+        locationCount: locationCount !== undefined ? locationCount : undefined,
+        annualRevenueCents: annualRevenueCents !== undefined ? annualRevenueCents : undefined,
+        tags: Array.isArray(tags) ? tags.join(',') : tags !== undefined ? tags : undefined,
+        doNotContact: doNotContact !== undefined ? doNotContact : undefined,
+        doNotContactReason: doNotContactReason !== undefined ? doNotContactReason : undefined,
+        leadScore: leadScore !== undefined ? leadScore : undefined,
+
+        // The day they became a client. Set explicitly when given, otherwise
+        // stamped the first time this lead is marked won — nobody should have
+        // to remember to record the one date the finance side asks for.
+        clientTakenOnAt:
+          clientTakenOnAt !== undefined
+            ? clientTakenOnAt
+              ? new Date(clientTakenOnAt)
+              : null
+            : (status ?? autoStatus) === 'won' && !existing.clientTakenOnAt
+              ? new Date()
+              : undefined,
       },
     });
 

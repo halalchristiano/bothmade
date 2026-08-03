@@ -258,16 +258,56 @@ export function isLeadActivityType(value: string): value is LeadActivityType {
 export interface SalesPoint {
   point: string;
   explanation: string | null;
+  /**
+   * What this item costs for THIS lead, recorded at import time rather than
+   * worked out again every time the page renders. Null only for points
+   * written before prices were carried on the line at all.
+   */
+  priceCents: number | null;
+  /**
+   * True when the item didn't match anything in the sales playbook, so the
+   * price beside it is a suggestion nobody has signed off yet. These are
+   * the lines Kiana and Evan have to actually decide on before a PDF or a
+   * proposal goes out, which is why they're marked rather than blended in.
+   */
+  isCustom: boolean;
+}
+
+/**
+ * The part of a point the call script and the email templates care about:
+ * the words, not the money. Kept separate so a caller assembling points on
+ * the fly — from the pain-point checklist, say — doesn't have to invent a
+ * price it has no use for.
+ */
+export type WrittenPoint = Pick<SalesPoint, 'point' | 'explanation'>;
+
+// Prices ride on the end of a point line after a pipe, because the line is
+// still edited as plain text in a textarea and anything heavier (a second
+// column, a JSON blob) would mean the rep can no longer just type. A bare
+// number is a settled price; "custom" in front of it means nobody has agreed
+// it yet:
+//
+//   Booking system: they lose the after-hours calls | $900
+//   Drone photography: nobody local offers it | custom $1,500
+const PRICE_SUFFIX = /\|\s*(custom\s*)?\$?\s*([0-9][0-9,.]*)\s*$/i;
+
+/** "$1,200" / "1200" -> 120000 cents. Null for anything that isn't a number. */
+export function parsePointPriceCents(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const dollars = parseFloat(raw.replace(/[^0-9.]/g, ''));
+  return !isNaN(dollars) && dollars > 0 ? Math.round(dollars * 100) : null;
 }
 
 /**
  * Parses the "Point: explanation written for this business" lines that come
- * out of the research CSV into something renderable. One point per line.
+ * out of the research CSV into something renderable. One point per line,
+ * with an optional "| $900" or "| custom $1,500" price on the end.
  *
- * The split is on the FIRST colon only, because explanations routinely
- * contain colons of their own ("Booking: they lose bookings after 6pm: the
- * phone goes unanswered"). A line with no colon is still a valid point —
- * it just has no explanation yet, which is better than dropping it.
+ * The point/explanation split is on the FIRST colon only, because
+ * explanations routinely contain colons of their own ("Booking: they lose
+ * bookings after 6pm: the phone goes unanswered"). A line with no colon is
+ * still a valid point — it just has no explanation yet, which is better
+ * than dropping it.
  */
 export function parseSalesPoints(text: string | null | undefined): SalesPoint[] {
   if (!text) return [];
@@ -275,14 +315,37 @@ export function parseSalesPoints(text: string | null | undefined): SalesPoint[] 
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
+    .map((rawLine) => {
+      const priceMatch = rawLine.match(PRICE_SUFFIX);
+      const line = priceMatch ? rawLine.slice(0, priceMatch.index).trim() : rawLine;
+      const priceCents = priceMatch ? parsePointPriceCents(priceMatch[2]) : null;
+      const isCustom = !!priceMatch?.[1];
+
       const idx = line.indexOf(':');
-      if (idx === -1) return { point: line, explanation: null };
+      if (idx === -1) return { point: line, explanation: null, priceCents, isCustom };
       const point = line.slice(0, idx).trim();
       const explanation = line.slice(idx + 1).trim();
       // A leading colon, or a "point" that's really a sentence, means the
       // author didn't use the format — keep the whole line as the point.
-      if (!point) return { point: explanation, explanation: null };
-      return { point, explanation: explanation || null };
+      if (!point) return { point: explanation, explanation: null, priceCents, isCustom };
+      return { point, explanation: explanation || null, priceCents, isCustom };
     });
+}
+
+/**
+ * The inverse of parseSalesPoints() for a single point — used by the
+ * importer to write a resolved price back onto the line it came from, so
+ * the price is stored in the database rather than recomputed on every read.
+ */
+export function formatSalesPoint(p: SalesPoint): string {
+  const body = p.explanation ? `${p.point}: ${p.explanation}` : p.point;
+  if (p.priceCents === null) return body;
+  const dollars = Math.round(p.priceCents / 100).toLocaleString('en-US');
+  return `${body} | ${p.isCustom ? 'custom ' : ''}$${dollars}`;
+}
+
+/** Serialises a whole group back to the newline-separated column format. */
+export function formatSalesPoints(points: SalesPoint[]): string | null {
+  const lines = points.map(formatSalesPoint).filter(Boolean);
+  return lines.length > 0 ? lines.join('\n') : null;
 }
