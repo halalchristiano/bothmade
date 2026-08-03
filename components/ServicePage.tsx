@@ -12,7 +12,7 @@ export type ServicePageData = {
   accent: 'sky' | 'indigo' | 'purple';
   capabilities: { title: string; desc: string }[];
   stackIntro: string;
-  stack: { heading: string; items: string[] }[];
+  stack: { heading: string; desc: string; items: string[] }[];
   cta: { title: string; sub: string; label: string };
 };
 
@@ -96,9 +96,10 @@ export function ServicePage({
                 transition={{ delay: idx * 0.08, duration: 0.5 }}
                 viewport={{ once: true }}
               >
-                <h3 className={`font-mono text-[10px] uppercase tracking-[0.35em] mb-6 ${a.dim}`}>
+                <h3 className={`font-mono text-[10px] uppercase tracking-[0.35em] mb-3 ${a.dim}`}>
                   {col.heading}
                 </h3>
+                <p className="text-white/45 text-sm leading-relaxed mb-6">{col.desc}</p>
                 <ul className="flex flex-wrap gap-2.5">
                   {col.items.map((li, i) => (
                     <motion.li
