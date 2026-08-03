@@ -401,11 +401,11 @@ export default function AdminLeadsPage() {
 
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
         <PageTitle icon={Users} title="Leads" />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as Filter)}
-            className={`${inputClass} flex-1 sm:flex-none sm:w-52`}
+            className={`${inputClass} w-full sm:w-52`}
           >
             {FILTERS.map((f) => (
               <option key={f} value={f} className="bg-[#05030a]">
@@ -420,7 +420,7 @@ export default function AdminLeadsPage() {
             title="Filter by when leads were added"
             aria-label="Filter by when leads were added"
             aria-expanded={showDateFilter}
-            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors whitespace-nowrap ${
+            className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 transition-colors whitespace-nowrap ${
               addedFrom || addedTo
                 ? 'border-sky-400/40 bg-sky-400/10 text-sky-300'
                 : 'border-white/15 text-white/50 hover:text-white hover:bg-white/5'
@@ -430,7 +430,7 @@ export default function AdminLeadsPage() {
           </button>
           <button
             onClick={() => setShowImport(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 font-semibold hover:bg-white/5 transition-colors whitespace-nowrap"
+            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-2 font-semibold hover:bg-white/5 transition-colors whitespace-nowrap"
           >
             <Upload size={16} />
             Import CSV
@@ -439,13 +439,13 @@ export default function AdminLeadsPage() {
             onClick={() => setShowImportHistory(true)}
             title="View past CSV imports"
             aria-label="View past CSV imports"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-white/50 hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap"
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-white/50 hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap"
           >
             <FileClock size={16} />
           </button>
           <button
             onClick={() => setShowAdd(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
           >
             <UserPlus size={16} />
             Add Companies
