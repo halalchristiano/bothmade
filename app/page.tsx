@@ -10,6 +10,8 @@ import { ServiceList } from '@/components/ServiceList';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ProcessTimeline } from '@/components/ProcessTimeline';
 import { WhyUs } from '@/components/WhyUs';
+import { Promises } from '@/components/Promises';
+import { SocialProof } from '@/components/SocialProof';
 import { About } from '@/components/About';
 import { Footer } from '@/components/Footer';
 
@@ -90,6 +92,15 @@ export default function Home() {
 
       {/* Why bothmade — honest boutique-studio positioning, no invented stats */}
       <WhyUs />
+
+      {/* The two terms that answer the objections every agency buyer has —
+          going dark, and who owns the result. Both are already written into
+          the agreement; this stops making people dig them out of the FAQ. */}
+      <Promises />
+
+      {/* Renders nothing until lib/testimonials.ts has a real quote in it,
+          so the page is never padded with praise nobody said. */}
+      <SocialProof />
 
       {/* Who's behind it — names and direct emails, right before we ask
           them to introduce themselves. */}
