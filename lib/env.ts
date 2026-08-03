@@ -113,8 +113,21 @@ export function cronSecret(): string | null {
  * Called from instrumentation.ts.
  */
 export function assertBootSecrets(): void {
-  jwtSecret();
-  sessionSecret();
+  // Collected rather than thrown on the first failure. A deploy missing both
+  // signing secrets should learn that in one go — otherwise you fix
+  // JWT_SECRET, redeploy, and only then find out SESSION_SECRET was missing
+  // too, which costs a second failed deploy at exactly the wrong moment.
+  const failures: string[] = [];
+  for (const load of [jwtSecret, sessionSecret]) {
+    try {
+      load();
+    } catch (error) {
+      failures.push((error as Error).message);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(failures.join(' '));
+  }
 
   const softChecks: Array<[string, string]> = [
     ['GMAIL_ENCRYPTION_KEY', 'Gmail app passwords and refresh tokens cannot be encrypted or read until this is set.'],
