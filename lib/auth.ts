@@ -85,7 +85,11 @@ export function verifyToken(
   token: string
 ): (AuthPayload | ClientAuthPayload) | null {
   try {
-    const decoded = jwt.verify(token, jwtSecret());
+    // Algorithms pinned rather than inferred from the token's own header.
+    // jsonwebtoken already refuses `alg: none` when a key is supplied, but
+    // that is a property of the library's defaults; saying it here means the
+    // guarantee survives a version bump, and is checked by a test.
+    const decoded = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] });
     return decoded as AuthPayload | ClientAuthPayload;
   } catch (error) {
     return null;

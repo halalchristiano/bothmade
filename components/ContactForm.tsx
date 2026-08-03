@@ -2,7 +2,9 @@
 
 import { motion } from 'framer-motion';
 import { useState, useRef, FormEvent } from 'react';
+import { track } from '@vercel/analytics';
 import { COUNTRIES, DEFAULT_COUNTRY, countryByIso2 } from '@/lib/country-codes';
+import { trackEvent } from '@/lib/analytics';
 import {
   FIELD_ERRORS,
   FIELD_LIMITS,
@@ -237,6 +239,11 @@ export function ContactForm() {
       });
 
       if (response.ok) {
+        // The conversion, recorded where it actually happens. The form
+        // confirms inline rather than redirecting to a thank-you page, so
+        // there is no page view standing in for "an enquiry came in".
+        track('contact_submitted', { service: formData.service });
+        trackEvent('contact_submitted', { service: formData.service });
         setSubmitted(true);
         // Country survives the reset: someone writing in twice has not moved.
         setFormData({ ...EMPTY, country: formData.country });

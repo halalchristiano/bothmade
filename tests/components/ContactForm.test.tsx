@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ContactForm } from '@/components/ContactForm';
+import { track } from '@vercel/analytics';
+
+vi.mock('@vercel/analytics', () => ({ track: vi.fn() }));
 
 /**
  * The site's front door. What's asserted here is that a wrong value never
@@ -40,6 +43,7 @@ async function fillValid(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   vi.unstubAllGlobals();
+  vi.mocked(track).mockClear();
 });
 
 describe('the phone field', () => {
@@ -406,5 +410,47 @@ describe('a valid submission', () => {
     await user.click(send());
 
     expect(await screen.findByText(/Too many messages/i)).toBeInTheDocument();
+  });
+});
+
+describe('the conversion event', () => {
+  // Ad platforms optimise spend against this number. A conversion counted
+  // for a submission that never arrived teaches the bidder to buy more of
+  // the traffic that fails, which is worse than counting nothing at all.
+
+  it('fires once the enquiry is actually accepted', async () => {
+    const user = userEvent.setup();
+    mockFetch();
+    render(<ContactForm />);
+
+    await fillValid(user);
+    await user.click(send());
+
+    expect(await screen.findByText(/Message received/i)).toBeInTheDocument();
+    expect(track).toHaveBeenCalledWith('contact_submitted', { service: 'web' });
+  });
+
+  it('does not fire when the form refuses to send', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockFetch();
+    render(<ContactForm />);
+
+    await user.type(email(), 'not-an-address');
+    await user.click(send());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when the server refuses the enquiry', async () => {
+    const user = userEvent.setup();
+    mockFetch(false, { error: 'Too many messages. Please try again later.' });
+    render(<ContactForm />);
+
+    await fillValid(user);
+    await user.click(send());
+
+    expect(await screen.findByText(/Too many messages/i)).toBeInTheDocument();
+    expect(track).not.toHaveBeenCalled();
   });
 });

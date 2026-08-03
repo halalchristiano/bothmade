@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { track } from '@vercel/analytics';
+import { trackEvent } from '@/lib/analytics';
 
 /**
  * Fires the purchase conversion event once, on the success page. Kept as a
@@ -11,6 +12,7 @@ import { track } from '@vercel/analytics';
 export function PurchaseTrack({ kind }: { kind: string }) {
   useEffect(() => {
     track('purchase', { kind });
+    trackEvent('purchase', { kind });
   }, [kind]);
   return null;
 }

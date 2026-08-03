@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import Script from "next/script";
+import { GA_MEASUREMENT_ID } from "@/lib/analytics";
 import "./globals.css";
 import { ScrollReset } from "@/components/ScrollReset";
 import { ScrollProgress } from "@/components/ScrollProgress";
@@ -112,6 +114,27 @@ export default function RootLayout({
         {/* Page views + conversion data. No-op outside Vercel deployments,
             so local dev and CI stay clean. */}
         <Analytics />
+
+        {/* GA4, for importing conversions into the ad platforms. Kept
+            alongside Vercel Analytics rather than replacing it, and loaded
+            only once NEXT_PUBLIC_GA_MEASUREMENT_ID is set — until then no
+            script is fetched and no cookie is written. */}
+        {GA_MEASUREMENT_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_MEASUREMENT_ID}');
+              `}
+            </Script>
+          </>
+        )}
       </body>
     </html>
   );
