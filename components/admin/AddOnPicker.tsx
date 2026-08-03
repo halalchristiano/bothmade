@@ -1,5 +1,6 @@
 'use client';
 
+import InfoTooltip from '@/components/InfoTooltip';
 import {
   ADD_ONS,
   ADD_ON_CATEGORIES,
@@ -51,7 +52,10 @@ export function BaseServicePicker({
             onClick={() => onChange(key)}
             className={`text-left rounded-xl p-3 border transition-colors ${selected ? SELECTED_TILE : UNSELECTED_TILE}`}
           >
-            <p className="font-semibold text-sm">{service.label}</p>
+            <span className="flex items-center gap-1.5">
+              <span className="font-semibold text-sm">{service.label}</span>
+              <InfoTooltip text={`${service.description} Best for: ${service.bestFor}`} />
+            </span>
             <p className="text-xs text-white/40 mt-0.5">{formatCents(service.price)}</p>
           </button>
         );
@@ -88,7 +92,10 @@ function AddOnTile({
         disabled={includedInBase}
       />
       <span className="flex-1">
-        <span className="text-sm block">{addOn.label}</span>
+        <span className="text-sm flex items-center gap-1.5">
+          {addOn.label}
+          <InfoTooltip text={`${addOn.description} ${addOn.benefit}`} />
+        </span>
         {showDescription && <span className="text-xs text-white/35">{addOn.description}</span>}
       </span>
       {includedInBase ? (
