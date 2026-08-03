@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ConfirmDialog } from '@/components/admin/Modal';
+import { MilestonesPanel } from '@/components/admin/MilestonesPanel';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
@@ -698,6 +699,8 @@ export default function AdminProjectDetailPage() {
 
         {/* CENTER: Messages & Updates */}
         <div className="lg:col-span-5 space-y-6">
+          <MilestonesPanel projectId={projectId} />
+
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-xl font-bold mb-4">Activity</h2>
             <div className="space-y-4 max-h-[500px] overflow-y-auto mb-6">

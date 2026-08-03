@@ -16,6 +16,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Card, CardHeader, PageIn, PageTitle, Badge } from '@/components/admin/ui';
+import { TeamSettings } from '@/components/admin/TeamSettings';
+import { PricingSettings } from '@/components/admin/PricingSettings';
 
 interface GmailStatus {
   connected: boolean;
@@ -75,6 +77,20 @@ function ToggleRow({
 
 export default function AdminSettingsPage() {
   const [status, setStatus] = useState<GmailStatus | null>(null);
+  // Needed so the team roster can mark which row is you, and hide the
+  // "remove" action on your own account.
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data.type === 'user') setCurrentUserId(data.user.id);
+      })
+      .catch(() => {
+        // Only cosmetic — the server enforces who may do what regardless.
+      });
+  }, []);
   const [gmailAddress, setGmailAddress] = useState('');
   const [appPassword, setAppPassword] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -729,6 +745,12 @@ export default function AdminSettingsPage() {
           </button>
         </div>
       </Card>
+
+      {/* Team and pricing had working APIs and no way to reach them without
+          a database console. Both are owner-gated server-side; the team card
+          degrades to a read-only roster for anyone else. */}
+      <TeamSettings currentUserId={currentUserId} />
+      <PricingSettings />
     </PageIn>
   );
 }
