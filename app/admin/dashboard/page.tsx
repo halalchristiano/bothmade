@@ -28,6 +28,10 @@ import {
   Phone,
   Mail,
   RefreshCw,
+  ExternalLink,
+  ListChecks,
+  Palette as PaletteIcon,
+  BarChart3,
   UserCog,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
@@ -90,6 +94,23 @@ function RefreshIndicator({
       <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
       {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
     </button>
+  );
+}
+
+/** Opens the client's own status page in a new tab — the fastest way to see
+ * exactly what they're seeing, without switching accounts. */
+function OpenStatusButton({ projectId }: { projectId: string }) {
+  return (
+    <a
+      href={`/status/${projectId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title="Open their status page"
+      className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
+    >
+      <ExternalLink size={13} />
+    </a>
   );
 }
 
@@ -900,6 +921,7 @@ function HandoffRow({
           {handoff.company}
         </Link>
         <div className="flex items-center gap-2 shrink-0">
+          <OpenStatusButton projectId={handoff.id} />
           {handoff.onboardingTotal > 0 && (
             <Badge tone={handoff.onboardingAnswered === handoff.onboardingTotal ? 'emerald' : 'amber'}>
               Onboarding {handoff.onboardingAnswered}/{handoff.onboardingTotal}
@@ -1153,6 +1175,7 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       <Badge tone="amber">{formatCents(p.balanceDue)}</Badge>
                       <RemindButton projectId={p.id} lastSentAt={p.lastPaymentReminderSentAt} />
+                      <OpenStatusButton projectId={p.id} />
                     </div>
                   }
                 />
@@ -1197,7 +1220,17 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
         <>
           <div className="space-y-0.5">
             {shown.map((p) => (
-              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                trailing={
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <Badge tone="red">{p.daysSinceUpdate}d</Badge>
+                    <OpenStatusButton projectId={p.id} />
+                  </div>
+                }
+              />
             ))}
           </div>
           <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
@@ -1239,7 +1272,12 @@ function WaitingOnClientCard({ projects }: { projects: OpsStats['waitingOnClient
                     ? `You messaged ${p.daysSinceWeAsked === 0 ? 'today' : `${p.daysSinceWeAsked}d ago`}`
                     : undefined
                 }
-                trailing={<Badge tone="amber">{p.daysSinceUpdate}d</Badge>}
+                trailing={
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <Badge tone="amber">{p.daysSinceUpdate}d</Badge>
+                    <OpenStatusButton projectId={p.id} />
+                  </div>
+                }
               />
             ))}
           </div>
@@ -1526,13 +1564,31 @@ function OpsDashboard({
 
       <div className="flex flex-wrap gap-3">
         <Link
+          href="/admin/priorities"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+        >
+          <ListChecks size={16} /> Priorities
+        </Link>
+        <Link
           href="/admin/clients"
-          className="px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+          className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
         >
           View Clients
         </Link>
         <Link href="/admin/projects" className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors">
           View Projects
+        </Link>
+        <Link
+          href="/admin/mockup-queue"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
+        >
+          <PaletteIcon size={16} /> Mockup Queue
+        </Link>
+        <Link
+          href="/admin/analytics"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
+        >
+          <BarChart3 size={16} /> Analytics
         </Link>
         <Link href="/admin/team-chat" className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors">
           Team Chat

@@ -5,6 +5,7 @@ import {
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
+  depositAmount,
   formatCents,
   type AddOnKey,
   type BaseService,
@@ -51,10 +52,29 @@ export async function createCheckoutSession(
 
     const serviceLabel = BASE_SERVICES[input.baseService].label;
     const addOnLabels = input.addOns.map((key) => ADD_ONS[key].label);
-    const description =
+
+    /**
+     * Charge the deposit, not the whole project.
+     *
+     * The /start FAQ promises "a 50% deposit to begin Discovery, with the
+     * remaining balance due once Build is complete" — and everything
+     * downstream is already built for that: the webhook branches on
+     * `paymentType === 'deposit'`, Payment.type distinguishes deposit from
+     * balance, and /api/admin/projects/[id]/collect-balance exists to take
+     * the rest. Only this call had been left billing the full total, so a
+     * client configuring a $20k build was charged $20k at a page that told
+     * them they owed half. Billing double what the page promised is the kind
+     * of error that ends in a chargeback, so the deposit is authoritative here.
+     */
+    const deposit = depositAmount(breakdown.totalPrice);
+
+    const scope =
       addOnLabels.length > 0
         ? `${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label} + ${addOnLabels.join(', ')}`
         : `${TIMELINES[input.timeline].label} timeline, ${CLIENT_TYPES[input.clientType].label}`;
+    // Say what this charge is on the Stripe page itself, where the amount is
+    // about to be confirmed — the balance is the surprise worth pre-empting.
+    const description = `50% deposit of ${formatCents(breakdown.totalPrice)} total — ${scope}. Balance due before launch.`;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -63,10 +83,10 @@ export async function createCheckoutSession(
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Bothmade ${serviceLabel} — ${input.company}`,
+              name: `Bothmade ${serviceLabel} — ${input.company} (50% deposit)`,
               description,
             },
-            unit_amount: breakdown.totalPrice,
+            unit_amount: deposit,
           },
           quantity: 1,
         },
@@ -86,6 +106,12 @@ export async function createCheckoutSession(
         timeline: input.timeline,
         basePrice: String(breakdown.basePrice),
         totalPrice: String(breakdown.totalPrice),
+        // The webhook reads both: `paymentType` decides whether this books as
+        // a deposit or a full payment, `depositAmount` is what actually got
+        // charged, and `totalPrice` stays the project's contract value so the
+        // outstanding balance is derivable.
+        depositAmount: String(deposit),
+        paymentType: 'deposit',
         ...(input.leadId ? { leadId: input.leadId } : {}),
       },
     });
