@@ -1,8 +1,35 @@
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
+const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+// The studio is bothmade.studio. Everything reachable from the public site
+// lands here.
+const STUDIO_INBOX_FALLBACK = [
+  'info@bothmade.studio',
+  'evan@bothmade.studio',
+  'kiana@bothmade.studio',
+];
+
+/**
+ * Who hears about anything a stranger sends us — inbound enquiries, pricing
+ * interest, signed agreements. All three, always, and deliberately not
+ * `getAdminEmails()`: that reads the User table, and info@ is a shared inbox
+ * rather than a login, so it would be silently dropped every time.
+ *
+ * A function rather than a const so the environment is read at send time —
+ * a module-level const freezes whatever was set when the bundle first loaded.
+ * Set `STUDIO_INBOX` to a comma-separated list to override.
+ */
+export function studioInbox(): string[] {
+  const configured = (process.env.STUDIO_INBOX ?? '')
+    .split(',')
+    .map((address) => address.trim())
+    .filter(Boolean);
+
+  return configured.length > 0 ? configured : STUDIO_INBOX_FALLBACK;
+}
 
 export interface EmailAttachment {
   filename: string;
@@ -340,23 +367,15 @@ export async function sendInvoiceOnlyEmail(
  * Notify the internal team the moment a client agrees online — a copy of
  * exactly what they signed, ready for the books.
  */
-// Always CC'd on a signed contract regardless of who's in the User table —
-// info@ is a shared inbox, not a login, so getAdminEmails() alone would
-// silently skip it. A signed agreement is the one document every one of
-// these three needs a copy of no matter what.
-const SIGNED_CONTRACT_ALWAYS_TO = [
-  'info@bothmade.studio',
-  'evan@bothmade.studio',
-  'kiana@bothmade.studio',
-];
-
 export async function sendSignedContractCopyEmail(
   toEmails: string[],
   company: string,
   contractUrl: string,
   totalPriceLabel: string
 ): Promise<boolean> {
-  const recipients = Array.from(new Set([...toEmails, ...SIGNED_CONTRACT_ALWAYS_TO]));
+  // A signed agreement is the one document every one of the three needs a
+  // copy of no matter who else is on the thread.
+  const recipients = Array.from(new Set([...toEmails, ...studioInbox()]));
   const bodyHtml = `
     <p><strong style="color:#fff;">${company}</strong> just agreed to their project agreement online (total: ${totalPriceLabel}).</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">A copy is saved below and will also show up on the project once payment clears.</p>

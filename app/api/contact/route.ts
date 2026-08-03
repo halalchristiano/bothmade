@@ -1,11 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { prisma } from '@/lib/prisma';
+import { studioInbox } from '@/lib/email';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
+// The address mail is sent *from*, which has to belong to a domain verified
+// in Resend. Where it's sent *to* is studioInbox().
+const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
 
 const SERVICES = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
+
+type Service = (typeof SERVICES)[number];
+
+/** Array membership, not `in` — a key like 'constructor' is not a service. */
+function isService(value: unknown): value is Service {
+  return SERVICES.includes(value as Service);
+}
+
+/** Matches the option labels on the form, so the CRM reads back what they picked. */
+const SERVICE_LABELS: Record<Service, string> = {
+  web: 'Web',
+  ios: 'iOS & iPad',
+  mac: 'macOS',
+  visionpro: 'Vision Pro',
+  'full-stack': 'Everything',
+  other: 'Something else',
+};
 
 const LIMITS = {
   name: 100,
@@ -64,6 +85,67 @@ function clientKey(request: NextRequest): string {
   return forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
 }
 
+interface Enquiry {
+  name: string;
+  email: string;
+  company: string;
+  message: string;
+  service: Service;
+}
+
+/**
+ * Put the enquiry in the CRM. This is the durable record — the emails below
+ * are a notification about it, not the thing itself. An inbox is not a
+ * pipeline: before this existed, a submission that arrived while nobody was
+ * looking left no trace anywhere, and the daily/weekly digest crons (which
+ * read the database) never knew it happened.
+ *
+ * Someone who writes in twice is one lead with two messages, not two leads,
+ * so a repeat from a known address becomes an activity on the existing row.
+ */
+async function recordEnquiry(enquiry: Enquiry): Promise<void> {
+  const detail = [
+    `Service requested: ${SERVICE_LABELS[enquiry.service]}`,
+    '',
+    enquiry.message,
+  ].join('\n');
+
+  const existing = await prisma.lead.findFirst({
+    where: { email: enquiry.email },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.leadActivity.create({
+      data: {
+        leadId: existing.id,
+        type: 'note',
+        content: `Contact form submission from bothmade.studio\n\n${detail}`,
+      },
+    });
+    // They came to us — the strongest buying signal there is, and the sales
+    // views sort on it. Touch updatedAt so this lead surfaces to the top.
+    await prisma.lead.update({
+      where: { id: existing.id },
+      data: { replyReceivedAt: new Date() },
+    });
+    return;
+  }
+
+  await prisma.lead.create({
+    data: {
+      // `company` is required on Lead but optional on the form; their name is
+      // a better placeholder than an empty string in a list of businesses.
+      company: enquiry.company || enquiry.name,
+      contactName: enquiry.name,
+      email: enquiry.email,
+      status: 'new',
+      source: 'inbound',
+      notes: detail,
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (isRateLimited(clientKey(request))) {
@@ -78,7 +160,13 @@ export async function POST(request: NextRequest) {
 
     // Honeypot: a real person never fills a field they cannot see. Respond 200
     // so bots get no signal that they were caught.
+    //
+    // Logged because this path is indistinguishable from success on the client
+    // — green confirmation, no mail, no record. If a browser's autofill ever
+    // starts populating the hidden field, real enquiries would vanish here in
+    // total silence and this line is the only way anyone would find out.
     if (typeof website === 'string' && website.trim() !== '') {
+      console.warn('Contact form honeypot tripped; discarding submission');
       return NextResponse.json({ message: 'Message received.' }, { status: 200 });
     }
 
@@ -98,14 +186,37 @@ export async function POST(request: NextRequest) {
     const cleanCompany =
       typeof company === 'string' ? company.trim().slice(0, LIMITS.company) : '';
     const cleanMessage = message.trim().slice(0, LIMITS.message);
-    const cleanService = SERVICES.includes(service) ? service : 'other';
+    const cleanService: Service = isService(service) ? service : 'other';
 
     if (!isValidEmail(cleanEmail)) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
     }
 
+    // Capture before notifying. If the mail leg fails the enquiry is still
+    // in the pipeline; if this leg fails we can still fall back to email.
+    // Losing both is the only outcome the visitor needs to hear about.
+    let recorded = false;
+    try {
+      await recordEnquiry({
+        name: cleanName,
+        email: cleanEmail,
+        company: cleanCompany,
+        message: cleanMessage,
+        service: cleanService,
+      });
+      recorded = true;
+    } catch (error) {
+      console.error('Failed to record contact enquiry as a lead:', error);
+    }
+
     if (!process.env.RESEND_API_KEY) {
       console.error('RESEND_API_KEY not configured');
+      if (recorded) {
+        return NextResponse.json(
+          { message: "Message received! We'll get back to you soon." },
+          { status: 200 }
+        );
+      }
       return NextResponse.json({ error: 'Email service not configured' }, { status: 500 });
     }
 
@@ -114,19 +225,19 @@ export async function POST(request: NextRequest) {
       email: escapeHtml(cleanEmail),
       company: escapeHtml(cleanCompany || 'Not provided'),
       message: escapeHtml(cleanMessage),
-      service: escapeHtml(cleanService),
+      service: escapeHtml(SERVICE_LABELS[cleanService]),
     };
 
     const shell = (inner: string) =>
       `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;">${inner}<hr style="border:none;border-top:1px solid #eee;margin:30px 0;"><p style="color:#999;font-size:12px;">© 2026 Bothmade</p></div>`;
 
-    // Notification to the studio. This one always matters most, so it is sent
-    // first and its failure is what determines the response.
+    // Notification to the studio — info@, evan@ and kiana@. Replying goes
+    // straight back to whoever wrote in.
     const adminEmail = await resend.emails.send({
       from: CONTACT_EMAIL,
-      to: CONTACT_EMAIL,
+      to: studioInbox(),
       replyTo: cleanEmail,
-      subject: `New enquiry — ${cleanName} (${cleanService})`,
+      subject: `New enquiry — ${cleanName} (${SERVICE_LABELS[cleanService]})`,
       html: shell(
         `<h2 style="color:#000;">New contact form submission</h2>
          <p><strong>Name:</strong> ${safe.name}</p>
@@ -140,7 +251,10 @@ export async function POST(request: NextRequest) {
 
     if (adminEmail.error) {
       console.error('Admin notification failed:', adminEmail.error);
-      return NextResponse.json({ error: 'Failed to send message.' }, { status: 502 });
+      // Only a dead end if the CRM write failed too.
+      if (!recorded) {
+        return NextResponse.json({ error: 'Failed to send message.' }, { status: 502 });
+      }
     }
 
     // Acknowledgement to the sender. Best-effort: if it bounces, the enquiry
