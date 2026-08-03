@@ -35,18 +35,18 @@ const TEAM: {
 }[] = [
   {
     name: 'Evan',
-    role: 'Client & project lead',
+    role: 'Co-owner · Sales & client lead',
     owns:
-      'Your first call, your scope, your number. Every question you send lands with him directly — no account manager in between, on the project from kickoff to launch.',
+      'Your first call, your scope, your number. Every question you send lands with him directly — no account layer in between — and he stays your point of contact from kickoff to launch.',
     email: 'evan@bothmade.studio',
     photo: '/team/evan.jpg',
     accent: { from: '#38bdf8', to: '#0c2f52' },
   },
   {
     name: 'Kiana',
-    role: 'Design lead',
+    role: 'Co-owner · Design & engineering',
     owns:
-      'Every screen you approve is hers — designed against your real content, not lorem ipsum, and carried through so what ships matches what you signed off.',
+      'Every screen you approve and every line of code that ships is hers — designed against your real content, then built by the same hands, so what launches matches what you signed off.',
     email: 'kiana@bothmade.studio',
     photo: '/team/kiana.jpg',
     accent: { from: '#a855f7', to: '#3b0764' },
@@ -60,9 +60,10 @@ export function About() {
         <div className="mb-16">
           <SectionTag className="mb-8">Who you&apos;re working with</SectionTag>
           <p className="text-white/50 max-w-2xl text-lg">
-            Bothmade is two people, and you&apos;re looking at the whole org chart.
-            No sales floor, no outsourcing bench — the names below are who answers
-            your email and who builds your product.
+            Bothmade is two co-owners, and you&apos;re looking at the whole org
+            chart. No sales floor, no outsourcing bench — one of us runs your
+            project, the other designs and builds it, and you can email either
+            directly.
           </p>
           {LOCATION && (
             <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.3em] text-white/35">
