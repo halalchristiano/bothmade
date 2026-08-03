@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
-import { normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
+import { mockupInclude, normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
 
 export async function GET(
   request: NextRequest,
@@ -25,6 +25,10 @@ export async function GET(
           orderBy: { createdAt: 'desc' },
           include: { createdBy: { select: { id: true, name: true } } },
         },
+        // Newest first, because the only two questions asked of this list on
+        // a lead's page are "what's the current mockup" and "is there a PDF
+        // of it" — both answered by the top of the list.
+        mockups: { orderBy: { createdAt: 'desc' }, include: mockupInclude },
       },
     });
 
@@ -151,6 +155,25 @@ export async function PATCH(
       upsellPoints,
       estimateLowCents,
       estimateHighCents,
+      mockupPdfUrl,
+      invoicePdfUrl,
+      vercelDeployPassword,
+      industry,
+      contactRole,
+      address,
+      city,
+      region,
+      postalCode,
+      country,
+      companySize,
+      employeeCount,
+      locationCount,
+      annualRevenueCents,
+      tags,
+      doNotContact,
+      doNotContactReason,
+      leadScore,
+      clientTakenOnAt,
     } = body;
 
     if (status !== undefined && !isLeadStatus(status)) {
@@ -232,6 +255,45 @@ export async function PATCH(
         upsellPoints: upsellPoints !== undefined ? upsellPoints : undefined,
         estimateLowCents: estimateLowCents !== undefined ? estimateLowCents : undefined,
         estimateHighCents: estimateHighCents !== undefined ? estimateHighCents : undefined,
+
+        // Stored deliverables. The uploaded-at stamp only moves when the URL
+        // actually changes, so re-saving the same link doesn't rewrite the
+        // history of when it first landed. (The mockup PDF isn't here — it
+        // becomes a row in the mockups list below.)
+        invoicePdfUrl: invoicePdfUrl !== undefined ? invoicePdfUrl : undefined,
+        invoicePdfUploadedAt:
+          invoicePdfUrl !== undefined && invoicePdfUrl && invoicePdfUrl !== existing.invoicePdfUrl
+            ? new Date()
+            : undefined,
+        vercelDeployPassword: vercelDeployPassword !== undefined ? vercelDeployPassword : undefined,
+
+        industry: industry !== undefined ? industry : undefined,
+        contactRole: contactRole !== undefined ? contactRole : undefined,
+        address: address !== undefined ? address : undefined,
+        city: city !== undefined ? city : undefined,
+        region: region !== undefined ? region : undefined,
+        postalCode: postalCode !== undefined ? postalCode : undefined,
+        country: country !== undefined ? country : undefined,
+        companySize: companySize !== undefined ? companySize : undefined,
+        employeeCount: employeeCount !== undefined ? employeeCount : undefined,
+        locationCount: locationCount !== undefined ? locationCount : undefined,
+        annualRevenueCents: annualRevenueCents !== undefined ? annualRevenueCents : undefined,
+        tags: Array.isArray(tags) ? tags.join(',') : tags !== undefined ? tags : undefined,
+        doNotContact: doNotContact !== undefined ? doNotContact : undefined,
+        doNotContactReason: doNotContactReason !== undefined ? doNotContactReason : undefined,
+        leadScore: leadScore !== undefined ? leadScore : undefined,
+
+        // The day they became a client. Set explicitly when given, otherwise
+        // stamped the first time this lead is marked won — nobody should have
+        // to remember to record the one date the finance side asks for.
+        clientTakenOnAt:
+          clientTakenOnAt !== undefined
+            ? clientTakenOnAt
+              ? new Date(clientTakenOnAt)
+              : null
+            : (status ?? autoStatus) === 'won' && !existing.clientTakenOnAt
+              ? new Date()
+              : undefined,
       },
     });
 
@@ -257,6 +319,24 @@ export async function PATCH(
       await recordLeadMockup({ leadId, url, userId: session.userId }).catch((err) => {
         console.error('Could not record mockup version:', err);
       });
+    }
+
+    // A PDF export goes into the same list rather than a column of its own —
+    // it's another version of the mockup, and keeping it here means the
+    // history survives the next revision instead of being overwritten by it.
+    // `fileName` is what tells the page to offer it as a download.
+    if (mockupPdfUrl !== undefined && mockupPdfUrl) {
+      const url = normalizeMockupUrl(mockupPdfUrl);
+      if (url) {
+        await recordLeadMockup({
+          leadId,
+          url,
+          fileName: `${existing.company} mockup.pdf`,
+          userId: session.userId,
+        }).catch((err) => {
+          console.error('Could not record mockup PDF:', err);
+        });
+      }
     }
 
     return NextResponse.json({ success: true, lead }, { status: 200 });

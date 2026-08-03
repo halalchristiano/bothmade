@@ -273,6 +273,52 @@ model Lead {
   nextFollowUpAt DateTime? // self-set reminder date for the next touch
   contractStatus String    @default("not_sent") // "not_sent", "sent", "signed"
 
+  // --- Who this business actually is -------------------------------------
+  // Industry and address used to be appended to `notes` as prose, which made
+  // them unfilterable and unsortable — you could read "Industry: Dental
+  // practice" but never ask for every dental practice. They're columns now.
+  industry    String?
+  contactRole String? // job title — the fastest read on whether they can sign
+  altPhone    String?
+  address     String?
+  city        String?
+  region      String? // state / county / province
+  postalCode  String?
+  country     String?
+  timezone    String? // IANA name; falls back to the area-code guess when absent
+
+  // --- How big they are ---------------------------------------------------
+  // These exist to size a quote. A point with no catalogue price gets a
+  // suggested one scaled from whichever of these is on file, so the number
+  // beside a bespoke line item is at least anchored to the business rather
+  // than invented. See lib/lead-pricing.ts.
+  companySize        String? // "solo" | "small" | "medium" | "large" | "enterprise"
+  employeeCount      Int?
+  locationCount      Int?
+  annualRevenueCents Int?
+  yearFounded        Int?
+
+  // --- Public presence, i.e. the raw material for a personalised opener ---
+  googleRating      Float?
+  googleReviewCount Int?
+  googleMapsUrl     String?
+  instagramUrl      String?
+  facebookUrl       String?
+  linkedinUrl       String?
+
+  // Freeform comma-separated labels ("franchise,referral-partner,q3-push").
+  // Deliberately not an enum — the useful ones are never known in advance.
+  tags String @default("")
+
+  // A hard stop, not a preference. Set when someone asks not to be contacted;
+  // every outreach path checks it before sending or dialling.
+  doNotContact       Boolean @default(false)
+  doNotContactReason String?
+
+  // 0-100, set by research at import time. Ordering hint only — it never
+  // gates anything, so a bad score can't quietly bury a real opportunity.
+  leadScore Int?
+
   mockupRequested   Boolean   @default(false) // Evan asking Kiana to put together a mockup for this lead
   mockupRequestedAt DateTime?
   // The most recent mockup, mirrored from the `mockups` list below so the
@@ -281,6 +327,23 @@ model Lead {
   // record; these two are a cache of its newest entry.
   mockupUrl         String?
   mockupDeliveredAt DateTime?
+
+  // A PDF export of the mockup is another version of it, not a different
+  // kind of thing, so it lives in the `mockups` list with a fileName set
+  // rather than in a column of its own. The link is the better thing to
+  // show on a call; the PDF is what survives — no signal, no password, and
+  // still openable in a year once the preview deployment is gone.
+
+  // Mockups deploy behind Vercel's password protection so a prospect's
+  // competitors (and Google) can't find their unannounced redesign. Kept
+  // per-lead because each deployment gets its own.
+  vercelDeployPassword String?
+
+  // The signed invoice for this deal, once there is one. Empty until the
+  // lead is actually onboarded — from then on it's the copy Evan can pull
+  // up or hand over without going back through email.
+  invoicePdfUrl        String?
+  invoicePdfUploadedAt DateTime?
 
   // A fully pre-written cold email (subject on the first line as "Subject: ...",
   // body after), usually populated via CSV import from research done ahead of
@@ -384,12 +447,34 @@ model Lead {
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 
+  // When this business entered the pipeline, as opposed to when the row was
+  // written. They're the same for a lead added by hand and different for one
+  // imported from a sheet that was researched three weeks ago — which is why
+  // this is separate from createdAt rather than overwriting it. Reporting
+  // ("how many did we add between these two dates") reads this one; createdAt
+  // stays an untouched audit fact.
+  addedAt DateTime @default(now())
+
+  // The day they stopped being a lead and became a client. Set automatically
+  // when the lead is marked won or converts into a project, and importable
+  // so historical clients arrive with the real date rather than today's.
+  clientTakenOnAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   activities LeadActivity[]
   mockups    LeadMockup[]
 
+  // Every list in the admin either filters by owner and stage, sorts by when
+  // a lead arrived, or looks one up by name/email — so those are the reads
+  // worth an index once the table is thousands of rows rather than hundreds.
+  @@index([addedAt])
+  @@index([status, addedAt])
+  @@index([assignedToId, status])
+  @@index([clientTakenOnAt])
+  @@index([email])
+  @@index([company])
   @@map("leads")
 }
 
