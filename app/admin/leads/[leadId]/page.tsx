@@ -1165,10 +1165,19 @@ export default function LeadDetailPage() {
         setPaymentLinkUrl(data.signUrl);
         if (!data.hasEmail) {
           setLinkEmailStatus('Link created, but this lead has no email on file — add one to send it directly.');
+        } else if (data.emailSent && !data.emailError) {
+          setLinkEmailStatus(`Sent to ${lead?.email}, with the agreement and invoice attached.`);
         } else if (data.emailSent) {
-          setLinkEmailStatus(`Sent to ${lead?.email}.`);
+          // Went out, but short of a document — say which, before the client asks.
+          setLinkEmailStatus(`Sent to ${lead?.email}. ${data.emailError}`);
         } else {
-          setLinkEmailStatus('Link created, but the email failed to send — copy it manually below.');
+          // The server now says *why*. "Failed to send" left a rep with no
+          // idea whether to retry, fix a setting, or ring the client.
+          setLinkEmailStatus(
+            data.emailError
+              ? `Not sent — ${data.emailError} The link below still works.`
+              : 'Link created, but the email failed to send — copy it manually below.'
+          );
         }
         clearProposalDraft();
         load();

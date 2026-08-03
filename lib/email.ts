@@ -79,13 +79,25 @@ export interface EmailData {
  * someone typed into the CRM, or a lead's own email address imported from a
  * CSV. Anything that isn't a well-formed address is dropped rather than sent.
  */
-export async function sendEmail(data: EmailData): Promise<boolean> {
+/**
+ * Why a send didn't happen, in words a rep can act on.
+ *
+ * `sendEmail` returning a bare false is fine for the sends nobody is
+ * watching, but it is the wrong answer for one a person just clicked a
+ * button for: "the email failed to send" tells them nothing about whether
+ * to retry, fix a setting, or call the client instead. The reason travels
+ * to the UI so the answer is on screen rather than in a server log nobody
+ * can reach.
+ */
+export type SendResult = { sent: true } | { sent: false; reason: string };
+
+export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
   const recipients = sanitizeEmailAddresses(Array.isArray(data.to) ? data.to : [data.to]);
   if (recipients.length === 0) {
     console.error('Email send skipped: no valid recipient address', {
       attempted: Array.isArray(data.to) ? data.to.length : 1,
     });
-    return false;
+    return { sent: false, reason: 'That address is not one we can send to — check it for typos.' };
   }
 
   const fromName = sanitizeDisplayName(data.fromName) || 'Bothmade';
@@ -95,7 +107,11 @@ export async function sendEmail(data: EmailData): Promise<boolean> {
     const resend = resendClient();
     if (!resend) {
       console.error('RESEND_API_KEY not configured; skipping send');
-      return false;
+      return {
+        sent: false,
+        reason:
+          'Email is not configured on this deployment (RESEND_API_KEY is not set), so nothing was sent. Copy the link below and send it yourself.',
+      };
     }
 
     const result = await resend.emails.send({
@@ -109,14 +125,22 @@ export async function sendEmail(data: EmailData): Promise<boolean> {
 
     if (result.error) {
       console.error('Resend error:', result.error);
-      return false;
+      // Resend's own wording is the useful part — "domain is not verified"
+      // names the fix, where "failed to send" sends someone hunting.
+      const detail = result.error.message || String(result.error);
+      return { sent: false, reason: `The mail provider refused it: ${detail}` };
     }
 
-    return true;
+    return { sent: true };
   } catch (error) {
     console.error('Email send failed:', error);
-    return false;
+    const detail = error instanceof Error ? error.message : String(error);
+    return { sent: false, reason: `The send threw an error: ${detail}` };
   }
+}
+
+export async function sendEmail(data: EmailData): Promise<boolean> {
+  return (await sendEmailDetailed(data)).sent;
 }
 
 /**
@@ -367,18 +391,28 @@ export async function sendSignAndPayEmail(
   signUrl: string,
   amountLabel: string,
   isDeposit: boolean,
-  invoicePdf?: Buffer
-): Promise<boolean> {
+  attachments: { filename: string; content: Buffer }[] = []
+): Promise<SendResult> {
+  // Named so the sentence matches what is actually attached — promising an
+  // agreement that failed to build would be worse than not mentioning it.
+  const names = attachments.map((a) => (/agreement/i.test(a.filename) ? 'agreement' : 'itemized invoice'));
+  const attachmentLine =
+    names.length === 0
+      ? ''
+      : `<p style="font-size:13px; color:rgba(255,255,255,0.5);">The ${
+          names.length === 2 ? `${names[0]} and the ${names[1]} are` : `${names[0]} is`
+        } attached to this email as ${names.length === 2 ? 'PDFs' : 'a PDF'}.</p>`;
+
   const bodyHtml = `
     <p>Hi ${esc(contactName) || 'there'},</p>
     <p>Here's everything to get ${esc(company)}'s project moving — the agreement to review and a secure place to pay ${
       isDeposit ? `your deposit of <strong style="color:#fff;">${esc(amountLabel)}</strong>` : `<strong style="color:#fff;">${esc(amountLabel)}</strong>`
     }, all on one page.</p>
-    ${invoicePdf ? '<p style="font-size:13px; color:rgba(255,255,255,0.5);">The itemized invoice is attached to this email as a PDF.</p>' : ''}
+    ${attachmentLine}
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
   `;
 
-  return sendEmail({
+  return sendEmailDetailed({
     to: toEmail,
     subject: `Review & confirm your Bothmade project — ${company}`,
     html: renderShell({
@@ -388,9 +422,7 @@ export async function sendSignAndPayEmail(
       ctaLabel: 'Review & Pay',
       ctaUrl: signUrl,
     }),
-    ...(invoicePdf
-      ? { attachments: [{ filename: `${company.replace(/[^a-z0-9]/gi, '-')}-invoice.pdf`, content: invoicePdf }] }
-      : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
   });
 }
 
