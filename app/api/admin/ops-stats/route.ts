@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
 
 const RANGE_LABELS: Record<StatsRange, string> = {
@@ -13,6 +14,11 @@ export async function GET(request: Request) {
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const { searchParams } = new URL(request.url);
     const rangeParam = searchParams.get('range');

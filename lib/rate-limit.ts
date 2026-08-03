@@ -52,6 +52,23 @@ export const RATE_LIMITS = {
   contact: { max: 3, windowMs: 10 * 60 * 1000 },
   /** Quote/interest submissions — unchanged. */
   interest: { max: 5, windowMs: 10 * 60 * 1000 },
+  /**
+   * Failed sign-ins against one account, whatever address they come from.
+   *
+   * `login` above is keyed on the caller's IP, which is the wrong shape for
+   * the attack that matters here: someone grinding one known address from a
+   * proxy pool or botnet never spends a single IP's budget, so the per-IP
+   * limit never fires. This one is keyed on the account.
+   *
+   * Only failures count and a success clears the record, so the studio
+   * signing in twenty times a day is never throttled by its own use — the
+   * count only moves when somebody is getting the password wrong.
+   *
+   * 10 is deliberately looser than the per-IP 8: this budget can be spent by
+   * a stranger, and spending it locks a real person out for the window. That
+   * is the accepted cost, and it is bounded to fifteen minutes.
+   */
+  loginAccount: { max: 10, windowMs: 15 * 60 * 1000 },
 } as const satisfies Record<string, RateLimitRule>;
 
 // ---------------------------------------------------------------------------
@@ -209,6 +226,71 @@ export function clientIp(request: NextRequest): string {
 /** Namespaced key, so each endpoint gets its own budget per caller. */
 export function rateLimitKey(scope: string, request: NextRequest): string {
   return `rl:${scope}:${clientIp(request)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Failure counters
+// ---------------------------------------------------------------------------
+
+/**
+ * A budget keyed on *who is being signed in to*, not on who is asking.
+ *
+ * Lower-cased and trimmed so `Kiana@…` and `kiana@…` share one budget — an
+ * attacker must not get a fresh allowance by varying the capitalisation.
+ */
+export function accountKey(scope: string, identifier: string): string {
+  return `rl:${scope}:acct:${identifier.trim().toLowerCase()}`;
+}
+
+/**
+ * Whether this account is currently locked out, *without* spending any of its
+ * budget. Asked before the password is checked; the counter only moves on a
+ * failure, which is what `recordFailure` is for.
+ */
+export async function checkFailures(key: string, rule: RateLimitRule): Promise<RateLimitResult> {
+  try {
+    const rows = await prisma.$queryRaw<CounterRow[]>`
+      SELECT "count", "windowStart" FROM "rate_limits" WHERE "key" = ${key}
+    `;
+    const row = rows[0];
+    if (!row) return { allowed: true, retryAfterSeconds: 0, store: 'db' };
+
+    const elapsed = Date.now() - new Date(row.windowStart).getTime();
+    // A lapsed window is not a lockout — it just hasn't been cleaned up yet.
+    if (elapsed >= rule.windowMs) return { allowed: true, retryAfterSeconds: 0, store: 'db' };
+    if (row.count < rule.max) return { allowed: true, retryAfterSeconds: 0, store: 'db' };
+
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((rule.windowMs - elapsed) / 1000)),
+      store: 'db',
+    };
+  } catch (error) {
+    // Fails open, deliberately. A throttle that locks the studio out of its
+    // own dashboard during a database blip causes a certain outage to prevent
+    // a hypothetical attack — and the per-IP limit is still in force.
+    console.error('[rate-limit] account check failed, allowing attempt:', error);
+    return { allowed: true, retryAfterSeconds: 0, store: 'memory' };
+  }
+}
+
+/** Counts one failed attempt. Never throws — logging must not break login. */
+export async function recordFailure(key: string, rule: RateLimitRule): Promise<void> {
+  try {
+    await checkRateLimit(key, rule);
+  } catch (error) {
+    console.error('[rate-limit] could not record a failed attempt:', error);
+  }
+}
+
+/** A correct password clears the account's failures. Never throws. */
+export async function clearFailures(key: string): Promise<void> {
+  try {
+    await prisma.rateLimit.deleteMany({ where: { key } });
+  } catch (error) {
+    console.error('[rate-limit] could not clear failures:', error);
+  }
+  hits.delete(key);
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +13,11 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const clients = await prisma.client.findMany({
       include: {

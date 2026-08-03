@@ -14,11 +14,29 @@ const counters = new Map<string, { count: number; windowStart: Date }>();
 const prisma = {
   user: { findUnique: vi.fn(), create: vi.fn() },
   client: { findUnique: vi.fn(), update: vi.fn() },
-  rateLimit: { deleteMany: vi.fn(async () => ({ count: 0 })) },
-  $queryRaw: (_sql: TemplateStringsArray, ...params: unknown[]) => {
+  rateLimit: {
+    deleteMany: vi.fn(async ({ where }: { where: { key?: string } }) => {
+      if (where?.key) counters.delete(where.key);
+      return { count: 0 };
+    }),
+  },
+  /**
+   * The routes issue two different statements against this table, and the
+   * difference is the whole design: the INSERT counts a failure, the SELECT
+   * only asks whether the account is already locked. A mock that increments
+   * on both would make the read-only check spend budget, which is exactly
+   * the bug it exists to avoid.
+   */
+  $queryRaw: (sql: TemplateStringsArray, ...params: unknown[]) => {
     const key = params[0] as string;
-    const windowMs = params[1] as number;
     const now = Date.now();
+
+    if (sql[0]?.includes('SELECT')) {
+      const existing = counters.get(key);
+      return Promise.resolve(existing ? [{ ...existing }] : []);
+    }
+
+    const windowMs = params[1] as number;
     const existing = counters.get(key);
     if (!existing || now - existing.windowStart.getTime() >= windowMs) {
       const row = { count: 1, windowStart: new Date(now) };
@@ -95,14 +113,61 @@ describe('POST /api/auth/admin/login', () => {
     expect(verifyPassword.mock.calls.length).toBe(callsBefore);
   });
 
-  it('does not let one attacker lock out a different address', async () => {
-    for (let i = 0; i < RATE_LIMITS.login.max + 5; i++) {
+  it('does not let a flood against one account touch a different one', async () => {
+    // The per-account budget is keyed on the account being signed in to, so
+    // grinding one address must not cost anybody else theirs.
+    for (let i = 0; i < RATE_LIMITS.loginAccount.max + 5; i++) {
       await adminLogin(loginRequest(credentials, '6.6.6.6'));
     }
 
-    const other = await adminLogin(loginRequest(credentials, '7.7.7.7'));
+    const other = await adminLogin(
+      loginRequest({ email: 'kiana@bothmade.com', password: 'wrong' }, '7.7.7.7')
+    );
 
     expect(other.status).toBe(401);
+  });
+
+  it('locks the account itself across every address, which is the point', async () => {
+    // This used to be asserted the other way round — a flood from one IP
+    // deliberately left the same account reachable from another, so that
+    // knowing an email could not be used to lock its owner out.
+    //
+    // That left the real attack open: guessing one known address from a
+    // proxy pool spends no single IP's budget, so the per-IP counter never
+    // fires. The account counter is what closes it, and it only closes it if
+    // it follows the account rather than the connection.
+    for (let i = 0; i < RATE_LIMITS.loginAccount.max; i++) {
+      await adminLogin(loginRequest(credentials, `10.0.0.${i}`));
+    }
+
+    const fromSomewhereElse = await adminLogin(loginRequest(credentials, '203.0.113.9'));
+
+    expect(fromSomewhereElse.status).toBe(429);
+    expect(fromSomewhereElse.headers.get('Retry-After')).toBeTruthy();
+  });
+
+  it('only counts failures, so signing in correctly never spends the budget', async () => {
+    // The studio signs in many times a day. If successes counted, they would
+    // throttle themselves out of their own dashboard by lunchtime.
+    verifyPassword.mockResolvedValue(true);
+
+    for (let i = 0; i < RATE_LIMITS.loginAccount.max + 10; i++) {
+      expect((await adminLogin(loginRequest(credentials, `10.1.0.${i}`))).status).toBe(200);
+    }
+  });
+
+  it('forgives the account once the right password arrives', async () => {
+    // Someone mistyping their password nine times and then getting it right
+    // should not be one slip away from a lockout for the next quarter hour.
+    for (let i = 0; i < RATE_LIMITS.loginAccount.max - 1; i++) {
+      await adminLogin(loginRequest(credentials, '8.8.8.8'));
+    }
+
+    verifyPassword.mockResolvedValue(true);
+    expect((await adminLogin(loginRequest(credentials, '8.8.8.9'))).status).toBe(200);
+
+    verifyPassword.mockResolvedValue(false);
+    expect((await adminLogin(loginRequest(credentials, '8.8.8.10'))).status).toBe(401);
   });
 
   it('does not spend the budget of the client login endpoint', async () => {

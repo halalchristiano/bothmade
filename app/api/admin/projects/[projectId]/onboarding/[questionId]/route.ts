@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 
 export async function DELETE(
   request: NextRequest,
@@ -11,6 +12,11 @@ export async function DELETE(
     if (!session) {
       return unauthorizedResponse();
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const { questionId } = await params;
     await prisma.onboardingQuestion.delete({ where: { id: questionId } });

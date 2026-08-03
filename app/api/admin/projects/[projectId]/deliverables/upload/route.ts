@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { requireStaff } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 import { DELIVERABLE_CONTENT_TYPES, DELIVERABLE_MAX_BYTES } from '@/lib/uploads';
 
 /**
@@ -21,6 +22,17 @@ export async function POST(request: Request) {
         if (!session) {
           throw new Error('Unauthorized');
         }
+        // Deliverables are ops, not sales — the admin nav already withholds
+        // Projects from a sales account.
+        //
+        // Thrown rather than returned: this callback's return value is the
+        // upload token's options, so handing back a response would be read as
+        // a (nonsense) token config. handleUpload turns the throw into the
+        // 400 below, and no token is minted either way.
+        if (requireRole(session, OPS)) {
+          throw new Error('You do not have access to this.');
+        }
+
         return {
           // Was `undefined` — any type, any size. text/html and unbounded
           // uploads are not deliverables; see lib/uploads.ts.

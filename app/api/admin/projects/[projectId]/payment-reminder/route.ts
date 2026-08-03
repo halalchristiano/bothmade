@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 import { sendPaymentLinkEmail } from '@/lib/email';
 import { formatCents } from '@/lib/pricing';
 
@@ -19,6 +20,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const { projectId } = await params;
 

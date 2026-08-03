@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 
 export async function GET(
   request: NextRequest,
@@ -11,6 +12,11 @@ export async function GET(
     if (!session) {
       return unauthorizedResponse();
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const client = await prisma.client.findUnique({
       where: { id: (await params).clientId },
@@ -61,6 +67,11 @@ export async function PATCH(
     if (!session) {
       return unauthorizedResponse();
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const { company, phone, contactName, archived } = await request.json();
 
@@ -104,6 +115,11 @@ export async function DELETE(
     if (!session) {
       return unauthorizedResponse();
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const { clientId } = await params;
     const client = await prisma.client.findUnique({ where: { id: clientId } });

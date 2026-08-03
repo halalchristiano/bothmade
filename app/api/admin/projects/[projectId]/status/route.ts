@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 import { sendStatusUpdateEmail } from '@/lib/email';
 
 const STAGES = ['discovery', 'design', 'build', 'launch', 'complete'];
@@ -14,6 +15,11 @@ export async function PATCH(
     if (!session) {
       return unauthorizedResponse();
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const { status, description } = await request.json();
 
