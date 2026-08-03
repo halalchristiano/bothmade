@@ -3,7 +3,8 @@
 import { motion } from 'framer-motion';
 import { useState, useRef, FormEvent } from 'react';
 import { track } from '@vercel/analytics';
-import { COUNTRIES, DEFAULT_COUNTRY, countryByIso2 } from '@/lib/country-codes';
+import { DEFAULT_COUNTRY, countryByIso2 } from '@/lib/country-codes';
+import { PhoneField } from '@/components/PhoneField';
 import { trackEvent } from '@/lib/analytics';
 import {
   FIELD_ERRORS,
@@ -155,12 +156,14 @@ export function ContactForm() {
 
   const isValidated = (name: string): name is ValidatedField => name in VALIDATORS;
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    const { name } = e.target;
+  /**
+   * One path for every field change. Most arrive as DOM events; the phone
+   * field hands back plain values, because a dial code and a number are two
+   * controls making up one field and it owns that seam itself.
+   */
+  const handleValue = (name: string, raw: string) => {
     const sanitize = isValidated(name) ? SANITIZERS[name] : undefined;
-    const value = sanitize ? sanitize(e.target.value) : e.target.value;
+    const value = sanitize ? sanitize(raw) : raw;
     const next = { ...formData, [name]: value };
 
     setFormData(next);
@@ -177,11 +180,12 @@ export function ContactForm() {
     }
   };
 
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => handleValue(e.target.name, e.target.value);
+
   /** Leaving a field is the moment the visitor is finished with it, so that's when it's judged. */
-  const handleBlur = (
-    e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
+  const validateOnBlur = (name: string, value: string) => {
     if (!isValidated(name)) return;
     // An untouched optional field isn't a mistake; an empty required one is
     // left alone until submit so tabbing through doesn't light the form up.
@@ -191,6 +195,10 @@ export function ContactForm() {
       [name]: VALIDATORS[name](value, formData) ? undefined : FIELD_ERRORS[name],
     }));
   };
+
+  const handleBlur = (
+    e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => validateOnBlur(e.target.name, e.target.value);
 
   /** Every field at once, for submit. Returns the fields that failed. */
   const validateAll = () => {
@@ -258,10 +266,6 @@ export function ContactForm() {
       setLoading(false);
     }
   };
-
-  // Falls back rather than throws: `country` only ever comes from the list
-  // below, but a blank flag beats a blank page if that ever stops being true.
-  const selectedCountry = countryByIso2(formData.country) ?? COUNTRIES[0];
 
   // Bold, minimal form. Large fields, generous space, underlines only.
   // Dark ink on white, no softness.
@@ -396,61 +400,16 @@ export function ContactForm() {
       </div>
 
       <div>
-        {/* Dial code and number share one underline so they read as the
-            single field they are. */}
-        <div className="flex items-center border-b-2 border-black/20 focus-within:border-black/60 transition-colors duration-200">
-          {/* A real <select> — native keyboard handling, and the wheel
-              picker on a phone — but its own closed-state text would be the
-              whole "🇬🇧 +44 United Kingdom" option, which is far too wide to
-              sit beside the number. So it's transparent on top of the
-              compact label we draw ourselves. */}
-          <span className="relative flex items-center shrink-0 py-5 pr-3">
-            <select
-              name="country"
-              aria-label="Country dial code"
-              value={formData.country}
-              onChange={handleChange}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            >
-              {COUNTRIES.map((country) => (
-                <option key={country.iso2} value={country.iso2}>
-                  {country.flag} {country.dial} {country.name}
-                </option>
-              ))}
-            </select>
-            <span
-              aria-hidden="true"
-              className="flex items-center gap-2 text-lg md:text-xl text-black pointer-events-none"
-            >
-              <span>{selectedCountry.flag}</span>
-              <span>{selectedCountry.dial}</span>
-              <svg viewBox="0 0 12 8" className="w-3 h-2 text-black/40">
-                <path
-                  d="M1 1.5L6 6.5L11 1.5"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  fill="none"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </span>
-          </span>
-          <input
-            type="tel"
-            name="phone"
-            aria-label="Phone (optional)"
-            autoComplete="tel-national"
-            inputMode="tel"
-            placeholder="Phone (optional)"
-            value={formData.phone}
-            onChange={handleChange}
-            onBlur={handleBlur}
-            maxLength={FIELD_LIMITS.nationalNumber}
-            aria-invalid={Boolean(fieldErrors.phone)}
-            aria-describedby={fieldErrors.phone ? 'contact-phone-error' : undefined}
-            className="w-full min-w-0 bg-transparent border-0 rounded-none px-0 py-5 text-lg md:text-xl text-black placeholder-black/25 focus:outline-none"
-          />
-        </div>
+        <PhoneField
+          variant="underline"
+          country={formData.country}
+          phone={formData.phone}
+          onCountryChange={(iso2) => handleValue('country', iso2)}
+          onPhoneChange={(national) => handleValue('phone', national)}
+          onBlur={(value) => validateOnBlur('phone', value)}
+          invalid={Boolean(fieldErrors.phone)}
+          describedBy={fieldErrors.phone ? 'contact-phone-error' : undefined}
+        />
         <FieldError id="contact-phone-error" message={fieldErrors.phone} />
       </div>
 

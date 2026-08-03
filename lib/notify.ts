@@ -122,6 +122,8 @@ export async function notifyRepInboundEnquiry(params: {
   contactName: string;
   company: string;
   email: string;
+  /** Optional on every inbound form, so absent here means they didn't leave one. */
+  phone?: string | null;
   serviceLabel: string;
   message: string;
   /** True when this address already existed in the pipeline. */
@@ -142,6 +144,19 @@ export async function notifyRepInboundEnquiry(params: {
      )}</blockquote>
      <p>Reply to them directly at
        <a href="mailto:${encodeURI(params.email)}">${escapeHtml(params.email)}</a>.</p>
+     ${
+       // A number in the mail is a call that happens now, rather than after
+       // someone remembers to open the CRM. tel: takes digits and a leading
+       // +, so the grouping the visitor typed is stripped from the href but
+       // kept in the text, which is what a rep reads back to them.
+       params.phone
+         ? `<p>Or call them on
+              <a href="tel:${
+                (params.phone.trim().startsWith('+') ? '+' : '') +
+                params.phone.replace(/[^0-9]/g, '')
+              }">${escapeHtml(params.phone)}</a>.</p>`
+         : ''
+     }
      ${
        params.returning
          ? '<p style="color:#555;">This address was already in the pipeline — the message is on their existing lead rather than a new one.</p>'

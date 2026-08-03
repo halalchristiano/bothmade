@@ -238,6 +238,22 @@ describe('POST /api/contact — telling Evan', () => {
     expect(alert.html).toContain('Evan');
   });
 
+  it('makes the number one tap away in the alert, code included', async () => {
+    await POST(request({ ...VALID, phone: '+44 7700 900123' }, freshIp()));
+
+    const { html } = sendEmail.mock.calls[0][0];
+    // The href drops the grouping the visitor typed; the text keeps it, since
+    // that is what a rep reads back down the line.
+    expect(html).toContain('href="tel:+447700900123"');
+    expect(html).toContain('+44 7700 900123');
+  });
+
+  it('says nothing about calling when no number was left', async () => {
+    await POST(request(VALID, freshIp()));
+
+    expect(sendEmail.mock.calls[0][0].html).not.toContain('tel:');
+  });
+
   it('assigns the lead to the sales rep so it enters their queue', async () => {
     // The call list and the follow-up digest both filter by assignedToId; an
     // unassigned lead is mail with nowhere to land.

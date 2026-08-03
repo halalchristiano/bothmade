@@ -25,6 +25,9 @@ import {
   type TimelineKey,
 } from '@/lib/pricing';
 import { FAQ_ITEMS } from '@/lib/start-faq';
+import { PhoneField } from '@/components/PhoneField';
+import { DEFAULT_COUNTRY, countryByIso2 } from '@/lib/country-codes';
+import { composePhone, isValidEmail, isValidPhone } from '@/lib/validation';
 
 const ADD_ONS_BY_CATEGORY = Object.entries(ADD_ONS).reduce(
   (acc, [key, addOn]) => {
@@ -88,7 +91,12 @@ export default function StartPage() {
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
   const [contactName, setContactName] = useState('');
+  // Split the same way as the contact form: the code comes from a list, the
+  // number from the keyboard. Both doors write to the same Lead.phone column,
+  // so both have to put the same shape in it.
+  const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [phone, setPhone] = useState('');
+  const fullPhone = composePhone(countryByIso2(country)?.dial ?? '+1', phone);
 
   const breakdown = useMemo(
     () => calculatePrice({ baseService, addOns, clientType, timeline }),
@@ -125,7 +133,7 @@ export default function StartPage() {
           clientEmail: email,
           company,
           contactName,
-          phone,
+          phone: fullPhone,
         }),
       });
 
@@ -154,7 +162,7 @@ export default function StartPage() {
           contactName,
           email,
           company,
-          phone,
+          phone: fullPhone,
           baseService,
           addOns,
           clientType,
@@ -175,7 +183,14 @@ export default function StartPage() {
     }
   };
 
-  const canSubmit = email && company && contactName;
+  // The route rejects a malformed address or an undialable number rather
+  // than guessing at one, so the button stays disabled until they would
+  // survive it — better than losing a configured quote to a 400 at the last
+  // step. The number itself stays optional.
+  const canSubmit =
+    Boolean(company && contactName) &&
+    isValidEmail(email) &&
+    (phone.trim() === '' || isValidPhone(fullPhone));
   const cardClass = (active: boolean) =>
     `text-left rounded-xl p-5 border transition-all ${
       active
@@ -450,12 +465,12 @@ export default function StartPage() {
 
             <div>
               <label className="block text-sm font-medium mb-2 text-white/70">Phone (optional)</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+1 (555) 000-0000"
-                className={inputClass}
+              <PhoneField
+                variant="boxed"
+                country={country}
+                phone={phone}
+                onCountryChange={setCountry}
+                onPhoneChange={setPhone}
               />
             </div>
           </div>

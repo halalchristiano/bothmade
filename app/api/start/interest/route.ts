@@ -4,6 +4,7 @@ import { escapeHtml } from '@/lib/html';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { prisma } from '@/lib/prisma';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
+import { FIELD_ERRORS, isValidEmail, isValidPhone, normalizePhone } from '@/lib/validation';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -45,6 +46,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    // The same predicates /api/contact runs. This route writes to the same
+    // `Lead` row from the same site, and until now took whatever it was
+    // handed — so a number that the contact form would have refused could
+    // still reach the call list through this door, and a rep only finds out
+    // on the call that fails.
+    if (typeof email !== 'string' || !isValidEmail(email)) {
+      return NextResponse.json({ error: FIELD_ERRORS.email }, { status: 400 });
+    }
+    // Optional here as on the contact form: someone who has configured a
+    // whole project is not worth losing over a phone number. Given, though,
+    // it has to be dialable.
+    const rawPhone = typeof phone === 'string' ? phone.trim() : '';
+    if (rawPhone && !isValidPhone(rawPhone)) {
+      return NextResponse.json({ error: FIELD_ERRORS.phone }, { status: 400 });
+    }
+    const cleanPhone = rawPhone ? normalizePhone(rawPhone) : '';
+
     if (!isBaseService(baseService) || !isClientType(clientType) || !isTimelineKey(timeline)) {
       return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
     }
@@ -62,7 +80,7 @@ export async function POST(request: NextRequest) {
     <p><strong>${escapeHtml(contactName)}</strong> at <strong>${escapeHtml(company)}</strong> configured a project and wants to talk before paying.</p>
     <table cellpadding="6" style="border-collapse: collapse;">
       <tr><td><strong>Email</strong></td><td>${escapeHtml(email)}</td></tr>
-      ${phone ? `<tr><td><strong>Phone</strong></td><td>${escapeHtml(phone)}</td></tr>` : ''}
+      ${cleanPhone ? `<tr><td><strong>Phone</strong></td><td>${escapeHtml(cleanPhone)}</td></tr>` : ''}
       <tr><td><strong>Service</strong></td><td>${escapeHtml(BASE_SERVICES[baseService].label)}</td></tr>
       <tr><td><strong>Add-ons</strong></td><td>${addOnRows ? `<ul>${addOnRows}</ul>` : 'None'}</td></tr>
       <tr><td><strong>Client type</strong></td><td>${escapeHtml(CLIENT_TYPES[clientType].label)}</td></tr>
@@ -111,7 +129,7 @@ export async function POST(request: NextRequest) {
             company,
             contactName,
             email,
-            phone: phone || null,
+            phone: cleanPhone || null,
             status: 'new',
             source: 'inbound-pricing',
             estimatedValue: breakdown.totalPrice,
@@ -144,6 +162,7 @@ export async function POST(request: NextRequest) {
         contactName,
         company,
         email,
+        phone: cleanPhone,
         serviceLabel: `${BASE_SERVICES[baseService].label} — ${formatCents(breakdown.totalPrice)}`,
         message: summary,
         returning,
