@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { SectionTag } from '@/components/ui';
+import { COMPANY_LOCATION } from '@/lib/company';
 
 /**
  * The credibility block. At this price point the biggest conversion leak is
@@ -21,7 +22,8 @@ import { SectionTag } from '@/components/ui';
  *    complete without it, but it's the last thing a cautious buyer wants.
  * ─────────────────────────────────────────────────────────────────────────
  */
-const LOCATION: string | null = 'London · Delaware';
+/** Shared with the footer — change it in lib/company.ts, not here. */
+const LOCATION: string | null = COMPANY_LOCATION;
 
 const TEAM: {
   name: string;

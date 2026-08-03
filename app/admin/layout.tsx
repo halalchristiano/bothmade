@@ -21,6 +21,7 @@ import {
   PhoneCall,
   Palette,
   ListChecks,
+  UserCog,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, salesVisible: true },
   { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, salesVisible: true },
+  { href: '/admin/team', label: 'Team', icon: UserCog, salesVisible: false },
   { href: '/admin/settings', label: 'Settings', icon: Settings, salesVisible: true },
 ];
 

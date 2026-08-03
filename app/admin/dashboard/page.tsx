@@ -32,6 +32,7 @@ import {
   ListChecks,
   Palette as PaletteIcon,
   BarChart3,
+  UserCog,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
@@ -39,10 +40,12 @@ import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { UndoToast } from '@/components/admin/UndoToast';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { MockupsCard } from '@/components/admin/MockupAttachments';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
+import { USER_ROLE_LABELS, type UserRole } from '@/lib/roles';
 
 type StatsRange = 'week' | 'month' | 'quarter';
 
@@ -703,6 +706,10 @@ function SalesDashboard({
         <NextActionsCard stats={stats} />
       </div>
 
+      <div className="mb-5">
+        <MockupsCard />
+      </div>
+
       {stats.awaitingSignature.length > 0 && (
         <div className="mb-5">
           <Card className="p-6" glow="amber">
@@ -1316,6 +1323,80 @@ function ActivityFeedCard({ activity }: { activity: OpsStats['activityFeed'] }) 
   );
 }
 
+interface TeamMemberSummary {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+}
+
+/**
+ * Who's on the team, and whether the roles are actually wired up.
+ *
+ * The warning is the reason this is on the dashboard rather than only on
+ * /admin/team: inbound leads are assigned to whoever holds `sales`, and with
+ * nobody holding it they arrive unassigned and silently miss the call list
+ * and the daily follow-up digest. That is invisible from every other screen —
+ * the leads are all there, they just never reach anyone.
+ */
+function TeamCard() {
+  const [members, setMembers] = useState<TeamMemberSummary[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/admin/users')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.users) setMembers(d.users);
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  const missingSales = loaded && members.length > 0 && !members.some((m) => m.role === 'sales');
+
+  return (
+    <Card className="p-6" glow={missingSales ? 'amber' : undefined}>
+      <CardHeader
+        icon={UserCog}
+        tone={missingSales ? 'amber' : 'purple'}
+        title="Team"
+        subtitle={loaded ? `${members.length} account${members.length === 1 ? '' : 's'}` : 'Loading…'}
+        action={
+          <Link href="/admin/team" className="text-xs text-sky-300/70 hover:text-sky-300">
+            Manage →
+          </Link>
+        }
+      />
+
+      {missingSales && (
+        <p className="text-[13px] text-amber-200/80 mb-4 leading-relaxed">
+          Nobody has the Sales role, so inbound leads arrive unassigned and stay out of the
+          call list and daily follow-ups.{' '}
+          <Link href="/admin/team" className="underline hover:text-amber-100">
+            Assign it
+          </Link>
+          .
+        </p>
+      )}
+
+      <div className="space-y-1">
+        {members.map((m) => (
+          <div key={m.id} className="flex items-center justify-between gap-3 py-1.5">
+            <span className="text-sm text-white/80 truncate">{m.name || m.email}</span>
+            <Badge tone={m.role === 'sales' ? 'sky' : m.role === 'owner' ? 'purple' : 'neutral'}>
+              {USER_ROLE_LABELS[m.role as UserRole] ?? m.role}
+            </Badge>
+          </div>
+        ))}
+        {loaded && members.length === 0 && (
+          <p className="text-sm text-white/40">Nobody yet.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function OpsDashboard({
   stats,
   name,
@@ -1440,6 +1521,8 @@ function OpsDashboard({
         <ActivityFeedCard activity={stats.activityFeed} />
 
         <TasksWidget />
+
+        <TeamCard />
       </div>
 
       {stats.projectsAwaitingReply.length > 0 && (

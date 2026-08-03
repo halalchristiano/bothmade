@@ -58,7 +58,8 @@ Optional, and only for a brand-new deployment with an empty `users` table:
       whoever holds it, and the "this client reached out" alert is sent to
       them. Without it the alert falls back to `evan@bothmade.studio` and the
       lead stays unassigned — which keeps it out of the call list and the
-      follow-up digest, both of which filter per rep. Check `/admin/users`.
+      follow-up digest, both of which filter per rep. Set it on `/admin/team`,
+      which also warns on the dashboard while nobody holds the role.
 - [ ] **Test the form once on production** — submit it yourself, then confirm
       all four: the notification arrives at info@, evan@ and kiana@; Evan gets
       the separate "just reached out" alert whose button opens the lead; the
@@ -110,8 +111,9 @@ and Vercel — no amount of code changes fixes it.
       can't mistake them for client engagements.
 - [ ] **Finish the About/credibility block.** `components/About.tsx` ships
       on the homepage with names, roles, direct emails, real photos
-      (`public/team/`), and location (London · Delaware; the Welling
-      mailing address is in the footer and JSON-LD). One thing still needs
+      (`public/team/`), and location (London, from `COMPANY_LOCATION` in
+      `lib/company.ts`; the Welling mailing address is in the footer and
+      JSON-LD). One thing still needs
       a human: 1–2 `bio` sentences per person — see the EDIT ME banner in
       that file.
 - [ ] **Add real screenshots** to case studies (`shots[].src`, files under

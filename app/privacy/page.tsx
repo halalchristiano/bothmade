@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
+import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_LOCATION } from '@/lib/company';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy | Bothmade',
@@ -31,12 +32,11 @@ export default function PrivacyPage() {
               <h2 className="text-xl font-semibold text-white mb-3">Who we are</h2>
               <p>
                 Bothmade (&quot;we&quot;, &quot;us&quot;) is a web and native Apple development
-                studio operating from London and Delaware, at Suite 695, 80A Ruskin Ave,
-                Welling DA16 3QQ, United Kingdom. This policy explains what we collect
-                through bothmade.studio, why, and what you can ask us to do about it. Reach
-                us any time at{' '}
-                <a href="mailto:info@bothmade.studio" className="text-sky-300 hover:underline">
-                  info@bothmade.studio
+                studio based in {COMPANY_LOCATION}, at {COMPANY_ADDRESS_INLINE}. This policy
+                explains what we collect through bothmade.studio, why, and what you can ask us
+                to do about it. Reach us any time at{' '}
+                <a href={`mailto:${COMPANY_EMAIL}`} className="text-sky-300 hover:underline">
+                  {COMPANY_EMAIL}
                 </a>
                 .
               </p>
@@ -104,8 +104,8 @@ export default function PrivacyPage() {
               <p>
                 You can ask for a copy of what we hold about you, ask us to correct it, or ask
                 us to delete it — email{' '}
-                <a href="mailto:info@bothmade.studio" className="text-sky-300 hover:underline">
-                  info@bothmade.studio
+                <a href={`mailto:${COMPANY_EMAIL}`} className="text-sky-300 hover:underline">
+                  {COMPANY_EMAIL}
                 </a>
                 . Because we operate from the UK, visitors in the UK and EU also have the right
                 to object to processing and to complain to their data protection authority (in

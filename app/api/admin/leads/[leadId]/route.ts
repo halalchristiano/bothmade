@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
+import { normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
 
 export async function GET(
   request: NextRequest,
@@ -242,18 +243,15 @@ export async function PATCH(
         },
       });
     }
-    if (mockupUrl !== undefined && mockupUrl && !existing.mockupUrl) {
-      await prisma.teamMessage.updateMany({
-        where: { relatedLeadId: leadId, urgent: true, resolved: false },
-        data: { resolved: true },
-      });
-      await prisma.teamMessage.create({
-        data: {
-          content: `✅ Mockup ready for ${lead.company}: ${mockupUrl}`,
-          fromUserId: session.userId,
-          relatedLeadId: leadId,
-          urgent: false,
-        },
+    // A delivered link becomes a numbered mockup on the lead (which is also
+    // what resolves the urgent request and messages the team). A second link
+    // pasted later is version two, not a replacement for version one.
+    if (mockupUrl !== undefined && mockupUrl) {
+      const url = normalizeMockupUrl(mockupUrl) ?? mockupUrl;
+      // The link is already saved on the lead itself at this point, so a
+      // failure here costs the version history, not the delivery.
+      await recordLeadMockup({ leadId, url, userId: session.userId }).catch((err) => {
+        console.error('Could not record mockup version:', err);
       });
     }
 

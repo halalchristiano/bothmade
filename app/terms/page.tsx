@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
+import { COMPANY_EMAIL } from '@/lib/company';
 
 export const metadata: Metadata = {
   title: 'Terms of Service | Bothmade',
@@ -109,8 +110,8 @@ export default function TermsPage() {
               <h2 className="text-xl font-semibold text-white mb-3">Contact</h2>
               <p>
                 Questions about these terms:{' '}
-                <a href="mailto:info@bothmade.studio" className="text-sky-300 hover:underline">
-                  info@bothmade.studio
+                <a href={`mailto:${COMPANY_EMAIL}`} className="text-sky-300 hover:underline">
+                  {COMPANY_EMAIL}
                 </a>
                 . See also our{' '}
                 <Link href="/privacy" className="text-sky-300 hover:underline">
