@@ -161,7 +161,9 @@ describe('when the send fails', () => {
 
     await POST(request(), { params });
 
-    const kinds = prisma.leadActivity.create.mock.calls.map((c) => c[0].data.type);
+    const kinds = (
+      prisma.leadActivity.create.mock.calls as unknown as [{ data: { type: string } }][]
+    ).map((c) => c[0].data.type);
     expect(kinds).not.toContain('email');
   });
 });

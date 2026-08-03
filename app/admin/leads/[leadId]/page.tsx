@@ -24,6 +24,7 @@ import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { PhoneField } from '@/components/admin/PhoneField';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
@@ -2561,7 +2562,7 @@ export default function LeadDetailPage() {
                 <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" className={inputClass} />
                 <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className={inputClass} />
                 <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className={inputClass} />
+                <PhoneField value={phone} onChange={setPhone} className={inputClass} />
                 <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source" className={inputClass} />
                 <input
                   value={estimatedValue}
