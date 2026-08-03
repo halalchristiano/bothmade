@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { startOfBusinessDay } from '@/lib/business-time';
 import { unauthorizedResponse } from '@/lib/middleware';
+import { cadenceStepFor } from '@/lib/cadence';
 import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 
 /**
@@ -160,6 +161,15 @@ export async function GET() {
     const startOfToday = startOfBusinessDay();
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
 
+    // Outreach emails already sent, per lead, in one query — this is what
+    // positions each lead in the follow-up cadence.
+    const emailCounts = await prisma.leadActivity.groupBy({
+      by: ['leadId'],
+      where: { leadId: { in: leads.map((l) => l.id) }, type: 'email' },
+      _count: true,
+    });
+    const emailCountByLead = new Map(emailCounts.map((g) => [g.leadId, g._count]));
+
     const rows = leads.map((lead) => {
       // "Contacted" means anyone actually reached out — an email that went, or
       // any logged activity. Reading status alone called a lead that had been
@@ -187,7 +197,22 @@ export async function GET() {
         reason = 'never-contacted';
       }
 
-      return { ...lead, reason, lastActivity: lead.activities[0] ?? null, activities: undefined };
+      // Which cadence email is due next, so the rep opens the composer on
+      // the right template instead of working out the sequence position by
+      // reading the timeline.
+      const emailsSent = emailCountByLead.get(lead.id) ?? 0;
+      const nextCadenceStep =
+        (reason === 'overdue' || reason === 'today' || reason === 'no-follow-up') && !lead.replyReceivedAt
+          ? cadenceStepFor(emailsSent + 1)
+          : null;
+
+      return {
+        ...lead,
+        reason,
+        nextCadenceStep,
+        lastActivity: lead.activities[0] ?? null,
+        activities: undefined,
+      };
     });
 
     // Every reason is counted, including the one that keeps a lead off the

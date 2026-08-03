@@ -5,6 +5,7 @@ import { unauthorizedResponse } from '@/lib/middleware';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
+import { scheduleNextTouch } from '@/lib/cadence';
 
 /**
  * Sends the post-call follow-up as the rep, from their own mailbox.
@@ -114,6 +115,10 @@ export async function POST(
         },
       }),
     ]);
+
+    // This send counts as a cadence touch too — schedule the next one so
+    // silence after it doesn't depend on the rep's memory.
+    await scheduleNextTouch(leadId);
 
     return NextResponse.json({ success: true, sentVia: result.sentVia }, { status: 200 });
   } catch (error) {

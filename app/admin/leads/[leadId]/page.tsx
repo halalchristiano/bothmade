@@ -24,6 +24,7 @@ import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { ConfirmDialog } from '@/components/admin/Modal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import {
   Mail,
@@ -167,6 +168,35 @@ export default function LeadDetailPage() {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
   const [duplicates, setDuplicates] = useState<Array<{ id: string; company: string; status: string }>>([]);
+  const [pendingMerge, setPendingMerge] = useState<{ id: string; company: string } | null>(null);
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState('');
+
+  const handleMerge = async () => {
+    if (!pendingMerge) return;
+    setMerging(true);
+    setMergeError('');
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duplicateId: pendingMerge.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setMergeError(data?.error ?? "Couldn't merge — nothing was changed.");
+        return;
+      }
+      setPendingMerge(null);
+      // The duplicate is gone and this lead gained its history — refetch
+      // rather than guessing at the merged shape locally.
+      window.location.reload();
+    } catch {
+      setMergeError('Could not reach the server — nothing was changed.');
+    } finally {
+      setMerging(false);
+    }
+  };
   const [loadError, setLoadError] = useState<string | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
   const [sendingColdDraft, setSendingColdDraft] = useState(false);
@@ -1289,17 +1319,40 @@ export default function LeadDetailPage() {
           </p>
           <div className="mt-2.5 space-y-1.5">
             {duplicates.map((d) => (
-              <Link
-                key={d.id}
-                href={`/admin/leads/${d.id}`}
-                className="block rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/[0.08] transition-colors break-words"
-              >
-                {d.company} — {LEAD_STATUS_LABELS[d.status as LeadStatus] ?? d.status} →
-              </Link>
+              <div key={d.id} className="flex items-stretch gap-1.5">
+                <Link
+                  href={`/admin/leads/${d.id}`}
+                  className="flex-1 min-w-0 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/[0.08] transition-colors break-words"
+                >
+                  {d.company} — {LEAD_STATUS_LABELS[d.status as LeadStatus] ?? d.status} →
+                </Link>
+                <button
+                  onClick={() => setPendingMerge({ id: d.id, company: d.company })}
+                  className="shrink-0 rounded-lg border border-amber-400/40 px-2.5 text-xs font-semibold text-amber-200 hover:bg-amber-400/10 transition-colors"
+                  aria-label={`Merge ${d.company} into this lead`}
+                >
+                  Merge in
+                </button>
+              </div>
             ))}
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingMerge !== null}
+        onCancel={() => {
+          setPendingMerge(null);
+          setMergeError('');
+        }}
+        onConfirm={handleMerge}
+        title="Merge that record into this one?"
+        description={`"${pendingMerge?.company ?? ''}" will be folded into this lead: its call history moves here in full, blank fields fill in from it, and the further pipeline stage wins. The other record is then deleted. This can't be undone.`}
+        confirmLabel="Merge and delete duplicate"
+        tone="normal"
+        busy={merging}
+        error={mergeError}
+      />
 
       <div className="sticky top-14 lg:top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 pt-3 pb-0 mt-3 bg-[#050505]/90 backdrop-blur border-b border-white/[0.06]">
         <div className="flex gap-1 overflow-x-auto">

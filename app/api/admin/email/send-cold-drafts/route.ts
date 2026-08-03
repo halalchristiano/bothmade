@@ -6,6 +6,7 @@ import { renderShell } from '@/lib/email';
 import { sendAsUser, createGmailBatchTransport } from '@/lib/mailer';
 import { nextSendDelayMs, sendAllowanceFor, sleep } from '@/lib/send-limits';
 import { buildColdEmail } from '@/lib/cold-email';
+import { scheduleNextTouch } from '@/lib/cadence';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
 import { decryptSecret } from '@/lib/crypto';
@@ -173,6 +174,10 @@ export async function POST(request: NextRequest) {
       await prisma.leadActivity
         .create({ data: { leadId: lead.id, type: 'email', content: subject, createdById: session.userId } })
         .catch(() => null);
+
+      // Put the next touch on the clock. The follow-up templates always
+      // existed; nothing ever scheduled them.
+      await scheduleNextTouch(lead.id);
 
       sentThisBatch += 1;
       results.push({ leadId: lead.id, company: lead.company, ok: true, sentVia: result.sentVia });

@@ -94,6 +94,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
     null
   );
   const [error, setError] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
 
   const handleText = (text: string) => {
     setCsvText(text);
@@ -113,25 +114,75 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
     reader.readAsText(file);
   };
 
+  // Files bigger than one server request are sent as sequential batches.
+  //
+  // The server caps a request at 500 rows, and a research CSV is routinely
+  // larger — an 800-row file used to be rejected outright with "Max 500
+  // rows", forcing someone to split the spreadsheet by hand. Chunking also
+  // changes the failure mode from all-or-nothing to partial-success with an
+  // honest report: if batch 3 of 5 dies, batches 1–2 are in and the message
+  // says exactly which rows to re-run, instead of leaving it unknowable
+  // how much of the file made it.
+  const BATCH_SIZE = 400;
+
   const handleImport = async () => {
     if (preview.length === 0) return;
     setImporting(true);
     setError(null);
+
+    const batches: (typeof preview)[] = [];
+    for (let i = 0; i < preview.length; i += BATCH_SIZE) {
+      batches.push(preview.slice(i, i + BATCH_SIZE));
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    let duplicates = 0;
+
     try {
-      const res = await fetch('/api/admin/leads/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: preview, fileName }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Import failed');
-        return;
+      for (let i = 0; i < batches.length; i++) {
+        if (batches.length > 1) {
+          setBatchProgress({ done: i, total: batches.length });
+        }
+        try {
+          const res = await fetch('/api/admin/leads/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              rows: batches[i],
+              fileName: batches.length > 1 ? `${fileName} (batch ${i + 1}/${batches.length})` : fileName,
+            }),
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            // Everything before this batch is already in — say so precisely.
+            const firstFailedRow = i * BATCH_SIZE + 1;
+            setError(
+              `Batches 1–${i} imported (${imported} leads), then batch ${i + 1} failed: ${
+                data?.error ?? 'server error'
+              }. Re-run the file from row ${firstFailedRow} — already-imported rows will dedupe.`
+            );
+            if (imported > 0) onImported();
+            return;
+          }
+          imported += data.count ?? 0;
+          skipped += data.skipped ?? 0;
+          duplicates += data.duplicates ?? 0;
+        } catch {
+          const firstFailedRow = i * BATCH_SIZE + 1;
+          setError(
+            `Lost the connection on batch ${i + 1} of ${batches.length}. ${imported} leads are already in; re-run the file from row ${firstFailedRow} — duplicates will be skipped.`
+          );
+          if (imported > 0) onImported();
+          return;
+        }
       }
-      setResult({ count: data.count, skipped: data.skipped, duplicates: data.duplicates ?? 0 });
+
+      setResult({ count: imported, skipped, duplicates });
       onImported();
     } finally {
       setImporting(false);
+      setBatchProgress(null);
     }
   };
 
@@ -239,7 +290,11 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
                 className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
               >
                 {importing ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                {importing ? 'Importing...' : `Import ${preview.length || ''} lead${preview.length === 1 ? '' : 's'}`}
+                {importing
+                  ? batchProgress
+                    ? `Batch ${batchProgress.done + 1} of ${batchProgress.total}…`
+                    : 'Importing...'
+                  : `Import ${preview.length || ''} lead${preview.length === 1 ? '' : 's'}`}
               </button>
             </div>
           </>

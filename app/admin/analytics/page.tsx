@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DollarSign, TrendingUp, Percent, Target, BarChart3, Users } from 'lucide-react';
-import { formatCents } from '@/lib/pricing';
+import { ADD_ONS, BASE_SERVICES, formatCents, isAddOnKey, isBaseService } from '@/lib/pricing';
+import { Clock, CheckCircle2, Layers } from 'lucide-react';
 import { Card, CardHeader, StatRow, PageIn, PageTitle, MiniBarChart } from '@/components/admin/ui';
 
 interface Analytics {
@@ -14,8 +15,16 @@ interface Analytics {
   lostLeads: number;
   openLeads: number;
   conversionRate: number;
+  winRate: number;
   pipelineValue: number;
   avgDealSize: number;
+  revenueByService: Record<string, number>;
+  addOnCounts: Record<string, number>;
+  avgSalesCycleDays: number | null;
+  onTimeRate: number | null;
+  onTimeCounts: { onTime: number; late: number };
+  avgClientLtv: number | null;
+  payingClients: number;
 }
 
 const MONTH_LABELS = [
@@ -101,6 +110,121 @@ export default function AdminAnalyticsPage() {
               <span className="font-semibold">{data.totalLeads}</span>
             </div>
           </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+        <Card className="p-6">
+          <CardHeader
+            icon={Layers}
+            tone="purple"
+            title="Revenue by Service"
+            subtitle="Money received, not list prices — discounts count at what they paid"
+          />
+          {Object.keys(data.revenueByService).length === 0 ? (
+            <p className="text-sm text-white/30">No payments yet.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {Object.entries(data.revenueByService)
+                .sort(([, a], [, b]) => b - a)
+                .map(([svc, amount]) => {
+                  const max = Math.max(...Object.values(data.revenueByService), 1);
+                  return (
+                    <div key={svc}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-white/70">
+                          {isBaseService(svc) ? BASE_SERVICES[svc].label : svc}
+                        </span>
+                        <span className="font-semibold">{formatCents(amount)}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-purple-400 to-sky-400"
+                          style={{ width: `${(amount / max) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6">
+          <CardHeader
+            icon={Layers}
+            tone="sky"
+            title="Add-on Attach"
+            subtitle="Which add-ons actually sell, by project count"
+          />
+          {Object.keys(data.addOnCounts).length === 0 ? (
+            <p className="text-sm text-white/30">No add-ons sold yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {Object.entries(data.addOnCounts)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 10)
+                .map(([key, count]) => (
+                  <div key={key} className="flex justify-between text-sm py-1">
+                    <span className="text-white/70">
+                      {isAddOnKey(key) ? ADD_ONS[key].label : key}
+                    </span>
+                    <span className="font-semibold">
+                      {count} project{count === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6">
+          <CardHeader
+            icon={Clock}
+            tone="amber"
+            title="Sales Cycle"
+            subtitle="First contact to close, from real close dates"
+          />
+          {data.avgSalesCycleDays === null ? (
+            <p className="text-sm text-white/30">No closed deals with a close date yet.</p>
+          ) : (
+            <p className="text-3xl font-bold">
+              {data.avgSalesCycleDays} <span className="text-base font-normal text-white/40">days average</span>
+            </p>
+          )}
+          <div className="mt-4 pt-4 border-t border-white/[0.07] flex justify-between text-sm">
+            <span className="text-white/60">Avg. client lifetime value</span>
+            <span className="font-semibold">
+              {data.avgClientLtv === null
+                ? '—'
+                : `${formatCents(data.avgClientLtv)} across ${data.payingClients}`}
+            </span>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <CardHeader
+            icon={CheckCircle2}
+            tone="emerald"
+            title="On-time Delivery"
+            subtitle="From milestone completions — stamped when done, so it can't be rewritten"
+          />
+          {data.onTimeRate === null ? (
+            <p className="text-sm text-white/30">
+              No completed milestones yet — add dated milestones to projects and this
+              fills in as they're hit.
+            </p>
+          ) : (
+            <>
+              <p className="text-3xl font-bold">
+                {Math.round(data.onTimeRate * 100)}
+                <span className="text-base font-normal text-white/40">% on time</span>
+              </p>
+              <p className="mt-2 text-sm text-white/45">
+                {data.onTimeCounts.onTime} on time · {data.onTimeCounts.late} late
+              </p>
+            </>
+          )}
         </Card>
       </div>
     </PageIn>
