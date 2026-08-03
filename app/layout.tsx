@@ -78,6 +78,7 @@ export default function RootLayout({
                 '@type': 'PostalAddress',
                 streetAddress: 'Suite 695, 80A Ruskin Ave',
                 addressLocality: 'Welling',
+                addressRegion: 'London',
                 postalCode: 'DA16 3QQ',
                 addressCountry: 'GB',
               },
