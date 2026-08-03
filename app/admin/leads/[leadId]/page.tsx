@@ -1704,11 +1704,19 @@ export default function LeadDetailPage() {
                 <div className="flex items-start justify-between gap-3">
                   <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
                   <span className="shrink-0 flex items-center gap-1.5">
-                    {i.priceCents !== null && (
+                    {i.priceCents !== null && i.priceCents > 0 ? (
                       <span className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
                         {tone === 'amber' ? '+' : ''}
                         {formatCents(i.priceCents)}
                       </span>
+                    ) : i.priceCents === 0 ? (
+                      // An umbrella line for the items beneath it — "$0" would
+                      // read as free, which is the opposite of what it means.
+                      <span className="text-xs font-semibold whitespace-nowrap text-white/35">Priced below</span>
+                    ) : (
+                      // A blank where a price should be reads as an oversight,
+                      // and leaves the rep with nothing to say if asked.
+                      <span className="text-xs font-bold whitespace-nowrap text-white/45">Price: TBD</span>
                     )}
                     {i.entry && (
                       <ChevronRight
@@ -1729,6 +1737,19 @@ export default function LeadDetailPage() {
                 )}
 
               </button>
+              {i.priceCents === null && open && (
+                <div className="mt-2.5 rounded-lg border-l-2 border-amber-400/50 bg-white/[0.03] px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-amber-300/80 font-semibold mb-1">
+                    If they ask what this costs
+                  </p>
+                  <p className="text-xs text-white/80 italic leading-relaxed break-words">
+                    "This one depends on how much there is to do — how many pages, how much of your data moves
+                    across, that sort of thing. I'll come back to you with a figure once I know, and it's fixed
+                    before we start. You won't get a surprise on the invoice."
+                  </p>
+                </div>
+              )}
+
               {i.entry && open && (
                 <>
                   <div className="mt-2.5 rounded-lg bg-white/[0.03] px-3 py-2.5">

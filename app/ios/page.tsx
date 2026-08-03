@@ -40,6 +40,8 @@ const DATA: ServicePageData = {
       desc: 'Menu bar utilities to full desktop suites. Software that respects platform conventions.',
     },
   ],
+  stackIntro:
+    "We build native, in Apple's own tools, rather than a cross-platform framework that treats iOS as one target among many. That's the difference between an app that feels like it shipped from Cupertino and one that feels like a web page wearing an app icon — smoother animations, faster launches, and none of the small platform quirks a wrapper never quite gets right. It's also what keeps you off the upgrade treadmill: native apps pick up new iOS features on day one instead of waiting on a third-party framework to catch up.",
   stack: [
     {
       heading: 'Language',
