@@ -4,6 +4,7 @@ import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
 import { sendAsUser, createGmailBatchTransport } from '@/lib/mailer';
+import { nextSendDelayMs, sendAllowanceFor, sleep } from '@/lib/send-limits';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
 import { decryptSecret } from '@/lib/crypto';
@@ -59,9 +60,50 @@ export async function POST(request: NextRequest) {
     });
     if (!sender) return unauthorizedResponse();
 
+    const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
+
+    // Today's remaining allowance, checked before anything goes out.
+    const allowance = await sendAllowanceFor(session.userId);
+    if (allowance.remaining === 0) {
+      return NextResponse.json(
+        {
+          error: `You've sent your ${allowance.cap} for today. This cap protects the domain's sending reputation — the invoices and password resets going to paying clients ride on it too. Picks up again tomorrow.`,
+        },
+        { status: 429 }
+      );
+    }
+
     const leads = await prisma.lead.findMany({ where: { id: { in: leadIds } } });
 
-    const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
+    // Cold outreach is for people we have not sold to. A lead that is won,
+    // or already deep in the pipeline, is an active client or a live
+    // negotiation — sending them a "I came across your business while
+    // researching" opener is, at best, embarrassing. The UI filters for
+    // this, but the UI is a list the user can have had open for an hour.
+    const COLD_ELIGIBLE = new Set(['new', 'researched', 'contacted']);
+    const eligible = leads.filter((l) => COLD_ELIGIBLE.has(l.status));
+    for (const l of leads) {
+      if (!COLD_ELIGIBLE.has(l.status)) {
+        results.push({
+          leadId: l.id,
+          company: l.company,
+          ok: false,
+          reason: `Skipped — already at "${l.status}". Cold openers only go to leads nobody has spoken to yet.`,
+        });
+      }
+    }
+
+    // Trim to what's left of the daily allowance, and say what was held back
+    // rather than silently dropping the tail.
+    const toSend = eligible.slice(0, allowance.remaining);
+    for (const l of eligible.slice(allowance.remaining)) {
+      results.push({
+        leadId: l.id,
+        company: l.company,
+        ok: false,
+        reason: `Held back — daily cap of ${allowance.cap} reached. Send these tomorrow.`,
+      });
+    }
 
     // One authenticated client/connection for the whole batch — see
     // createGmailBatchTransport for why per-email connections silently fall
@@ -75,7 +117,13 @@ export async function POST(request: NextRequest) {
         ? createGmailBatchTransport(sender.gmailAddress, sender.gmailAppPassword)
         : undefined;
 
-    for (const lead of leads) {
+    let sentThisBatch = 0;
+    for (const lead of toSend) {
+      // Space the sends out, with jitter. A burst of identically-spaced
+      // near-identical messages is the easiest automation signature there
+      // is; the delay is the difference between outreach and a pattern.
+      if (sentThisBatch > 0) await sleep(nextSendDelayMs());
+
       if (!lead.email) {
         results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'No email on file — call instead' });
         continue;
@@ -143,6 +191,7 @@ export async function POST(request: NextRequest) {
         .create({ data: { leadId: lead.id, type: 'email', content: subject, createdById: session.userId } })
         .catch(() => null);
 
+      sentThisBatch += 1;
       results.push({ leadId: lead.id, company: lead.company, ok: true, sentVia: result.sentVia });
     }
 

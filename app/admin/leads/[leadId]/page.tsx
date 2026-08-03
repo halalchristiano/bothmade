@@ -56,6 +56,7 @@ import {
   calculatePrice,
   customItemsTotal,
   depositAmount,
+  minAllowedPrice,
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
@@ -402,6 +403,12 @@ export default function LeadDetailPage() {
   };
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
+  // A negotiated price. The API has enforced a discount floor for sales
+  // reps since it was written, but nothing in the UI ever posted a
+  // totalPriceOverride — so the guardrail was dead code and any discount
+  // agreed on a call had to be applied by hand somewhere else, or not at
+  // all, leaving the contract quoting a number nobody agreed to.
+  const [priceOverride, setPriceOverride] = useState('');
   const [creatingLink, setCreatingLink] = useState(false);
   const [emailingLink, setEmailingLink] = useState(false);
   const [linkEmailStatus, setLinkEmailStatus] = useState('');
@@ -924,16 +931,29 @@ export default function LeadDetailPage() {
     }
   };
 
+  const proposalCustomTotal = customItemsTotal(customItems);
+  const proposalGrandTotal = proposalBreakdown.totalPrice + proposalCustomTotal;
+
+  const overrideCents = priceOverride.trim() ? Math.round(Number(priceOverride) * 100) : null;
+  const overrideValid = overrideCents !== null && Number.isFinite(overrideCents) && overrideCents > 0;
+  const proposalFloor = minAllowedPrice(proposalGrandTotal);
+  // Mirrors the server check so the rep finds out while typing rather than
+  // after composing the whole proposal. The server remains the authority.
+  const overrideTooLow = overrideValid && overrideCents < proposalFloor;
+  const effectiveTotal = overrideValid && !overrideTooLow ? overrideCents : proposalGrandTotal;
+
   const proposalSelection = {
     baseService: proposalService,
     addOns: proposalAddOns,
     clientType: proposalClientType,
     timeline: proposalTimeline,
     customItems,
+    // Only sent when it's a real, in-range number — an empty or below-floor
+    // box must not silently become the quoted price.
+    ...(overrideValid && !overrideTooLow ? { totalPriceOverride: overrideCents } : {}),
   };
 
-  const proposalCustomTotal = customItemsTotal(customItems);
-  const proposalGrandTotal = proposalBreakdown.totalPrice + proposalCustomTotal;
+
 
   // A link has gone out (or at least been generated) the moment a proposal
   // is saved on the lead — before that there's nothing for "changed since
@@ -3015,10 +3035,63 @@ export default function LeadDetailPage() {
                 </span>
               </div>
 
+              <div className="mt-4 pt-3 border-t border-white/10">
+                <label htmlFor="price-override" className="block text-xs font-medium text-white/60 mb-1.5">
+                  Agreed price (optional)
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 text-sm">$</span>
+                  <input
+                    id="price-override"
+                    type="number"
+                    min={0}
+                    step={50}
+                    value={priceOverride}
+                    onChange={(e) => setPriceOverride(e.target.value)}
+                    placeholder={(proposalGrandTotal / 100).toFixed(0)}
+                    aria-describedby="price-override-help"
+                    aria-invalid={overrideTooLow}
+                    className={`flex-1 px-3 py-2 rounded-lg bg-white/5 border text-white text-sm focus:outline-none focus:ring-2 transition-colors ${
+                      overrideTooLow
+                        ? 'border-red-400/50 focus:ring-red-400/60'
+                        : 'border-white/15 focus:ring-sky-400/60'
+                    }`}
+                  />
+                  {priceOverride && (
+                    <button
+                      type="button"
+                      onClick={() => setPriceOverride('')}
+                      className="text-xs text-white/40 hover:text-white transition-colors"
+                    >
+                      clear
+                    </button>
+                  )}
+                </div>
+                <p id="price-override-help" className="text-[11px] mt-1.5 leading-relaxed">
+                  {overrideTooLow ? (
+                    <span className="text-red-300">
+                      Below what you can approve on your own. Floor is {formatCents(proposalFloor)} for
+                      this scope — ask Kiana if it needs to go lower.
+                    </span>
+                  ) : overrideValid ? (
+                    <span className="text-amber-200">
+                      Quoting {formatCents(effectiveTotal)} instead of {formatCents(proposalGrandTotal)} — a{' '}
+                      {formatCents(proposalGrandTotal - effectiveTotal)} discount. This is the number the
+                      contract and invoice will carry.
+                    </span>
+                  ) : (
+                    <span className="text-white/35">
+                      Leave blank to quote the calculated {formatCents(proposalGrandTotal)}. You can discount
+                      to {formatCents(proposalFloor)} without approval.
+                    </span>
+                  )}
+                </p>
+              </div>
+
               <label className="flex items-start gap-2 text-xs text-white/55 mt-4 cursor-pointer">
                 <input type="checkbox" className="mt-0.5" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
                 <span>
-                  Charge 50% deposit only ({formatCents(depositAmount(proposalGrandTotal))}) — collect the rest later
+                  Charge 50% deposit only ({formatCents(depositAmount(effectiveTotal))}) — collect the rest later
                 </span>
               </label>
             </div>

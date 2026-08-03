@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { dealValue, leadConversionRate, winRate, wonDate } from '@/lib/sales-metrics';
 import { unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 
@@ -72,7 +73,8 @@ export async function GET(request: Request) {
 
     const pipeline = ACTIVE_STATUSES.map((status) => {
       const leads = allMine.filter((l) => l.status === status);
-      const value = leads.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+      // The agreed price wins over the early guess once there is one.
+      const value = leads.reduce((sum, l) => sum + dealValue(l), 0);
       return { status, count: leads.length, value };
     });
 
@@ -81,14 +83,22 @@ export async function GET(request: Request) {
       0
     );
 
-    const wonInPeriod = wonAllTime.filter((l) => l.updatedAt >= periodStart);
-    const revenueInPeriod = wonInPeriod.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+    // Closed *when*, not last-edited-when. Filtering on updatedAt meant
+    // editing a note on a deal won in March moved it into this month's
+    // revenue, which is precisely why the sales and ops figures never
+    // reconciled.
+    const wonInPeriod = wonAllTime.filter((l) => wonDate(l) >= periodStart);
+    const revenueInPeriod = wonInPeriod.reduce((sum, l) => sum + dealValue(l), 0);
 
-    const closedTotal = wonAllTime.length + lostAllTime.length;
-    const conversionRate = closedTotal > 0 ? wonAllTime.length / closedTotal : 0;
+    // Two named metrics rather than one ambiguous "conversion rate". See
+    // lib/sales-metrics.ts — these were computed differently on two screens
+    // and shown under the same label.
+    const winRateValue = winRate(wonAllTime.length, lostAllTime.length);
+    const leadConversion = leadConversionRate(wonAllTime.length, allMine.length);
+
     const avgDealSize =
       wonAllTime.length > 0
-        ? Math.round(wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0) / wonAllTime.length)
+        ? Math.round(wonAllTime.reduce((s, l) => s + dealValue(l), 0) / wonAllTime.length)
         : 0;
 
     const lostInPeriod = lostAllTime.filter((l) => l.updatedAt >= periodStart);
@@ -158,7 +168,11 @@ export async function GET(request: Request) {
             won: wonInPeriod.length,
             revenue: revenueInPeriod,
           },
-          conversionRate,
+          // Kept under the old key so nothing breaks, but it is the win
+          // rate and is now labelled as such in the UI.
+          conversionRate: winRateValue,
+          winRate: winRateValue,
+          leadConversionRate: leadConversion,
           avgDealSize,
           lostReasonCounts,
           hotLeads: hotLeads.map((l) => ({ id: l.id, company: l.company, estimatedValue: l.estimatedValue, phone: l.phone, email: l.email })),
@@ -184,10 +198,10 @@ export async function GET(request: Request) {
           sourcePerformance,
           clientTypeBreakdown,
           wonDeals: wonAllTime
-            .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+            .sort((a, b) => wonDate(b).getTime() - wonDate(a).getTime())
             .slice(0, 50)
-            .map((l) => ({ id: l.id, company: l.company, value: l.estimatedValue || 0, wonAt: l.updatedAt })),
-          totalWonValue: wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0),
+            .map((l) => ({ id: l.id, company: l.company, value: dealValue(l), wonAt: wonDate(l) })),
+          totalWonValue: wonAllTime.reduce((s, l) => s + dealValue(l), 0),
         },
       },
       { status: 200 }

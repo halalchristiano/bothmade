@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { leadConversionRate, winRate } from '@/lib/sales-metrics';
 import { unauthorizedResponse } from '@/lib/middleware';
 
 export async function GET() {
@@ -43,7 +44,12 @@ export async function GET() {
     const wonLeads = leads.filter((l) => l.status === 'won').length;
     const lostLeads = leads.filter((l) => l.status === 'lost').length;
     const openLeads = totalLeads - wonLeads - lostLeads;
-    const conversionRate = totalLeads > 0 ? (wonLeads / totalLeads) * 100 : 0;
+    // Was won/totalLeads as a 0..100 percentage while the dashboard showed
+    // won/(won+lost) as a 0..1 fraction, both labelled "Conversion Rate".
+    // Both are now computed by lib/sales-metrics.ts, in fractions, and
+    // named for what they measure.
+    const leadConversion = leadConversionRate(wonLeads, totalLeads);
+    const winRateValue = winRate(wonLeads, lostLeads);
 
     const pipelineValue = leads
       .filter((l) => l.status !== 'won' && l.status !== 'lost')
@@ -64,7 +70,9 @@ export async function GET() {
           wonLeads,
           lostLeads,
           openLeads,
-          conversionRate,
+          conversionRate: leadConversion,
+          leadConversionRate: leadConversion,
+          winRate: winRateValue,
           pipelineValue,
           avgDealSize,
         },

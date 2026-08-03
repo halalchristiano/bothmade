@@ -77,10 +77,29 @@ export async function GET() {
       select: { role: true, googleRefreshToken: true, gmailNeedsReconnect: true },
     });
 
-    // A rep works their own leads; an owner sees everything.
-    const scope = user?.role === 'sales' ? { assignedToId: session.userId } : {};
+    // A rep works their own leads *and* whatever nobody has claimed; an
+    // owner sees everything.
+    //
+    // Scoping to assignedToId alone meant a CSV import — which lands
+    // unassigned, or assigned to whoever ran it — never reached the rep's
+    // call list at all. Eight hundred researched leads could sit in the
+    // database completely invisible to the person whose job is ringing
+    // them. This matches how /api/admin/sales-stats has always defined
+    // "my leads"; the two disagreeing is what hid it.
+    const scope =
+      user?.role === 'sales'
+        ? { OR: [{ assignedToId: session.userId }, { assignedToId: null }] }
+        : {};
 
-    const where = { ...scope, status: { notIn: ['won', 'lost'] } };
+    const where = {
+      ...scope,
+      status: { notIn: ['won', 'lost'] },
+      // A number that has been marked wrong or dead is not a number. These
+      // were redialled every single morning, ahead of leads with a working
+      // one, because nothing recorded that the call had already been tried
+      // and failed.
+      phoneInvalid: false,
+    };
 
     // Counted separately so the page can say how many were considered. A list
     // that silently shows a subset reads as "this is everything", which is the
@@ -109,6 +128,7 @@ export async function GET() {
         nextFollowUpAt: true,
         emailDeliveryFailedAt: true,
         replyReceivedAt: true,
+        phoneInvalid: true,
         emailDeliveryFailedReason: true,
         coldEmailSentAt: true,
         salesNote: true,

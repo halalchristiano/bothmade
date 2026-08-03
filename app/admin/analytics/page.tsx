@@ -69,7 +69,7 @@ export default function AdminAnalyticsPage() {
           items={[
             { icon: DollarSign, label: 'Revenue (6mo)', value: formatCents(data.totalRevenue), tone: 'emerald', accent: true },
             { icon: TrendingUp, label: 'Pipeline Value', value: formatCents(data.pipelineValue), tone: 'sky' },
-            { icon: Percent, label: 'Conversion Rate', value: `${data.conversionRate.toFixed(0)}%`, tone: 'purple' },
+            { icon: Percent, label: 'Lead → Customer', value: `${Math.round(data.conversionRate * 100)}%`, tone: 'purple' },
             { icon: Target, label: 'Avg. Deal Size', value: formatCents(data.avgDealSize), tone: 'amber' },
           ]}
         />

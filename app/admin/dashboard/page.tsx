@@ -625,7 +625,7 @@ function SalesDashboard({
             { icon: TrendingUp, label: 'Pipeline Value', value: formatCents(stats.totalPipelineValue), tone: 'sky' },
             { icon: Target, label: 'Weighted Forecast', value: formatCents(stats.weightedForecast), tone: 'purple', accent: true },
             { icon: Trophy, label: `Won ${stats.periodLabel}`, value: formatCents(stats.thisWeek.revenue), tone: 'emerald' },
-            { icon: Percent, label: 'Conversion Rate', value: `${Math.round(stats.conversionRate * 100)}%`, tone: 'amber' },
+            { icon: Percent, label: 'Win Rate', value: `${Math.round(stats.conversionRate * 100)}%`, tone: 'amber' },
           ]}
         />
       </div>

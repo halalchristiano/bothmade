@@ -142,6 +142,8 @@ export async function PATCH(
       qualTiming,
       qualMotivation,
       clearEmailFailure,
+      phoneInvalid,
+      phoneInvalidReason,
       assignedToId,
       originalWebsite,
       salesNote,
@@ -244,6 +246,22 @@ export async function PATCH(
         qualTiming: qualTiming !== undefined ? qualTiming : undefined,
         qualMotivation: qualMotivation !== undefined ? qualMotivation : undefined,
         qualifiedAt,
+        // Marking a number dead drops the lead out of the call rotation;
+        // clearing it puts them back. Stamped once on the transition so
+        // "when did we find out" survives later edits.
+        phoneInvalid: phoneInvalid !== undefined ? Boolean(phoneInvalid) : undefined,
+        phoneInvalidAt:
+          phoneInvalid === undefined
+            ? undefined
+            : phoneInvalid
+            ? existing.phoneInvalidAt ?? new Date()
+            : null,
+        phoneInvalidReason:
+          phoneInvalid === false
+            ? null
+            : phoneInvalidReason !== undefined
+            ? phoneInvalidReason
+            : undefined,
         emailDeliveryFailedAt: clearEmailFailure ? null : undefined,
         emailDeliveryFailedReason: clearEmailFailure ? null : undefined,
         assignedToId: assignedToId !== undefined ? (assignedToId || null) : undefined,
