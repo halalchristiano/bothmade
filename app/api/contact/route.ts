@@ -44,10 +44,57 @@ const SERVICE_LABELS: Record<Service, string> = {
   other: 'Something else',
 };
 
+/**
+ * Optional qualifiers. Both whitelisted the same way as service — anything
+ * not on the list is treated as unanswered, never echoed back into email.
+ */
+const BUDGETS = ['under-3k', '3k-10k', '10k-25k', '25k-plus', 'unsure'] as const;
+type Budget = (typeof BUDGETS)[number];
+
+function isBudget(value: unknown): value is Budget {
+  return BUDGETS.includes(value as Budget);
+}
+
+const BUDGET_LABELS: Record<Budget, string> = {
+  'under-3k': 'Under $3k',
+  '3k-10k': '$3k – $10k',
+  '10k-25k': '$10k – $25k',
+  '25k-plus': '$25k+',
+  unsure: 'Not sure yet',
+};
+
+/**
+ * A bracket's floor in cents, for Lead.estimatedValue — the honest number:
+ * the deal is worth *at least* this. "Under $3k" and "not sure" stay null
+ * rather than pretending to a figure nobody gave us.
+ */
+const BUDGET_FLOOR_CENTS: Record<Budget, number | null> = {
+  'under-3k': null,
+  '3k-10k': 300000,
+  '10k-25k': 1000000,
+  '25k-plus': 2500000,
+  unsure: null,
+};
+
+const TIMELINES = ['asap', '1-3-months', 'flexible', 'exploring'] as const;
+type Timeline = (typeof TIMELINES)[number];
+
+function isTimeline(value: unknown): value is Timeline {
+  return TIMELINES.includes(value as Timeline);
+}
+
+const TIMELINE_LABELS: Record<Timeline, string> = {
+  asap: 'As soon as possible',
+  '1-3-months': 'Within 1–3 months',
+  flexible: 'Flexible',
+  exploring: 'Just exploring',
+};
+
 const LIMITS = {
   name: 100,
   email: 254,
   company: 120,
+  phone: 40,
   message: 4000,
 } as const;
 
@@ -60,8 +107,11 @@ interface Enquiry {
   name: string;
   email: string;
   company: string;
+  phone: string;
   message: string;
   service: Service;
+  budget: Budget | null;
+  timeline: Timeline | null;
 }
 
 interface RecordedEnquiry {
@@ -86,6 +136,9 @@ async function recordEnquiry(
 ): Promise<RecordedEnquiry> {
   const detail = [
     `Service requested: ${SERVICE_LABELS[enquiry.service]}`,
+    ...(enquiry.budget ? [`Budget: ${BUDGET_LABELS[enquiry.budget]}`] : []),
+    ...(enquiry.timeline ? [`Timeline: ${TIMELINE_LABELS[enquiry.timeline]}`] : []),
+    ...(enquiry.phone ? [`Phone: ${enquiry.phone}`] : []),
     '',
     enquiry.message,
   ].join('\n');
@@ -120,6 +173,12 @@ async function recordEnquiry(
       company: enquiry.company || enquiry.name,
       contactName: enquiry.name,
       email: enquiry.email,
+      phone: enquiry.phone || null,
+      // The floor of their stated bracket — sorts the pipeline honestly
+      // without inventing a number they never gave. (On a repeat enquiry the
+      // existing row is sales-owned; the new figures ride in on the activity
+      // note instead of overwriting.)
+      estimatedValue: enquiry.budget ? BUDGET_FLOOR_CENTS[enquiry.budget] : null,
       status: 'new',
       source: 'inbound',
       notes: detail,
@@ -145,7 +204,8 @@ export async function POST(request: NextRequest) {
     if (limited) return limited;
 
     const body = await request.json();
-    const { name, email, company, message, service, website } = body ?? {};
+    const { name, email, company, phone, message, service, budget, timeline, website } =
+      body ?? {};
 
     // Honeypot: a real person never fills a field they cannot see. Respond 200
     // so bots get no signal that they were caught.
@@ -174,8 +234,12 @@ export async function POST(request: NextRequest) {
     const cleanEmail = email.trim().slice(0, LIMITS.email);
     const cleanCompany =
       typeof company === 'string' ? company.trim().slice(0, LIMITS.company) : '';
+    const cleanPhone = typeof phone === 'string' ? phone.trim().slice(0, LIMITS.phone) : '';
     const cleanMessage = message.trim().slice(0, LIMITS.message);
     const cleanService: Service = isService(service) ? service : 'other';
+    // Optional qualifiers: unrecognized values mean "unanswered", not an error.
+    const cleanBudget: Budget | null = isBudget(budget) ? budget : null;
+    const cleanTimeline: Timeline | null = isTimeline(timeline) ? timeline : null;
 
     if (!isValidEmail(cleanEmail)) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
@@ -193,8 +257,11 @@ export async function POST(request: NextRequest) {
           name: cleanName,
           email: cleanEmail,
           company: cleanCompany,
+          phone: cleanPhone,
           message: cleanMessage,
           service: cleanService,
+          budget: cleanBudget,
+          timeline: cleanTimeline,
         },
         rep.id
       );
@@ -218,8 +285,11 @@ export async function POST(request: NextRequest) {
       name: escapeHtml(cleanName),
       email: escapeHtml(cleanEmail),
       company: escapeHtml(cleanCompany || 'Not provided'),
+      phone: escapeHtml(cleanPhone || 'Not provided'),
       message: escapeHtml(cleanMessage),
       service: escapeHtml(SERVICE_LABELS[cleanService]),
+      budget: escapeHtml(cleanBudget ? BUDGET_LABELS[cleanBudget] : 'Not provided'),
+      timeline: escapeHtml(cleanTimeline ? TIMELINE_LABELS[cleanTimeline] : 'Not provided'),
     };
 
     const shell = (inner: string) =>
@@ -236,8 +306,11 @@ export async function POST(request: NextRequest) {
         `<h2 style="color:#000;">New contact form submission</h2>
          <p><strong>Name:</strong> ${safe.name}</p>
          <p><strong>Email:</strong> ${safe.email}</p>
+         <p><strong>Phone:</strong> ${safe.phone}</p>
          <p><strong>Company:</strong> ${safe.company}</p>
          <p><strong>Service:</strong> ${safe.service}</p>
+         <p><strong>Budget:</strong> ${safe.budget}</p>
+         <p><strong>Timeline:</strong> ${safe.timeline}</p>
          <h3 style="color:#000;margin-top:20px;">Message</h3>
          <p style="color:#666;white-space:pre-wrap;line-height:1.6;">${safe.message}</p>`
       ),

@@ -40,6 +40,10 @@ export interface RateLimitResult {
 export const RATE_LIMITS = {
   /** Credential guessing. Deliberately tight — a real person mistypes a password twice, not ten times. */
   login: { max: 8, windowMs: 10 * 60 * 1000 },
+  /** Unauthenticated reads on a public share link (proposal, project status). */
+  publicRead: { max: 60, windowMs: 10 * 60 * 1000 },
+  /** Unauthenticated writes on a public share link — agree-and-pay renders a PDF and opens a Stripe session per call. */
+  publicWrite: { max: 10, windowMs: 10 * 60 * 1000 },
   /** Account creation from one address. */
   signup: { max: 5, windowMs: 60 * 60 * 1000 },
   /** Reset mail is sent to someone else's inbox, so this is an abuse vector even when it "fails". */

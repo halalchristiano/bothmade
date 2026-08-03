@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession, createOAuthState } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { createOAuthState } from '@/lib/auth';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { buildGoogleAuthUrl, isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 
 /**
@@ -12,8 +12,8 @@ import { buildGoogleAuthUrl, isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
  * no way back into the app.
  */
 export async function GET(request: NextRequest) {
-  const session = await getCurrentSession();
-  if (!session || session.type !== 'user') return unauthorizedResponse();
+  const session = await requireStaff();
+  if (!session) return unauthorizedResponse();
 
   if (!isGoogleOAuthConfigured()) {
     const url = new URL('/admin/settings', request.url);

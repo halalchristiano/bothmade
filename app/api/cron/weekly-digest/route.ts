@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireCronAuth } from '@/lib/cron-auth';
 import { getDigestRecipientEmails } from '@/lib/notify';
 import { sendWeeklyDigestEmail } from '@/lib/email';
 
@@ -10,10 +11,8 @@ const STALE_DAYS = 7;
  * as the other cron routes — Vercel's own header, reject anyone else.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const now = new Date();

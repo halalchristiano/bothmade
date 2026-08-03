@@ -105,6 +105,8 @@ interface LeadDetail {
   mockupDeliveredAt: string | null;
   agreementSignedAt: string | null;
   signedContractUrl?: string | null;
+  /** Capability token for the public sign-and-pay link. */
+  shareToken?: string;
   agreementIp: string | null;
   qualNeed: string | null;
   qualAuthority: string | null;
@@ -402,6 +404,8 @@ export default function LeadDetailPage() {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   };
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
+  const [revokingLink, setRevokingLink] = useState(false);
+  const [revokeNote, setRevokeNote] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
   const [emailingLink, setEmailingLink] = useState(false);
@@ -497,6 +501,13 @@ export default function LeadDetailPage() {
             // A proposal already exists server-side — that's the source of
             // truth for what the client can actually see, so it wins over
             // any local draft.
+            //
+            // Rebuild the live link too, rather than only showing it in the
+            // session where the proposal was generated: the link is what a
+            // rep comes back for, and it's what the revoke button acts on.
+            if (l.shareToken) {
+              setPaymentLinkUrl(`${window.location.origin}/sign/${l.id}?t=${l.shareToken}`);
+            }
             setProposalServiceRaw(l.proposalBaseService);
             setProposalAddOns(l.proposalAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a)));
             if (l.proposalClientType && isClientType(l.proposalClientType)) setProposalClientType(l.proposalClientType);
@@ -915,6 +926,35 @@ export default function LeadDetailPage() {
   // A link has gone out (or at least been generated) the moment a proposal
   // is saved on the lead — before that there's nothing for "changed since
   // sending" to compare against.
+  // Kills every sign-and-pay link already sent for this lead and issues a
+  // fresh one. For the case where a proposal went to the wrong address, or a
+  // deal went cold and shouldn't still open a priced contract.
+  const handleRevokeLink = async () => {
+    if (!lead) return;
+    if (!confirm('Revoke the current sign & pay link?\n\nAny link already emailed for this lead will stop working immediately. You will get a new one to send.')) return;
+    setRevokingLink(true);
+    setRevokeNote('');
+    try {
+      const res = await fetch('/api/share-links/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'lead', id: leadId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPaymentLinkUrl(data.url);
+        setRevokeNote('Old links revoked. Send the new one below.');
+        load();
+      } else {
+        setRevokeNote(data.error || "Couldn't revoke that link — try again.");
+      }
+    } catch {
+      setRevokeNote('Something went wrong revoking the link.');
+    } finally {
+      setRevokingLink(false);
+    }
+  };
+
   const hasSentProposal = Boolean(lead?.proposalBaseService);
   const sameAddOns = (a: AddOnKey[], b: string) => {
     const bSet = new Set(b.split(',').filter(Boolean));
@@ -1475,6 +1515,7 @@ export default function LeadDetailPage() {
           defaultPainPoint={painPointSentence(lead.painPoints)}
           defaultObservation={lead.personalizedObservation}
           leadId={leadId}
+          leadShareToken={lead.shareToken}
           onClose={() => setComposingEmail(false)}
         />
       )}
@@ -3178,6 +3219,19 @@ export default function LeadDetailPage() {
                     Copy
                   </button>
                 </div>
+                <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-white/10">
+                  <p className="text-[11px] text-white/35">
+                    Sent it to the wrong person? Revoking stops every link already out there.
+                  </p>
+                  <button
+                    onClick={handleRevokeLink}
+                    disabled={revokingLink}
+                    className="px-2.5 py-1 rounded-md border border-amber-400/30 text-[11px] text-amber-200 hover:bg-amber-400/10 disabled:opacity-50 transition-colors whitespace-nowrap"
+                  >
+                    {revokingLink ? 'Revoking…' : 'Revoke & regenerate'}
+                  </button>
+                </div>
+                {revokeNote && <p className="text-[11px] text-white/50 mt-2">{revokeNote}</p>}
               </div>
             )}
 

@@ -92,19 +92,27 @@ export function SplitHero() {
       onPointerMove={hoverSteer}
       className="relative h-[100svh] w-full overflow-hidden select-none"
     >
-      <h1 className="sr-only">
-        Bothmade — web and native Apple development studio. Websites, iOS and iPad apps,
-        macOS software, and Vision Pro experiences built by one team.
-      </h1>
-
-      {/* The one plain sentence on an otherwise all-interaction hero — says
-          who this is and what it's for before anyone has to drag anything. */}
-      <p
-        aria-hidden="true"
-        className="absolute top-24 md:top-28 left-1/2 -translate-x-1/2 z-20 max-w-xs md:max-w-sm text-center text-xs md:text-sm text-white/45 leading-relaxed px-6"
-      >
-        Web and native Apple development, one small team, start to finish.
-      </p>
+      {/* The headline is the one thing on this hero that must not be a toy:
+          a visitor who never drags anything still reads what we sell, and
+          roughly what it costs, in the first second. */}
+      <div className="absolute top-24 md:top-28 left-1/2 -translate-x-1/2 z-20 w-full max-w-md md:max-w-2xl text-center px-6">
+        <h1 className="text-base md:text-2xl font-medium tracking-tight leading-snug text-white/90">
+          Web and native Apple development —
+          <br className="hidden md:block" /> one small team, start to finish.
+          <span className="sr-only">
+            {' '}Bothmade builds websites, iOS and iPad apps, macOS software, and Vision
+            Pro experiences.
+          </span>
+        </h1>
+        {/* Price anchor up front: it filters tire-kickers and reads as
+            confidence. Numbers mirror BASE_SERVICES in lib/pricing.ts. */}
+        <a
+          href="/start"
+          className="mt-3 inline-block font-mono text-[10px] md:text-[11px] uppercase tracking-[0.25em] text-white/40 hover:text-white transition-colors"
+        >
+          Websites from $3k · iOS apps from $10k →
+        </a>
+      </div>
 
       {/* ---------- LAYER A : NATIVE (base, right side) ---------- */}
       <div className="absolute inset-0">

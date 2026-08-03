@@ -1,15 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { decryptSecret } from '@/lib/crypto';
 import { createGmailOAuthBatchClient, setupBounceFolder, BOUNCE_LABEL_NAME } from '@/lib/gmail-oauth';
 
 /** One-click setup: creates the bounce-notice label + inbox-skip filter in the connected Google account. */
 export async function POST() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },

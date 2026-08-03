@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 import { decryptSecret } from '@/lib/crypto';
+import { buildFromHeader } from '@/lib/gmail-mime';
+import { sanitizeEmailAddress, sanitizeSubject } from '@/lib/html';
 import { sendEmail as sendViaResend } from '@/lib/email';
 import { sendAsDelegatedUser, isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient, sendViaGmailOAuth, type GmailOAuthClient } from '@/lib/gmail-oauth';
@@ -72,9 +74,24 @@ export function createGmailBatchTransport(gmailAddress: string, encryptedAppPass
  */
 export async function sendAsUser(
   sender: SenderIdentity,
-  email: OutgoingEmail,
+  rawEmail: OutgoingEmail,
   opts?: { gmailTransport?: GmailTransport; gmailOAuthClient?: GmailOAuthClient }
 ): Promise<SendAsUserResult> {
+  // Validated once, up front, rather than per-path: every branch below
+  // writes this address into a header, and a recipient with a line break in
+  // it is an injected header on three of the four paths. A lead's address
+  // comes from a CSV someone imported, so this is not hypothetical.
+  const recipient = sanitizeEmailAddress(rawEmail.to);
+  if (!recipient) {
+    console.error('sendAsUser: refusing to send, recipient is not a valid address');
+    return { ok: false, sentVia: 'failed' };
+  }
+  const email: OutgoingEmail = {
+    to: recipient,
+    subject: sanitizeSubject(rawEmail.subject),
+    html: rawEmail.html,
+  };
+
   if (sender.email && isDomainDelegationConfigured()) {
     const sent = await sendAsDelegatedUser(sender.email, {
       fromName: sender.name,
@@ -113,7 +130,7 @@ export async function sendAsUser(
           },
         });
       await transport.sendMail({
-        from: sender.name ? `${sender.name} <${sender.gmailAddress}>` : sender.gmailAddress,
+        from: buildFromHeader(sender.name, sender.gmailAddress),
         to: email.to,
         subject: email.subject,
         html: email.html,

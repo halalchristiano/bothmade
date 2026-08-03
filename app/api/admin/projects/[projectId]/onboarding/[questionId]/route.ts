@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string; questionId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
 import { normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
@@ -11,8 +10,8 @@ export async function GET(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 
@@ -114,8 +113,8 @@ export async function PATCH(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 
@@ -268,8 +267,8 @@ export async function DELETE(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 

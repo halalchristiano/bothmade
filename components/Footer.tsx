@@ -92,6 +92,20 @@ export function Footer() {
             <p className="text-white/40 text-sm max-w-xs">
               Web and native Apple development. One team, from first sketch to App Store.
             </p>
+            {/* A real address is a trust signal all on its own. */}
+            <address className="mt-5 not-italic text-white/30 text-xs leading-relaxed">
+              Suite 695, 80A Ruskin Ave
+              <br />
+              Welling DA16 3QQ, United Kingdom
+              <br />
+              <span className="text-white/25">London · Delaware</span>
+            </address>
+            <a
+              href="mailto:info@bothmade.studio"
+              className="mt-3 inline-block text-xs text-white/40 hover:text-sky-300 transition"
+            >
+              info@bothmade.studio
+            </a>
           </div>
 
           <div>

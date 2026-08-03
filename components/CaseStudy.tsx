@@ -8,6 +8,7 @@ import { Footer } from '@/components/Footer';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ACCENT_HEX, type CaseStudy, type Shot } from '@/lib/case-studies';
 import { CountUp, FocusRow, ScrubText } from '@/components/ui';
+import { CtaBand } from '@/components/CtaBand';
 
 export function CaseStudyPage({
   study,
@@ -62,6 +63,11 @@ export function CaseStudyPage({
                 in progress
               </span>
             )}
+            {study.selfInitiated && (
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-amber-400/40 text-amber-300/90">
+                our own product — not client work
+              </span>
+            )}
           </motion.div>
 
           <motion.h1
@@ -82,6 +88,27 @@ export function CaseStudyPage({
           >
             {study.summary}
           </motion.p>
+
+          {/* The badge above is skimmable; this is not. A visitor deciding
+              whether to trust us must know exactly what they're reading —
+              a write-up of our own product in development, not a client
+              engagement, with figures from our own builds. */}
+          {study.selfInitiated && (
+            <motion.div
+              className="mt-10 max-w-xl rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-5"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.35 }}
+            >
+              <p className="text-sm leading-relaxed text-amber-100/70">
+                <span className="font-semibold text-amber-200/90">What you&apos;re reading:</span>{' '}
+                {study.title} is a product we&apos;re building ourselves — not work done
+                for a client. We publish these to show how we think and build; any
+                figures come from our own development builds, not a customer&apos;s
+                production numbers.
+              </p>
+            </motion.div>
+          )}
         </div>
       </section>
 
@@ -215,6 +242,12 @@ export function CaseStudyPage({
           </div>
         </section>
       )}
+
+      {/* The read is over — offer the conversation before the next study. */}
+      <CtaBand
+        title="Want something built like this?"
+        sub="Same people, same standards, on your product. Tell us what you're making — we reply within 24 hours."
+      />
 
       {/* Next study */}
       {next && (

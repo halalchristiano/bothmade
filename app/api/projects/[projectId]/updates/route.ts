@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
+import { requirePrincipal } from '@/lib/middleware';
 import { sendStatusUpdateEmail } from '@/lib/email';
 
 export async function GET(
@@ -8,7 +9,8 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
+    const { session, response } = await requirePrincipal();
+    if (!session) return response;
 
     if (!session) {
       return NextResponse.json(

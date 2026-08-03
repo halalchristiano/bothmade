@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { forbiddenResponse, unauthorizedResponse } from '@/lib/middleware';
+import { forbiddenResponse, requireClient } from '@/lib/middleware';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -17,9 +16,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
-    const session = await getCurrentSession();
-    if (!session) return unauthorizedResponse();
-    if (session.type !== 'client') return forbiddenResponse();
+    const { session, response } = await requireClient();
+    if (!session) return response;
 
     const { projectId } = await params;
 

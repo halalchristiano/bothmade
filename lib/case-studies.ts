@@ -47,6 +47,14 @@ export type CaseStudy = {
   accent: Accent;
   status: 'live' | 'in-progress';
 
+  /**
+   * True for our own product concepts, as opposed to client work. Rendered
+   * as an explicit "concept build" label on the index and the detail page —
+   * a visitor must never mistake a self-initiated project for a client
+   * engagement, whatever its status.
+   */
+  selfInitiated?: boolean;
+
   /** Short key/value facts rendered as a bar under the hero. */
   facts: { label: string; value: string }[];
 
@@ -77,6 +85,7 @@ export const CASE_STUDIES: CaseStudy[] = [
     year: '2026',
     accent: 'indigo',
     status: 'in-progress',
+    selfInitiated: true,
     facts: [
       { label: 'Role', value: 'Design & development' },
       { label: 'Timeline', value: '14 weeks' },
@@ -128,6 +137,7 @@ export const CASE_STUDIES: CaseStudy[] = [
     year: '2026',
     accent: 'sky',
     status: 'in-progress',
+    selfInitiated: true,
     facts: [
       { label: 'Role', value: 'Design & development' },
       { label: 'Timeline', value: '9 weeks' },
@@ -165,6 +175,7 @@ export const CASE_STUDIES: CaseStudy[] = [
     year: '2026',
     accent: 'purple',
     status: 'in-progress',
+    selfInitiated: true,
     facts: [
       { label: 'Role', value: 'Design & development' },
       { label: 'Timeline', value: '11 weeks' },
