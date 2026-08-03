@@ -19,6 +19,7 @@ const leadFindFirst = vi.fn();
 const leadCreate = vi.fn();
 const leadUpdate = vi.fn();
 const activityCreate = vi.fn();
+const userFindFirst = vi.fn();
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     lead: {
@@ -27,7 +28,16 @@ vi.mock('@/lib/prisma', () => ({
       update: (...args: unknown[]) => leadUpdate(...args),
     },
     leadActivity: { create: (...args: unknown[]) => activityCreate(...args) },
+    user: { findFirst: (...args: unknown[]) => userFindFirst(...args) },
   },
+}));
+
+// The rep alert goes through lib/notify, which composes it and hands it to
+// sendEmail — mocked here so the assertions are about who gets told what.
+const sendEmail = vi.fn();
+vi.mock('@/lib/email', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/email')>()),
+  sendEmail: (...args: unknown[]) => sendEmail(...args),
 }));
 
 const { POST } = await import('@/app/api/contact/route');
@@ -58,14 +68,20 @@ function freshIp() {
   return { 'x-forwarded-for': `203.0.113.${++ip}` };
 }
 
+const EVAN = { id: 'user_evan', email: 'evan@bothmade.studio', name: 'Evan' };
+
 beforeEach(() => {
   vi.stubEnv('RESEND_API_KEY', 'test-key');
   vi.stubEnv('STUDIO_INBOX', '');
+  vi.stubEnv('SALES_EMAIL', '');
+  vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://bothmade.studio');
   send.mockReset().mockResolvedValue({ error: null });
+  sendEmail.mockReset().mockResolvedValue(true);
   leadFindFirst.mockReset().mockResolvedValue(null);
   leadCreate.mockReset().mockResolvedValue({ id: 'lead_1' });
   leadUpdate.mockReset().mockResolvedValue({ id: 'lead_1' });
   activityCreate.mockReset().mockResolvedValue({ id: 'act_1' });
+  userFindFirst.mockReset().mockResolvedValue(EVAN);
 });
 
 afterEach(() => {
@@ -131,6 +147,75 @@ describe('POST /api/contact — where the message goes', () => {
     await POST(request(VALID, freshIp()));
 
     expect(send.mock.calls[0][0].to).toEqual(['hello@example.com', 'second@example.com']);
+  });
+});
+
+describe('POST /api/contact — telling Evan', () => {
+  it('emails the sales rep directly that this client reached out', async () => {
+    await POST(request(VALID, freshIp()));
+
+    expect(sendEmail).toHaveBeenCalledOnce();
+    const alert = sendEmail.mock.calls[0][0];
+    expect(alert.to).toBe('evan@bothmade.studio');
+    expect(alert.subject).toBe('Kiana Arabpour at Random just reached out');
+    expect(alert.replyTo).toBe(VALID.email);
+    // The point of this mail over the group one: the lead is a click away.
+    expect(alert.html).toContain('https://bothmade.studio/admin/leads/lead_1');
+    expect(alert.html).toContain('I want an app');
+    expect(alert.html).toContain('Evan');
+  });
+
+  it('assigns the lead to the sales rep so it enters their queue', async () => {
+    // The call list and the follow-up digest both filter by assignedToId; an
+    // unassigned lead is mail with nowhere to land.
+    await POST(request(VALID, freshIp()));
+
+    expect(leadCreate.mock.calls[0][0].data.assignedToId).toBe('user_evan');
+  });
+
+  it('says so when a known address writes in again', async () => {
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing' });
+
+    await POST(request(VALID, freshIp()));
+
+    const alert = sendEmail.mock.calls[0][0];
+    expect(alert.html).toContain('already in the pipeline');
+    expect(alert.html).toContain('https://bothmade.studio/admin/leads/lead_existing');
+  });
+
+  it('still alerts evan@ when no sales account exists, leaving the lead unassigned', async () => {
+    userFindFirst.mockResolvedValue(null);
+
+    await POST(request(VALID, freshIp()));
+
+    expect(sendEmail.mock.calls[0][0].to).toBe('evan@bothmade.studio');
+    expect(leadCreate.mock.calls[0][0].data.assignedToId).toBeNull();
+  });
+
+  it('honours a SALES_EMAIL override when no sales account exists', async () => {
+    userFindFirst.mockResolvedValue(null);
+    vi.stubEnv('SALES_EMAIL', 'someone-else@bothmade.studio');
+
+    await POST(request(VALID, freshIp()));
+
+    expect(sendEmail.mock.calls[0][0].to).toBe('someone-else@bothmade.studio');
+  });
+
+  it('escapes the visitor-supplied message rather than injecting it', async () => {
+    await POST(request({ ...VALID, message: '<img src=x onerror=alert(1)>' }, freshIp()));
+
+    const { html } = sendEmail.mock.calls[0][0];
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x');
+  });
+
+  it('does not alert when the lead could not be written, since there is nothing to link to', async () => {
+    leadCreate.mockRejectedValue(new Error('connection refused'));
+
+    await POST(request(VALID, freshIp()));
+
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalled(); // the group notification still goes out
   });
 });
 
