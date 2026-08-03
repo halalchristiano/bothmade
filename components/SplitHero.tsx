@@ -92,17 +92,15 @@ export function SplitHero() {
       onPointerMove={hoverSteer}
       className="relative h-[100svh] w-full overflow-hidden select-none"
     >
-      {/* The headline is the one thing on this hero that must not be a toy:
-          a visitor who never drags anything still reads what we sell, and
-          roughly what it costs, in the first second. */}
       <div className="absolute top-24 md:top-28 left-1/2 -translate-x-1/2 z-20 w-full max-w-md md:max-w-2xl text-center px-6">
-        <h1 className="text-base md:text-2xl font-medium tracking-tight leading-snug text-white/90">
-          Web and native Apple development —
-          <br className="hidden md:block" /> one small team, start to finish.
-          <span className="sr-only">
-            {' '}Bothmade builds websites, iOS and iPad apps, macOS software, and Vision
-            Pro experiences.
-          </span>
+        {/* The headline sentence was removed from the hero on purpose — the
+            wordmark and the two side captions carry it. The h1 itself stays,
+            screen-reader only, because it is the homepage's only one:
+            dropping the element would leave the page with no heading at all
+            for search engines, or for anyone navigating by headings. */}
+        <h1 className="sr-only">
+          Bothmade builds websites, iOS and iPad apps, macOS software, and Vision Pro
+          experiences — one small team, start to finish.
         </h1>
         {/* Price anchor up front: it filters tire-kickers and reads as
             confidence. Numbers mirror BASE_SERVICES in lib/pricing.ts. */}
