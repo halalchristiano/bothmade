@@ -1,0 +1,35 @@
+name: CI
+
+# The test suite is worth nothing if nobody runs it. Vercel's build already
+# typechecks on every push, but it never runs the tests — so a PR could go
+# green with the whole suite failing.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push supersedes whatever was already running for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci`'s postinstall runs `prisma generate`, which needs the schema
+      # but not a reachable database.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 // In production, use a real database table for reset tokens
 // For now, we'll store them in memory (not production-ready)
@@ -13,6 +14,16 @@ const resetTokens = new Map<string, { email: string; userType: string; expiresAt
  */
 export async function POST(request: NextRequest) {
   try {
+    // This endpoint sends mail to an address the caller names, so it is an
+    // abuse vector even on the "email not found" path that returns success.
+    const limited = await enforceRateLimit(
+      request,
+      'password-reset',
+      RATE_LIMITS.passwordReset,
+      'Too many reset requests. Please wait and try again.'
+    );
+    if (limited) return limited;
+
     const { email, userType = 'user' } = await request.json();
 
     if (!email) {

@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, createToken } from '@/lib/auth';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const limited = await enforceRateLimit(
+      request,
+      'signup',
+      RATE_LIMITS.signup,
+      'Too many sign-up attempts. Please wait and try again.'
+    );
+    if (limited) return limited;
+
     const { email, password, name } = await request.json();
 
     // Validate input
