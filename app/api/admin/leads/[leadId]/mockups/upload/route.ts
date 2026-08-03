@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
-import { getCurrentSession } from '@/lib/auth';
+import { requireStaff } from '@/lib/middleware';
+import { DELIVERABLE_CONTENT_TYPES, DELIVERABLE_MAX_BYTES } from '@/lib/uploads';
 
 /**
  * Token endpoint for direct-to-Blob mockup uploads, same shape as the
@@ -17,14 +18,16 @@ export async function POST(request: Request) {
       body,
       request,
       onBeforeGenerateToken: async () => {
-        const session = await getCurrentSession();
-        if (!session || session.type !== 'user') {
+        const session = await requireStaff();
+        if (!session) {
           throw new Error('Unauthorized');
         }
         return {
-          // A mockup arrives as a PNG, a PDF, sometimes a video walkthrough —
-          // narrowing this only ever blocks a real delivery.
-          allowedContentTypes: undefined,
+          // A mockup is a design deliverable — a PNG, a PDF, sometimes a
+          // video walkthrough — so it takes the deliverables policy rather
+          // than "any type, any size". See lib/uploads.ts.
+          allowedContentTypes: DELIVERABLE_CONTENT_TYPES,
+          maximumSizeInBytes: DELIVERABLE_MAX_BYTES,
           addRandomSuffix: true,
         };
       },

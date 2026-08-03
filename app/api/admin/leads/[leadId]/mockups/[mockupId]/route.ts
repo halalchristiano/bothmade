@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { mockupInclude, normalizeMockupUrl, toMockupDTO } from '@/lib/mockups';
 
 /**
@@ -14,8 +13,8 @@ export async function PATCH(
   { params }: { params: Promise<{ leadId: string; mockupId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { leadId, mockupId } = await params;
     const body = await request.json();
