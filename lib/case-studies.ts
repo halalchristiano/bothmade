@@ -28,7 +28,12 @@ export type Metric = {
 };
 
 export type Shot = {
-  /** Path under /public, e.g. "/work/ridgeline/map.png". Omit for a placeholder frame. */
+  /**
+   * Path under /public, e.g. "/work/ridgeline/map.png". A shot without one
+   * does not render at all — the gallery only appears once at least one
+   * real asset exists, so an unfinished study shows no gap where images
+   * would go.
+   */
   src?: string;
   /** Required when src is set. Describe what the image shows, not "screenshot". */
   alt: string;

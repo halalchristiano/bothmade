@@ -61,8 +61,10 @@ export function ServicePage({
           three pages should not be interchangeable. */}
       {hero}
 
-      {/* Capabilities */}
-      <section className="relative py-32 px-6 border-t border-white/10">
+      {/* Capabilities. overflow-x-clip contains FocusRow's entry offset —
+          the rows start 28px to the right, which pushed a horizontal
+          scrollbar onto every phone. */}
+      <section className="relative py-32 px-6 border-t border-white/10 overflow-x-clip">
         <div className="max-w-6xl mx-auto">
           <SectionTag className="mb-16">Capabilities</SectionTag>
 

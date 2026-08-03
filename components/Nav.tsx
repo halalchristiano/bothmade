@@ -127,7 +127,9 @@ export function Nav() {
             onClick={() => setOpen(!open)}
             aria-label={open ? 'Close menu' : 'Open menu'}
             aria-expanded={open}
-            className="md:hidden relative w-8 h-8 flex flex-col items-center justify-center gap-1.5 z-50"
+            /* 44px box, not 32 — the visual bars stay the same size, the
+               tap target just stops being smaller than a fingertip. */
+            className="md:hidden relative -mr-2.5 w-11 h-11 flex flex-col items-center justify-center gap-1.5 z-50"
           >
             <motion.span
               className="block w-6 h-px bg-white origin-center"
@@ -147,13 +149,17 @@ export function Nav() {
       <AnimatePresence>
         {open && (
           <motion.div
-            className="fixed inset-0 z-40 bg-black/95 backdrop-blur-2xl md:hidden flex flex-col justify-center px-8"
+            /* Nine rows at text-4xl overflow a short phone. The centring
+               lives on the child's my-auto, not justify-center here — a
+               centred flex parent makes overflow above the fold
+               unscrollable, which is how the top link went missing. */
+            className="fixed inset-0 z-40 bg-[#05030a]/98 backdrop-blur-2xl md:hidden flex flex-col overflow-y-auto overscroll-contain px-8 pt-24 pb-10"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <div className="space-y-2">
+            <div className="my-auto w-full shrink-0 space-y-1">
               {LINKS.map((link, idx) => (
                 <motion.div
                   key={link.href}
@@ -166,7 +172,7 @@ export function Nav() {
                     href={link.href}
                     onClick={() => setOpen(false)}
                     aria-current={isCurrent(link.href) ? 'page' : undefined}
-                    className={`block text-4xl font-bold py-3 transition-colors ${
+                    className={`block text-3xl sm:text-4xl font-bold py-2.5 transition-colors ${
                       isCurrent(link.href)
                         ? 'text-white'
                         : 'text-gray-300 hover:text-sky-300'
@@ -188,7 +194,7 @@ export function Nav() {
                 <Link
                   href="/start"
                   onClick={() => setOpen(false)}
-                  className="block text-4xl font-bold py-3 bg-gradient-to-r from-sky-300 to-purple-400 bg-clip-text text-transparent"
+                  className="block text-3xl sm:text-4xl font-bold py-2.5 bg-gradient-to-r from-sky-300 to-purple-400 bg-clip-text text-transparent"
                 >
                   Start a project
                 </Link>

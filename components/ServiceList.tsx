@@ -215,7 +215,7 @@ export function ServiceList() {
                   behavior: 'smooth',
                 });
               }}
-              className="group p-2"
+              className="group px-2.5 py-4"
             >
               <span
                 className="block h-1.5 rounded-full transition-all duration-500 group-hover:bg-white/60"
@@ -336,15 +336,21 @@ function WorldSheet({
 
         {/* content */}
         <motion.div
-          className={`absolute inset-0 flex flex-col justify-center px-6 md:px-14 ${align}`}
+          /* The padding is the safe area between the floating "what we make"
+             header and the page dots. Centred without it, short phones put
+             the title under the header and the CTA row on top of the dots. */
+          className={`absolute inset-0 flex flex-col justify-center px-6 md:px-14 pt-32 md:pt-28 pb-24 md:pb-20 ${align}`}
           style={{ y: contentY }}
         >
           <div className="max-w-6xl w-full mx-auto flex flex-col gap-0" style={{ alignItems: 'inherit' }}>
             <p className="mb-4 font-mono text-xs text-white/35 tabular-nums">{world.index}</p>
 
             <h3
+              /* The clamp floor used to be 3rem, which "VISION PRO" and
+                 "iOS & iPAD" blew past the viewport with at 320–360px —
+                 nowrap meant they clipped rather than wrapped. */
               className="font-bold leading-[0.9] tracking-[-0.04em] whitespace-nowrap select-none"
-              style={{ fontSize: 'clamp(3rem, 12vw, 11rem)', ...world.titleStyle }}
+              style={{ fontSize: 'clamp(2.35rem, 11vw, 11rem)', ...world.titleStyle }}
             >
               {world.title}
             </h3>

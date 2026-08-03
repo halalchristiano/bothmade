@@ -18,6 +18,11 @@ export function CaseStudyPage({
   next?: CaseStudy;
 }) {
   const accent = ACCENT_HEX[study.accent];
+  // Only shots with a real asset render. A shot with no src used to draw a
+  // dashed "add src to lib/case-studies.ts" placeholder, which is a note to
+  // ourselves showing on a client-facing page. The entries stay in the data
+  // so the gallery reappears on its own once the screenshots land.
+  const shots = study.shots?.filter((shot) => shot.src) ?? [];
 
   return (
     <main className="relative bg-[#05030a] text-white">
@@ -208,7 +213,7 @@ export function CaseStudyPage({
       )}
 
       {/* Shots */}
-      {study.shots && study.shots.length > 0 && (
+      {shots.length > 0 && (
         <section className="relative px-6 py-24 border-t border-white/10">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-sm font-mono uppercase tracking-[0.4em] text-white/40 mb-12">
@@ -216,8 +221,8 @@ export function CaseStudyPage({
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {study.shots.map((shot, idx) => (
-                <ShotFrame key={idx} shot={shot} accent={accent} index={idx} />
+              {shots.map((shot, idx) => (
+                <ShotFrame key={idx} shot={shot} index={idx} />
               ))}
             </div>
           </div>
@@ -286,11 +291,9 @@ export function CaseStudyPage({
 
 function ShotFrame({
   shot,
-  accent,
   index,
 }: {
   shot: Shot;
-  accent: { from: string; to: string };
   index: number;
 }) {
   const wide = shot.span === 'wide';
@@ -308,34 +311,14 @@ function ShotFrame({
           wide ? 'aspect-[16/9]' : 'aspect-[4/3]'
         }`}
       >
-        {shot.src ? (
-          <Image
-            src={shot.src}
-            alt={shot.alt}
-            fill
-            sizes={wide ? '(max-width: 768px) 100vw, 1152px' : '(max-width: 768px) 100vw, 576px'}
-            className="object-cover"
-          />
-        ) : (
-          // No asset yet — render an honest empty frame rather than a broken
-          // image or a stock photo pretending to be the product.
-          <div
-            className="absolute inset-0 grid place-items-center"
-            style={{
-              background: `linear-gradient(140deg, ${accent.from}18, ${accent.to}55)`,
-            }}
-          >
-            <div className="text-center px-6">
-              <div className="mx-auto mb-4 w-10 h-10 rounded-lg border border-dashed border-white/25" />
-              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40">
-                {shot.alt}
-              </p>
-              <p className="mt-2 font-mono text-[10px] text-white/20">
-                add src to lib/case-studies.ts
-              </p>
-            </div>
-          </div>
-        )}
+        {/* src is guaranteed — CaseStudyPage filters out shots without one. */}
+        <Image
+          src={shot.src!}
+          alt={shot.alt}
+          fill
+          sizes={wide ? '(max-width: 768px) 100vw, 1152px' : '(max-width: 768px) 100vw, 576px'}
+          className="object-cover"
+        />
       </div>
 
       {shot.caption && (
