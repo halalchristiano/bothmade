@@ -134,6 +134,24 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  /**
+   * Renamed post slugs. A published URL is a promise to whoever linked it,
+   * and app/sitemap.ts has already handed these to crawlers — so a rename
+   * without a redirect turns an indexed page into a 404 rather than moving
+   * it. Permanent (308), because these are not coming back.
+   */
+  async redirects() {
+    return [
+      {
+        // The post argued for a labelled empty frame; the site now renders
+        // nothing at all, so both the title and the slug had to change.
+        source: "/blog/wed-rather-show-you-an-empty-box",
+        destination: "/blog/we-deleted-the-empty-box",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
