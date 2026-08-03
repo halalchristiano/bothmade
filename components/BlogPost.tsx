@@ -669,25 +669,37 @@ function MobileMenuDemo() {
   );
 }
 
-/** Side by side: a fake "stock photo" card vs. the site's actual dashed honest-empty-frame pattern from CaseStudy's ShotFrame. */
+/**
+ * Three ways to handle a case-study screenshot that does not exist yet: the
+ * stock photo, the labelled placeholder, and what CaseStudyPage actually
+ * does — filter the shot out and drop the section with it.
+ *
+ * The middle card is deliberately the site's *old* behaviour. The post
+ * argues that it was still a compromise, so it has to be visible to be
+ * argued with.
+ */
 function HonestFrameDemo() {
   return (
-    <div className="grid sm:grid-cols-2 gap-4">
+    <div className="grid gap-4 sm:grid-cols-3">
       <div className="rounded-2xl border border-white/10 overflow-hidden">
         <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-red-300/70 border-b border-white/10">
-          what we don&apos;t do
+          the lie
         </p>
         <div className="relative aspect-[4/3] grid place-items-center bg-gradient-to-br from-slate-700 to-slate-900">
           <p className="text-white/40 text-sm italic px-6 text-center">
-            generic stock photo of "people looking at a laptop, smiling"
+            generic stock photo of &ldquo;people looking at a laptop, smiling&rdquo;
           </p>
         </div>
       </div>
+
       <div className="rounded-2xl border border-white/10 overflow-hidden">
-        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-300/70 border-b border-white/10">
-          what we actually render
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-amber-300/70 border-b border-white/10">
+          what we used to do
         </p>
-        <div className="relative aspect-[4/3] grid place-items-center" style={{ background: 'linear-gradient(140deg, #4f46e518, #1e1b4b55)' }}>
+        <div
+          className="relative aspect-[4/3] grid place-items-center"
+          style={{ background: 'linear-gradient(140deg, #4f46e518, #1e1b4b55)' }}
+        >
           <div className="text-center px-6">
             <div className="mx-auto mb-4 w-10 h-10 rounded-lg border border-dashed border-white/25" />
             <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/40">
@@ -695,6 +707,17 @@ function HonestFrameDemo() {
             </p>
             <p className="mt-2 font-mono text-[10px] text-white/20">add src to lib/case-studies.ts</p>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <p className="px-5 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-300/70 border-b border-white/10">
+          what we render now
+        </p>
+        <div className="relative aspect-[4/3] grid place-items-center">
+          <p className="px-6 text-center font-mono text-[10px] uppercase tracking-[0.3em] text-white/25">
+            nothing at all
+          </p>
         </div>
       </div>
     </div>
