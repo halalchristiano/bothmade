@@ -117,7 +117,12 @@ and Vercel — no amount of code changes fixes it.
       a human: 1–2 `bio` sentences per person — see the EDIT ME banner in
       that file.
 - [ ] **Add real screenshots** to case studies (`shots[].src`, files under
-      `public/work/…`). Placeholder frames render until then.
+      `public/work/…`). Nothing renders until then — a shot with no `src` is
+      filtered out and the whole "Screens" section is hidden when none are
+      left, so an unfinished study is simply shorter rather than showing a
+      placeholder. `public/work/` does not exist yet; the `alt` and `caption`
+      text is already written in `lib/case-studies.ts`, so dropping a file in
+      and setting `src` brings the section back with no other edit.
 - [x] **Analytics.** Vercel Analytics is installed (`@vercel/analytics`,
       mounted in `app/layout.tsx`). It records nothing until the project's
       Analytics tab is enabled once in the Vercel dashboard — do that at
