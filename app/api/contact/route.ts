@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { esc, escMultiline, sanitizeEmailAddress } from '@/lib/html';
+import { enforce, limiterKey } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -14,64 +16,18 @@ const LIMITS = {
   message: 4000,
 } as const;
 
-/** Anything user-supplied is escaped before it reaches an HTML email body. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function isValidEmail(value: string): boolean {
-  // Deliberately conservative: no display names, no comments, no newlines.
-  return /^[^\s@<>"']+@[^\s@<>"'.]+\.[^\s@<>"']{2,}$/.test(value);
-}
-
-/**
- * Per-instance sliding window. Serverless means this resets on cold start and
- * isn't shared across instances — it blunts casual abuse, not a determined
- * attacker. Move to Upstash/Redis if this endpoint ever gets targeted.
- */
-const RATE_LIMIT = { max: 3, windowMs: 10 * 60 * 1000 };
-const hits = new Map<string, number[]>();
-
-function isRateLimited(key: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < RATE_LIMIT.windowMs);
-
-  if (recent.length >= RATE_LIMIT.max) {
-    hits.set(key, recent);
-    return true;
-  }
-
-  recent.push(now);
-  hits.set(key, recent);
-
-  // Opportunistic cleanup so the map can't grow without bound.
-  if (hits.size > 5000) {
-    for (const [k, times] of hits) {
-      if (times.every((t) => now - t >= RATE_LIMIT.windowMs)) hits.delete(k);
-    }
-  }
-
-  return false;
-}
-
-function clientKey(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  return forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
-}
+// Same per-instance caveat as everywhere else in this app — see
+// lib/rate-limit.ts. This route used to carry its own copy of the limiter
+// and its own escapeHtml; both now come from the shared modules so there is
+// one implementation to reason about (and to fix) rather than three.
+const CONTACT_LIMIT = { limit: 3, windowMs: 10 * 60 * 1000 };
 
 export async function POST(request: NextRequest) {
   try {
-    if (isRateLimited(clientKey(request))) {
-      return NextResponse.json(
-        { error: 'Too many messages. Please try again later.' },
-        { status: 429 }
-      );
-    }
+    const limited = enforce([
+      { key: limiterKey('contact', request), options: CONTACT_LIMIT, message: 'Too many messages. Please try again later.' },
+    ]);
+    if (limited) return limited;
 
     const body = await request.json();
     const { name, email, company, message, service, website } = body ?? {};
@@ -100,7 +56,10 @@ export async function POST(request: NextRequest) {
     const cleanMessage = message.trim().slice(0, LIMITS.message);
     const cleanService = SERVICES.includes(service) ? service : 'other';
 
-    if (!isValidEmail(cleanEmail)) {
+    // sanitizeEmailAddress also strips CR/LF, so this doubles as the
+    // header-injection guard on the reply-to below.
+    const safeReplyTo = sanitizeEmailAddress(cleanEmail);
+    if (!safeReplyTo) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
     }
 
@@ -110,11 +69,12 @@ export async function POST(request: NextRequest) {
     }
 
     const safe = {
-      name: escapeHtml(cleanName),
-      email: escapeHtml(cleanEmail),
-      company: escapeHtml(cleanCompany || 'Not provided'),
-      message: escapeHtml(cleanMessage),
-      service: escapeHtml(cleanService),
+      name: esc(cleanName),
+      email: esc(cleanEmail),
+      company: esc(cleanCompany || 'Not provided'),
+      // The message is the one multi-line field — keep its shape.
+      message: escMultiline(cleanMessage),
+      service: esc(cleanService),
     };
 
     const shell = (inner: string) =>
@@ -125,7 +85,7 @@ export async function POST(request: NextRequest) {
     const adminEmail = await resend.emails.send({
       from: CONTACT_EMAIL,
       to: CONTACT_EMAIL,
-      replyTo: cleanEmail,
+      replyTo: safeReplyTo,
       subject: `New enquiry — ${cleanName} (${cleanService})`,
       html: shell(
         `<h2 style="color:#000;">New contact form submission</h2>
@@ -147,7 +107,7 @@ export async function POST(request: NextRequest) {
     // still reached the studio, so don't fail the request over it.
     const ackEmail = await resend.emails.send({
       from: CONTACT_EMAIL,
-      to: cleanEmail,
+      to: safeReplyTo,
       subject: 'We received your message',
       html: shell(
         `<h2 style="color:#000;">Thanks for reaching out</h2>

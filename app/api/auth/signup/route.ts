@@ -44,8 +44,11 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const { email, password, name, role: requestedRole } = await request.json();
-
+    // Authorization is decided before the body is even read. An
+    // unauthenticated caller should not be able to reach the JSON parser,
+    // let alone hand it something malformed and get a 500 with a stack
+    // trace out of it — on the one endpoint that creates admin accounts,
+    // "who are you" is the first question, not the fourth.
     const owner = await requireOwner();
     let authorized = owner !== null;
 
@@ -62,7 +65,22 @@ export async function POST(request: NextRequest) {
       return forbiddenResponse('Accounts are created by an owner.');
     }
 
-    if (typeof email !== 'string' || typeof name !== 'string' || !email.trim() || !name.trim()) {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 });
+    }
+
+    const { email, password, name, role: requestedRole } = (body ?? {}) as Record<string, unknown>;
+
+    if (
+      typeof email !== 'string' ||
+      typeof name !== 'string' ||
+      typeof password !== 'string' ||
+      !email.trim() ||
+      !name.trim()
+    ) {
       return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 });
     }
 
