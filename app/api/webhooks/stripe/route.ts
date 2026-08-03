@@ -9,11 +9,17 @@ import {
 } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
 import { alertEmailDeliveryFailure, notifyAdminsPaymentReceived } from '@/lib/notify';
-import { formatCents } from '@/lib/pricing';
+import { put } from '@vercel/blob';
+import { buildContractSections } from '@/lib/contract-terms';
+import { buildContractPdf } from '@/lib/contract-pdf';
 import {
   ADD_ONS,
   BASE_SERVICES,
+  CLIENT_TYPES,
+  DEPOSIT_PERCENT,
   TIMELINES,
+  formatCents,
+  isClientType,
   isAddOnKey,
   isBaseService,
   isTimelineKey,
@@ -211,7 +217,15 @@ async function handleCheckoutSessionCompleted(
   // mark it in the CRM automatically instead of leaving it stuck until
   // someone remembers to update it by hand.
   if (leadId) {
-    const lead = await prisma.lead.update({ where: { id: leadId }, data: { status: 'won' } }).catch(() => null);
+    const lead = await prisma.lead
+      .update({
+        where: { id: leadId },
+        // wonAt as well as status: this is the path most deals actually
+        // close through, so omitting it here would leave revenue reporting
+        // falling back to updatedAt for the majority of wins.
+        data: { status: 'won', wonAt: new Date() },
+      })
+      .catch(() => null);
     if (lead?.signedContractUrl) {
       // Carry the signed copy over so the client can find it on their own
       // project — leads aren't visible to clients, but projects are.
@@ -227,6 +241,69 @@ async function handleCheckoutSessionCompleted(
           relatedProjectId: project.id,
         },
       });
+    }
+  }
+
+  // A client who bought through /start never went near the sign-and-pay
+  // flow, so no contract was ever generated for them — they paid thousands
+  // and their dashboard had no agreement on it at all, while clients who
+  // came through a rep did. Generate and store the same document from the
+  // terms they actually bought under.
+  //
+  // Best-effort: the payment has cleared, and a PDF failing to render is
+  // not a reason to fail the webhook and have Stripe retry a completed
+  // checkout.
+  if (!leadId) {
+    try {
+      const sections = buildContractSections({
+        company,
+        contactName: contactName || null,
+        serviceLabel: BASE_SERVICES[baseService].label,
+        serviceDescription: BASE_SERVICES[baseService].description,
+        addOnLabels: addOnKeys.map((k) => ADD_ONS[k].label),
+        addOnKeys,
+        baseServiceKey: baseService,
+        clientTypeKey: metadata.clientType || 'smb',
+        timelineKey: timeline,
+        timelineLabel: `${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
+        clientTypeLabel: CLIENT_TYPES[isClientType(metadata.clientType) ? metadata.clientType : 'smb'].label,
+        basePrice: formatCents(basePrice),
+        addOnsPrice: formatCents(totalPrice - basePrice),
+        totalPrice: formatCents(totalPrice),
+        depositAmount: formatCents(amountPaid),
+        balanceAmount: formatCents(Math.max(0, totalPrice - amountPaid)),
+        depositPercent: DEPOSIT_PERCENT,
+        effectiveDate: new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }),
+      });
+
+      const pdfBytes = await buildContractPdf({
+        company,
+        contactName: contactName || null,
+        serviceLabel: BASE_SERVICES[baseService].label,
+        addOnLabels: addOnKeys.map((k) => ADD_ONS[k].label),
+        timelineLabel: `${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
+        basePrice: formatCents(basePrice),
+        addOnsPrice: formatCents(totalPrice - basePrice),
+        totalPrice: formatCents(totalPrice),
+        depositAmount: formatCents(amountPaid),
+        sections,
+      });
+
+      const blob = await put(
+        `contracts/project-${project.id}.pdf`,
+        Buffer.from(pdfBytes),
+        { access: 'public', contentType: 'application/pdf' }
+      );
+      await prisma.project.update({
+        where: { id: project.id },
+        data: { contractUrl: blob.url },
+      });
+    } catch (error) {
+      console.error('Failed to generate agreement for self-serve project:', error);
     }
   }
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ImageIcon, ExternalLink, Compass, Clock } from 'lucide-react';
 import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { useDeliverMockup } from '@/components/admin/DeliverMockup';
 import { PAIN_POINTS, parseSalesPoints, type PainPointKey } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 
@@ -144,7 +145,6 @@ export default function MockupQueuePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [urlDrafts, setUrlDrafts] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     try {
@@ -165,21 +165,25 @@ export default function MockupQueuePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const { deliver, saving: delivering, error: deliverError } = useDeliverMockup();
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+
   const handleDeliver = async (leadId: string) => {
-    const url = (urlDrafts[leadId] || '').trim();
-    if (!url) return;
-    setSaving((prev) => ({ ...prev, [leadId]: true }));
-    try {
-      const res = await fetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mockupUrl: url }),
+    // This used to remove the row from the queue whenever the request
+    // *completed*, success or not — so a failed save looked identical to a
+    // delivered mockup, the lead vanished from the queue, and the client
+    // never received anything. Only a confirmed write clears the row.
+    setFailedFor(null);
+    const ok = await deliver(leadId, urlDrafts[leadId] || '');
+    if (ok) {
+      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      setUrlDrafts((prev) => {
+        const next = { ...prev };
+        delete next[leadId];
+        return next;
       });
-      if (res.ok) {
-        setLeads((prev) => prev.filter((l) => l.id !== leadId));
-      }
-    } finally {
-      setSaving((prev) => ({ ...prev, [leadId]: false }));
+    } else {
+      setFailedFor(leadId);
     }
   };
 
@@ -272,11 +276,17 @@ export default function MockupQueuePage() {
                 />
                 <button
                   onClick={() => handleDeliver(lead.id)}
-                  disabled={saving[lead.id] || !(urlDrafts[lead.id] || '').trim()}
+                  disabled={delivering || !(urlDrafts[lead.id] || '').trim()}
+                  aria-busy={delivering}
                   className="shrink-0 px-4 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
                 >
-                  {saving[lead.id] ? 'Sending...' : 'Mark Delivered'}
+                  {delivering ? 'Sending...' : 'Mark Delivered'}
                 </button>
+              </div>
+              <div role="alert" aria-live="polite">
+                {failedFor === lead.id && deliverError && (
+                  <p className="mt-2 text-xs text-red-400">{deliverError}</p>
+                )}
               </div>
             </div>
           );

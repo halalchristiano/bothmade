@@ -157,15 +157,28 @@ export default function ClientDashboard() {
   const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
-    const storageKey = `bothmade_last_visit_${projectId}`;
-    const stored = Number(localStorage.getItem(storageKey) || 0);
-    setLastVisitAt(stored || null);
-    localStorage.setItem(storageKey, String(Date.now()));
+    // Server-side, so "new since your last visit" is a fact about this
+    // client rather than about this browser. The endpoint returns the
+    // *previous* visit and stamps the current one in the same call.
+    let cancelled = false;
+    fetch(`/api/projects/${projectId}/viewed`, { method: 'POST' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        setLastVisitAt(data.lastViewedAt ? new Date(data.lastViewedAt).getTime() : null);
+      })
+      .catch(() => {
+        // A failed visit-stamp must not hide the page. No badges is a
+        // better outcome than no dashboard.
+      });
 
     loadProject();
     loadOnboarding();
     const interval = setInterval(loadProject, 20000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 

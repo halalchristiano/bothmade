@@ -66,6 +66,7 @@ model User {
   receivedTeamMessages TeamMessage[] @relation("TeamMessageRecipient")
   teamMessageReads     TeamMessageRead[] @relation("TeamMessageReader")
   notifications        Notification[]    @relation("UserNotifications")
+  pricingOverrides     PricingOverride[] @relation("PricingOverrideAuthor")
   csvImportLogs        CsvImportLog[]
 
   @@map("users")
@@ -157,6 +158,15 @@ model Project {
   // last one generated, for manually-onboarded projects) — carried over
   // from the Lead so the client can always find it in their own dashboard.
   contractUrl String?
+
+  // When this client last opened this project's dashboard.
+  //
+  // "New since your last visit" badges were computed from localStorage, so
+  // they were per-browser: a client who read an update on their laptop
+  // still saw it flagged new on their phone, and clearing site data made
+  // six months of history light up at once. Server-side, it is one fact
+  // about a person rather than one per device.
+  clientLastViewedAt DateTime?
 
   // When a payment reminder was last emailed for this project's balance —
   // shown on the dashboard so a reminder can't be fired off twice in a row
@@ -713,4 +723,31 @@ model Milestone {
 
   @@index([projectId, dueAt])
   @@map("milestones")
+}
+
+// A price the team has changed without a deploy.
+//
+// The catalogue in lib/pricing.ts defines what each item *is* — its label,
+// description, benefit copy, category, and dependencies — and that belongs
+// in code where it can be reviewed. What it costs is a business decision
+// that shouldn't need an engineer, so prices (and only prices) can be
+// overridden here. An absent row means "use the catalogue price", so this
+// table starts empty and stays small.
+model PricingOverride {
+  id  String @id @default(cuid())
+  // "base:website", "addon:seo", "clientType:enterprise", "timeline:rush"
+  key String @unique
+
+  // Cents for base services and add-ons; a ×1000 fixed-point multiplier for
+  // client types and timelines (1250 = ×1.25), so one column serves both
+  // without a float anywhere near a price.
+  value Int
+
+  updatedById String?
+  updatedBy   User?   @relation("PricingOverrideAuthor", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pricing_overrides")
 }
