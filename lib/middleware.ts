@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from './auth';
+import { prisma } from './prisma';
+import { canManageTeam } from './roles';
 
 /**
  * Protect a route - requires authentication
@@ -16,20 +18,29 @@ export async function requireAuth(request: NextRequest) {
 }
 
 /**
- * Protect a route - requires admin role
+ * Protect a route - requires a role that can manage the team.
+ *
+ * The role is read from the database rather than the session, because the JWT
+ * carries whatever the role was at login. Someone demoted an hour ago would
+ * otherwise keep write access until their token expired — and the first thing
+ * this guards is the page that does the demoting.
+ *
+ * Returns the caller's id and role, or null when they may not manage the team.
  */
-export async function requireAdmin(request: NextRequest) {
+export async function requireTeamManager(): Promise<{
+  userId: string;
+  role: string;
+} | null> {
   const session = await getCurrentSession();
+  if (!session || session.type !== 'user') return null;
 
-  if (!session || session.type !== 'user') {
-    return null;
-  }
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { id: true, role: true },
+  });
+  if (!user || !canManageTeam(user.role)) return null;
 
-  if ('role' in session && session.role !== 'admin') {
-    return null;
-  }
-
-  return session;
+  return { userId: user.id, role: user.role };
 }
 
 /**
