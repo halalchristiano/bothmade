@@ -18,15 +18,35 @@ const isDev = process.env.NODE_ENV === "development";
 if (process.env.NODE_ENV === "production" && !process.env.CI_SKIP_SECRET_CHECK) {
   // Imported lazily: lib/env.ts is TypeScript the config loader can resolve,
   // but only the production path needs it.
-  const missing = ["JWT_SECRET", "SESSION_SECRET"].filter(
+  // STRIPE_SECRET_KEY belongs here even though nothing signs sessions with
+  // it: five routes construct `new Stripe(...)` at module scope, so without
+  // a value `next build` dies during page-data collection with "Neither
+  // apiKey nor config.authenticator provided" and a stack trace pointing
+  // into a minified chunk. Nothing in that message names the variable, and
+  // the checklist did not mention it either — so the first deploy failed on
+  // a riddle. Fail here instead, by name.
+  const missing = ["JWT_SECRET", "SESSION_SECRET", "STRIPE_SECRET_KEY"].filter(
     (name) => !process.env[name]?.trim()
   );
   if (missing.length > 0) {
+    // One line per variable: where it comes from differs, and a single
+    // blanket instruction sent people to `openssl rand` for a Stripe key.
+    const HOW: Record<string, string> = {
+      JWT_SECRET:
+        "signs every login session. Generate with: openssl rand -base64 48",
+      SESSION_SECRET:
+        "session-layer signing, and the legacy key for anything encrypted before " +
+        "GMAIL_ENCRYPTION_KEY existed. Generate with: openssl rand -base64 48",
+      STRIPE_SECRET_KEY:
+        "read at module scope by the checkout and payment routes, so the build " +
+        "cannot even collect page data without it. Copy it from " +
+        "dashboard.stripe.com > Developers > API keys — it is issued, not generated",
+    };
     throw new Error(
-      `Refusing to build: ${missing.join(" and ")} ${missing.length > 1 ? "are" : "is"} not set. ` +
-        "These sign every login session and have no safe default — the old fallbacks were strings " +
-        "published in this repository. Set them in your host's environment " +
-        "(generate each with: openssl rand -base64 48) and rebuild."
+      `Refusing to build. ${missing.length > 1 ? "These are" : "This is"} not set:\n` +
+        missing.map((name) => `  - ${name}: ${HOW[name]}`).join("\n") +
+        "\nSet them in your host's environment and rebuild. Vercel does not apply " +
+        "environment changes to an already-running deployment, so redeploy after adding them."
     );
   }
 }

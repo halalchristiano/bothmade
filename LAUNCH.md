@@ -37,6 +37,31 @@ Optional, and only for a brand-new deployment with an empty `users` table:
       on an established deployment; after that, only an owner can add
       teammates.
 
+- [ ] **`STRIPE_SECRET_KEY`** — not a session secret, but the build dies
+      without it: five routes construct `new Stripe(...)` at module scope, so
+      `next build` cannot collect page data. `next.config.ts` now fails the
+      build by name; before that it surfaced as "Neither apiKey nor
+      config.authenticator provided" with a stack trace into a minified
+      chunk. Copy it from dashboard.stripe.com → Developers → API keys.
+
+- [ ] **`DATABASE_URL` and `DIRECT_URL`** — two *different* strings, not the
+      same one twice. `prisma migrate deploy` runs during the build and
+      cannot go through a transaction pooler, which is why the schema
+      declares `directUrl` separately.
+
+      On Supabase (Connect → Connection String):
+      - `DATABASE_URL` = **Transaction pooler**, port 6543, with
+        `?pgbouncer=true&connection_limit=1` appended.
+      - `DIRECT_URL` = **Session pooler**, port 5432.
+
+      Use the *session* pooler rather than the "Direct connection" option:
+      Supabase's direct host is IPv6-only unless you buy the IPv4 add-on, and
+      Vercel's builders are IPv4, so migrations fail there with a
+      network-unreachable error that names nothing useful. Both strings come
+      from the same modal and differ only by port. A password containing
+      `@ : / ? # & %` must be percent-encoded or the URI misparses and reads
+      as a wrong password.
+
 ## Required before the site is live
 
 - [ ] **Deploy to Vercel.** Push this repo to GitHub, import it at
@@ -54,6 +79,35 @@ Optional, and only for a brand-new deployment with an empty `users` table:
       enquiry emails don't land in spam. Note this has to be
       **bothmade.studio** — mail sent from an unverified domain is rejected
       outright, not merely spam-filed.
+
+- [ ] **Turn on DKIM for Google Workspace.** Verifying in Resend covers mail
+      Resend sends. It does *not* cover mail this app sends **as a real user**
+      — the contact-form acknowledgement goes out through domain-wide
+      delegation as info@, i.e. through Google, not Resend. With no Workspace
+      DKIM key, Google signs that mail with a generic Google key, so the
+      signature does not align with the From: domain. Gmail then shows the
+      red "similar messages have been used to steal people's personal
+      information" banner and files it as spam, which is exactly what
+      happened on the first live sends.
+
+      admin.google.com → Apps → Google Workspace → Gmail → **Authenticate
+      email** → select the domain → Generate new record (2048-bit) → add the
+      `google._domainkey` TXT record it gives you → click **Start
+      authentication**.
+
+      Verify with `dig TXT google._domainkey.bothmade.studio` — NXDOMAIN
+      means it is not set up yet.
+
+- [ ] **Publish a DMARC record.** `_dmarc` TXT →
+      `v=DMARC1; p=none; rua=mailto:info@bothmade.studio`. `p=none` is
+      monitor-only and cannot cause rejections, and Gmail's bulk-sender rules
+      effectively require the record to exist at all. Tighten to
+      `p=quarantine` once the `rua` reports come back clean.
+
+      Deliverability is not only records: a domain days old has no sending
+      reputation, and the first sends from one get filtered regardless of how
+      correct the DNS is. That part only improves with real traffic over
+      weeks. Nothing in this repo can shortcut it.
 - [ ] **Give Evan's account the `sales` role.** Inbound leads are assigned to
       whoever holds it, and the "this client reached out" alert is sent to
       them. Without it the alert falls back to `evan@bothmade.studio` and the
@@ -114,8 +168,9 @@ and Vercel — no amount of code changes fixes it.
       (`public/team/`), and location (London, from `COMPANY_LOCATION` in
       `lib/company.ts`; the Welling mailing address is in the footer and
       JSON-LD). One thing still needs
-      a human: 1–2 `bio` sentences per person — see the EDIT ME banner in
-      that file.
+      a human: 1–2 `bio` sentences per person — see the banner at the top of
+      `lib/team.ts`, which is where both that page and the homepage section
+      now read their copy from.
 - [ ] **Add real screenshots** to case studies (`shots[].src`, files under
       `public/work/…`). Nothing renders until then — a shot with no `src` is
       filtered out and the whole "Screens" section is hidden when none are
