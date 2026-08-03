@@ -35,6 +35,7 @@ import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { UndoToast } from '@/components/admin/UndoToast';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { MockupsCard } from '@/components/admin/MockupAttachments';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
@@ -680,6 +681,10 @@ function SalesDashboard({
 
       <div className="mb-5">
         <NextActionsCard stats={stats} />
+      </div>
+
+      <div className="mb-5">
+        <MockupsCard />
       </div>
 
       {stats.awaitingSignature.length > 0 && (

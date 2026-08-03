@@ -25,7 +25,7 @@ import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
-import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 import {
@@ -2622,46 +2622,22 @@ export default function LeadDetailPage() {
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-lg font-bold mb-1">Mockup</h2>
+            <h2 className="text-lg font-bold mb-1">Mockups</h2>
             {lead.mockupUrl ? (
-              <>
-                <p className="text-xs text-emerald-300 mb-3">
-                  Delivered {lead.mockupDeliveredAt ? new Date(lead.mockupDeliveredAt).toLocaleDateString() : ''} — ready to send to the client.
-                </p>
-                <div className="flex gap-2 mb-2">
-                  <input readOnly value={lead.mockupUrl} className={`${inputClass} text-sm`} />
-                  <a
-                    href={lead.mockupUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
-                  >
-                    Open
-                  </a>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(lead.mockupUrl!)}
-                    className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
-                  >
-                    Copy
-                  </button>
-                </div>
-                <p className="text-xs text-white/30">Now's the time to call, email, or follow up with this in hand.</p>
-              </>
+              <p className="text-xs text-emerald-300 mb-3">
+                Latest delivered {lead.mockupDeliveredAt ? new Date(lead.mockupDeliveredAt).toLocaleDateString() : ''} — every
+                version below, with whatever you noted against it.
+              </p>
             ) : lead.mockupRequested ? (
-              <>
-                <p className="text-xs text-amber-300 mb-3">
-                  Requested {lead.mockupRequestedAt ? new Date(lead.mockupRequestedAt).toLocaleDateString() : ''} — waiting on the team.
-                </p>
-                <MockupDeliveryForm
-                  leadId={leadId}
-                  onDelivered={load}
-                  placeholder="Paste the finished mockup link here once it's ready..."
-                />
-              </>
+              <p className="text-xs text-amber-300 mb-3">
+                Requested {lead.mockupRequestedAt ? new Date(lead.mockupRequestedAt).toLocaleDateString() : ''} — waiting on the
+                team. Attach it here yourself if it reaches you first.
+              </p>
             ) : (
-              <>
+              <div className="mb-3">
                 <p className="text-xs text-white/40 mb-3">
-                  Need a visual to show this lead? Request one and it'll flag the team until it's ready.
+                  Need a visual to show this lead? Request one and it'll flag the team until it's ready — or attach one you
+                  already have.
                 </p>
                 <button
                   onClick={handleRequestMockup}
@@ -2670,7 +2646,13 @@ export default function LeadDetailPage() {
                 >
                   {requestingMockup ? 'Requesting...' : '🎨 Request Mockup'}
                 </button>
-              </>
+              </div>
+            )}
+
+            <LeadMockupsPanel leadId={leadId} onChanged={load} />
+
+            {lead.mockupUrl && (
+              <p className="text-xs text-white/30 mt-3">Now's the time to call, email, or follow up with this in hand.</p>
             )}
           </div>
 
