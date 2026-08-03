@@ -14,18 +14,14 @@ import { SectionTag } from '@/components/ui';
  *  EDIT ME — everything a stranger checks before wiring money lives in
  *  this constant. What ships below is only what the rest of the site and
  *  repo already establish as true (two people; who they'll talk to; who
- *  designs what they approve). To finish the section:
+ *  designs what they approve). Photos and location are in; still open:
  *
- *  - `photo`: drop a real photo at public/team/<name>.jpg and set the
- *    path (e.g. '/team/evan.jpg'). Until then an honest monogram renders —
- *    never a stock face.
- *  - `bio`: 1–2 sentences of real background (where you're from, what you
- *    did before, what you've shipped). Leave as-is until you have them;
- *    the layout is complete without it.
- *  - `location`: e.g. 'Los Angeles, CA' — shown under the intro once set.
+ *  - `bio`: 1–2 sentences of real background per person (where you're
+ *    from, what you did before, what you've shipped). The layout is
+ *    complete without it, but it's the last thing a cautious buyer wants.
  * ─────────────────────────────────────────────────────────────────────────
  */
-const LOCATION: string | null = null;
+const LOCATION: string | null = 'London · Delaware';
 
 const TEAM: {
   name: string;
@@ -43,6 +39,7 @@ const TEAM: {
     owns:
       'Your first call, your scope, your number. Every question you send lands with him directly — no account manager in between, on the project from kickoff to launch.',
     email: 'evan@bothmade.studio',
+    photo: '/team/evan.jpg',
     accent: { from: '#38bdf8', to: '#0c2f52' },
   },
   {
@@ -51,6 +48,7 @@ const TEAM: {
     owns:
       'Every screen you approve is hers — designed against your real content, not lorem ipsum, and carried through so what ships matches what you signed off.',
     email: 'kiana@bothmade.studio',
+    photo: '/team/kiana.jpg',
     accent: { from: '#a855f7', to: '#3b0764' },
   },
 ];

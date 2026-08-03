@@ -73,6 +73,14 @@ export default function RootLayout({
               '@type': 'ProfessionalService',
               name: 'Bothmade',
               url: SITE_URL,
+              email: 'info@bothmade.studio',
+              address: {
+                '@type': 'PostalAddress',
+                streetAddress: 'Suite 695, 80A Ruskin Ave',
+                addressLocality: 'Welling',
+                postalCode: 'DA16 3QQ',
+                addressCountry: 'GB',
+              },
               description:
                 'Web and native Apple development studio. Websites, iOS and iPad apps, macOS software, and Vision Pro experiences — designed and shipped by one team.',
               knowsAbout: [

@@ -74,12 +74,12 @@ and Vercel — no amount of code changes fixes it.
       which renders an explicit "our own product — not client work" label
       and notice on both `/work` and the detail pages, so a human visitor
       can't mistake them for client engagements.
-- [ ] **Finish the About/credibility block.** `components/About.tsx` now
-      ships on the homepage with the two of you by name, role, and direct
-      email — everything the repo could establish honestly. Still needed
-      from a human (see the EDIT ME banner in that file): real photos
-      (`public/team/…` + `photo` paths — honest monograms render until
-      then), 1–2 bio sentences each, and `LOCATION` if you want it shown.
+- [ ] **Finish the About/credibility block.** `components/About.tsx` ships
+      on the homepage with names, roles, direct emails, real photos
+      (`public/team/`), and location (London · Delaware; the Welling
+      mailing address is in the footer and JSON-LD). One thing still needs
+      a human: 1–2 `bio` sentences per person — see the EDIT ME banner in
+      that file.
 - [ ] **Add real screenshots** to case studies (`shots[].src`, files under
       `public/work/…`). Placeholder frames render until then.
 - [x] **Analytics.** Vercel Analytics is installed (`@vercel/analytics`,
