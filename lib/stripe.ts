@@ -25,6 +25,12 @@ export interface CheckoutInput {
   company: string;
   contactName?: string;
   phone?: string;
+  /**
+   * The CRM lead this checkout belongs to. Carried through Stripe metadata so
+   * the webhook can promote the same row to "won" on payment instead of the
+   * paying customer arriving as an unrelated record.
+   */
+  leadId?: string;
 }
 
 /**
@@ -80,6 +86,7 @@ export async function createCheckoutSession(
         timeline: input.timeline,
         basePrice: String(breakdown.basePrice),
         totalPrice: String(breakdown.totalPrice),
+        ...(input.leadId ? { leadId: input.leadId } : {}),
       },
     });
 

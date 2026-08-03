@@ -167,10 +167,10 @@ async function handleCheckoutSessionCompleted(
     },
   });
 
-  // This checkout was closed from a lead's payment link (rather than the
-  // public /start form) — this is the moment the deal is actually won, so
-  // mark it in the CRM automatically instead of leaving it stuck until
-  // someone remembers to update it by hand.
+  // This checkout is tied to a CRM lead — either a payment link sent to an
+  // existing one, or the row /api/checkout writes before redirecting to
+  // Stripe. Either way this is the moment the deal is actually won, so mark
+  // it automatically instead of leaving it stuck until someone remembers.
   if (leadId) {
     const lead = await prisma.lead.update({ where: { id: leadId }, data: { status: 'won' } }).catch(() => null);
     if (lead?.signedContractUrl) {
@@ -182,7 +182,7 @@ async function handleCheckoutSessionCompleted(
     if (lead && notifier) {
       await prisma.teamMessage.create({
         data: {
-          content: `🎉 ${company} paid and their project is live — deposit/payment cleared via payment link.`,
+          content: `🎉 ${company} paid and their project is live — deposit/payment cleared.`,
           fromUserId: notifier,
           relatedLeadId: leadId,
           relatedProjectId: project.id,
