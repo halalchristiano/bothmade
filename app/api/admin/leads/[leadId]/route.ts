@@ -210,7 +210,18 @@ export async function PATCH(
         mockupRequested: mockupRequested !== undefined ? mockupRequested : undefined,
         mockupRequestedAt: mockupRequested === true && !existing.mockupRequested ? new Date() : undefined,
         mockupUrl: mockupUrl !== undefined ? mockupUrl : undefined,
-        mockupDeliveredAt: mockupUrl !== undefined && mockupUrl ? new Date() : undefined,
+        // Stamp the delivery once, on the transition from "no mockup" to
+        // "mockup". Re-stamping on every subsequent save meant fixing a typo
+        // in the URL three days later rewrote history to say the mockup had
+        // been delivered that afternoon — and every "days since we sent the
+        // mockup" figure hanging off it reset with it. Clearing the URL
+        // clears the stamp, so the pair can't disagree.
+        mockupDeliveredAt:
+          mockupUrl === undefined
+            ? undefined
+            : mockupUrl
+            ? existing.mockupDeliveredAt ?? new Date()
+            : null,
         qualNeed: qualNeed !== undefined ? qualNeed : undefined,
         qualAuthority: qualAuthority !== undefined ? qualAuthority : undefined,
         qualBudget: qualBudget !== undefined ? qualBudget : undefined,

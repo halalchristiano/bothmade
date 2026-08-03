@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { escapeHtml, escapeHtmlMultiline } from '@/lib/html';
+import { removeSuppressed, unsubscribeHeaders, withComplianceFooter } from '@/lib/compliance';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@bothmade.com';
@@ -17,6 +18,14 @@ export interface EmailData {
   fromName?: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
+  /**
+   * Send even to a suppressed address. Reserved for mail somebody is
+   * actively waiting on right now — a password reset they just requested.
+   * Never set this for anything resembling outreach.
+   */
+  bypassSuppression?: boolean;
+  /** Omit the address/unsubscribe block — internal team mail only. */
+  skipComplianceFooter?: boolean;
 }
 
 /**
@@ -24,13 +33,39 @@ export interface EmailData {
  */
 export async function sendEmail(data: EmailData): Promise<boolean> {
   try {
+    const recipients = Array.isArray(data.to) ? data.to : [data.to];
+
+    // Nothing leaves without an opt-out check. Transactional mail (a
+    // password reset, a receipt) is exempt from CAN-SPAM's opt-out
+    // requirement, but somebody who asked us to stop still means it, and a
+    // suppressed address is usually suppressed because mail to it bounces
+    // or gets marked as spam — both of which cost us deliverability for
+    // everyone else. Callers that genuinely must reach an address anyway
+    // pass `bypassSuppression`.
+    const allowed = data.bypassSuppression ? recipients : await removeSuppressed(recipients);
+    if (allowed.length === 0) {
+      console.warn('Email suppressed for all recipients:', data.subject);
+      return true; // Not a failure — the mail was correctly withheld.
+    }
+
+    // The footer, and the headers behind the client's own Unsubscribe
+    // button, are addressed to a single recipient. For a genuine multi-
+    // recipient internal email they'd be meaningless, so they're only
+    // attached when there is exactly one person on the To line.
+    const soleRecipient = allowed.length === 1 ? allowed[0] : null;
+    const html =
+      soleRecipient && !data.skipComplianceFooter
+        ? withComplianceFooter(data.html, soleRecipient, { dark: true })
+        : data.html;
+
     const result = await resend.emails.send({
       from: `${data.fromName || 'Bothmade'} <${CONTACT_EMAIL}>`,
-      to: data.to,
+      to: allowed,
       subject: data.subject,
-      html: data.html,
+      html,
       ...(data.replyTo ? { replyTo: data.replyTo } : {}),
       ...(data.attachments ? { attachments: data.attachments } : {}),
+      ...(soleRecipient ? { headers: unsubscribeHeaders(soleRecipient) } : {}),
     });
 
     if (result.error) {
@@ -407,6 +442,10 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string):
   return sendEmail({
     to: toEmail,
     subject: 'Reset your Bothmade password',
+    // Somebody is staring at a "check your email" screen right now. An
+    // unsubscribe from a marketing list must not lock them out of their
+    // own account.
+    bypassSuppression: true,
     html: renderShell({
       eyebrow: 'Security',
       title: 'Reset your password',
@@ -459,6 +498,7 @@ export async function sendWeeklyDigestEmail(
   return sendEmail({
     to: toEmails,
     subject: 'Your week at Bothmade',
+    skipComplianceFooter: true,
     html: renderShell({
       eyebrow: 'Weekly digest',
       title: 'Your week at Bothmade',

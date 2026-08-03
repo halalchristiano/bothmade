@@ -24,7 +24,13 @@ export function isDomainDelegationConfigured(): boolean {
  */
 export async function sendAsDelegatedUser(
   userEmail: string,
-  opts: { fromName?: string | null; to: string; subject: string; html: string }
+  opts: {
+    fromName?: string | null;
+    to: string;
+    subject: string;
+    html: string;
+    headers?: Record<string, string>;
+  }
 ): Promise<boolean> {
   const creds = getServiceAccountCreds();
   if (!creds) return false;
@@ -44,6 +50,7 @@ export async function sendAsDelegatedUser(
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
+      headers: opts.headers,
     });
 
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });

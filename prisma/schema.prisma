@@ -529,3 +529,23 @@ model OnboardingResponse {
 
   @@map("onboarding_responses")
 }
+
+// Addresses we may not email, for any reason — an unsubscribe click, a spam
+// complaint, a hard bounce, or a manual "never contact these people again".
+//
+// Checked immediately before every send rather than when a batch is built:
+// the gap between assembling a list and working through it is exactly where
+// a fresh opt-out gets missed, and under CAN-SPAM that gap is measured in
+// per-message fines.
+model EmailSuppression {
+  id     String @id @default(cuid())
+  email  String @unique // always stored lowercased and trimmed
+  reason String // "unsubscribe" | "complaint" | "bounce" | "manual"
+  // Where it came from — a webhook id, the admin who added it, the campaign.
+  source String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("email_suppressions")
+}

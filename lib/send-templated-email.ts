@@ -21,7 +21,7 @@ export interface SendTemplatedEmailInput {
 export interface SendTemplatedEmailResult {
   ok: boolean;
   error?: string;
-  sentVia?: 'delegated' | 'oauth' | 'gmail-app-password' | 'resend' | 'failed';
+  sentVia?: 'delegated' | 'oauth' | 'gmail-app-password' | 'resend' | 'suppressed' | 'failed';
 }
 
 export interface BuiltTemplatedEmail {

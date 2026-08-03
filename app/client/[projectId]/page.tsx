@@ -336,11 +336,25 @@ export default function ClientDashboard() {
     return (
       <main className="min-h-screen bg-[#05030a] text-white flex items-center justify-center px-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 max-w-md">
-          <h1 className="text-2xl font-bold mb-4">Error</h1>
+          <h1 className="text-2xl font-bold mb-4">We couldn&apos;t load this project</h1>
           <p className="text-white/50 mb-6">{error || 'Project not found'}</p>
-          <Link href="/client/login" className="text-sky-300 font-semibold hover:underline">
-            Back to Login
-          </Link>
+          {/* A genuine auth failure already redirected to the sign-in page
+              before we got here, so anything reaching this state is a
+              transient load failure on a session that is still perfectly
+              valid. Offering "Back to Login" told a signed-in client they'd
+              been signed out and sent them to re-enter a password they
+              didn't need. Retry first, then their own project list. */}
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={() => window.location.reload()}
+              className="rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20 transition-colors"
+            >
+              Try again
+            </button>
+            <Link href="/client/projects" className="text-sky-300 font-semibold hover:underline">
+              Back to your projects
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -722,7 +736,13 @@ export default function ClientDashboard() {
               <div className="w-full bg-white/10 rounded-full h-1.5 mb-6 overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, (project.amountPaid / project.totalPrice) * 100)}%` }}
+                  animate={{
+                    // A $0 project (a comped build, a placeholder) divided
+                    // to NaN and the bar rendered with width:"NaN%" —
+                    // ignored by the browser, so it silently showed an empty
+                    // bar on a project that is fully paid.
+                    width: `${project.totalPrice > 0 ? Math.min(100, (project.amountPaid / project.totalPrice) * 100) : 100}%`,
+                  }}
                   transition={{ duration: 1, ease: EASE, delay: 0.3 }}
                   className="bg-gradient-to-r from-emerald-400 to-sky-400 h-1.5 rounded-full"
                 />

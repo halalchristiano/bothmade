@@ -47,6 +47,22 @@ and Vercel — no amount of code changes fixes it.
 - [ ] **Verify**: open `/admin/settings`, the amber "isn't set up yet"
       notice should be gone and "Sign in with Google" should be clickable.
 
+## Required before sending another cold email
+
+- [ ] **Set `BOTHMADE_POSTAL_ADDRESS`** in Vercel to a real physical mailing
+      address (a street address, a registered PO box, or a commercial
+      mail-receiving agency). CAN-SPAM requires one in every commercial
+      email, and penalties are assessed **per message** — at a few hundred
+      cold emails a week that is not a theoretical exposure. Until it's set,
+      `lib/compliance.ts` prints "POSTAL ADDRESS NOT CONFIGURED" in the
+      footer, deliberately loudly, rather than shipping a plausible fake.
+- [ ] **Verify one-click unsubscribe end to end.** Send yourself a cold
+      email from the admin composer, confirm Gmail shows its own
+      "Unsubscribe" control next to the sender (that's the RFC 8058
+      `List-Unsubscribe-Post` header), click it, then confirm the address
+      appears in the `email_suppressions` table and a second send to it is
+      blocked.
+
 ## Required before running ads
 
 - [ ] **Set `NEXT_PUBLIC_BOOKING_URL`** in Vercel to the real Cal.com or

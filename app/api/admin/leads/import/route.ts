@@ -319,7 +319,13 @@ export async function POST(request: NextRequest) {
     const deduped = toCreate.filter((row) => {
       const email = row.email?.toLowerCase();
       const key = companyKey(row.company);
-      const isDup = email ? seenEmails.has(email) : seenCompanies.has(key);
+      // Either signal is enough. Checking the company name only when the
+      // row had no email meant a CSV that supplied an address for a business
+      // already in the pipeline sailed straight past the company check and
+      // created a second record — exactly the case where a duplicate does
+      // the most damage, because now two reps are working the same shop from
+      // two different rows.
+      const isDup = (!!email && seenEmails.has(email)) || seenCompanies.has(key);
       if (isDup) {
         duplicates++;
         if (duplicateNames.length < 5) duplicateNames.push(row.company);

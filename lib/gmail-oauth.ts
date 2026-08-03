@@ -151,7 +151,14 @@ export async function setupBounceFolder(client: GmailOAuthClient): Promise<Bounc
 /** Sends one email through the Gmail API as the OAuth-connected account — lands in their real Sent folder, no App Password involved. */
 export async function sendViaGmailOAuth(
   client: GmailOAuthClient,
-  opts: { fromEmail: string; fromName?: string | null; to: string; subject: string; html: string }
+  opts: {
+    fromEmail: string;
+    fromName?: string | null;
+    to: string;
+    subject: string;
+    html: string;
+    headers?: Record<string, string>;
+  }
 ): Promise<boolean> {
   try {
     const gmail = google.gmail({ version: 'v1', auth: client });
@@ -160,6 +167,7 @@ export async function sendViaGmailOAuth(
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
+      headers: opts.headers,
     });
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
     return true;

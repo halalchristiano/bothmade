@@ -131,14 +131,21 @@ export async function notifyAdminsPaymentReceived(params: {
   await notifyAdmins(`Payment received: ${params.projectName}`, html);
 }
 
+/**
+ * @param recipients Who to send to. Defaults to the whole team, which is
+ *   only right for unassigned leads — an assigned lead's digest goes to the
+ *   person who owns it, so the mail is all their work rather than mostly
+ *   somebody else's.
+ */
 export async function notifyAdminsStaleLeads(
-  leads: Array<{ id: string; company: string; daysSinceActivity: number }>
+  leads: Array<{ id: string; company: string; daysSinceActivity: number }>,
+  recipients?: string[]
 ): Promise<void> {
   if (leads.length === 0) return;
   const rows = leads
     .map(
       (l) =>
-        `<li><a href="${SITE_URL}/admin/leads/${l.id}">${l.company}</a> — ${l.daysSinceActivity} days since last activity</li>`
+        `<li><a href="${SITE_URL}/admin/leads/${l.id}">${escapeHtml(l.company)}</a> — ${l.daysSinceActivity} days since last activity</li>`
     )
     .join('');
   const html = wrap(
@@ -147,7 +154,13 @@ export async function notifyAdminsStaleLeads(
     `${SITE_URL}/admin/leads`,
     'View Leads'
   );
-  await notifyAdmins(`${leads.length} lead${leads.length === 1 ? '' : 's'} going cold`, html);
+  const subject = `${leads.length} lead${leads.length === 1 ? '' : 's'} going cold`;
+
+  if (recipients && recipients.length > 0) {
+    await sendEmail({ to: recipients, subject, html });
+    return;
+  }
+  await notifyAdmins(subject, html);
 }
 
 /**

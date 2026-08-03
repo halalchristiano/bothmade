@@ -4,8 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus, CheckCircle2 } from 'lucide-react';
-import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
+import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus, CheckCircle2, Trophy, XCircle } from 'lucide-react';
+import {
+  ACTIVE_LEAD_STATUSES,
+  LEAD_STATUSES,
+  LEAD_STATUS_SHORT_LABELS,
+  type LeadStatus,
+} from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { KanbanSquare } from 'lucide-react';
@@ -28,6 +33,20 @@ interface LeadCard {
 }
 
 const COLUMN_STATUSES: LeadStatus[] = [...LEAD_STATUSES];
+
+/**
+ * The stages the arrows actually walk through.
+ *
+ * They used to walk COLUMN_STATUSES, which ends [..., 'won', 'lost'] — so
+ * the forward arrow on a closed-won deal moved it to Lost. One mis-click on
+ * the happiest column on the board turned a signed customer into a dead
+ * lead, took the revenue out of the forecast, and needed someone to notice
+ * before it could be undone. Won and Lost are terminal: they are reached by
+ * an explicit action, never by stepping forward off the end of the pipeline.
+ */
+const MOVABLE_STATUSES: LeadStatus[] = [...ACTIVE_LEAD_STATUSES];
+
+const isTerminal = (status: LeadStatus) => status === 'won' || status === 'lost';
 
 const COLUMN_ACCENT: Record<LeadStatus, string> = {
   new: 'border-t-white/30',
@@ -125,16 +144,15 @@ export default function PipelinePage() {
   };
 
   const handleMove = (lead: LeadCard, direction: 1 | -1) => {
-    const idx = COLUMN_STATUSES.indexOf(lead.status);
-    const nextIdx = idx + direction;
-    if (nextIdx < 0 || nextIdx >= COLUMN_STATUSES.length) return;
-    const nextStatus = COLUMN_STATUSES[nextIdx];
+    // A closed deal doesn't step anywhere. Reopening one is a deliberate
+    // act, not an arrow press.
+    if (isTerminal(lead.status)) return;
 
-    if (nextStatus === 'lost') {
-      setPendingLostMove(lead);
-      return;
-    }
-    applyStatusChange(lead.id, nextStatus);
+    const idx = MOVABLE_STATUSES.indexOf(lead.status);
+    const nextIdx = idx + direction;
+    if (idx === -1 || nextIdx < 0 || nextIdx >= MOVABLE_STATUSES.length) return;
+
+    applyStatusChange(lead.id, MOVABLE_STATUSES[nextIdx]);
   };
 
   if (loading) {
@@ -238,7 +256,7 @@ export default function PipelinePage() {
                         <div className="flex items-center gap-0.5">
                           <button
                             onClick={() => handleMove(lead, -1)}
-                            disabled={COLUMN_STATUSES.indexOf(status) === 0}
+                            disabled={isTerminal(status) || MOVABLE_STATUSES.indexOf(status) <= 0}
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                             aria-label="Move back"
                           >
@@ -246,12 +264,39 @@ export default function PipelinePage() {
                           </button>
                           <button
                             onClick={() => handleMove(lead, 1)}
-                            disabled={COLUMN_STATUSES.indexOf(status) === COLUMN_STATUSES.length - 1}
+                            disabled={
+                              isTerminal(status) ||
+                              MOVABLE_STATUSES.indexOf(status) === MOVABLE_STATUSES.length - 1
+                            }
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                             aria-label="Move forward"
                           >
                             <ArrowRight size={13} />
                           </button>
+
+                          {/* Closing a deal is now its own action rather than
+                              something you fall into by pressing forward one
+                              time too many. */}
+                          {!isTerminal(status) && (
+                            <>
+                              <button
+                                onClick={() => applyStatusChange(lead.id, 'won')}
+                                className="p-1 rounded-lg hover:bg-emerald-400/15 text-white/30 hover:text-emerald-300 transition-colors"
+                                title="Mark won"
+                                aria-label={`Mark ${lead.company} as won`}
+                              >
+                                <Trophy size={13} />
+                              </button>
+                              <button
+                                onClick={() => setPendingLostMove(lead)}
+                                className="p-1 rounded-lg hover:bg-red-400/15 text-white/30 hover:text-red-300 transition-colors"
+                                title="Mark lost"
+                                aria-label={`Mark ${lead.company} as lost`}
+                              >
+                                <XCircle size={13} />
+                              </button>
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center gap-0.5">
                           {lead.phone && (

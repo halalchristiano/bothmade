@@ -3,6 +3,7 @@ import { decryptSecret } from '@/lib/crypto';
 import { sendEmail as sendViaResend } from '@/lib/email';
 import { sendAsDelegatedUser, isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient, sendViaGmailOAuth, type GmailOAuthClient } from '@/lib/gmail-oauth';
+import { isSuppressed, unsubscribeHeaders, withComplianceFooter } from '@/lib/compliance';
 
 export interface SenderIdentity {
   name: string | null;
@@ -21,7 +22,7 @@ export interface OutgoingEmail {
 export interface SendAsUserResult {
   ok: boolean;
   /** Which path actually sent it — everything except 'resend'/'failed' lands in the sender's real Gmail Sent folder. */
-  sentVia: 'delegated' | 'oauth' | 'gmail-app-password' | 'resend' | 'failed';
+  sentVia: 'delegated' | 'oauth' | 'gmail-app-password' | 'resend' | 'suppressed' | 'failed';
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,12 +76,25 @@ export async function sendAsUser(
   email: OutgoingEmail,
   opts?: { gmailTransport?: GmailTransport; gmailOAuthClient?: GmailOAuthClient }
 ): Promise<SendAsUserResult> {
+  // This is the cold-outreach path, so the compliance obligations bite
+  // hardest here: an opt-out check before anything leaves, a physical
+  // postal address and a working unsubscribe link in the body, and RFC 8058
+  // headers so Gmail's own Unsubscribe button works. Fines are per message.
+  if (await isSuppressed(email.to)) {
+    console.warn('Outbound send blocked by suppression list:', email.to);
+    return { ok: true, sentVia: 'suppressed' };
+  }
+
+  const html = withComplianceFooter(email.html, email.to, { dark: true });
+  const headers = unsubscribeHeaders(email.to);
+
   if (sender.email && isDomainDelegationConfigured()) {
     const sent = await sendAsDelegatedUser(sender.email, {
       fromName: sender.name,
       to: email.to,
       subject: email.subject,
-      html: email.html,
+      html,
+      headers,
     });
     if (sent) return { ok: true, sentVia: 'delegated' };
   }
@@ -93,7 +107,8 @@ export async function sendAsUser(
         fromName: sender.name,
         to: email.to,
         subject: email.subject,
-        html: email.html,
+        html,
+        headers,
       });
       if (sent) return { ok: true, sentVia: 'oauth' };
     } catch (error) {
@@ -116,7 +131,8 @@ export async function sendAsUser(
         from: sender.name ? `${sender.name} <${sender.gmailAddress}>` : sender.gmailAddress,
         to: email.to,
         subject: email.subject,
-        html: email.html,
+        html,
+        headers,
       });
       return { ok: true, sentVia: 'gmail-app-password' };
     } catch (error) {
@@ -127,9 +143,11 @@ export async function sendAsUser(
   const sent = await sendViaResend({
     to: email.to,
     subject: email.subject,
-    html: email.html,
+    html,
     fromName: sender.name || undefined,
     replyTo: sender.email || undefined,
+    // The footer and suppression check already ran above.
+    skipComplianceFooter: true,
   });
   return { ok: sent, sentVia: sent ? 'resend' : 'failed' };
 }

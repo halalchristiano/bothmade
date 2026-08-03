@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { unauthorizedResponse } from '@/lib/middleware';
-import { decryptSecret } from '@/lib/crypto';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
@@ -64,8 +63,14 @@ export async function POST(
         name: sender.name,
         email: sender.email,
         gmailAddress: sender.gmailAddress,
-        gmailAppPassword: sender.gmailAppPassword ? decryptSecret(sender.gmailAppPassword) : null,
-        googleRefreshToken: sender.googleRefreshToken ? decryptSecret(sender.googleRefreshToken) : null,
+        // Pass these through still encrypted. sendAsUser() decrypts them
+        // itself, so decrypting here handed it ciphertext-of-plaintext:
+        // both Gmail paths threw, were swallowed by their catch blocks, and
+        // every follow-up silently went out from the shared Resend address
+        // instead of the rep's own mailbox. Every other caller passes the
+        // stored values untouched; this one was the odd one out.
+        gmailAppPassword: sender.gmailAppPassword,
+        googleRefreshToken: sender.googleRefreshToken,
       },
       {
         to: lead.email,

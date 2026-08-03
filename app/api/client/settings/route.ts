@@ -108,14 +108,26 @@ export async function PATCH(request: NextRequest) {
 
     let preferences = null;
     if (hasPreferenceUpdate) {
-      preferences = await prisma.emailPreferences.update({
+      // upsert, not update. The preferences row is only created alongside a
+      // brand-new client in the Stripe webhook, so every client onboarded by
+      // hand — and every client created before that row existed — got a 500
+      // the first time they touched a notification toggle, with no way to
+      // ever set one.
+      preferences = await prisma.emailPreferences.upsert({
         where: { clientId: session.clientId },
-        data: {
+        update: {
           notificationsEnabled:
             notificationsEnabled !== undefined ? notificationsEnabled : undefined,
           digestFrequency: digestFrequency || undefined,
           statusUpdates: statusUpdates !== undefined ? statusUpdates : undefined,
           messages: messages !== undefined ? messages : undefined,
+        },
+        create: {
+          clientId: session.clientId,
+          notificationsEnabled: notificationsEnabled ?? true,
+          digestFrequency: digestFrequency || 'daily',
+          statusUpdates: statusUpdates ?? true,
+          messages: messages ?? true,
         },
       });
     }
