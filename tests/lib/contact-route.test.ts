@@ -20,6 +20,14 @@ const leadCreate = vi.fn();
 const leadUpdate = vi.fn();
 const activityCreate = vi.fn();
 const userFindFirst = vi.fn();
+/**
+ * Stand-in for the `rate_limits` table the limiter counts in. Without it
+ * every request here would take the limiter's database-unreachable path, so
+ * the rate-limit case below would be asserting the in-memory fallback rather
+ * than what actually runs in production.
+ */
+const rateLimitRows = new Map<string, { count: number; windowStart: Date }>();
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     lead: {
@@ -29,6 +37,20 @@ vi.mock('@/lib/prisma', () => ({
     },
     leadActivity: { create: (...args: unknown[]) => activityCreate(...args) },
     user: { findFirst: (...args: unknown[]) => userFindFirst(...args) },
+    rateLimit: { deleteMany: async () => ({ count: 0 }) },
+    $queryRaw: (_sql: TemplateStringsArray, ...params: unknown[]) => {
+      const key = params[0] as string;
+      const windowMs = params[1] as number;
+      const now = Date.now();
+      const existing = rateLimitRows.get(key);
+      if (!existing || now - existing.windowStart.getTime() >= windowMs) {
+        const row = { count: 1, windowStart: new Date(now) };
+        rateLimitRows.set(key, row);
+        return Promise.resolve([{ ...row }]);
+      }
+      existing.count += 1;
+      return Promise.resolve([{ ...existing }]);
+    },
   },
 }));
 
@@ -60,8 +82,8 @@ const VALID = {
 };
 
 /**
- * The route rate-limits per client IP in a module-level map that persists
- * across tests, so every case gets its own address.
+ * The route rate-limits per client IP, and the counters persist across
+ * tests, so every case gets its own address.
  */
 let ip = 0;
 function freshIp() {
@@ -287,6 +309,21 @@ describe('POST /api/contact — rejections', () => {
     for (let i = 0; i < 3; i++) {
       expect((await POST(request(VALID, headers))).status).toBe(200);
     }
-    expect((await POST(request(VALID, headers))).status).toBe(429);
+
+    const blocked = await POST(request(VALID, headers));
+
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('Retry-After')).toBeTruthy();
+  });
+
+  it('does not spend the quote form budget for the same caller', async () => {
+    const headers = freshIp();
+    for (let i = 0; i < 4; i++) await POST(request(VALID, headers));
+
+    // Budgets are namespaced per endpoint, so a blocked contact form must
+    // not also lock this caller out of asking for a quote.
+    const { rateLimitKey } = await import('@/lib/rate-limit');
+    const req = { headers: { get: (n: string) => headers[n.toLowerCase() as keyof typeof headers] ?? null } };
+    expect(rateLimitKey('contact', req as never)).not.toBe(rateLimitKey('interest', req as never));
   });
 });

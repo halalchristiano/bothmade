@@ -8,9 +8,26 @@ import type { NextRequest } from 'next/server';
  * regression they exist to catch is somebody removing the guard.
  */
 
+/** Stand-in for the rate_limits table, so the real window logic runs. */
+const counters = new Map<string, { count: number; windowStart: Date }>();
+
 const prisma = {
   user: { findUnique: vi.fn(), create: vi.fn() },
   client: { findUnique: vi.fn(), update: vi.fn() },
+  rateLimit: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  $queryRaw: (_sql: TemplateStringsArray, ...params: unknown[]) => {
+    const key = params[0] as string;
+    const windowMs = params[1] as number;
+    const now = Date.now();
+    const existing = counters.get(key);
+    if (!existing || now - existing.windowStart.getTime() >= windowMs) {
+      const row = { count: 1, windowStart: new Date(now) };
+      counters.set(key, row);
+      return Promise.resolve([{ ...row }]);
+    }
+    existing.count += 1;
+    return Promise.resolve([{ ...existing }]);
+  },
 };
 const verifyPassword = vi.fn();
 
@@ -26,7 +43,7 @@ vi.mock('@/lib/email', () => ({ sendPasswordResetEmail: vi.fn() }));
 
 const { POST: adminLogin } = await import('@/app/api/auth/admin/login/route');
 const { POST: clientLogin } = await import('@/app/api/auth/login/route');
-const { RATE_LIMITS, __resetInMemoryRateLimits } = await import('@/lib/rate-limit');
+const { RATE_LIMITS } = await import('@/lib/rate-limit');
 
 function loginRequest(body: unknown, ip = '9.9.9.9'): NextRequest {
   return {
@@ -37,9 +54,7 @@ function loginRequest(body: unknown, ip = '9.9.9.9'): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  __resetInMemoryRateLimits();
-  delete process.env.UPSTASH_REDIS_REST_URL;
-  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  counters.clear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   prisma.user.findUnique.mockResolvedValue({
     id: 'u1',

@@ -13,13 +13,13 @@ generator client {
 
 // User accounts (Bothmade team members)
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  password  String     // bcrypted
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String // bcrypted
   name      String?
-  role      String     @default("admin") // "owner" (Kiana — PM/ops), "sales" (Evan — CRM/closing), "admin" (generic)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  role      String   @default("admin") // "owner" (Kiana — PM/ops), "sales" (Evan — CRM/closing), "admin" (generic)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Gmail "send as" connection — lets client emails go out from the user's
   // own Gmail address (and land in their real Sent folder) instead of a
@@ -55,15 +55,15 @@ model User {
   weeklyDigestOptOut Boolean @default(false)
 
   // Relations
-  clientMessages  ProjectMessage[] @relation("SentByUser")
-  adminUpdates    ProjectUpdate[]  @relation("CreatedByAdmin")
-  assignedLeads   Lead[]           @relation("AssignedLeads")
-  leadActivities  LeadActivity[]   @relation("LeadActivityAuthor")
-  teamNotes       TeamNote[]       @relation("TeamNoteAuthor")
-  tasks           Task[]           @relation("TaskAssignee")
-  createdTasks    Task[]           @relation("TaskCreator")
-  sentTeamMessages     TeamMessage[] @relation("TeamMessageSender")
-  receivedTeamMessages TeamMessage[] @relation("TeamMessageRecipient")
+  clientMessages       ProjectMessage[] @relation("SentByUser")
+  adminUpdates         ProjectUpdate[]  @relation("CreatedByAdmin")
+  assignedLeads        Lead[]           @relation("AssignedLeads")
+  leadActivities       LeadActivity[]   @relation("LeadActivityAuthor")
+  teamNotes            TeamNote[]       @relation("TeamNoteAuthor")
+  tasks                Task[]           @relation("TaskAssignee")
+  createdTasks         Task[]           @relation("TaskCreator")
+  sentTeamMessages     TeamMessage[]    @relation("TeamMessageSender")
+  receivedTeamMessages TeamMessage[]    @relation("TeamMessageRecipient")
   csvImportLogs        CsvImportLog[]
 
   @@map("users")
@@ -71,29 +71,29 @@ model User {
 
 // Clients who have signed up via Stripe
 model Client {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  password    String   // bcrypted - auto-generated on first signup
+  id          String  @id @default(cuid())
+  email       String  @unique
+  password    String // bcrypted - auto-generated on first signup
   company     String
   phone       String?
   contactName String?
 
   // Stripe integration
   stripeCustomerId String?
-  subscription     String?  // "starter", "pro", "enterprise"
-  subscriptionTier Int      @default(1) // 1 = Starter ($2500), 2 = Pro ($5000), 3 = Enterprise (custom)
+  subscription     String? // "starter", "pro", "enterprise"
+  subscriptionTier Int     @default(1) // 1 = Starter ($2500), 2 = Pro ($5000), 3 = Enterprise (custom)
 
   // Status
-  onboardingComplete Boolean  @default(false)
-  mustChangePassword Boolean  @default(true) // forces a password reset on first login after being auto-generated
+  onboardingComplete Boolean   @default(false)
+  mustChangePassword Boolean   @default(true) // forces a password reset on first login after being auto-generated
   lastLoginAt        DateTime?
   archivedAt         DateTime? // "decommissioned" — hidden from active lists, login blocked, but records kept intact
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   // Relations
   projects         Project[]
-  messages         ProjectMessage[] @relation("SentByClient")
+  messages         ProjectMessage[]  @relation("SentByClient")
   emailPreferences EmailPreferences?
 
   @@map("clients")
@@ -101,27 +101,27 @@ model Client {
 
 // Projects (deliverables for clients)
 model Project {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   name        String
   description String?
-  status      String   @default("discovery") // "discovery", "design", "build", "launch", "complete"
-  statusStage Int      @default(0) // 0-4 corresponding to status above
+  status      String  @default("discovery") // "discovery", "design", "build", "launch", "complete"
+  statusStage Int     @default(0) // 0-4 corresponding to status above
 
   // Project details
-  baseService String   // "website", "web-app", "ios-app", "macos-app", "visionos", "multi"
-  addOns      String   @default("") // comma-separated: "seo", "analytics", "maintenance", "hosting"
+  baseService String // "website", "web-app", "ios-app", "macos-app", "visionos", "multi"
+  addOns      String @default("") // comma-separated: "seo", "analytics", "maintenance", "hosting"
   // Ad-hoc items added on the lead's proposal beyond the fixed catalogue,
   // carried over so onboarding shows the full scope the client paid for.
   // [{ label: string, priceCents: int }]
-  customItems Json     @default("[]")
+  customItems Json   @default("[]")
 
   // Timeline & pricing
-  timeline    String?  // "4 weeks", "8 weeks", "12 weeks", etc.
-  basePrice   Int      // in cents
-  totalPrice  Int      // in cents (including add-ons)
+  timeline   String? // "4 weeks", "8 weeks", "12 weeks", etc.
+  basePrice  Int // in cents
+  totalPrice Int // in cents (including add-ons)
 
   // Rough target date for the current stage, shown to the client for
   // reassurance — set manually by the team, not derived/computed.
@@ -141,7 +141,7 @@ model Project {
   // Sales handoff tracking — links back to the Lead this was converted from
   // (when it came through the sales CRM rather than a direct client signup),
   // and when ops acknowledged picking up a freshly-converted project.
-  convertedFromLeadId String?
+  convertedFromLeadId   String?
   handoffAcknowledgedAt DateTime?
 
   // Copy of the exact contract the client agreed to before paying (or the
@@ -155,8 +155,8 @@ model Project {
   lastPaymentReminderSentAt DateTime?
 
   // Metadata
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   messages            ProjectMessage[]
@@ -170,20 +170,20 @@ model Project {
 
 // Messages between client and team in project thread
 model ProjectMessage {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   // Message content
-  content   String
+  content     String
   isFromAdmin Boolean @default(false) // true if from User (admin), false if from Client
 
   // Sender info
-  userId    String?
-  user      User?    @relation("SentByUser", fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  user   User?   @relation("SentByUser", fields: [userId], references: [id], onDelete: SetNull)
 
-  clientId  String?
-  client    Client?  @relation("SentByClient", fields: [clientId], references: [id], onDelete: SetNull)
+  clientId String?
+  client   Client? @relation("SentByClient", fields: [clientId], references: [id], onDelete: SetNull)
 
   // File attachments (URLs)
   attachments String @default("") // JSON array of { name, url }
@@ -195,28 +195,28 @@ model ProjectMessage {
 
 // Project status updates (visible to client in dashboard)
 model ProjectUpdate {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   title       String
   description String
-  statusStage String  // "discovery", "design", "build", "launch"
+  statusStage String // "discovery", "design", "build", "launch"
 
   // Who created this update (null for system-generated updates, e.g. post-checkout)
-  userId      String?
-  user        User?   @relation("CreatedByAdmin", fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  user   User?   @relation("CreatedByAdmin", fields: [userId], references: [id], onDelete: SetNull)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@map("project_updates")
 }
 
 // Email notification preferences
 model EmailPreferences {
-  id        String   @id @default(cuid())
-  clientId  String   @unique
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   notificationsEnabled Boolean @default(true)
   digestFrequency      String  @default("daily") // "immediate", "daily", "weekly"
@@ -231,32 +231,32 @@ model EmailPreferences {
 
 // Sales CRM: prospective clients Evan (or anyone on the team) is working
 model Lead {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   company        String
   contactName    String?
   email          String?
   phone          String?
-  status         String   @default("new") // "new", "contacted", "qualified", "proposal", "won", "lost"
+  status         String  @default("new") // "new", "contacted", "qualified", "proposal", "won", "lost"
   source         String? // "referral", "cold-outreach", "inbound", etc.
   estimatedValue Int? // cents
-  painPoints     String   @default("") // comma-separated tags, e.g. "no-mobile-app,slow-site"
+  painPoints     String  @default("") // comma-separated tags, e.g. "no-mobile-app,slow-site"
   notes          String? // freeform quick notes, separate from the activity timeline
 
   hotLead        Boolean   @default(false) // flagged by sales as a priority deal
-  lostReason     String?   // freeform reason captured when status is set to "lost"
+  lostReason     String? // freeform reason captured when status is set to "lost"
   nextFollowUpAt DateTime? // self-set reminder date for the next touch
   contractStatus String    @default("not_sent") // "not_sent", "sent", "signed"
 
   mockupRequested   Boolean   @default(false) // Evan asking Kiana to put together a mockup for this lead
   mockupRequestedAt DateTime?
-  mockupUrl         String?   // link to the finished mockup, once delivered
+  mockupUrl         String? // link to the finished mockup, once delivered
   mockupDeliveredAt DateTime?
 
   // A fully pre-written cold email (subject on the first line as "Subject: ...",
   // body after), usually populated via CSV import from research done ahead of
   // outreach — lets a lead be cold-emailed in one click with zero typing,
   // instead of routing through the template composer every time.
-  coldEmailDraft String?
+  coldEmailDraft  String?
   coldEmailSentAt DateTime?
 
   // Set when a send attempt to this lead's email actually fails (bounced,
@@ -264,7 +264,7 @@ model Lead {
   // Surfaced as its own "couldn't reach — call instead" list so a bad
   // address doesn't just quietly vanish from the ready-to-send count.
   // Cleared automatically the next time a send to this lead succeeds.
-  emailDeliveryFailedAt DateTime?
+  emailDeliveryFailedAt     DateTime?
   emailDeliveryFailedReason String?
 
   // A short one-liner (not the full draft above) usable as the "personalized
@@ -321,16 +321,16 @@ model Lead {
 
   // The proposal Evan prepared, persisted so the public sign-and-pay page
   // can reconstruct the exact same pricing/contract without re-entering it.
-  proposalBaseService  String?
-  proposalAddOns       String  @default("") // comma-separated
-  proposalClientType   String?
-  proposalTimeline     String?
-  proposalTotalPrice   Int? // cents, overrides the computed total if set
-  proposalDepositOnly  Boolean @default(false)
+  proposalBaseService String?
+  proposalAddOns      String  @default("") // comma-separated
+  proposalClientType  String?
+  proposalTimeline    String?
+  proposalTotalPrice  Int? // cents, overrides the computed total if set
+  proposalDepositOnly Boolean @default(false)
   // Ad-hoc items Evan adds beyond the fixed catalogue — a name and a price he
   // sets himself. Stored as-is (not looked up against ADD_ONS) since these
   // don't correspond to any catalogue key. [{ label: string, priceCents: int }]
-  proposalCustomItems  Json    @default("[]")
+  proposalCustomItems Json    @default("[]")
 
   // Clickwrap agreement captured at the moment the client agrees to the
   // contract on the sign-and-pay page, right before checkout.
@@ -356,14 +356,14 @@ model Lead {
 // instead of relying on memory or reverse-engineering it from lead
 // createdAt timestamps.
 model CsvImportLog {
-  id             String   @id @default(cuid())
-  fileName       String?
-  rowCount       Int
-  importedCount  Int
-  skippedCount   Int
-  importedById   String?
-  importedBy     User?    @relation(fields: [importedById], references: [id], onDelete: SetNull)
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  fileName      String?
+  rowCount      Int
+  importedCount Int
+  skippedCount  Int
+  importedById  String?
+  importedBy    User?    @relation(fields: [importedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
 
   @@map("csv_import_logs")
 }
@@ -471,10 +471,10 @@ model Payment {
 // A personal to-do — assignable to any team member, optionally linked to a
 // lead or project so it shows up in context, but also usable standalone.
 model Task {
-  id      String  @id @default(cuid())
-  title   String
-  done    Boolean @default(false)
-  dueAt   DateTime?
+  id    String    @id @default(cuid())
+  title String
+  done  Boolean   @default(false)
+  dueAt DateTime?
 
   assignedToId String
   assignedTo   User   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Cascade)
@@ -507,8 +507,8 @@ model TeamMessage {
   relatedLeadId    String?
   relatedProjectId String?
 
-  urgent   Boolean   @default(false) // a flagged question needing action, not just a casual chat message
-  resolved Boolean   @default(false)
+  urgent   Boolean @default(false) // a flagged question needing action, not just a casual chat message
+  resolved Boolean @default(false)
 
   readAt    DateTime?
   createdAt DateTime  @default(now())
@@ -528,4 +528,25 @@ model OnboardingResponse {
   updatedAt DateTime @updatedAt
 
   @@map("onboarding_responses")
+}
+
+// One row per rate-limited caller per endpoint.
+//
+// Rate limits have to be shared across every serverless instance to mean
+// anything — a per-process counter hands an attacker a fresh budget with
+// each cold start. This app already has a Postgres connection open on every
+// one of these routes, so the limit lives here rather than behind another
+// service to provision, pay for, and monitor. Volume is a handful of writes
+// per human action, which is noise next to the queries those routes already
+// run.
+model RateLimit {
+  // "rl:<scope>:<caller>", e.g. "rl:admin-login:203.0.113.4"
+  key         String   @id
+  count       Int      @default(1)
+  // Start of the current window. Rolls forward when the window lapses.
+  windowStart DateTime @default(now())
+
+  // Lets the opportunistic sweep find lapsed rows without a full scan.
+  @@index([windowStart])
+  @@map("rate_limits")
 }

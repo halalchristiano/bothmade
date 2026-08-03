@@ -1,50 +1,65 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  RATE_LIMITS,
-  __resetInMemoryRateLimits,
-  checkRateLimit,
-  clientIp,
-  enforceRateLimit,
-  hasDurableRateLimitStore,
-  rateLimitKey,
-  rateLimitResponse,
-} from '@/lib/rate-limit';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 /**
  * This is the only thing standing between a script and an unlimited number
  * of password guesses against the admin login, so the cases that matter are
- * the unhappy ones: what happens when Redis is missing, slow, or lying.
+ * the unhappy ones: what happens when the counter's store is unreachable, or
+ * answers with something unexpected.
  */
+
+/** Stand-in for the `rate_limits` table, so the window logic is exercised for real. */
+const table = new Map<string, { count: number; windowStart: Date }>();
+let queryRawImpl: ((sql: TemplateStringsArray, ...params: unknown[]) => Promise<unknown>) | null = null;
+
+const prisma = {
+  $queryRaw: (sql: TemplateStringsArray, ...params: unknown[]) => {
+    if (queryRawImpl) return queryRawImpl(sql, ...params);
+    // params are [key, windowMs, windowMs] in the order they appear in the SQL.
+    const key = params[0] as string;
+    const windowMs = params[1] as number;
+    const now = Date.now();
+    const existing = table.get(key);
+
+    if (!existing || now - existing.windowStart.getTime() >= windowMs) {
+      const row = { count: 1, windowStart: new Date(now) };
+      table.set(key, row);
+      return Promise.resolve([{ ...row }]);
+    }
+    existing.count += 1;
+    return Promise.resolve([{ ...existing }]);
+  },
+  rateLimit: {
+    deleteMany: vi.fn(async (_args: { where: { windowStart: { lt: Date } } }) => ({ count: 0 })),
+  },
+};
+
+vi.mock('@/lib/prisma', () => ({ prisma }));
+
+const {
+  RATE_LIMITS,
+  __resetInMemoryRateLimits,
+  checkRateLimit,
+  clientIp,
+  enforceRateLimit,
+  rateLimitKey,
+  rateLimitResponse,
+} = await import('@/lib/rate-limit');
 
 function request(headers: Record<string, string> = {}): NextRequest {
   return {
-    headers: {
-      get: (name: string) => headers[name.toLowerCase()] ?? null,
-    },
+    headers: { get: (name: string) => headers[name.toLowerCase()] ?? null },
   } as unknown as NextRequest;
 }
 
-/** Builds an Upstash pipeline response for a given post-increment count. */
-function upstashReply(count: number, pttl = 60_000) {
-  return {
-    ok: true,
-    json: async () => [{ result: count }, { result: 1 }, { result: pttl }],
-  };
-}
-
 beforeEach(() => {
+  table.clear();
+  queryRawImpl = null;
   __resetInMemoryRateLimits();
-  delete process.env.UPSTASH_REDIS_REST_URL;
-  delete process.env.UPSTASH_REDIS_REST_TOKEN;
-  vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-describe('the in-memory window (no Redis configured)', () => {
+describe('counting against the shared store', () => {
   const rule = { max: 3, windowMs: 60_000 };
 
   it('allows up to the limit and then blocks', async () => {
@@ -54,15 +69,43 @@ describe('the in-memory window (no Redis configured)', () => {
     expect((await checkRateLimit('k', rule)).allowed).toBe(false);
   });
 
-  it('reports itself as the in-memory store', async () => {
-    expect((await checkRateLimit('k', rule)).store).toBe('memory');
-    expect(hasDurableRateLimitStore()).toBe(false);
+  it('answers from the database, not a per-process counter', async () => {
+    expect((await checkRateLimit('k', rule)).store).toBe('db');
   });
 
   it('gives each key its own budget', async () => {
     for (let i = 0; i < rule.max; i++) await checkRateLimit('a', rule);
     expect((await checkRateLimit('a', rule)).allowed).toBe(false);
     expect((await checkRateLimit('b', rule)).allowed).toBe(true);
+  });
+
+  it('counts and expires in a single statement, so two instances cannot race', async () => {
+    const seen: string[] = [];
+    queryRawImpl = async (sql) => {
+      seen.push(sql.join('?'));
+      return [{ count: 1, windowStart: new Date() }];
+    };
+
+    await checkRateLimit('rl:login:1.2.3.4', rule);
+
+    // A read followed by a write is exactly the race an attacker exploits.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatch(/INSERT INTO "rate_limits"/);
+    expect(seen[0]).toMatch(/ON CONFLICT \("key"\) DO UPDATE/);
+    expect(seen[0]).toMatch(/RETURNING/);
+  });
+
+  it('passes the key and window as bound parameters, not string-interpolated SQL', async () => {
+    let captured: unknown[] = [];
+    queryRawImpl = async (_sql, ...params) => {
+      captured = params;
+      return [{ count: 1, windowStart: new Date() }];
+    };
+
+    await checkRateLimit("rl:login:'; DROP TABLE users; --", rule);
+
+    expect(captured[0]).toBe("rl:login:'; DROP TABLE users; --");
+    expect(captured).toContain(rule.windowMs);
   });
 
   it('returns a positive retry-after once blocked', async () => {
@@ -73,7 +116,24 @@ describe('the in-memory window (no Redis configured)', () => {
     expect(blocked.retryAfterSeconds).toBeLessThanOrEqual(rule.windowMs / 1000);
   });
 
-  it('lets the caller back in once the window has slid past', async () => {
+  it('derives retry-after from how much of the window is left', async () => {
+    queryRawImpl = async () => [
+      { count: rule.max + 1, windowStart: new Date(Date.now() - 20_000) },
+    ];
+
+    // 60s window, 20s elapsed — 40s to wait.
+    expect((await checkRateLimit('k', rule)).retryAfterSeconds).toBe(40);
+  });
+
+  it('never returns a negative or zero wait for an already-lapsed row', async () => {
+    queryRawImpl = async () => [
+      { count: rule.max + 1, windowStart: new Date(Date.now() - 10 * rule.windowMs) },
+    ];
+
+    expect((await checkRateLimit('k', rule)).retryAfterSeconds).toBe(1);
+  });
+
+  it('lets the caller back in once the window has lapsed', async () => {
     vi.useFakeTimers();
     try {
       for (let i = 0; i < rule.max; i++) await checkRateLimit('k', rule);
@@ -86,131 +146,29 @@ describe('the in-memory window (no Redis configured)', () => {
       vi.useRealTimers();
     }
   });
-
-  it('does not count blocked attempts against the window, so a flood cannot extend the block', async () => {
-    vi.useFakeTimers();
-    try {
-      for (let i = 0; i < rule.max; i++) await checkRateLimit('k', rule);
-
-      // Hammer it for most of the window.
-      vi.advanceTimersByTime(rule.windowMs - 1000);
-      for (let i = 0; i < 50; i++) await checkRateLimit('k', rule);
-
-      // The original window still expires on schedule.
-      vi.advanceTimersByTime(1001);
-      expect((await checkRateLimit('k', rule)).allowed).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 });
 
-describe('the Redis store', () => {
-  const rule = { max: 5, windowMs: 60_000 };
-
-  beforeEach(() => {
-    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
-    process.env.UPSTASH_REDIS_REST_TOKEN = 'token123';
-  });
-
-  it('is reported as durable once configured', () => {
-    expect(hasDurableRateLimitStore()).toBe(true);
-  });
-
-  it('allows while the count is within the limit', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => upstashReply(3)));
-
-    const result = await checkRateLimit('k', rule);
-
-    expect(result).toMatchObject({ allowed: true, store: 'redis' });
-  });
-
-  it('allows the request that exactly reaches the limit', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => upstashReply(rule.max)));
-    expect((await checkRateLimit('k', rule)).allowed).toBe(true);
-  });
-
-  it('blocks the one after, and derives retry-after from the key TTL', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => upstashReply(rule.max + 1, 42_000)));
-
-    const result = await checkRateLimit('k', rule);
-
-    expect(result).toMatchObject({ allowed: false, store: 'redis' });
-    expect(result.retryAfterSeconds).toBe(42);
-  });
-
-  it('counts and expires atomically in one round trip', async () => {
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => upstashReply(1));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await checkRateLimit('rl:login:1.2.3.4', rule);
-
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('https://redis.test/pipeline');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer token123');
-    expect(JSON.parse(init.body as string)).toEqual([
-      ['INCR', 'rl:login:1.2.3.4'],
-      ['PEXPIRE', 'rl:login:1.2.3.4', '60000', 'NX'],
-      ['PTTL', 'rl:login:1.2.3.4'],
-    ]);
-  });
-
-  it('tolerates a trailing slash on the configured URL', async () => {
-    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test/';
-    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => upstashReply(1));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await checkRateLimit('k', rule);
-
-    expect(fetchMock.mock.calls[0]![0]).toBe('https://redis.test/pipeline');
-  });
-
-  it('falls back to a sane retry-after when the TTL is missing', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => [{ result: rule.max + 1 }, { result: 0 }, { result: -1 }],
-      }))
-    );
-
-    const result = await checkRateLimit('k', rule);
-
-    expect(result.allowed).toBe(false);
-    expect(result.retryAfterSeconds).toBe(60);
-  });
-});
-
-describe('when Redis is configured but unhealthy', () => {
+describe('when the database is unreachable', () => {
   const rule = { max: 2, windowMs: 60_000 };
 
   beforeEach(() => {
-    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
-    process.env.UPSTASH_REDIS_REST_TOKEN = 'token123';
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  const unhealthy: Array<[string, () => unknown]> = [
-    ['the request throws', () => { throw new TypeError('network down'); }],
-    ['it times out', () => { throw new DOMException('The operation was aborted', 'TimeoutError'); }],
-    ['it returns a non-2xx', () => ({ ok: false, json: async () => ({}) })],
-    ['the body is not a pipeline array', () => ({ ok: true, json: async () => ({ error: 'nope' }) })],
-    ['a pipeline step reports an error', () => ({
-      ok: true,
-      json: async () => [{ error: 'WRONGTYPE' }, { result: 1 }, { result: 1 }],
-    })],
-    ['the count is not a number', () => ({
-      ok: true,
-      json: async () => [{ result: 'banana' }, { result: 1 }, { result: 1 }],
-    })],
+  const broken: Array<[string, () => Promise<unknown>]> = [
+    ['the query throws', async () => { throw new Error('connection refused'); }],
+    ['it times out', async () => { throw new Error('Timed out fetching a new connection'); }],
+    ['no row comes back', async () => []],
+    ['the count is not a number', async () => [{ count: 'banana', windowStart: new Date() }]],
   ];
 
-  for (const [description, impl] of unhealthy) {
+  for (const [description, impl] of broken) {
     it(`degrades to the in-memory window when ${description}`, async () => {
       __resetInMemoryRateLimits();
-      vi.stubGlobal('fetch', vi.fn(async () => impl()));
+      queryRawImpl = impl;
 
-      // Still enforcing — a cache outage must not wave everyone through...
+      // Still enforcing — a database blip must not wave everyone through...
       expect((await checkRateLimit('k', rule)).store).toBe('memory');
       await checkRateLimit('k', rule);
       expect((await checkRateLimit('k', rule)).allowed).toBe(false);
@@ -218,10 +176,34 @@ describe('when Redis is configured but unhealthy', () => {
   }
 
   it('does not lock everyone out during an outage', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down'); }));
+    queryRawImpl = async () => {
+      throw new Error('connection refused');
+    };
 
-    // ...and must not turn a cache outage into a total outage either.
+    // ...and must not turn a database blip into a total outage either.
     expect((await checkRateLimit('fresh-caller', rule)).allowed).toBe(true);
+  });
+});
+
+describe('housekeeping', () => {
+  it('never lets a failing sweep affect the request', async () => {
+    prisma.rateLimit.deleteMany.mockRejectedValueOnce(new Error('nope'));
+    vi.spyOn(Math, 'random').mockReturnValue(0); // force the sweep to run
+
+    const result = await checkRateLimit('k', { max: 5, windowMs: 60_000 });
+
+    expect(result.allowed).toBe(true);
+  });
+
+  it('only deletes rows far older than the longest window', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    await checkRateLimit('k', { max: 5, windowMs: 60_000 });
+    await vi.waitFor(() => expect(prisma.rateLimit.deleteMany).toHaveBeenCalled());
+
+    const cutoff = prisma.rateLimit.deleteMany.mock.calls[0]![0].where.windowStart.lt;
+    const longestWindow = Math.max(...Object.values(RATE_LIMITS).map((r) => r.windowMs));
+    expect(Date.now() - cutoff.getTime()).toBeGreaterThan(longestWindow);
   });
 });
 
@@ -254,7 +236,7 @@ describe('rateLimitKey', () => {
 
 describe('rateLimitResponse', () => {
   it('is a 429 carrying Retry-After', async () => {
-    const res = rateLimitResponse({ allowed: false, retryAfterSeconds: 90, store: 'memory' }, 'Slow down');
+    const res = rateLimitResponse({ allowed: false, retryAfterSeconds: 90, store: 'db' }, 'Slow down');
 
     expect(res.status).toBe(429);
     expect(res.headers.get('Retry-After')).toBe('90');
@@ -264,7 +246,13 @@ describe('rateLimitResponse', () => {
 
 describe('enforceRateLimit', () => {
   it('returns null while the caller is under the limit', async () => {
-    expect(await enforceRateLimit(request({ 'x-forwarded-for': '1.1.1.1' }), 'login', { max: 2, windowMs: 60_000 }, 'no')).toBeNull();
+    const res = await enforceRateLimit(
+      request({ 'x-forwarded-for': '1.1.1.1' }),
+      'login',
+      { max: 2, windowMs: 60_000 },
+      'no'
+    );
+    expect(res).toBeNull();
   });
 
   it('returns a ready-to-send 429 once over', async () => {
@@ -299,8 +287,7 @@ describe('enforceRateLimit', () => {
 });
 
 describe('the configured limits', () => {
-  it('are tighter on credentials than on the contact form', () => {
-    // A limit looser than the contact form's would be the wrong way round.
+  it('are tighter on credentials than a casual form would need', () => {
     const loginPerHour = RATE_LIMITS.login.max / (RATE_LIMITS.login.windowMs / 3_600_000);
     expect(loginPerHour).toBeLessThan(60);
   });
