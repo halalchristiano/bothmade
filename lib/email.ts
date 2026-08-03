@@ -1,6 +1,20 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/**
+ * Built on first use, not at import. `new Resend(undefined)` throws, and a
+ * module-scope client turns a missing RESEND_API_KEY into an import-time crash
+ * for every route that touches this file — including ones whose real work
+ * (recording a lead, opening a Stripe checkout) does not involve email at all.
+ * Degrade to "mail is off", never to "the page is down".
+ */
+let client: Resend | null = null;
+
+function resendClient(): Resend | null {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  if (!client) client = new Resend(key);
+  return client;
+}
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
@@ -50,6 +64,12 @@ export interface EmailData {
  */
 export async function sendEmail(data: EmailData): Promise<boolean> {
   try {
+    const resend = resendClient();
+    if (!resend) {
+      console.error('RESEND_API_KEY not configured; skipping send');
+      return false;
+    }
+
     const result = await resend.emails.send({
       from: `${data.fromName || 'Bothmade'} <${CONTACT_EMAIL}>`,
       to: data.to,

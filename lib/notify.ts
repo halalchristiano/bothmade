@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { sendEmail } from './email';
+import { sendEmail, studioInbox } from './email';
 import { escapeHtml } from './html';
 
 /**
@@ -77,10 +77,23 @@ const wrap = (title: string, bodyHtml: string, ctaHref?: string, ctaLabel?: stri
   </body>
 </html>`;
 
-async function notifyAdmins(subject: string, html: string): Promise<void> {
+/**
+ * `alsoStudioInbox` adds the shared addresses on top of the User table.
+ * getAdminEmails() only returns accounts that can log in, so info@ — a shared
+ * inbox, not a login — is skipped by default. For routine internal digests
+ * that's correct; for money it is not.
+ */
+async function notifyAdmins(
+  subject: string,
+  html: string,
+  opts: { alsoStudioInbox?: boolean } = {}
+): Promise<void> {
   const emails = await getAdminEmails();
-  if (emails.length === 0) return;
-  await sendEmail({ to: emails, subject, html });
+  const recipients = opts.alsoStudioInbox
+    ? Array.from(new Set([...emails, ...studioInbox()]))
+    : emails;
+  if (recipients.length === 0) return;
+  await sendEmail({ to: recipients, subject, html });
 }
 
 /**
@@ -163,7 +176,8 @@ export async function notifyAdminsPaymentReceived(params: {
     `${siteUrl()}/admin/projects/${params.projectId}`,
     'View Project'
   );
-  await notifyAdmins(`Payment received: ${params.projectName}`, html);
+  // Money is the one event info@ must never miss.
+  await notifyAdmins(`Payment received: ${params.projectName}`, html, { alsoStudioInbox: true });
 }
 
 export async function notifyAdminsStaleLeads(

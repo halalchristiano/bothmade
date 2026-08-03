@@ -11,6 +11,23 @@ vi.mock('@/lib/stripe', () => ({
   createCheckoutSession: (...args: unknown[]) => createCheckoutSession(...args),
 }));
 
+const leadFindFirst = vi.fn();
+const leadCreate = vi.fn();
+const leadUpdate = vi.fn();
+const activityCreate = vi.fn();
+const userFindFirst = vi.fn();
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    lead: {
+      findFirst: (...args: unknown[]) => leadFindFirst(...args),
+      create: (...args: unknown[]) => leadCreate(...args),
+      update: (...args: unknown[]) => leadUpdate(...args),
+    },
+    leadActivity: { create: (...args: unknown[]) => activityCreate(...args) },
+    user: { findFirst: (...args: unknown[]) => userFindFirst(...args) },
+  },
+}));
+
 const { POST } = await import('@/app/api/checkout/route');
 const { calculatePrice } = await import('@/lib/pricing');
 
@@ -31,6 +48,15 @@ const VALID = {
 beforeEach(() => {
   createCheckoutSession.mockReset();
   createCheckoutSession.mockResolvedValue({ sessionId: 'cs_test_1', url: 'https://stripe.test/pay' });
+  leadFindFirst.mockReset().mockResolvedValue(null);
+  leadCreate.mockReset().mockResolvedValue({ id: 'lead_checkout' });
+  leadUpdate.mockReset().mockResolvedValue({ id: 'lead_checkout' });
+  activityCreate.mockReset().mockResolvedValue({ id: 'act_1' });
+  userFindFirst.mockReset().mockResolvedValue({
+    id: 'user_evan',
+    email: 'evan@bothmade.studio',
+    name: 'Evan',
+  });
 });
 
 describe('POST /api/checkout — rejections', () => {
@@ -148,5 +174,90 @@ describe('POST /api/checkout — the happy path', () => {
     });
     expect(Number.isInteger(totalPrice)).toBe(true);
     expect(totalPrice).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The gap this closes: someone who configured a project, filled in their
+ * details and clicked the money button used to leave no trace whatsoever if
+ * they hesitated on the Stripe page. Highest-intent visitor on the site,
+ * completely invisible.
+ */
+describe('POST /api/checkout — capturing the attempt', () => {
+  it('records the attempt as a lead before handing off to Stripe', async () => {
+    await POST(request(VALID));
+
+    expect(leadCreate).toHaveBeenCalledOnce();
+    const { data } = leadCreate.mock.calls[0][0];
+    expect(data).toMatchObject({
+      company: 'Linpotia Cafe',
+      email: 'frell@linpotia.com',
+      source: 'checkout-started',
+      assignedToId: 'user_evan',
+    });
+    expect(data.estimatedValue).toBe(calculatePrice({
+      baseService: 'website',
+      addOns: ['seo'],
+      clientType: 'smb',
+      timeline: 'standard',
+    }).totalPrice);
+    expect(data.notes).toContain('Reached Stripe checkout');
+  });
+
+  it('keeps the lead at "new" so an idle click cannot book itself as revenue', async () => {
+    // deposit_pending carries a 0.95 weight in the sales forecast; reaching
+    // the payment page is intent, not a commitment.
+    await POST(request(VALID));
+
+    expect(leadCreate.mock.calls[0][0].data.status).toBe('new');
+  });
+
+  it('threads the lead id through Stripe so payment promotes that same row', async () => {
+    await POST(request(VALID));
+
+    expect(createCheckoutSession.mock.calls[0][0].leadId).toBe('lead_checkout');
+  });
+
+  it('logs against an existing lead rather than duplicating, and leaves its status alone', async () => {
+    leadFindFirst.mockResolvedValue({ id: 'lead_known' });
+
+    await POST(request(VALID));
+
+    expect(leadCreate).not.toHaveBeenCalled();
+    expect(activityCreate.mock.calls[0][0].data.leadId).toBe('lead_known');
+    // A second attempt must never walk a won deal backwards.
+    expect(leadUpdate.mock.calls[0][0].data.status).toBeUndefined();
+    expect(createCheckoutSession.mock.calls[0][0].leadId).toBe('lead_known');
+  });
+
+  it('still opens checkout when the CRM write fails', async () => {
+    // A database outage must not stop someone from paying us.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    leadCreate.mockRejectedValue(new Error('connection refused'));
+
+    const res = await POST(request(VALID));
+
+    expect(res.status).toBe(200);
+    expect(createCheckoutSession).toHaveBeenCalled();
+    expect(createCheckoutSession.mock.calls[0][0].leadId).toBeUndefined();
+  });
+});
+
+/**
+ * `new Resend(undefined)` throws. Building the client at module scope would
+ * therefore turn a missing RESEND_API_KEY into an import-time crash for every
+ * route that transitively touches lib/email — including this one, whose real
+ * job is taking money and has nothing to do with sending mail.
+ */
+describe('POST /api/checkout — no mail configured', () => {
+  it('still opens checkout and still records the lead', async () => {
+    vi.stubEnv('RESEND_API_KEY', '');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await POST(request(VALID));
+
+    expect(res.status).toBe(200);
+    expect(leadCreate).toHaveBeenCalledOnce();
+    vi.unstubAllEnvs();
   });
 });
