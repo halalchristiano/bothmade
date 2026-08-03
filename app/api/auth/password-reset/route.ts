@@ -161,17 +161,29 @@ export async function PUT(request: NextRequest) {
 
     const hashedPassword = await hashPassword(password);
 
+    // Every existing session for this account dies here. A reset is the flow
+    // someone reaches *because* they think they've lost control of the
+    // account — leaving an already-issued 7-day token working would defeat
+    // the point of the reset. Unlike the settings route there's no cookie to
+    // re-issue: whoever did this isn't signed in, they're on a reset link,
+    // and they log in fresh afterwards.
+    const revokedAt = new Date();
+
     if (record.userType === 'client') {
       // Setting a password by hand clears the forced-change flag: the
       // auto-generated one they were emailed is no longer in play.
       await prisma.client.update({
         where: { email: record.email },
-        data: { password: hashedPassword, mustChangePassword: false },
+        data: {
+          password: hashedPassword,
+          mustChangePassword: false,
+          sessionsValidFrom: revokedAt,
+        },
       });
     } else {
       await prisma.user.update({
         where: { email: record.email },
-        data: { password: hashedPassword },
+        data: { password: hashedPassword, sessionsValidFrom: revokedAt },
       });
     }
 

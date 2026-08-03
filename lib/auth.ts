@@ -14,12 +14,43 @@ export interface AuthPayload {
   email: string;
   role?: string;
   type: 'user';
+  /** Issued-at, in seconds. Added by jwt.sign; read back for revocation. */
+  iat?: number;
 }
 
 export interface ClientAuthPayload {
   clientId: string;
   email: string;
   type: 'client';
+  /** Issued-at, in seconds. Added by jwt.sign; read back for revocation. */
+  iat?: number;
+}
+
+/**
+ * Was this token minted before the account revoked its sessions?
+ *
+ * Sessions are stateless 7-day JWTs, so "log everyone out" can't mean
+ * deleting server-side rows — there are none. Instead each account carries a
+ * `sessionsValidFrom` watermark, and a token issued before it is refused for
+ * the remainder of its life.
+ *
+ * The comparison is deliberately at whole-second granularity. `iat` is in
+ * seconds and is floored, so a token minted 200ms *after* a revocation in the
+ * same wall-clock second carries an `iat` that looks earlier than the
+ * watermark. Comparing raw milliseconds would sign the user out of the
+ * session they just re-secured by changing their password — the one flow
+ * where this must not happen. Flooring both sides costs a sub-second window
+ * and removes that whole class of false positive.
+ */
+export function isTokenRevoked(
+  issuedAtSeconds: number | undefined,
+  sessionsValidFrom: Date | null | undefined
+): boolean {
+  if (!sessionsValidFrom) return false;
+  // A token with no `iat` predates this mechanism and can't be placed in
+  // time; treat it as revoked rather than trusting it.
+  if (typeof issuedAtSeconds !== 'number') return true;
+  return issuedAtSeconds < Math.floor(sessionsValidFrom.getTime() / 1000);
 }
 
 /**

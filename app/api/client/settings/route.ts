@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { hashPassword, verifyPassword } from '@/lib/auth';
+import { createToken, hashPassword, setAuthCookie, verifyPassword } from '@/lib/auth';
 import { requireClient, unauthorizedResponse } from '@/lib/middleware';
 import { checkPasswordStrength } from '@/lib/password-policy';
 
@@ -91,10 +91,27 @@ export async function PATCH(request: NextRequest) {
       }
 
       const hashedPassword = await hashPassword(newPassword);
+      // Drop every other session, same contract as the staff route. This is
+      // usually the first-login change away from the auto-generated password
+      // that was emailed in plaintext, which is exactly the credential worth
+      // invalidating everywhere.
       await prisma.client.update({
         where: { id: session.clientId },
-        data: { password: hashedPassword, mustChangePassword: false },
+        data: {
+          password: hashedPassword,
+          mustChangePassword: false,
+          sessionsValidFrom: new Date(),
+        },
       });
+
+      // Keep the caller signed in — the new token post-dates the watermark.
+      await setAuthCookie(
+        createToken({
+          clientId: session.clientId,
+          email: client.email,
+          type: 'client',
+        })
+      );
     }
 
     const hasPreferenceUpdate =

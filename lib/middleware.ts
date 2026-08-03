@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from './prisma';
-import { getCurrentSession, type AuthPayload, type ClientAuthPayload } from './auth';
+import {
+  getCurrentSession,
+  isTokenRevoked,
+  type AuthPayload,
+  type ClientAuthPayload,
+} from './auth';
 
 /**
  * Route guards.
@@ -37,6 +42,20 @@ import { getCurrentSession, type AuthPayload, type ClientAuthPayload } from './a
 export async function requireStaff(): Promise<AuthPayload | null> {
   const session = await getCurrentSession();
   if (!session || session.type !== 'user') return null;
+
+  // A 7-day JWT outlives a password change, so the claim alone isn't enough:
+  // check the account still honours sessions from this token's vintage. This
+  // is what makes "change your password" actually evict a stolen session —
+  // without it the thief kept access for the rest of the week.
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { sessionsValidFrom: true },
+  });
+
+  // Deleted since the token was minted.
+  if (!user) return null;
+  if (isTokenRevoked(session.iat, user.sessionsValidFrom)) return null;
+
   return session;
 }
 
@@ -88,12 +107,17 @@ export async function requireClient(
 
   const client = await prisma.client.findUnique({
     where: { id: session.clientId },
-    select: { archivedAt: true, mustChangePassword: true },
+    select: { archivedAt: true, mustChangePassword: true, sessionsValidFrom: true },
   });
 
   // Deleted or decommissioned since the token was minted — a 7-day JWT
   // outlives an offboarding, so re-check rather than trusting the claim.
   if (!client || client.archivedAt) {
+    return { session: null, response: unauthorizedResponse() };
+  }
+
+  // Same re-check for sessions explicitly revoked by a password change.
+  if (isTokenRevoked(session.iat, client.sessionsValidFrom)) {
     return { session: null, response: unauthorizedResponse() };
   }
 

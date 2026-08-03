@@ -21,6 +21,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Every session minted before this instant is refused. Sessions are 7-day
+  // JWTs with no server-side store, so without this a password change did
+  // nothing to a token already stolen — the thief kept access for the rest of
+  // the week. Set on password change and password reset; null means nothing
+  // has ever been revoked for this account.
+  sessionsValidFrom DateTime?
+
   // Gmail "send as" connection — lets client emails go out from the user's
   // own Gmail address (and land in their real Sent folder) instead of a
   // shared no-reply address. gmailAppPassword is encrypted at rest.
@@ -89,6 +96,11 @@ model Client {
   mustChangePassword Boolean   @default(true) // forces a password reset on first login after being auto-generated
   lastLoginAt        DateTime?
   archivedAt         DateTime? // "decommissioned" — hidden from active lists, login blocked, but records kept intact
+  // See User.sessionsValidFrom — same contract. It matters more here: the
+  // first password a client holds was auto-generated and emailed to them in
+  // plaintext, so the change away from it is exactly when old sessions
+  // should stop working.
+  sessionsValidFrom  DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
