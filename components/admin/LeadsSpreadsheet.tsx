@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Search, RefreshCw, Download, Users, DollarSign, Trophy, Sparkles, Clock, X, Bookmark, Plus, Trash2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
+import { clickableRowProps } from '@/components/admin/ui';
+import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 
 interface SpreadsheetLead {
   id: string;
@@ -141,19 +144,22 @@ export function LeadsSpreadsheet() {
     }
   };
 
-  const handleStatusChange = async (leadId: string, status: LeadStatus) => {
-    setSavingStatusId(leadId);
-    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status, updatedAt: new Date().toISOString() } : l)));
-    try {
-      await fetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-    } finally {
-      setSavingStatusId(null);
-    }
-  };
+  // Shared with the leads list, the pipeline board and the lead page — which
+  // also means picking "Lost" here now asks why, instead of being the one
+  // place in the app a deal could die without a recorded reason.
+  const {
+    changeStatus: handleStatusChange,
+    lostTarget,
+    confirmLost,
+    cancelLost,
+    error: statusError,
+  } = useLeadStatusChange<SpreadsheetLead>({
+    applyStatus: (lead, status) =>
+      setLeads((prev) =>
+        prev.map((l) => (l.id === lead.id ? { ...l, status, updatedAt: new Date().toISOString() } : l))
+      ),
+    onSavingChange: setSavingStatusId,
+  });
 
   const handleAssignChange = async (leadId: string, assignedToId: string) => {
     setSavingAssignId(leadId);
@@ -370,6 +376,7 @@ export function LeadsSpreadsheet() {
             <button
               onClick={() => setViewsOpen((v) => !v)}
               title="Saved views"
+              aria-label="Saved views"
               className="p-2 rounded-xl border border-white/10 hover:bg-white/5 transition-colors"
             >
               <Bookmark size={14} />
@@ -390,6 +397,7 @@ export function LeadsSpreadsheet() {
                     <button
                       onClick={() => deleteView(v.id)}
                       title="Delete view"
+                      aria-label={`Delete saved view ${v.name}`}
                       className="p-1.5 rounded-md text-white/20 hover:text-red-300 hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <Trash2 size={12} />
@@ -430,6 +438,7 @@ export function LeadsSpreadsheet() {
           <button
             onClick={handleExport}
             title="Export current view as CSV"
+            aria-label="Export current view as CSV"
             className="p-2 rounded-xl border border-white/10 hover:bg-white/5 transition-colors"
           >
             <Download size={14} />
@@ -438,6 +447,7 @@ export function LeadsSpreadsheet() {
             onClick={load}
             disabled={loading}
             title="Refresh"
+            aria-label="Refresh leads"
             className="p-2 rounded-xl border border-white/10 hover:bg-white/5 transition-colors disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -508,13 +518,32 @@ export function LeadsSpreadsheet() {
               {COLUMNS.map((col, i) => (
                 <th
                   key={col.key}
-                  onClick={col.sortable ? () => toggleSort(col.key as SortKey) : undefined}
+                  scope="col"
+                  aria-sort={
+                    col.sortable && sortKey === col.key
+                      ? sortDir === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : undefined
+                  }
                   className={`px-3 py-2.5 text-xs font-semibold text-white/50 border-b border-r border-white/10 last:border-r-0 whitespace-nowrap ${
-                    col.sortable ? 'cursor-pointer hover:text-white select-none' : ''
-                  } ${i === 0 ? 'sticky left-0 bg-[#0d0a17] z-30' : ''}`}
+                    i === 0 ? 'sticky left-0 bg-[#0d0a17] z-30' : ''
+                  }`}
                 >
-                  {col.label}
-                  {col.sortable && sortKey === col.key && (sortDir === 'asc' ? ' ▲' : ' ▼')}
+                  {/* A sortable header is a control, so it's a real button —
+                      clicking a bare <th> was mouse-only. */}
+                  {col.sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key as SortKey)}
+                      className="w-full text-left hover:text-white select-none"
+                    >
+                      {col.label}
+                      {sortKey === col.key && (sortDir === 'asc' ? ' ▲' : ' ▼')}
+                    </button>
+                  ) : (
+                    col.label
+                  )}
                 </th>
               ))}
             </tr>
@@ -526,8 +555,8 @@ export function LeadsSpreadsheet() {
               return (
                 <tr
                   key={lead.id}
-                  onClick={() => router.push(`/admin/leads/${lead.id}`)}
-                  className="cursor-pointer hover:bg-sky-400/[0.06] transition-colors group"
+                  {...clickableRowProps(() => router.push(`/admin/leads/${lead.id}`), `Open ${lead.company}`)}
+                  className="cursor-pointer hover:bg-sky-400/[0.06] transition-colors group focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400/60"
                   style={{ backgroundColor: rowBg }}
                 >
                   <td className="px-3 py-2 border-b border-r border-white/[0.06]" onClick={(e) => e.stopPropagation()}>
@@ -561,8 +590,9 @@ export function LeadsSpreadsheet() {
                   <td className="px-3 py-2 border-b border-r border-white/[0.06] whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={lead.status}
-                      onChange={(e) => handleStatusChange(lead.id, e.target.value as LeadStatus)}
+                      onChange={(e) => handleStatusChange(lead, e.target.value as LeadStatus)}
                       disabled={savingStatusId === lead.id}
+                      aria-label={`Status for ${lead.company}`}
                       className={`text-xs px-2 py-1 rounded-full border-none cursor-pointer disabled:opacity-50 ${LEAD_STATUS_COLORS[lead.status]}`}
                     >
                       {LEAD_STATUSES.map((s) => (
@@ -612,6 +642,16 @@ export function LeadsSpreadsheet() {
           </tbody>
         </table>
       </div>
+
+      {statusError && (
+        <p role="alert" className="text-sm text-red-300 mt-3">
+          {statusError}
+        </p>
+      )}
+
+      {lostTarget && (
+        <LostReasonModal companyName={lostTarget.company} onCancel={cancelLost} onConfirm={confirmLost} />
+      )}
     </div>
   );
 }

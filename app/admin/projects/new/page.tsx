@@ -5,8 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ADD_ON_REQUIRES,
-  ADD_ONS,
-  BASE_SERVICES,
   CLIENT_TYPES,
   TIMELINES,
   calculatePrice,
@@ -26,6 +24,7 @@ import {
   type CustomItem,
   type TimelineKey,
 } from '@/lib/pricing';
+import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 
 export default function NewProjectPage() {
   return (
@@ -201,41 +200,15 @@ function NewProjectForm() {
 
         <div className="pt-6 border-t border-white/10">
           <h2 className="text-lg font-bold mb-4">Project</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
-              ([key, service]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setBaseService(key)}
-                  className={`text-left rounded-lg p-3 border transition-colors ${
-                    baseService === key
-                      ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
-                      : 'border-white/10 hover:border-white/25'
-                  }`}
-                >
-                  <p className="font-medium text-sm">{service.label}</p>
-                  <p className="text-xs text-white/40">{formatCents(service.price)}</p>
-                </button>
-              )
-            )}
+          <div className="mb-4">
+            <BaseServicePicker value={baseService} onChange={setBaseService} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            {(Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).map(([key, addOn]) => (
-              <label
-                key={key}
-                className={`flex items-center gap-2 rounded-lg p-3 border cursor-pointer transition-colors ${
-                  addOns.includes(key)
-                    ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border-sky-400/40'
-                    : 'border-white/10 hover:border-white/25'
-                }`}
-              >
-                <input type="checkbox" checked={addOns.includes(key)} onChange={() => toggleAddOn(key)} />
-                <span className="text-sm">{addOn.label}</span>
-                <span className="text-xs text-white/40 ml-auto">+{formatCents(addOn.price)}</span>
-              </label>
-            ))}
+          {/* Grouped by category and honouring what the base price already
+              includes — this form used to list every add-on flat and let you
+              tick one a Web App already covers, quoting it twice. */}
+          <div className="mb-4">
+            <AddOnPicker baseService={baseService} selected={addOns} onToggle={toggleAddOn} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

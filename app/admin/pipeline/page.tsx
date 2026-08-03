@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus, CheckCircle2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
@@ -12,6 +12,7 @@ import { KanbanSquare } from 'lucide-react';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
+import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 
 interface LeadCard {
   id: string;
@@ -55,9 +56,8 @@ export default function PipelinePage() {
   const [search, setSearch] = useState('');
   const [movingId, setMovingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [pendingLostMove, setPendingLostMove] = useState<LeadCard | null>(null);
-  const [moveError, setMoveError] = useState('');
   const [hideClosedColumns, setHideClosedColumns] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   const load = async () => {
     try {
@@ -97,44 +97,25 @@ export default function PipelinePage() {
     [columns]
   );
 
-  const applyStatusChange = async (leadId: string, status: LeadStatus, lostReason?: string) => {
-    const previousStatus = leads.find((l) => l.id === leadId)?.status;
-    setMovingId(leadId);
-    setMoveError('');
-    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status } : l)));
-    try {
-      const res = await fetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, ...(lostReason ? { lostReason } : {}) }),
-      });
-      if (!res.ok && previousStatus) {
-        // Roll back the optimistic move — the card can't be left showing a
-        // stage the server never actually recorded.
-        setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: previousStatus } : l)));
-        setMoveError("Couldn't move that card — the change didn't save. Try again.");
-      }
-    } catch {
-      if (previousStatus) {
-        setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, status: previousStatus } : l)));
-      }
-      setMoveError('Could not reach the server — check your connection and try again.');
-    } finally {
-      setMovingId(null);
-    }
-  };
+  // The optimistic move + rollback + "ask why" on lost is the same sequence
+  // the leads list, spreadsheet and lead page run — one implementation now.
+  const {
+    changeStatus,
+    lostTarget: pendingLostMove,
+    confirmLost,
+    cancelLost,
+    error: moveError,
+  } = useLeadStatusChange<LeadCard>({
+    applyStatus: (lead, status) =>
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status } : l))),
+    onSavingChange: setMovingId,
+  });
 
   const handleMove = (lead: LeadCard, direction: 1 | -1) => {
     const idx = COLUMN_STATUSES.indexOf(lead.status);
     const nextIdx = idx + direction;
     if (nextIdx < 0 || nextIdx >= COLUMN_STATUSES.length) return;
-    const nextStatus = COLUMN_STATUSES[nextIdx];
-
-    if (nextStatus === 'lost') {
-      setPendingLostMove(lead);
-      return;
-    }
-    applyStatusChange(lead.id, nextStatus);
+    changeStatus(lead, COLUMN_STATUSES[nextIdx]);
   };
 
   if (loading) {
@@ -213,9 +194,13 @@ export default function PipelinePage() {
                   {columnLeads.map((lead) => (
                     <motion.div
                       key={lead.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.96 }}
+                      // Cards slide between columns as leads move — the one
+                      // animation on this page that carries meaning, and the
+                      // one most worth switching off when motion is reduced.
+                      layout={!reduceMotion}
+                      initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
                       animate={{ opacity: movingId === lead.id ? 0.5 : 1, scale: 1 }}
+                      transition={reduceMotion ? { duration: 0 } : undefined}
                       className="rounded-xl border border-white/10 bg-white/[0.04] hover:border-white/20 p-3 transition-colors group"
                     >
                       <div className="flex items-start justify-between gap-1 mb-1">
@@ -255,12 +240,12 @@ export default function PipelinePage() {
                         </div>
                         <div className="flex items-center gap-0.5">
                           {lead.phone && (
-                            <a href={`tel:${lead.phone}`} title="Call" className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
+                            <a href={`tel:${lead.phone}`} title="Call" aria-label={`Call ${lead.company}`} className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
                               <Phone size={12} />
                             </a>
                           )}
                           {lead.email && (
-                            <a href={`mailto:${lead.email}`} title="Email" className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
+                            <a href={`mailto:${lead.email}`} title="Email" aria-label={`Email ${lead.company}`} className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
                               <Mail size={12} />
                             </a>
                           )}
@@ -291,14 +276,7 @@ export default function PipelinePage() {
       )}
 
       {pendingLostMove && (
-        <LostReasonModal
-          companyName={pendingLostMove.company}
-          onCancel={() => setPendingLostMove(null)}
-          onConfirm={(reason) => {
-            applyStatusChange(pendingLostMove.id, 'lost', reason);
-            setPendingLostMove(null);
-          }}
-        />
+        <LostReasonModal companyName={pendingLostMove.company} onCancel={cancelLost} onConfirm={confirmLost} />
       )}
     </PageIn>
   );

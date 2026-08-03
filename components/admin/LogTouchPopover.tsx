@@ -85,9 +85,12 @@ export function LogTouchPopover({ leadId, onLogged }: { leadId: string; onLogged
           setOpen((v) => !v);
         }}
         title="Log a touch"
+        aria-label="Log a touch"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className="p-1.5 rounded-md hover:bg-white/10 text-white/40 hover:text-emerald-300 transition-colors"
       >
-        <MessageSquarePlus size={14} />
+        <MessageSquarePlus size={14} aria-hidden="true" />
       </button>
 
       {open &&
@@ -95,7 +98,18 @@ export function LogTouchPopover({ leadId, onLogged }: { leadId: string; onLogged
         createPortal(
           <div
             ref={panelRef}
+            role="dialog"
+            aria-label="Log a touch"
             onClick={(e) => e.stopPropagation()}
+            // The panel is portalled out of the row, so Escape has to be
+            // handled here rather than bubbling to an ancestor.
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setOpen(false);
+                buttonRef.current?.focus();
+              }
+            }}
             style={{ position: 'absolute', top: coords.top, left: coords.left }}
             className="w-64 rounded-lg border border-white/10 bg-[#0a0a0a] shadow-2xl z-[100] p-3"
           >

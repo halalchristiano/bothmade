@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Send, Loader2, CheckCircle2, Eye } from 'lucide-react';
 import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
+import { Modal, ModalCloseButton } from './Modal';
 
 /**
  * The one place any team member sends a branded, on-template email to a lead
@@ -175,11 +176,17 @@ export function EmailComposer({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-4xl max-h-[90vh] rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      title="Compose email"
+      subtitle={`To ${recipientName ? `${recipientName} · ` : ''}${recipientEmail}`}
+      onClose={onClose}
+      size="max-w-4xl"
+      panelClassName="max-h-[90vh] overflow-hidden flex flex-col"
+      showHeader={false}
+      // A drafted email is the most expensive thing in the admin to lose.
+      closeOnBackdrop={false}
+    >
+      <>
         <div className="flex justify-between items-start p-6 pb-4 shrink-0">
           <div>
             <h2 className="text-lg font-bold">Compose email</h2>
@@ -188,9 +195,7 @@ export function EmailComposer({
               {recipientEmail}
             </p>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white">
-            <X size={18} />
-          </button>
+          <ModalCloseButton onClose={onClose} />
         </div>
 
         {sentVia ? (
@@ -346,8 +351,12 @@ export function EmailComposer({
                   Live preview
                   {previewLoading && <Loader2 size={11} className="animate-spin ml-1" />}
                 </div>
-                <button onClick={() => setShowPreviewMobile(false)} className="md:hidden text-white/40 hover:text-white">
-                  <X size={16} />
+                <button
+                  onClick={() => setShowPreviewMobile(false)}
+                  aria-label="Close preview"
+                  className="md:hidden text-white/40 hover:text-white"
+                >
+                  <X size={16} aria-hidden="true" />
                 </button>
               </div>
               {previewSubject && (
@@ -368,7 +377,7 @@ export function EmailComposer({
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

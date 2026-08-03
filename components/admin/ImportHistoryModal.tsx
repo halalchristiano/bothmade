@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, FileText, Loader2 } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
+import { Modal, ModalCloseButton } from './Modal';
 
 interface ImportLog {
   id: string;
@@ -24,19 +25,21 @@ export function ImportHistoryModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-xl max-h-[85vh] flex flex-col rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      title="CSV import history"
+      subtitle="Every import ever run — a receipt trail, not just a memory."
+      onClose={onClose}
+      size="max-w-xl"
+      panelClassName="max-h-[85vh] flex flex-col"
+      showHeader={false}
+    >
+      <>
         <div className="flex justify-between items-start p-6 pb-4 shrink-0">
           <div>
             <h2 className="text-lg font-bold">CSV import history</h2>
             <p className="text-xs text-white/40 mt-0.5">Every import ever run — a receipt trail, not just a memory.</p>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white">
-            <X size={18} />
-          </button>
+          <ModalCloseButton onClose={onClose} />
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-6">
@@ -74,7 +77,7 @@ export function ImportHistoryModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

@@ -25,6 +25,9 @@ import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
+import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
+import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 import {
   Mail,
   Phone,
@@ -44,7 +47,6 @@ import {
   FileSignature,
 } from 'lucide-react';
 import {
-  ADD_ON_CATEGORIES,
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
@@ -66,7 +68,6 @@ import {
   isTimelineKey,
   sanitizeCustomItems,
   withBaseIncludes,
-  type AddOnCategory,
   type AddOnKey,
   type BaseService,
   type ClientType,
@@ -714,24 +715,25 @@ export default function LeadDetailPage() {
   const [showScript, setShowScript] = useState(false);
   const [scriptCopied, setScriptCopied] = useState(false);
 
-  const [pendingLostStatus, setPendingLostStatus] = useState(false);
+  // This page reloads from the server rather than holding a local list, so
+  // the hook does no optimistic write here — just the PATCH, the rollback-free
+  // refresh, and the shared "lost needs a reason" gate.
+  const {
+    changeStatus,
+    lostTarget: pendingLostStatus,
+    confirmLost: handleConfirmLost,
+    cancelLost,
+    error: statusError,
+  } = useLeadStatusChange<{ id: string; company: string; status: LeadStatus }>({
+    onSaved: () => load(),
+  });
 
-  const handleStatusChange = async (status: LeadStatus) => {
-    if (status === 'lost') {
-      setPendingLostStatus(true);
-      return;
-    }
-    await fetch(`/api/admin/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    load();
+  const handleStatusChange = (status: LeadStatus) => {
+    if (!lead) return;
+    changeStatus({ id: lead.id, company: lead.company, status: lead.status }, status);
   };
 
   const [requestingMockup, setRequestingMockup] = useState(false);
-  const [mockupLinkDraft, setMockupLinkDraft] = useState('');
-  const [deliveringMockup, setDeliveringMockup] = useState(false);
 
   const handleRequestMockup = async () => {
     setRequestingMockup(true);
@@ -744,22 +746,6 @@ export default function LeadDetailPage() {
       load();
     } finally {
       setRequestingMockup(false);
-    }
-  };
-
-  const handleDeliverMockup = async () => {
-    if (!mockupLinkDraft.trim()) return;
-    setDeliveringMockup(true);
-    try {
-      await fetch(`/api/admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mockupUrl: mockupLinkDraft.trim() }),
-      });
-      setMockupLinkDraft('');
-      load();
-    } finally {
-      setDeliveringMockup(false);
     }
   };
 
@@ -813,16 +799,6 @@ export default function LeadDetailPage() {
     } finally {
       setDeletingLead(false);
     }
-  };
-
-  const handleConfirmLost = async (reason: string) => {
-    setPendingLostStatus(false);
-    await fetch(`/api/admin/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'lost', lostReason: reason }),
-    });
-    load();
   };
 
   const handleToggleHot = async () => {
@@ -1185,6 +1161,7 @@ export default function LeadDetailPage() {
             <a
               href={`tel:${lead.phone}`}
               title="Call"
+              aria-label={`Call ${lead.company}`}
               className="flex items-center justify-center w-9 h-9 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 transition-colors"
             >
               <Phone size={15} />
@@ -1195,6 +1172,7 @@ export default function LeadDetailPage() {
               onClick={handleSendColdDraft}
               disabled={sendingColdDraft}
               title="Send cold email"
+              aria-label="Send cold email"
               className="flex items-center justify-center w-9 h-9 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-emerald-300 disabled:opacity-50 hover:bg-emerald-400/20 transition-colors"
             >
               <Send size={15} />
@@ -1212,20 +1190,38 @@ export default function LeadDetailPage() {
             <Mail size={14} /> Compose email
           </button>
 
-          <div className="relative">
+          <div
+            className="relative"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && actionsMenuOpen) {
+                e.stopPropagation();
+                setActionsMenuOpen(false);
+                setConfirmingDeleteLead(false);
+              }
+            }}
+          >
             <button
               onClick={() => setActionsMenuOpen((v) => !v)}
               title="More actions"
+              aria-label="More actions"
+              aria-haspopup="menu"
+              aria-expanded={actionsMenuOpen}
               className={`flex items-center justify-center w-9 h-9 rounded-full border transition-colors ${
                 actionsMenuOpen ? 'border-white/30 bg-white/10' : 'border-white/15 hover:bg-white/5'
               }`}
             >
-              <MoreVertical size={15} />
+              <MoreVertical size={15} aria-hidden="true" />
             </button>
             {actionsMenuOpen && (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setActionsMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#0b0714] shadow-xl z-20 p-1.5">
+                {/* Click-outside catcher. aria-hidden so it isn't announced
+                    as an empty region sitting over the whole page. */}
+                <div aria-hidden="true" className="fixed inset-0 z-10" onClick={() => setActionsMenuOpen(false)} />
+                <div
+                  role="menu"
+                  aria-label="Lead actions"
+                  className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#0b0714] shadow-xl z-20 p-1.5"
+                >
                   {confirmingDeleteLead ? (
                     <div className="p-2">
                       <p className="text-xs text-white/50 mb-2">Delete {lead.company} permanently?</p>
@@ -1247,10 +1243,11 @@ export default function LeadDetailPage() {
                     </div>
                   ) : (
                     <button
+                      role="menuitem"
                       onClick={() => setConfirmingDeleteLead(true)}
                       className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-sm text-red-300/80 hover:bg-red-400/10 hover:text-red-300 transition-colors"
                     >
-                      <Trash2 size={14} /> Delete lead
+                      <Trash2 size={14} aria-hidden="true" /> Delete lead
                     </button>
                   )}
                 </div>
@@ -2262,6 +2259,7 @@ export default function LeadDetailPage() {
                 <select
                   value={lead.status}
                   onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
+                  aria-label="Lead status"
                   className={`${inputClass} w-full min-w-0 border-purple-400/20 focus:ring-purple-400/50`}
                 >
                   {LEAD_STATUSES.map((s) => (
@@ -2270,6 +2268,13 @@ export default function LeadDetailPage() {
                     </option>
                   ))}
                 </select>
+                {/* A stage change that didn't save used to fail silently here
+                    — the select simply snapped back on the next reload. */}
+                {statusError && (
+                  <p role="alert" className="text-xs text-red-300 mt-1.5">
+                    {statusError}
+                  </p>
+                )}
               </div>
               <div className="min-w-0 relative">
                 <label className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-sky-300/70 mb-1.5">
@@ -2647,21 +2652,11 @@ export default function LeadDetailPage() {
                 <p className="text-xs text-amber-300 mb-3">
                   Requested {lead.mockupRequestedAt ? new Date(lead.mockupRequestedAt).toLocaleDateString() : ''} — waiting on the team.
                 </p>
-                <div className="flex gap-2">
-                  <input
-                    value={mockupLinkDraft}
-                    onChange={(e) => setMockupLinkDraft(e.target.value)}
-                    placeholder="Paste the finished mockup link here once it's ready..."
-                    className={`${inputClass} text-sm`}
-                  />
-                  <button
-                    onClick={handleDeliverMockup}
-                    disabled={deliveringMockup || !mockupLinkDraft.trim()}
-                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-colors whitespace-nowrap"
-                  >
-                    {deliveringMockup ? 'Saving...' : 'Mark Delivered'}
-                  </button>
-                </div>
+                <MockupDeliveryForm
+                  leadId={leadId}
+                  onDelivered={load}
+                  placeholder="Paste the finished mockup link here once it's ready..."
+                />
               </>
             ) : (
               <>
@@ -2866,78 +2861,17 @@ export default function LeadDetailPage() {
           <div className="space-y-8">
             <div>
               <StepLabel n={1} label="Base Service" />
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {(Object.entries(BASE_SERVICES) as [BaseService, (typeof BASE_SERVICES)[BaseService]][]).map(
-                  ([key, service]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setProposalService(key)}
-                      className={`text-left rounded-xl p-4 border transition-all ${
-                        proposalService === key
-                          ? 'bg-gradient-to-br from-sky-400/20 to-purple-500/20 border-sky-400/50 shadow-[0_0_0_1px_rgba(56,189,248,0.3)]'
-                          : 'border-white/10 hover:border-white/25 hover:bg-white/[0.03]'
-                      }`}
-                    >
-                      <p className="font-semibold text-sm">{service.label}</p>
-                      <p className="text-xs text-white/40 mt-0.5">{formatCents(service.price)}</p>
-                    </button>
-                  )
-                )}
-              </div>
+              <BaseServicePicker value={proposalService} onChange={setProposalService} columns={3} />
             </div>
 
             <div>
               <StepLabel n={2} label="Add-Ons" hint={`${proposalAddOns.length} selected`} />
-              <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
-                {(Object.entries(ADD_ON_CATEGORIES) as [AddOnCategory, (typeof ADD_ON_CATEGORIES)[AddOnCategory]][]).map(
-                  ([catKey, cat]) => {
-                    const entries = (Object.entries(ADD_ONS) as [AddOnKey, (typeof ADD_ONS)[AddOnKey]][]).filter(
-                      ([, a]) => a.category === catKey
-                    );
-                    return (
-                      <div key={catKey}>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/35 mb-2">
-                          {cat.label}
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {entries.map(([key, addOn]) => {
-                            const includedInBase = isIncludedInBase(proposalService, key);
-                            return (
-                            <label
-                              key={key}
-                              className={`flex items-start gap-2 rounded-lg p-3 border transition-colors ${
-                                includedInBase ? 'cursor-default' : 'cursor-pointer'
-                              } ${
-                                proposalAddOns.includes(key)
-                                  ? 'bg-gradient-to-r from-sky-400/15 to-purple-500/15 border-sky-400/40'
-                                  : 'border-white/10 hover:border-white/25'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                className="mt-0.5"
-                                checked={proposalAddOns.includes(key)}
-                                onChange={() => toggleProposalAddOn(key)}
-                                disabled={includedInBase}
-                              />
-                              <span className="flex-1">
-                                <span className="text-sm block">{addOn.label}</span>
-                                <span className="text-xs text-white/35">{addOn.description}</span>
-                              </span>
-                              {includedInBase ? (
-                                <span className="text-xs text-emerald-300 whitespace-nowrap">Included</span>
-                              ) : (
-                                <span className="text-xs text-white/40 whitespace-nowrap">+{formatCents(addOn.price)}</span>
-                              )}
-                            </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  }
-                )}
+              <div className="max-h-80 overflow-y-auto pr-1">
+                <AddOnPicker
+                  baseService={proposalService}
+                  selected={proposalAddOns}
+                  onToggle={toggleProposalAddOn}
+                />
               </div>
             </div>
 
@@ -3276,10 +3210,10 @@ export default function LeadDetailPage() {
 
       )}
 
-      {pendingLostStatus && lead && (
+      {pendingLostStatus && (
         <LostReasonModal
-          companyName={lead.company}
-          onCancel={() => setPendingLostStatus(false)}
+          companyName={pendingLostStatus.company}
+          onCancel={cancelLost}
           onConfirm={handleConfirmLost}
         />
       )}

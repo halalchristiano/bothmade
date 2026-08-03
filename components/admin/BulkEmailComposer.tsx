@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Send, Loader2, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
+import { Send, Loader2, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
 import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
+import { draftBodyOnly, firstNameOf, personalize } from '@/lib/cold-email';
+import { Modal, ModalCloseButton } from './Modal';
 
 export interface BulkRecipient {
   id: string;
@@ -13,12 +15,6 @@ export interface BulkRecipient {
   personalizedObservation?: string | null;
   coldEmailDraft?: string | null;
   painPoints?: string;
-}
-
-/** Pulls just the body out of a "Subject: ...\n\n<body>" draft — the subject isn't usable here since this composer sends one shared subject to everyone. */
-function draftBodyOnly(draft: string): string {
-  const match = draft.match(/^Subject:\s*.+?\r?\n+([\s\S]*)$/i);
-  return (match ? match[1] : draft).trim();
 }
 
 // Sales-facing templates make sense to blast to a list; ops templates
@@ -102,8 +98,7 @@ export function BulkEmailComposer({
               painPoints: r.painPoints || '',
               personalizedObservation: r.personalizedObservation || null,
             });
-          const firstName = r.contactName?.split(' ')[0] || 'there';
-          const body = draftBodyOnly(draft).replace(/\[First Name\]/gi, firstName);
+          const body = personalize(draftBodyOnly(draft), { firstName: firstNameOf(r.contactName) });
           next[r.id] = { ...(next[r.id] || {}), body };
           changed = true;
         }
@@ -149,22 +144,28 @@ export function BulkEmailComposer({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-5xl max-h-[90vh] rounded-2xl border border-white/10 bg-[#0a0812] shadow-2xl overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      title={`Send to ${recipients.length} lead${recipients.length === 1 ? '' : 's'}`}
+      onClose={onClose}
+      size="max-w-5xl"
+      panelClassName="max-h-[90vh] overflow-hidden flex flex-col"
+      showHeader={false}
+      // A half-written batch of per-recipient personalization is too much to
+      // lose to a misplaced click outside the panel.
+      closeOnBackdrop={false}
+    >
+      <>
         <div className="flex justify-between items-start p-6 pb-4 shrink-0">
           <div>
-            <h2 className="text-lg font-bold">Send to {recipients.length} lead{recipients.length === 1 ? '' : 's'}</h2>
+            <h2 className="text-lg font-bold">
+              Send to {recipients.length} lead{recipients.length === 1 ? '' : 's'}
+            </h2>
             <p className="text-xs text-white/40 mt-0.5">
               {missingEmail > 0 ? `${missingEmail} skipped — no email on file. ` : ''}
               {emailable.length} will receive this.
             </p>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white">
-            <X size={18} />
-          </button>
+          <ModalCloseButton onClose={onClose} />
         </div>
 
         {result ? (
@@ -285,22 +286,34 @@ export function BulkEmailComposer({
                     {emailable.map((r) => (
                       <div
                         key={r.id}
-                        className={`rounded-xl border p-3 cursor-pointer transition-colors ${
+                        className={`rounded-xl border p-3 transition-colors ${
                           previewFor === r.id ? 'border-sky-400/50 bg-sky-400/5' : 'border-white/10'
                         }`}
-                        onClick={() => setPreviewFor(r.id)}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-medium">{r.company}</p>
-                          {previewFor === r.id && <Eye size={12} className="text-sky-300" />}
-                        </div>
+                        {/* The card used to be one big clickable div wrapping
+                            its own textareas — unreachable by keyboard and
+                            invalid nesting. The name is the button now. */}
+                        <button
+                          type="button"
+                          onClick={() => setPreviewFor(r.id)}
+                          aria-pressed={previewFor === r.id}
+                          className="w-full flex items-center justify-between mb-2 text-left"
+                        >
+                          <span className="text-sm font-medium">{r.company}</span>
+                          {previewFor === r.id ? (
+                            <Eye size={12} className="text-sky-300" aria-hidden="true" />
+                          ) : (
+                            <span className="text-[10px] text-white/30">Preview</span>
+                          )}
+                        </button>
                         {personalizeFields.map((field) => (
                           <textarea
                             key={field.key}
                             value={perLead[r.id]?.[field.key] || ''}
                             onChange={(e) => setPerLeadField(r.id, field.key, e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
+                            onFocus={() => setPreviewFor(r.id)}
                             placeholder={field.placeholder}
+                            aria-label={`${field.label} for ${r.company}`}
                             rows={2}
                             className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                           />
@@ -325,7 +338,11 @@ export function BulkEmailComposer({
                   disabled={sending || !canSend}
                   className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
                 >
-                  {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                  {sending ? (
+                    <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Send size={15} aria-hidden="true" />
+                  )}
                   {sending ? 'Sending...' : `Send to ${emailable.length}`}
                 </button>
               </div>
@@ -342,8 +359,8 @@ export function BulkEmailComposer({
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 
