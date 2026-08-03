@@ -37,8 +37,7 @@ export default function PrivacyPage() {
                 to do about it. Reach us any time at{' '}
                 <a href={`mailto:${COMPANY_EMAIL}`} className="text-sky-300 hover:underline">
                   {COMPANY_EMAIL}
-                </a>
-                .
+                </a>.
               </p>
             </section>
 
@@ -106,8 +105,7 @@ export default function PrivacyPage() {
                 us to delete it — email{' '}
                 <a href={`mailto:${COMPANY_EMAIL}`} className="text-sky-300 hover:underline">
                   {COMPANY_EMAIL}
-                </a>
-                . Because we operate from the UK, visitors in the UK and EU also have the right
+                </a>. Because we operate from the UK, visitors in the UK and EU also have the right
                 to object to processing and to complain to their data protection authority (in
                 the UK, the Information Commissioner&apos;s Office).
               </p>
@@ -120,8 +118,7 @@ export default function PrivacyPage() {
                 also our{' '}
                 <Link href="/terms" className="text-sky-300 hover:underline">
                   Terms of Service
-                </Link>
-                .
+                </Link>.
               </p>
             </section>
           </div>

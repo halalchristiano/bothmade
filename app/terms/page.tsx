@@ -112,12 +112,10 @@ export default function TermsPage() {
                 Questions about these terms:{' '}
                 <a href={`mailto:${COMPANY_EMAIL}`} className="text-sky-300 hover:underline">
                   {COMPANY_EMAIL}
-                </a>
-                . See also our{' '}
+                </a>. See also our{' '}
                 <Link href="/privacy" className="text-sky-300 hover:underline">
                   Privacy Policy
-                </Link>
-                .
+                </Link>.
               </p>
             </section>
           </div>
