@@ -6,7 +6,20 @@ import { escapeHtml } from '@/lib/html';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/**
+ * Lazy, for the same reason as lib/email.ts: `new Resend(undefined)` throws,
+ * so building it at module scope would make a missing RESEND_API_KEY crash
+ * this route on import — taking the CRM write down with it and losing the
+ * enquiry entirely, which is the exact failure this route exists to prevent.
+ */
+let client: Resend | null = null;
+
+function resendClient(): Resend | null {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  if (!client) client = new Resend(key);
+  return client;
+}
 
 // The address mail is sent *from*, which has to belong to a domain verified
 // in Resend. Where it's sent *to* is studioInbox().
@@ -189,7 +202,8 @@ export async function POST(request: NextRequest) {
       console.error('Failed to record contact enquiry as a lead:', error);
     }
 
-    if (!process.env.RESEND_API_KEY) {
+    const resend = resendClient();
+    if (!resend) {
       console.error('RESEND_API_KEY not configured');
       if (recorded) {
         return NextResponse.json(
