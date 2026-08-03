@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireCronAuth } from '@/lib/cron-auth';
 import { notifyUserFollowUpDigest } from '@/lib/notify';
 import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 
@@ -10,10 +11,8 @@ import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
  * dashboard; this reaches them either way.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const now = new Date();

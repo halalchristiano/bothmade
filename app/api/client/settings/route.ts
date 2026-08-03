@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
 import { hashPassword, verifyPassword } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireClient, unauthorizedResponse } from '@/lib/middleware';
+import { checkPasswordStrength } from '@/lib/password-policy';
 
 export async function GET() {
   try {
-    const session = await getCurrentSession();
-
-    if (!session || session.type !== 'client') {
-      return unauthorizedResponse();
-    }
+    // allowPasswordChange: this is the page a client is sent to *because*
+    // they still have the auto-generated password, so it has to stay open
+    // to them while everything else is closed.
+    const { session, response } = await requireClient({ allowPasswordChange: true });
+    if (!session) return response;
 
     const client = await prisma.client.findUnique({
       where: { id: session.clientId },
@@ -46,11 +46,8 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-
-    if (!session || session.type !== 'client') {
-      return unauthorizedResponse();
-    }
+    const { session, response } = await requireClient({ allowPasswordChange: true });
+    if (!session) return response;
 
     const body = await request.json();
     const {
@@ -86,11 +83,11 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      if (typeof newPassword !== 'string' || newPassword.length < 8) {
-        return NextResponse.json(
-          { error: 'New password must be at least 8 characters' },
-          { status: 400 }
-        );
+      // Same policy as every other place a password gets set — this used
+      // to be the only check in the app, and it was "8 characters".
+      const strength = checkPasswordStrength(newPassword, client.email);
+      if (!strength.ok) {
+        return NextResponse.json({ error: strength.error }, { status: 400 });
       }
 
       const hashedPassword = await hashPassword(newPassword);

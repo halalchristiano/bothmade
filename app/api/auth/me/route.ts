@@ -16,7 +16,11 @@ export async function GET() {
         where: { id: session.clientId },
       });
 
-      if (!client) {
+      // Deliberately not gated on mustChangePassword: this is the endpoint
+      // the browser reads *to discover* it needs to change one. A
+      // decommissioned account is a different matter — the 7-day JWT
+      // outlives an offboarding, so re-check it here.
+      if (!client || client.archivedAt) {
         return unauthorizedResponse();
       }
 

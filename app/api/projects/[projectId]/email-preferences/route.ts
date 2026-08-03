@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
+import { requireClient } from '@/lib/middleware';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-
-    if (!session || session.type !== 'client') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const { session, response } = await requireClient();
+    if (!session) return response;
 
     // Get email preferences for this client
     const preferences = await prisma.emailPreferences.findUnique({
@@ -46,14 +40,8 @@ export async function PUT(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-
-    if (!session || session.type !== 'client') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const { session, response } = await requireClient();
+    if (!session) return response;
 
     const {
       notificationsEnabled,

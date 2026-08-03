@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
 
 const RANGE_LABELS: Record<StatsRange, string> = {
@@ -12,8 +11,8 @@ const RANGE_LABELS: Record<StatsRange, string> = {
 
 export async function GET(request: Request) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { searchParams } = new URL(request.url);
     const rangeParam = searchParams.get('range');
