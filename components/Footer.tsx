@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { PillCTA } from '@/components/ui';
+import { COMPANY_ADDRESS_LINES, COMPANY_EMAIL } from '@/lib/company';
 
 const WORD = 'BOTHMADE';
 
@@ -92,6 +93,22 @@ export function Footer() {
             <p className="text-white/40 text-sm max-w-xs">
               Web and native Apple development. One team, from first sketch to App Store.
             </p>
+
+            {/* The same address the invoices carry — a client checking one
+                against the other should find them identical. */}
+            <address className="mt-6 not-italic text-sm text-white/40 leading-relaxed">
+              {COMPANY_ADDRESS_LINES.map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
+              <a
+                href={`mailto:${COMPANY_EMAIL}`}
+                className="mt-2 inline-block hover:text-sky-300 transition"
+              >
+                {COMPANY_EMAIL}
+              </a>
+            </address>
           </div>
 
           <div>

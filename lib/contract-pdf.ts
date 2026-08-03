@@ -1,4 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { LOGO_BACKGROUND, LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
+import { COMPANY_ADDRESS_INLINE, COMPANY_ADDRESS_LINES, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 import type { ContractSection } from '@/lib/contract-terms';
 
 const PAGE_WIDTH = 612;
@@ -9,6 +11,8 @@ const BLACK = rgb(0.08, 0.08, 0.1);
 const GRAY = rgb(0.42, 0.42, 0.46);
 const ACCENT = rgb(0.13, 0.55, 0.85);
 const GREEN = rgb(0.1, 0.5, 0.3);
+const BRAND_FIELD = rgb(LOGO_BACKGROUND.r, LOGO_BACKGROUND.g, LOGO_BACKGROUND.b);
+const BAND_HEIGHT = 66;
 
 /** Greedy word-wrap against the actual measured width of the given font/size. */
 function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
@@ -58,7 +62,14 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
   let pageNum = 1;
 
   const finishPage = () => {
-    page.drawText(`Bothmade — Project Agreement — Page ${pageNum}`, {
+    page.drawText(`${COMPANY_NAME} — ${COMPANY_ADDRESS_INLINE}`, {
+      x: MARGIN,
+      y: 42,
+      size: 8,
+      font,
+      color: GRAY,
+    });
+    page.drawText(`Project Agreement — Page ${pageNum}`, {
       x: MARGIN,
       y: 30,
       size: 8,
@@ -96,9 +107,32 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     y -= 6; // paragraph spacing
   };
 
-  // Cover page
-  drawLine('Bothmade', { size: 26, f: bold, gap: 34 });
-  drawLine('Project Agreement', { size: 15, f: bold, color: ACCENT, gap: 36 });
+  // Cover page — the wordmark sits on its own near-black field, so the band
+  // behind it is drawn in the same colour and the two read as one mark.
+  const logo = await doc.embedJpg(logoJpegBytes());
+  const logoWidth = 140;
+  const logoHeight = (logoWidth * LOGO_HEIGHT) / LOGO_WIDTH;
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_HEIGHT - BAND_HEIGHT,
+    width: PAGE_WIDTH,
+    height: BAND_HEIGHT,
+    color: BRAND_FIELD,
+  });
+  page.drawImage(logo, {
+    x: MARGIN,
+    y: PAGE_HEIGHT - BAND_HEIGHT / 2 - logoHeight / 2,
+    width: logoWidth,
+    height: logoHeight,
+  });
+  y = PAGE_HEIGHT - BAND_HEIGHT - 34;
+
+  drawLine('Project Agreement', { size: 15, f: bold, color: ACCENT, gap: 30 });
+  drawLine(COMPANY_NAME, { f: bold, size: 12, gap: 16 });
+  for (const line of COMPANY_ADDRESS_LINES) {
+    drawLine(line, { size: 10, color: GRAY, gap: 13 });
+  }
+  drawLine(COMPANY_EMAIL, { size: 10, color: GRAY, gap: 28 });
   drawLine(`Client: ${input.company}`, { f: bold, size: 12, gap: 20 });
   if (input.contactName) drawLine(`Contact: ${input.contactName}`, { size: 11, gap: 18 });
   drawLine(`Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, {

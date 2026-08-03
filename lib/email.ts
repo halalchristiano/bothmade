@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { COMPANY_ADDRESS_INLINE, COMPANY_NAME } from '@/lib/company';
 
 /**
  * Built on first use, not at import. `new Resend(undefined)` throws, and a
@@ -156,6 +157,9 @@ function renderShell(opts: {
                 <span style="font-size:12px; color:rgba(255,255,255,0.3); vertical-align:middle;">
                   ${footerNote || 'Bothmade — bothmade.studio'}
                 </span>
+                <p style="margin:10px 0 0 0; font-size:11px; line-height:1.5; color:rgba(255,255,255,0.25);">
+                  ${COMPANY_NAME}, ${COMPANY_ADDRESS_INLINE}
+                </p>
               </td>
             </tr>
           </table>
