@@ -60,7 +60,7 @@ export async function POST(
   try {
     const { leadId } = await params;
 
-    const limited = enforce([
+    const limited = await enforce([
       { key: limiterKey('agree-and-pay', request), options: LIMITS.publicWrite },
       { key: limiterKey('agree-and-pay:lead', request, leadId), options: LIMITS.publicWrite },
     ]);

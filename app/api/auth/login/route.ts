@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     // a successful login so a legitimate typo streak costs nothing.
     const ipKey = limiterKey('login', request);
     const accountKey = limiterKey(`login:${userType}`, request, String(email));
-    const limited = enforce([
+    const limited = await enforce([
       { key: ipKey, options: LIMITS.login },
       { key: accountKey, options: LIMITS.login },
     ]);
@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      reset(ipKey);
-      reset(accountKey);
+      await reset(ipKey);
+      await reset(accountKey);
 
       // Update last login
       await prisma.client.update({
@@ -106,8 +106,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      reset(ipKey);
-      reset(accountKey);
+      await reset(ipKey);
+      await reset(accountKey);
 
       // Create auth token
       const token = createToken({

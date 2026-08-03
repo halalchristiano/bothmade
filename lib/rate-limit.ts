@@ -1,17 +1,28 @@
 import { NextResponse } from 'next/server';
 
 /**
- * Small in-process rate limiter for the endpoints where unlimited attempts
- * are the whole attack: login, admin login, password reset, and the public
+ * Rate limiter for the endpoints where unlimited attempts are the whole
+ * attack: login, admin login, signup, password reset, and the public
  * sign-and-pay POST.
  *
- * Scope, stated plainly: this counts per serverless instance, not globally.
- * On Vercel that means a determined attacker spread across many cold starts
- * gets more attempts than the numbers below suggest. It still removes the
- * thing that actually matters — a single client hammering one warm instance
- * with a credential list — and it needs no extra infrastructure. If this
- * ever needs to be exact, swap `hit()` for a Redis INCR with the same
- * signature and every call site keeps working.
+ * Two backends, chosen at runtime:
+ *
+ *  - **Upstash Redis**, when UPSTASH_REDIS_REST_URL and
+ *    UPSTASH_REDIS_REST_TOKEN are set. Counters are then shared across every
+ *    serverless instance, so the published limits are the real limits.
+ *    Spoken to over its REST API with plain `fetch` — no client library, no
+ *    connection pool to manage from a function that may be frozen mid-call.
+ *  - **In-process**, otherwise. Counts per instance, so an attacker spread
+ *    across cold starts gets more attempts than the numbers below suggest.
+ *    It still stops the case that actually happens — one client hammering
+ *    one warm instance with a credential list — and it needs no extra
+ *    infrastructure to stand up.
+ *
+ * **On Redis failure the limiter falls back to the in-process counter rather
+ * than failing open or closed.** Failing open would drop throttling on the
+ * login endpoint exactly when infrastructure is already unhealthy; failing
+ * closed would lock every user out of the product because a cache blipped.
+ * Degrading to the local counter keeps a real limit in force either way.
  */
 
 interface Bucket {
@@ -38,6 +49,80 @@ function prune(now: number): void {
   }
 }
 
+interface RedisConfig {
+  url: string;
+  token: string;
+}
+
+function redisConfig(): RedisConfig | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim().replace(/\/$/, '');
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  return url && token ? { url, token } : null;
+}
+
+/** Set once per process after the first Redis failure, to stop hammering a sick backend. */
+let redisDisabledUntil = 0;
+const REDIS_COOLDOWN_MS = 30_000;
+
+interface PipelineResult {
+  result?: unknown;
+  error?: string;
+}
+
+async function redisPipeline(config: RedisConfig, commands: Array<Array<string | number>>): Promise<unknown[]> {
+  const response = await fetch(`${config.url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(commands),
+    // A limiter must never be the reason a request hangs. If Redis can't
+    // answer in a second, use the local counter and move on.
+    signal: AbortSignal.timeout(1000),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) throw new Error(`Upstash responded ${response.status}`);
+
+  const body = (await response.json()) as PipelineResult[];
+  if (!Array.isArray(body)) throw new Error('Upstash returned an unexpected body');
+
+  return body.map((entry) => {
+    if (entry?.error) throw new Error(entry.error);
+    return entry?.result;
+  });
+}
+
+/**
+ * INCR the counter, give it an expiry the first time only, and read what's
+ * left of that expiry — one round trip.
+ *
+ * PEXPIRE ... NX is what makes this a fixed window: the TTL is set by the
+ * request that creates the key and is never pushed back, so a caller can't
+ * hold a key alive forever by continuing to hit it.
+ */
+async function hitRedis(
+  config: RedisConfig,
+  key: string,
+  { limit, windowMs }: RateLimitOptions
+): Promise<RateLimitResult> {
+  const [rawCount, , rawTtl] = await redisPipeline(config, [
+    ['INCR', key],
+    ['PEXPIRE', key, windowMs, 'NX'],
+    ['PTTL', key],
+  ]);
+
+  const count = Number(rawCount);
+  const ttlMs = Number(rawTtl);
+  // PTTL returns -1 when the key somehow has no expiry; treat that as a full
+  // window rather than reporting a negative retry-after.
+  const retryAfterSeconds = Math.max(1, Math.ceil((ttlMs > 0 ? ttlMs : windowMs) / 1000));
+
+  if (!Number.isFinite(count)) throw new Error('Upstash returned a non-numeric count');
+
+  return count > limit || limit < 1
+    ? { ok: false, remaining: 0, retryAfterSeconds }
+    : { ok: true, remaining: limit - count, retryAfterSeconds: 0 };
+}
+
 export interface RateLimitOptions {
   /** Attempts allowed inside the window. */
   limit: number;
@@ -52,11 +137,11 @@ export interface RateLimitResult {
 }
 
 /**
- * Records one attempt against `key` and reports whether it's allowed.
- * Fixed window: the first request starts the clock, and everything past
- * `limit` inside it is rejected.
+ * In-process fixed window: the first request starts the clock, and
+ * everything past `limit` inside it is rejected. Used directly when no Redis
+ * is configured, and as the fallback when Redis is unreachable.
  */
-export function hit(key: string, { limit, windowMs }: RateLimitOptions): RateLimitResult {
+export function hitLocal(key: string, { limit, windowMs }: RateLimitOptions): RateLimitResult {
   const now = Date.now();
 
   // Cleanup runs inline rather than on a timer — a serverless instance can
@@ -85,9 +170,35 @@ export function hit(key: string, { limit, windowMs }: RateLimitOptions): RateLim
   return { ok: true, remaining: limit - existing.count, retryAfterSeconds: 0 };
 }
 
+/**
+ * Records one attempt against `key` and reports whether it's allowed,
+ * against whichever backend is configured.
+ */
+export async function hit(key: string, options: RateLimitOptions): Promise<RateLimitResult> {
+  const config = redisConfig();
+
+  if (config && Date.now() >= redisDisabledUntil) {
+    try {
+      return await hitRedis(config, key, options);
+    } catch (error) {
+      redisDisabledUntil = Date.now() + REDIS_COOLDOWN_MS;
+      console.error('[rate-limit] Redis unavailable, falling back to the in-process counter:', error);
+    }
+  }
+
+  return hitLocal(key, options);
+}
+
 /** Clears a key's counter — call after a *successful* login so one typo-then-success doesn't count against the user. */
-export function reset(key: string): void {
+export async function reset(key: string): Promise<void> {
   buckets.delete(key);
+
+  const config = redisConfig();
+  if (!config || Date.now() < redisDisabledUntil) return;
+
+  // Best effort: a counter that fails to clear only costs the user their
+  // remaining attempts in this window, so it must not fail the request.
+  await redisPipeline(config, [['DEL', key]]).catch(() => undefined);
 }
 
 /**
@@ -132,11 +243,11 @@ export function tooManyRequests(result: RateLimitResult, message?: string): Next
  * them rejects, or null to continue. Pass both a per-IP and a per-identity
  * limit so neither dimension alone gives unlimited attempts.
  */
-export function enforce(
+export async function enforce(
   checks: Array<{ key: string; options: RateLimitOptions; message?: string }>
-): NextResponse | null {
+): Promise<NextResponse | null> {
   for (const check of checks) {
-    const result = hit(check.key, check.options);
+    const result = await hit(check.key, check.options);
     if (!result.ok) return tooManyRequests(result, check.message);
   }
   return null;

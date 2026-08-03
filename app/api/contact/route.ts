@@ -24,7 +24,7 @@ const CONTACT_LIMIT = { limit: 3, windowMs: 10 * 60 * 1000 };
 
 export async function POST(request: NextRequest) {
   try {
-    const limited = enforce([
+    const limited = await enforce([
       { key: limiterKey('contact', request), options: CONTACT_LIMIT, message: 'Too many messages. Please try again later.' },
     ]);
     if (limited) return limited;

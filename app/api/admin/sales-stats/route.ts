@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 
 // Late-funnel stages where a stall is expensive — worth a tighter SLA than
@@ -44,8 +43,8 @@ export function getPeriodStart(range: StatsRange, now: Date): Date {
 
 export async function GET(request: Request) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { searchParams } = new URL(request.url);
     const rangeParam = searchParams.get('range');

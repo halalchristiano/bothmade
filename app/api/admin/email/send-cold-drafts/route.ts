@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
 import { escParagraphs } from '@/lib/html';
 import { sendAsUser, createGmailBatchTransport } from '@/lib/mailer';
@@ -36,8 +35,8 @@ function splitDraft(draft: string, company: string): { subject: string; body: st
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { leadIds } = await request.json();
     if (!Array.isArray(leadIds) || leadIds.length === 0) {

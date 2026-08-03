@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession, generateRandomPassword, hashPassword } from '@/lib/auth';
-import { canOverridePricing, unauthorizedResponse } from '@/lib/middleware';
+import { generateRandomPassword, hashPassword } from '@/lib/auth';
+import { canOverridePricing, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendWelcomeEmail } from '@/lib/email';
 import {
   BASE_SERVICES,
@@ -21,8 +21,8 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 

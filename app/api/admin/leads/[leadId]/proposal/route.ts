@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { canOverridePricing, unauthorizedResponse } from '@/lib/middleware';
+import { canOverridePricing, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import {
   calculatePrice,
   customItemsTotal,
@@ -31,8 +30,8 @@ export async function POST(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 

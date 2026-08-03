@@ -37,7 +37,7 @@ export async function GET(
   try {
     const { leadId } = await params;
 
-    const limited = enforce([
+    const limited = await enforce([
       { key: limiterKey('public-proposal', request), options: LIMITS.publicRead },
     ]);
     if (limited) return limited;

@@ -29,6 +29,18 @@ reuse one value across several.
       return 503 and no scheduled job runs. Set it in Vercel and it's sent
       automatically.
 
+Optional, but worth setting before you have real traffic:
+
+- [ ] **`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`** — turn the
+      auth rate limiter from per-instance into global. Without them each
+      serverless instance counts on its own, so someone spread across cold
+      starts gets more login attempts than the published limit suggests.
+      With them, the limits are the real limits. Create a free database at
+      upstash.com, copy the two REST values, done — no client library and
+      nothing to run. If Redis is ever unreachable the limiter degrades back
+      to per-instance counting rather than failing open or locking anyone
+      out.
+
 Optional, and only for a brand-new deployment with an empty `users` table:
 
 - [ ] **`ADMIN_BOOTSTRAP_TOKEN`** — lets one first owner account be created
@@ -101,15 +113,22 @@ and Vercel — no amount of code changes fixes it.
 
 ## Deliberately deferred engineering
 
-- [ ] **Content-Security-Policy.** Baseline security headers are shipped
-      (see `next.config.ts`), but CSP is absent on purpose — Next's inline
-      runtime needs nonce plumbing, and a half-done CSP breaks pages
-      silently. Treat as its own task.
-- [ ] **Durable rate limiting.** The contact API's limiter is in-memory and
-      resets on serverless cold starts. Fine against casual abuse; move to
-      Upstash Redis if the endpoint ever gets targeted.
-- [ ] **API tests.** The contact route's validation/honeypot/rate-limit
-      logic is the only real logic in the repo and has no automated tests.
+- [x] **Content-Security-Policy.** Shipped — see the comment at the top of
+      `next.config.ts` for the one real decision in it: `script-src` allows
+      `'unsafe-inline'` rather than using a nonce, because a nonce forces
+      every page to render dynamically and this app has no HTML-injection
+      sink for an inline script to arrive through. Every other directive is
+      locked down. `CSP_REPORT_ONLY=1` ships it as Report-Only.
+- [x] **Durable rate limiting.** Shipped — `lib/rate-limit.ts` uses Upstash
+      Redis when `UPSTASH_REDIS_REST_URL`/`_TOKEN` are set and falls back to
+      per-instance counting when they aren't, or when Redis is unreachable.
+      Set the two env vars above to make the published limits the real ones.
+- [ ] **Automated tests.** Still none in the repo. The security work was
+      verified by driving a real Postgres and a real Chromium (capability
+      tokens, the signature replay guard, CSP violations, both revoke
+      buttons, the shared rate-limit counter across two processes), but none
+      of that is committed as a suite that runs on every change. Worth
+      adding a test runner before the next round of work.
 
 ## Design decisions (resolved 2026-07-27)
 

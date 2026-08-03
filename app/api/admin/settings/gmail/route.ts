@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { encryptSecret } from '@/lib/crypto';
 import { verifyGmailCredentials } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
@@ -9,8 +8,8 @@ import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 
 export async function GET() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
@@ -57,8 +56,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { gmailAddress, appPassword } = await request.json();
     if (!gmailAddress || !appPassword) {
@@ -95,8 +94,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     await prisma.user.update({
       where: { id: session.userId },

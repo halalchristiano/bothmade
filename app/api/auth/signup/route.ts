@@ -40,7 +40,7 @@ function bootstrapTokenMatches(provided: string | null): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  const limited = enforce([{ key: limiterKey('signup', request), options: LIMITS.signup }]);
+  const limited = await enforce([{ key: limiterKey('signup', request), options: LIMITS.signup }]);
   if (limited) return limited;
 
   try {

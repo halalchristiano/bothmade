@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     // source address and per targeted account, both.
     const ipKey = limiterKey('admin-login', request);
     const accountKey = limiterKey('admin-login:account', request, String(email));
-    const limited = enforce([
+    const limited = await enforce([
       { key: ipKey, options: LIMITS.login },
       { key: accountKey, options: LIMITS.login },
     ]);
@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    reset(ipKey);
-    reset(accountKey);
+    await reset(ipKey);
+    await reset(accountKey);
 
     const token = createToken({
       userId: user.id,

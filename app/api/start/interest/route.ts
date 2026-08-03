@@ -24,7 +24,7 @@ const INTEREST_LIMIT = { limit: 5, windowMs: 10 * 60 * 1000 };
 
 export async function POST(request: NextRequest) {
   try {
-    const limited = enforce([
+    const limited = await enforce([
       { key: limiterKey('start-interest', request), options: INTEREST_LIMIT, message: 'Too many requests. Please try again later.' },
     ]);
     if (limited) return limited;

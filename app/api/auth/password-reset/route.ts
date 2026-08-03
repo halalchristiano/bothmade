@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     // Each reset request is an email we send on someone else's say-so.
     // Unthrottled, this endpoint is a way to mailbomb any address we hold.
-    const limited = enforce([
+    const limited = await enforce([
       { key: limiterKey('password-reset', request), options: LIMITS.passwordResetRequest },
       {
         key: limiterKey(`password-reset:${resolvedType}`, request, normalizedEmail),
@@ -119,7 +119,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const limited = enforce([
+    const limited = await enforce([
       { key: limiterKey('password-reset-submit', request), options: LIMITS.passwordResetSubmit },
     ]);
     if (limited) return limited;

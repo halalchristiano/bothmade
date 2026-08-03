@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { syncBouncesForUser, syncRepliesForUser } from '@/lib/bounce-sync';
 
 /**
@@ -10,8 +9,8 @@ import { syncBouncesForUser, syncRepliesForUser } from '@/lib/bounce-sync';
  */
 export async function POST() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const [result, replies] = await Promise.all([
       syncBouncesForUser(session.userId),
