@@ -448,15 +448,75 @@ export async function POST(request: NextRequest) {
       },
       {
         to: cleanEmail,
-        subject: 'We received your message',
+        // Their own company in the subject line, when they gave one. A
+        // subject identical on every send is one of the things that makes a
+        // real acknowledgement look like a blast.
+        subject: cleanCompany
+          ? `We received your message — ${cleanCompany}`
+          : 'We received your message',
         html: renderShell({
           eyebrow: 'Message received',
           title: 'Thanks for reaching out',
+          /**
+           * Reads their enquiry back to them.
+           *
+           * The old version was four generic lines, byte-identical on every
+           * send and carrying nothing only this person could have caused.
+           * That is the shape a filter distrusts, and it was landing in spam
+           * while the invoice mail — dense with real names, real figures and
+           * real attachments — reached the inbox from the same domain.
+           *
+           * It is also just a better email: someone who fills in a form
+           * wants to see that the right thing arrived, and quoting it back
+           * is how you show that rather than assert it. Every value here is
+           * escaped in `safe`, and the optional rows only appear when the
+           * person actually answered them.
+           */
           bodyHtml:
             `<p style="margin:0 0 14px;">Hi ${safe.name},</p>
+             <p style="margin:0 0 20px;">
+               Thanks — this is just to confirm your message reached us, with what you
+               sent so you can check we have it right.
+             </p>
+
+             <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; margin:0 0 20px;">
+               <tr>
+                 <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px; width:110px;">Looking for</td>
+                 <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.service}</td>
+               </tr>
+               ${
+                 cleanCompany
+                   ? `<tr>
+                        <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">Company</td>
+                        <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.company}</td>
+                      </tr>`
+                   : ''
+               }
+               ${
+                 cleanBudget
+                   ? `<tr>
+                        <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">Budget</td>
+                        <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.budget}</td>
+                      </tr>`
+                   : ''
+               }
+               ${
+                 cleanTimeline
+                   ? `<tr>
+                        <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">Timeline</td>
+                        <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.timeline}</td>
+                      </tr>`
+                   : ''
+               }
+             </table>
+
+             <p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">What you wrote</p>
+             <p style="margin:0 0 20px; padding:0 0 0 14px; border-left:2px solid rgba(255,255,255,0.18); white-space:pre-wrap;">${safe.message}</p>
+
              <p style="margin:0;">
-               We've received your message and will get back to you within 24 hours.
-               You can reply directly to this email if you'd like to add anything.
+               ${rep?.name ? `${escapeHtml(rep.name)} will read this and reply` : "We'll reply"}
+               within 24 hours — usually sooner. Reply to this email if you want to add
+               anything in the meantime.
              </p>`,
           footerNote: `${COMPANY_NAME} — ${COMPANY_WEBSITE}`,
         }),
