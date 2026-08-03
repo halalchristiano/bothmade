@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
-import { getCurrentSession } from '@/lib/auth';
+import { requireStaff } from '@/lib/middleware';
+import { AVATAR_CONTENT_TYPES, AVATAR_MAX_BYTES } from '@/lib/uploads';
 
 /** Token endpoint for an admin uploading their own profile headshot. */
 export async function POST(request: Request) {
@@ -11,12 +12,13 @@ export async function POST(request: Request) {
       body,
       request,
       onBeforeGenerateToken: async () => {
-        const session = await getCurrentSession();
-        if (!session || session.type !== 'user') {
+        const session = await requireStaff();
+        if (!session) {
           throw new Error('Unauthorized');
         }
         return {
-          allowedContentTypes: ['image/png', 'image/jpeg', 'image/webp'],
+          allowedContentTypes: AVATAR_CONTENT_TYPES,
+          maximumSizeInBytes: AVATAR_MAX_BYTES,
           addRandomSuffix: true,
         };
       },

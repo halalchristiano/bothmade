@@ -1,4 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { LOGO_BACKGROUND, LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
+import { COMPANY_ADDRESS_LINES, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -24,6 +26,9 @@ const BLACK = rgb(0.08, 0.08, 0.1);
 const GRAY = rgb(0.42, 0.42, 0.46);
 const LIGHT_GRAY = rgb(0.85, 0.85, 0.87);
 const ACCENT = rgb(0.13, 0.55, 0.85);
+const WHITE = rgb(1, 1, 1);
+const BRAND_FIELD = rgb(LOGO_BACKGROUND.r, LOGO_BACKGROUND.g, LOGO_BACKGROUND.b);
+const BAND_HEIGHT = 66;
 
 export interface InvoiceLineItem {
   label: string;
@@ -89,6 +94,15 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     page.drawText(text, { x, y, size, font: f, color });
   };
 
+  /** Same as drawText, but measured so the text ends at the right margin. */
+  const drawTextRight = (
+    text: string,
+    opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; at?: number } = {}
+  ) => {
+    const { size = 11, f = font, color = BLACK, at = y } = opts;
+    page.drawText(text, { x: PAGE_WIDTH - MARGIN - f.widthOfTextAtSize(text, size), y: at, size, font: f, color });
+  };
+
   const drawRow = (label: string, amount: string, opts: { f?: PDFFont; color?: ReturnType<typeof rgb>; size?: number } = {}) => {
     const { f = font, color = BLACK, size = 11 } = opts;
     const wrapped = wrapText(label, f, size, CONTENT_WIDTH - 140);
@@ -108,29 +122,66 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     y -= 16;
   };
 
-  // Header
-  drawText('Bothmade', MARGIN, { size: 24, f: bold });
-  drawText('INVOICE', PAGE_WIDTH - MARGIN - bold.widthOfTextAtSize('INVOICE', 18), { size: 18, f: bold, color: ACCENT });
-  y -= 34;
+  // Header band — the wordmark carries its own near-black field, so the band
+  // is drawn in the same colour and the mark sits in it without a seam.
+  const logo = await doc.embedJpg(logoJpegBytes());
+  const logoWidth = 140;
+  const logoHeight = (logoWidth * LOGO_HEIGHT) / LOGO_WIDTH;
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_HEIGHT - BAND_HEIGHT,
+    width: PAGE_WIDTH,
+    height: BAND_HEIGHT,
+    color: BRAND_FIELD,
+  });
+  page.drawImage(logo, {
+    x: MARGIN,
+    y: PAGE_HEIGHT - BAND_HEIGHT / 2 - logoHeight / 2,
+    width: logoWidth,
+    height: logoHeight,
+  });
+  y = PAGE_HEIGHT - BAND_HEIGHT / 2 - 6;
+  drawTextRight('INVOICE', { size: 16, f: bold, color: WHITE });
 
+  y = PAGE_HEIGHT - BAND_HEIGHT - 28;
   drawText(`Invoice #${input.invoiceNumber}`, MARGIN, { size: 10, color: GRAY });
-  drawText(
-    input.date,
-    PAGE_WIDTH - MARGIN - font.widthOfTextAtSize(input.date, 10),
-    { size: 10, color: GRAY }
-  );
+  drawTextRight(input.date, { size: 10, color: GRAY });
   y -= 30;
 
-  // Bill to
-  drawText('Bill to', MARGIN, { size: 9, f: bold, color: GRAY });
-  y -= 16;
-  drawText(input.company, MARGIN, { size: 12, f: bold });
-  y -= 16;
-  if (input.contactName) {
-    drawText(input.contactName, MARGIN, { size: 11, color: GRAY });
+  // Who it's from and who it's for, side by side — an invoice has to carry the
+  // issuing address, not just the billing one.
+  const columnTop = y;
+  drawText('From', MARGIN, { size: 9, f: bold, color: GRAY });
+  y -= 15;
+  drawText(COMPANY_NAME, MARGIN, { size: 11, f: bold });
+  y -= 14;
+  for (const line of COMPANY_ADDRESS_LINES) {
+    drawText(line, MARGIN, { size: 10, color: GRAY });
+    y -= 13;
+  }
+  drawText(COMPANY_EMAIL, MARGIN, { size: 10, color: GRAY });
+  y -= 13;
+  const fromBottom = y;
+
+  // Half the width, less a gutter — a long client name wraps rather than
+  // running back across the address in the column beside it.
+  const billToWidth = CONTENT_WIDTH / 2 - 16;
+
+  y = columnTop;
+  drawTextRight('Bill to', { size: 9, f: bold, color: GRAY });
+  y -= 15;
+  for (const line of wrapText(input.company, bold, 12, billToWidth)) {
+    drawTextRight(line, { size: 12, f: bold });
     y -= 16;
   }
-  y -= 14;
+  if (input.contactName) {
+    for (const line of wrapText(input.contactName, font, 11, billToWidth)) {
+      drawTextRight(line, { size: 11, color: GRAY });
+      y -= 16;
+    }
+  }
+
+  y = Math.min(fromBottom, y) - 14;
 
   // Line items
   drawText('Description', MARGIN, { size: 9, f: bold, color: GRAY });

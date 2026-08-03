@@ -169,7 +169,10 @@ export function ServiceList() {
   if (reduceMotion) return <StaticWorlds />;
 
   return (
-    <section id="services" ref={containerRef} className="relative h-[500vh]">
+    // 300vh, not 500 — long enough for the sheet mechanic to read, short
+    // enough that the offer below it is still reachable on a phone without
+    // committing to five screens of scroll.
+    <section id="services" ref={containerRef} className="relative h-[300vh]">
       <div className="sticky top-0 h-screen overflow-hidden">
         {/* header, floating above every world */}
         <div className="absolute top-24 inset-x-0 z-40 px-6">
@@ -212,7 +215,7 @@ export function ServiceList() {
                   behavior: 'smooth',
                 });
               }}
-              className="group p-2"
+              className="group px-2.5 py-4"
             >
               <span
                 className="block h-1.5 rounded-full transition-all duration-500 group-hover:bg-white/60"
@@ -333,15 +336,21 @@ function WorldSheet({
 
         {/* content */}
         <motion.div
-          className={`absolute inset-0 flex flex-col justify-center px-6 md:px-14 ${align}`}
+          /* The padding is the safe area between the floating "what we make"
+             header and the page dots. Centred without it, short phones put
+             the title under the header and the CTA row on top of the dots. */
+          className={`absolute inset-0 flex flex-col justify-center px-6 md:px-14 pt-32 md:pt-28 pb-24 md:pb-20 ${align}`}
           style={{ y: contentY }}
         >
           <div className="max-w-6xl w-full mx-auto flex flex-col gap-0" style={{ alignItems: 'inherit' }}>
             <p className="mb-4 font-mono text-xs text-white/35 tabular-nums">{world.index}</p>
 
             <h3
+              /* The clamp floor used to be 3rem, which "VISION PRO" and
+                 "iOS & iPAD" blew past the viewport with at 320–360px —
+                 nowrap meant they clipped rather than wrapped. */
               className="font-bold leading-[0.9] tracking-[-0.04em] whitespace-nowrap select-none"
-              style={{ fontSize: 'clamp(3rem, 12vw, 11rem)', ...world.titleStyle }}
+              style={{ fontSize: 'clamp(2.35rem, 11vw, 11rem)', ...world.titleStyle }}
             >
               {world.title}
             </h3>
@@ -351,16 +360,27 @@ function WorldSheet({
               <p className="max-w-md text-sm md:text-base text-white/55 leading-relaxed">
                 {world.blurb}
               </p>
-              <Link
-                href={world.href}
-                tabIndex={interactive ? 0 : -1}
-                className="group inline-flex items-center gap-3 text-sm font-medium text-white/80 hover:text-white transition-colors w-fit"
-              >
-                <span className="border-b border-white/30 group-hover:border-white pb-0.5 transition-colors">
-                  Enter {world.title.toLowerCase()}
-                </span>
-                <span className="transition-transform duration-300 group-hover:translate-x-1.5">→</span>
-              </Link>
+              {/* Two exits from every world: deeper in, or straight to a
+                  conversation — nobody should need the whole tour to act. */}
+              <span className={`flex flex-wrap items-center gap-6 ${index % 2 === 0 ? '' : 'justify-end'}`}>
+                <Link
+                  href={world.href}
+                  tabIndex={interactive ? 0 : -1}
+                  className="group inline-flex items-center gap-3 text-sm font-medium text-white/80 hover:text-white transition-colors w-fit"
+                >
+                  <span className="border-b border-white/30 group-hover:border-white pb-0.5 transition-colors">
+                    Enter {world.title.toLowerCase()}
+                  </span>
+                  <span className="transition-transform duration-300 group-hover:translate-x-1.5">→</span>
+                </Link>
+                <Link
+                  href="/#contact"
+                  tabIndex={interactive ? 0 : -1}
+                  className="text-sm text-white/45 hover:text-white transition-colors border-b border-transparent hover:border-white/40 pb-0.5 w-fit"
+                >
+                  Talk to us
+                </Link>
+              </span>
             </div>
           </div>
         </motion.div>
@@ -391,9 +411,14 @@ function StaticWorlds() {
               {world.title}
             </h3>
             <p className="mt-6 max-w-md text-white/55">{world.blurb}</p>
-            <Link href={world.href} className="mt-6 inline-block text-white/80 underline underline-offset-4">
-              Enter {world.title.toLowerCase()} →
-            </Link>
+            <div className="mt-6 flex flex-wrap items-center gap-6">
+              <Link href={world.href} className="inline-block text-white/80 underline underline-offset-4">
+                Enter {world.title.toLowerCase()} →
+              </Link>
+              <Link href="/#contact" className="inline-block text-white/50 hover:text-white underline underline-offset-4">
+                Talk to us
+              </Link>
+            </div>
           </div>
         </div>
       ))}

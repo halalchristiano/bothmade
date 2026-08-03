@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { decryptSecret } from '@/lib/crypto';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
+import { escParagraphs } from '@/lib/html';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
 
 /**
@@ -20,8 +20,8 @@ export async function POST(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { leadId } = await params;
     const { subject, body } = await request.json();
@@ -54,10 +54,7 @@ export async function POST(
       );
     }
 
-    const bodyHtml = body
-      .split(/\n{2,}/)
-      .map((para: string) => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
-      .join('');
+    const bodyHtml = escParagraphs(body);
 
     const result = await sendAsUser(
       {

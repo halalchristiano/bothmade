@@ -28,6 +28,11 @@ import {
   Phone,
   Mail,
   RefreshCw,
+  ExternalLink,
+  ListChecks,
+  Palette as PaletteIcon,
+  BarChart3,
+  UserCog,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
 import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
@@ -35,10 +40,12 @@ import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { UndoToast } from '@/components/admin/UndoToast';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { MockupsCard } from '@/components/admin/MockupAttachments';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
+import { USER_ROLE_LABELS, type UserRole } from '@/lib/roles';
 
 type StatsRange = 'week' | 'month' | 'quarter';
 
@@ -87,6 +94,23 @@ function RefreshIndicator({
       <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
       {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
     </button>
+  );
+}
+
+/** Opens the client's own status page in a new tab — the fastest way to see
+ * exactly what they're seeing, without switching accounts. */
+function OpenStatusButton({ projectId }: { projectId: string }) {
+  return (
+    <a
+      href={`/status/${projectId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title="Open their status page"
+      className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
+    >
+      <ExternalLink size={13} />
+    </a>
   );
 }
 
@@ -682,6 +706,10 @@ function SalesDashboard({
         <NextActionsCard stats={stats} />
       </div>
 
+      <div className="mb-5">
+        <MockupsCard />
+      </div>
+
       {stats.awaitingSignature.length > 0 && (
         <div className="mb-5">
           <Card className="p-6" glow="amber">
@@ -893,6 +921,7 @@ function HandoffRow({
           {handoff.company}
         </Link>
         <div className="flex items-center gap-2 shrink-0">
+          <OpenStatusButton projectId={handoff.id} />
           {handoff.onboardingTotal > 0 && (
             <Badge tone={handoff.onboardingAnswered === handoff.onboardingTotal ? 'emerald' : 'amber'}>
               Onboarding {handoff.onboardingAnswered}/{handoff.onboardingTotal}
@@ -1146,6 +1175,7 @@ function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       <Badge tone="amber">{formatCents(p.balanceDue)}</Badge>
                       <RemindButton projectId={p.id} lastSentAt={p.lastPaymentReminderSentAt} />
+                      <OpenStatusButton projectId={p.id} />
                     </div>
                   }
                 />
@@ -1190,7 +1220,17 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
         <>
           <div className="space-y-0.5">
             {shown.map((p) => (
-              <ListRow key={p.id} href={`/admin/projects/${p.id}`} title={p.company} trailing={<Badge tone="red">{p.daysSinceUpdate}d</Badge>} />
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                trailing={
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <Badge tone="red">{p.daysSinceUpdate}d</Badge>
+                    <OpenStatusButton projectId={p.id} />
+                  </div>
+                }
+              />
             ))}
           </div>
           <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
@@ -1232,7 +1272,12 @@ function WaitingOnClientCard({ projects }: { projects: OpsStats['waitingOnClient
                     ? `You messaged ${p.daysSinceWeAsked === 0 ? 'today' : `${p.daysSinceWeAsked}d ago`}`
                     : undefined
                 }
-                trailing={<Badge tone="amber">{p.daysSinceUpdate}d</Badge>}
+                trailing={
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <Badge tone="amber">{p.daysSinceUpdate}d</Badge>
+                    <OpenStatusButton projectId={p.id} />
+                  </div>
+                }
               />
             ))}
           </div>
@@ -1274,6 +1319,80 @@ function ActivityFeedCard({ activity }: { activity: OpsStats['activityFeed'] }) 
           <ShowMoreButton remaining={activity.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
         </>
       )}
+    </Card>
+  );
+}
+
+interface TeamMemberSummary {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+}
+
+/**
+ * Who's on the team, and whether the roles are actually wired up.
+ *
+ * The warning is the reason this is on the dashboard rather than only on
+ * /admin/team: inbound leads are assigned to whoever holds `sales`, and with
+ * nobody holding it they arrive unassigned and silently miss the call list
+ * and the daily follow-up digest. That is invisible from every other screen —
+ * the leads are all there, they just never reach anyone.
+ */
+function TeamCard() {
+  const [members, setMembers] = useState<TeamMemberSummary[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/admin/users')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.users) setMembers(d.users);
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  const missingSales = loaded && members.length > 0 && !members.some((m) => m.role === 'sales');
+
+  return (
+    <Card className="p-6" glow={missingSales ? 'amber' : undefined}>
+      <CardHeader
+        icon={UserCog}
+        tone={missingSales ? 'amber' : 'purple'}
+        title="Team"
+        subtitle={loaded ? `${members.length} account${members.length === 1 ? '' : 's'}` : 'Loading…'}
+        action={
+          <Link href="/admin/team" className="text-xs text-sky-300/70 hover:text-sky-300">
+            Manage →
+          </Link>
+        }
+      />
+
+      {missingSales && (
+        <p className="text-[13px] text-amber-200/80 mb-4 leading-relaxed">
+          Nobody has the Sales role, so inbound leads arrive unassigned and stay out of the
+          call list and daily follow-ups.{' '}
+          <Link href="/admin/team" className="underline hover:text-amber-100">
+            Assign it
+          </Link>
+          .
+        </p>
+      )}
+
+      <div className="space-y-1">
+        {members.map((m) => (
+          <div key={m.id} className="flex items-center justify-between gap-3 py-1.5">
+            <span className="text-sm text-white/80 truncate">{m.name || m.email}</span>
+            <Badge tone={m.role === 'sales' ? 'sky' : m.role === 'owner' ? 'purple' : 'neutral'}>
+              {USER_ROLE_LABELS[m.role as UserRole] ?? m.role}
+            </Badge>
+          </div>
+        ))}
+        {loaded && members.length === 0 && (
+          <p className="text-sm text-white/40">Nobody yet.</p>
+        )}
+      </div>
     </Card>
   );
 }
@@ -1402,6 +1521,8 @@ function OpsDashboard({
         <ActivityFeedCard activity={stats.activityFeed} />
 
         <TasksWidget />
+
+        <TeamCard />
       </div>
 
       {stats.projectsAwaitingReply.length > 0 && (
@@ -1443,13 +1564,31 @@ function OpsDashboard({
 
       <div className="flex flex-wrap gap-3">
         <Link
+          href="/admin/priorities"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+        >
+          <ListChecks size={16} /> Priorities
+        </Link>
+        <Link
           href="/admin/clients"
-          className="px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+          className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
         >
           View Clients
         </Link>
         <Link href="/admin/projects" className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors">
           View Projects
+        </Link>
+        <Link
+          href="/admin/mockup-queue"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
+        >
+          <PaletteIcon size={16} /> Mockup Queue
+        </Link>
+        <Link
+          href="/admin/analytics"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
+        >
+          <BarChart3 size={16} /> Analytics
         </Link>
         <Link href="/admin/team-chat" className="px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors">
           Team Chat

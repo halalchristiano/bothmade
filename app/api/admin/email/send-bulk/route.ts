@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendTemplatedEmail } from '@/lib/send-templated-email';
 import { createGmailBatchTransport } from '@/lib/mailer';
 import { isDomainDelegationConfigured } from '@/lib/gmail-delegated';
@@ -26,8 +25,8 @@ const MAX_RECIPIENTS = 200;
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { templateId, sharedFields, recipients } = await request.json();
 

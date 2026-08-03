@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useState, FormEvent } from 'react';
+import { ContactForm } from '@/components/ContactForm';
 import { Intro } from '@/components/Intro';
 import { PillCTA, SectionTag, ScrubText } from '@/components/ui';
 import { Nav } from '@/components/Nav';
@@ -10,196 +10,10 @@ import { ServiceList } from '@/components/ServiceList';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ProcessTimeline } from '@/components/ProcessTimeline';
 import { WhyUs } from '@/components/WhyUs';
+import { Promises } from '@/components/Promises';
+import { SocialProof } from '@/components/SocialProof';
+import { About } from '@/components/About';
 import { Footer } from '@/components/Footer';
-
-function ContactForm() {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    company: '',
-    message: '',
-    service: 'web',
-    website: '', // honeypot — hidden from humans, irresistible to bots
-  });
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setSubmitted(true);
-        setFormData({
-          name: '',
-          email: '',
-          company: '',
-          message: '',
-          service: 'web',
-          website: '',
-        });
-        setTimeout(() => setSubmitted(false), 4000);
-      } else {
-        const data = await response.json().catch(() => null);
-        setError(data?.error ?? 'Failed to send message. Please try again.');
-      }
-    } catch {
-      setError('An error occurred. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Bold, minimal form. Large fields, generous space, underlines only.
-  // Dark ink on white, no softness.
-  const field =
-    'w-full bg-transparent border-0 border-b-2 border-black/20 rounded-none px-0 py-5 text-lg md:text-xl text-black placeholder-black/25 focus:outline-none focus:border-black/60 transition-colors duration-200';
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-2">
-      {/* Honeypot. Hidden from sighted users and screen readers alike, and
-          skipped by tab order — only a bot filling every field will trip it. */}
-      <div aria-hidden="true" className="absolute w-px h-px -left-[9999px] overflow-hidden">
-        <label htmlFor="website">Leave this field empty</label>
-        <input
-          id="website"
-          name="website"
-          type="text"
-          tabIndex={-1}
-          autoComplete="off"
-          value={formData.website}
-          onChange={handleChange}
-        />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-x-10">
-        <input
-          type="text"
-          name="name"
-          aria-label="Your name"
-          autoComplete="name"
-          placeholder="Name"
-          value={formData.name}
-          onChange={handleChange}
-          required
-          className={field}
-        />
-        <input
-          type="email"
-          name="email"
-          aria-label="Your email address"
-          autoComplete="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-          required
-          className={field}
-        />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-x-10">
-        <input
-          type="text"
-          name="company"
-          aria-label="Company (optional)"
-          autoComplete="organization"
-          placeholder="Company"
-          value={formData.company}
-          onChange={handleChange}
-          className={field}
-        />
-        <span className="relative block">
-          <select
-            name="service"
-            aria-label="What do you need built?"
-            value={formData.service}
-            onChange={handleChange}
-            className={`${field} cursor-pointer appearance-none pr-8`}
-          >
-            <option value="web">Web</option>
-            <option value="ios">iOS &amp; iPad</option>
-            <option value="mac">macOS</option>
-            <option value="visionpro">Vision Pro</option>
-            <option value="full-stack">Everything</option>
-            <option value="other">Something else</option>
-          </select>
-          {/* appearance-none erased the native chevron — without one this
-              reads as a text field, not a menu */}
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 12 8"
-            className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-2 text-black/40"
-          >
-            <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-          </svg>
-        </span>
-      </div>
-
-      <textarea
-        name="message"
-        aria-label="Tell us about the project"
-        placeholder="Tell us about the project"
-        value={formData.message}
-        onChange={handleChange}
-        required
-        rows={4}
-        className={`${field} resize-none`}
-      />
-
-      {/* Always mounted so assistive tech is already watching it when the
-          result arrives — a live region added at the same time as its content
-          is announced unreliably. */}
-      <div role="status" aria-live="polite" aria-atomic="true">
-        {submitted && (
-          <motion.p
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="pt-4 font-mono text-xs uppercase tracking-[0.3em] text-emerald-700"
-          >
-            Message received — we&apos;ll reply within 24h
-          </motion.p>
-        )}
-
-        {error && (
-          <motion.p
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="pt-4 font-mono text-xs uppercase tracking-[0.3em] text-red-600"
-          >
-            {error}
-          </motion.p>
-        )}
-      </div>
-
-      <div className="pt-12">
-        <button
-          type="submit"
-          disabled={loading}
-          aria-busy={loading}
-          className="w-full md:w-auto px-10 py-5 md:py-6 bg-black text-white font-medium text-base md:text-lg transition-all duration-300 hover:bg-black/85 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Sending…' : 'Send'}
-        </button>
-      </div>
-    </form>
-  );
-}
 
 export default function Home() {
   return (
@@ -258,8 +72,17 @@ export default function Home() {
                 One product, designed once, alive on every screen — no second agency, no
                 handoff tax, no drift between your web and your app.
               </p>
-              <PillCTA href="/#contact">Ask about the full build</PillCTA>
+              <div className="flex flex-wrap items-center gap-4">
+                <PillCTA href="/#contact">Ask about the full build</PillCTA>
+                <PillCTA href="/start" muted>See pricing</PillCTA>
+              </div>
             </div>
+
+            {/* Say the numbers before they have to ask. Figures mirror
+                BASE_SERVICES in lib/pricing.ts — update both together. */}
+            <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.25em] text-white/35">
+              Websites from $3,000 · iOS apps from $10,000 · the full build from $20,000
+            </p>
           </motion.div>
         </div>
       </section>
@@ -269,6 +92,19 @@ export default function Home() {
 
       {/* Why bothmade — honest boutique-studio positioning, no invented stats */}
       <WhyUs />
+
+      {/* The two terms that answer the objections every agency buyer has —
+          going dark, and who owns the result. Both are already written into
+          the agreement; this stops making people dig them out of the FAQ. */}
+      <Promises />
+
+      {/* Renders nothing until lib/testimonials.ts has a real quote in it,
+          so the page is never padded with praise nobody said. */}
+      <SocialProof />
+
+      {/* Who's behind it — names and direct emails, right before we ask
+          them to introduce themselves. */}
+      <About />
 
       {/* Contact — inverted entirely. White field, dark text, form takes
           center stage. Sharp edges, generous space, no softness. */}

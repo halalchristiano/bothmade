@@ -111,14 +111,19 @@ export function WorkIndex() {
                     </span>
 
                     <span className="md:col-span-1 md:text-right">
+                      {/* Our own concepts are labelled as such right on the
+                          shelf — nobody should have to click through to learn
+                          it isn't client work. */}
                       <span
                         className={`inline-block font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${
                           p.status === 'live'
                             ? 'border-emerald-400/40 text-emerald-300/80'
-                            : 'border-white/15 text-white/35'
+                            : p.selfInitiated
+                              ? 'border-amber-400/30 text-amber-300/70'
+                              : 'border-white/15 text-white/35'
                         }`}
                       >
-                        {p.status === 'live' ? 'live' : 'wip'}
+                        {p.status === 'live' ? 'live' : p.selfInitiated ? 'our concept' : 'wip'}
                       </span>
                     </span>
                   </Link>

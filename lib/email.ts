@@ -1,4 +1,14 @@
 import { Resend } from 'resend';
+import { COMPANY_ADDRESS_INLINE, COMPANY_NAME } from '@/lib/company';
+import {
+  esc,
+  escMultiline,
+  safeUrl,
+  sanitizeDisplayName,
+  sanitizeEmailAddress,
+  sanitizeEmailAddresses,
+  sanitizeSubject,
+} from '@/lib/html';
 
 /**
  * Built on first use, not at import. `new Resend(undefined)` throws, and a
@@ -60,9 +70,27 @@ export interface EmailData {
 }
 
 /**
- * Send email using Resend
+ * Send email using Resend.
+ *
+ * Every header value is sanitized on the way out. A newline inside a
+ * recipient address, a sender name, or a subject ends that header and starts
+ * a new one, which is how "email this client" turns into "Bcc: everyone" —
+ * and several of these values originate as a company name or a contact name
+ * someone typed into the CRM, or a lead's own email address imported from a
+ * CSV. Anything that isn't a well-formed address is dropped rather than sent.
  */
 export async function sendEmail(data: EmailData): Promise<boolean> {
+  const recipients = sanitizeEmailAddresses(Array.isArray(data.to) ? data.to : [data.to]);
+  if (recipients.length === 0) {
+    console.error('Email send skipped: no valid recipient address', {
+      attempted: Array.isArray(data.to) ? data.to.length : 1,
+    });
+    return false;
+  }
+
+  const fromName = sanitizeDisplayName(data.fromName) || 'Bothmade';
+  const replyTo = data.replyTo ? sanitizeEmailAddress(data.replyTo) : null;
+
   try {
     const resend = resendClient();
     if (!resend) {
@@ -71,11 +99,11 @@ export async function sendEmail(data: EmailData): Promise<boolean> {
     }
 
     const result = await resend.emails.send({
-      from: `${data.fromName || 'Bothmade'} <${CONTACT_EMAIL}>`,
-      to: data.to,
-      subject: data.subject,
+      from: `${fromName} <${CONTACT_EMAIL}>`,
+      to: recipients,
+      subject: sanitizeSubject(data.subject),
       html: data.html,
-      ...(data.replyTo ? { replyTo: data.replyTo } : {}),
+      ...(replyTo ? { replyTo } : {}),
       ...(data.attachments ? { attachments: data.attachments } : {}),
     });
 
@@ -95,6 +123,11 @@ export async function sendEmail(data: EmailData): Promise<boolean> {
  * Shared branded shell for every transactional email — dark gradient header,
  * glass-style content card, gradient CTA button, matching the app's visual
  * language instead of the generic black-header boilerplate.
+ *
+ * Everything here is escaped except `bodyHtml`, which is markup the caller
+ * assembled and is responsible for escaping. `ctaUrl` and `footerAvatarUrl`
+ * go through safeUrl(), so a `javascript:` value renders as no link at all
+ * rather than as a live one.
  */
 function renderShell(opts: {
   eyebrow?: string;
@@ -105,7 +138,13 @@ function renderShell(opts: {
   footerNote?: string;
   footerAvatarUrl?: string | null;
 }): string {
-  const { eyebrow, title, bodyHtml, ctaLabel, ctaUrl, footerNote, footerAvatarUrl } = opts;
+  const { bodyHtml } = opts;
+  const eyebrow = esc(opts.eyebrow);
+  const title = esc(opts.title);
+  const ctaLabel = esc(opts.ctaLabel);
+  const ctaUrl = safeUrl(opts.ctaUrl);
+  const footerNote = esc(opts.footerNote);
+  const footerAvatarUrl = safeUrl(opts.footerAvatarUrl);
   return `
 <!DOCTYPE html>
 <html>
@@ -156,6 +195,9 @@ function renderShell(opts: {
                 <span style="font-size:12px; color:rgba(255,255,255,0.3); vertical-align:middle;">
                   ${footerNote || 'Bothmade — bothmade.studio'}
                 </span>
+                <p style="margin:10px 0 0 0; font-size:11px; line-height:1.5; color:rgba(255,255,255,0.25);">
+                  ${COMPANY_NAME}, ${COMPANY_ADDRESS_INLINE}
+                </p>
               </td>
             </tr>
           </table>
@@ -180,19 +222,19 @@ export async function sendWelcomeEmail(
 ): Promise<boolean> {
   const loginUrl = `${SITE_URL}/client/login`;
   const projectDetails = [
-    serviceType ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Service:</strong> ${serviceType}</li>` : '',
-    timeline ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Timeline:</strong> ${timeline}</li>` : '',
+    serviceType ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Service:</strong> ${esc(serviceType)}</li>` : '',
+    timeline ? `<li style="margin-bottom:4px;"><strong style="color:#fff;">Timeline:</strong> ${esc(timeline)}</li>` : '',
   ]
     .filter(Boolean)
     .join('');
 
   const bodyHtml = `
-    <p>Hi ${clientName},</p>
-    <p>Your project <strong style="color:#fff;">${projectName}</strong> has been created and we're ready to get started.</p>
+    <p>Hi ${esc(clientName)},</p>
+    <p>Your project <strong style="color:#fff;">${esc(projectName)}</strong> has been created and we're ready to get started.</p>
     ${projectDetails ? `<ul style="padding-left:18px; margin:16px 0;">${projectDetails}</ul>` : ''}
     <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0; font-family:monospace; font-size:14px;">
-      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Email:</span> <span style="color:#fff;">${clientEmail}</span></p>
-      <p style="margin:0;"><span style="color:rgba(255,255,255,0.4);">Temporary password:</span> <span style="color:#fff;">${password}</span></p>
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Email:</span> <span style="color:#fff;">${esc(clientEmail)}</span></p>
+      <p style="margin:0;"><span style="color:rgba(255,255,255,0.4);">Temporary password:</span> <span style="color:#fff;">${esc(password)}</span></p>
     </div>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">You'll be asked to set your own password the first time you log in.</p>
   `;
@@ -224,11 +266,11 @@ export async function sendStatusUpdateEmail(
   const dashboardUrl = `${SITE_URL}/client/${projectId}`;
 
   const bodyHtml = `
-    <p>Hi ${clientName},</p>
-    <p>There's a new update on <strong style="color:#fff;">${projectName}</strong>.</p>
+    <p>Hi ${esc(clientName)},</p>
+    <p>There's a new update on <strong style="color:#fff;">${esc(projectName)}</strong>.</p>
     <div style="background:rgba(255,255,255,0.05); border-left:3px solid #38bdf8; border-radius:8px; padding:16px 18px; margin:20px 0;">
-      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${updateTitle}</p>
-      <p style="margin:0; color:rgba(255,255,255,0.7);">${updateDescription}</p>
+      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${esc(updateTitle)}</p>
+      <p style="margin:0; color:rgba(255,255,255,0.7);">${escMultiline(updateDescription)}</p>
     </div>
   `;
 
@@ -258,10 +300,10 @@ export async function sendMessageNotificationEmail(
   const dashboardUrl = `${SITE_URL}/client/${projectId}`;
 
   const bodyHtml = `
-    <p>Hi ${clientName},</p>
-    <p>You have a new message from the Bothmade team on <strong style="color:#fff;">${projectName}</strong>.</p>
+    <p>Hi ${esc(clientName)},</p>
+    <p>You have a new message from the Bothmade team on <strong style="color:#fff;">${esc(projectName)}</strong>.</p>
     <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:16px 18px; margin:20px 0; color:rgba(255,255,255,0.75);">
-      ${messagePreview}
+      ${escMultiline(messagePreview)}
     </div>
   `;
 
@@ -291,11 +333,11 @@ export async function sendPaymentLinkEmail(
   isDeposit: boolean
 ): Promise<boolean> {
   const bodyHtml = `
-    <p>Hi ${contactName || 'there'},</p>
-    <p>Thanks for choosing Bothmade for ${company}'s project. ${
+    <p>Hi ${esc(contactName) || 'there'},</p>
+    <p>Thanks for choosing Bothmade for ${esc(company)}'s project. ${
       isDeposit
-        ? `Here's a secure link to pay your deposit of <strong style="color:#fff;">${amountLabel}</strong> and get started.`
-        : `Here's a secure link to complete your payment of <strong style="color:#fff;">${amountLabel}</strong>.`
+        ? `Here's a secure link to pay your deposit of <strong style="color:#fff;">${esc(amountLabel)}</strong> and get started.`
+        : `Here's a secure link to complete your payment of <strong style="color:#fff;">${esc(amountLabel)}</strong>.`
     }</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">This link is hosted securely by Stripe — we never see or store your card details.</p>
   `;
@@ -328,9 +370,9 @@ export async function sendSignAndPayEmail(
   invoicePdf?: Buffer
 ): Promise<boolean> {
   const bodyHtml = `
-    <p>Hi ${contactName || 'there'},</p>
-    <p>Here's everything to get ${company}'s project moving — the agreement to review and a secure place to pay ${
-      isDeposit ? `your deposit of <strong style="color:#fff;">${amountLabel}</strong>` : `<strong style="color:#fff;">${amountLabel}</strong>`
+    <p>Hi ${esc(contactName) || 'there'},</p>
+    <p>Here's everything to get ${esc(company)}'s project moving — the agreement to review and a secure place to pay ${
+      isDeposit ? `your deposit of <strong style="color:#fff;">${esc(amountLabel)}</strong>` : `<strong style="color:#fff;">${esc(amountLabel)}</strong>`
     }, all on one page.</p>
     ${invoicePdf ? '<p style="font-size:13px; color:rgba(255,255,255,0.5);">The itemized invoice is attached to this email as a PDF.</p>' : ''}
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
@@ -365,10 +407,10 @@ export async function sendInvoiceOnlyEmail(
   isSelfCopy: boolean
 ): Promise<boolean> {
   const bodyHtml = isSelfCopy
-    ? `<p>Here's a copy of the current invoice for ${company}, attached as a PDF.</p>`
+    ? `<p>Here's a copy of the current invoice for ${esc(company)}, attached as a PDF.</p>`
     : `
-      <p>Hi ${contactName || 'there'},</p>
-      <p>Here's a copy of your invoice for ${company}'s project, attached as a PDF.</p>
+      <p>Hi ${esc(contactName) || 'there'},</p>
+      <p>Here's a copy of your invoice for ${esc(company)}'s project, attached as a PDF.</p>
     `;
 
   return sendEmail({
@@ -397,7 +439,7 @@ export async function sendSignedContractCopyEmail(
   // copy of no matter who else is on the thread.
   const recipients = Array.from(new Set([...toEmails, ...studioInbox()]));
   const bodyHtml = `
-    <p><strong style="color:#fff;">${company}</strong> just agreed to their project agreement online (total: ${totalPriceLabel}).</p>
+    <p><strong style="color:#fff;">${esc(company)}</strong> just agreed to their project agreement online (total: ${esc(totalPriceLabel)}).</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">A copy is saved below and will also show up on the project once payment clears.</p>
   `;
 

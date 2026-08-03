@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus } from '@/lib/leads';
 
 /**
@@ -23,8 +22,8 @@ export async function POST(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { leadId } = await params;
     const { activityId, previous } = await request.json();
@@ -45,6 +44,9 @@ export async function POST(
         status: previous.status ?? undefined,
         nextFollowUpAt: previous.nextFollowUpAt ? new Date(previous.nextFollowUpAt) : null,
         lostReason: previous.lostReason ?? null,
+        // Undoing a mis-tapped "wrong number" has to put the lead back in the
+        // callable band, or the undo only half-worked.
+        phoneInvalidAt: previous.phoneInvalidAt ? new Date(previous.phoneInvalidAt) : null,
         updatedAt: new Date(),
       },
     });

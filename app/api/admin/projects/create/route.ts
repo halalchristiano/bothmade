@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession, generateRandomPassword, hashPassword } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { generateRandomPassword, hashPassword } from '@/lib/auth';
+import { canOverridePricing, requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 import { sendWelcomeEmail } from '@/lib/email';
 import {
   BASE_SERVICES,
@@ -21,10 +22,15 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const {
       clientEmail,
@@ -68,7 +74,7 @@ export async function POST(request: NextRequest) {
     if (
       typeof totalPriceOverride === 'number' &&
       totalPriceOverride > 0 &&
-      session.role === 'sales' &&
+      !canOverridePricing(session) &&
       Math.round(totalPriceOverride) < minAllowedPrice(calculatedTotal)
     ) {
       return NextResponse.json(

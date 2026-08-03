@@ -92,19 +92,29 @@ export function SplitHero() {
       onPointerMove={hoverSteer}
       className="relative h-[100svh] w-full overflow-hidden select-none"
     >
-      <h1 className="sr-only">
-        Bothmade — web and native Apple development studio. Websites, iOS and iPad apps,
-        macOS software, and Vision Pro experiences built by one team.
-      </h1>
-
-      {/* The one plain sentence on an otherwise all-interaction hero — says
-          who this is and what it's for before anyone has to drag anything. */}
-      <p
-        aria-hidden="true"
-        className="absolute top-24 md:top-28 left-1/2 -translate-x-1/2 z-20 max-w-xs md:max-w-sm text-center text-xs md:text-sm text-white/45 leading-relaxed px-6"
-      >
-        Web and native Apple development, one small team, start to finish.
-      </p>
+      {/* The visible strapline is gone by request — the wordmark and the
+          price line carry the hero now. The h1 stays as screen-reader-only
+          text: a page with no h1 at all reads as untitled to assistive tech
+          and to search, and this is the homepage. */}
+      {/* Stays at z-20: the nav's mobile overlay is z-40 and lives in the
+          same stacking context, so anything higher here punches the hero
+          copy through an open menu. */}
+      <div className="absolute top-28 md:top-32 left-1/2 -translate-x-1/2 z-20 w-full max-w-md md:max-w-2xl text-center px-6">
+        <h1 className="sr-only">
+          Bothmade builds websites, iOS and iPad apps, macOS software, and Vision Pro
+          experiences — one small team, start to finish.
+        </h1>
+        {/* Price anchor up front: it filters tire-kickers and reads as
+            confidence. Numbers mirror BASE_SERVICES in lib/pricing.ts.
+            Tracking tightens on narrow phones so the line survives on one
+            row at 320px instead of breaking after "iOS apps". */}
+        <a
+          href="/start"
+          className="mt-3 inline-block py-1 font-mono text-[9px] tracking-[0.14em] sm:text-[10px] sm:tracking-[0.2em] md:text-[11px] md:tracking-[0.25em] uppercase text-white/55 hover:text-white transition-colors"
+        >
+          Websites from $3k · iOS apps from $10k →
+        </a>
+      </div>
 
       {/* ---------- LAYER A : NATIVE (base, right side) ---------- */}
       <div className="absolute inset-0">
@@ -138,11 +148,13 @@ export function SplitHero() {
           }}
         />
 
-        <div className="absolute top-24 left-10 right-10 h-9 rounded-t-xl border border-sky-400/20 bg-sky-400/[0.04] flex items-center gap-2 px-4">
+        {/* Docked below the price line rather than behind it — the two used
+            to share the top-24 band and collided at every width. */}
+        <div className="absolute top-40 md:top-44 left-6 md:left-10 right-6 md:right-10 h-9 rounded-t-xl border border-sky-400/20 bg-sky-400/[0.04] flex items-center gap-2 px-4">
           <span className="w-2.5 h-2.5 rounded-full bg-sky-400/30" />
           <span className="w-2.5 h-2.5 rounded-full bg-sky-400/20" />
           <span className="w-2.5 h-2.5 rounded-full bg-sky-400/10" />
-          <span className="ml-3 text-[10px] font-mono text-sky-300/40 tracking-widest">
+          <span className="ml-3 text-[10px] font-mono text-sky-300/40 tracking-widest truncate">
             bothmade.studio
           </span>
         </div>
@@ -188,7 +200,10 @@ export function SplitHero() {
           aria-valuemax={MAX}
           aria-valuenow={ariaNow}
           aria-valuetext={`${ariaNow}% web, ${100 - ariaNow}% native`}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-white/25 bg-black/60 backdrop-blur-md grid place-items-center cursor-ew-resize touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          /* Parked below the wordmark rather than on it: centred, the puck
+             blanked out the two letters either side of the seam — the exact
+             letters the morph is supposed to show off. */
+          className="absolute top-[68%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-white/25 bg-black/60 backdrop-blur-md grid place-items-center cursor-ew-resize touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
         >
           <span className="text-white/70 text-xs tracking-[0.2em] font-mono">↔</span>
           <motion.span
@@ -201,7 +216,7 @@ export function SplitHero() {
 
       {/* scroll cue */}
       <motion.div
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 text-[10px] font-mono tracking-[0.35em] text-white/30"
+        className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 text-[10px] font-mono tracking-[0.35em] text-white/45"
         animate={{ y: [0, 6, 0] }}
         transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
       >
@@ -291,7 +306,7 @@ function SideLabel({
     <span
       className={`absolute top-1/2 -translate-y-1/2 text-[10px] font-mono uppercase tracking-[0.5em] ${
         side === 'left' ? 'left-6 md:left-10' : 'right-6 md:right-10'
-      } ${tone === 'sky' ? 'text-sky-300/40' : 'text-purple-300/40'}`}
+      } ${tone === 'sky' ? 'text-sky-300/60' : 'text-purple-300/60'}`}
       style={{
         writingMode: 'vertical-rl',
         transform: `translateY(-50%) rotate(${side === 'left' ? '180deg' : '0deg'})`,

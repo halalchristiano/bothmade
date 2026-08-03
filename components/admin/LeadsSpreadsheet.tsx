@@ -34,7 +34,6 @@ interface SpreadsheetLead {
   tags: string;
   doNotContact: boolean;
   mockupUrl: string | null;
-  mockupPdfUrl: string | null;
   invoicePdfUrl: string | null;
   estimateLowCents: number | null;
   estimateHighCents: number | null;
@@ -347,7 +346,6 @@ export function LeadsSpreadsheet() {
       'Tags',
       'Do not contact',
       'Mockup URL',
-      'Mockup PDF URL',
       'Invoice PDF URL',
       'Assigned',
       'Date added',
@@ -372,7 +370,6 @@ export function LeadsSpreadsheet() {
       l.tags || '',
       l.doNotContact ? 'yes' : '',
       l.mockupUrl || '',
-      l.mockupPdfUrl || '',
       l.invoicePdfUrl || '',
       l.assignedTo?.name || '',
       ddmmyyyy(l.addedAt),

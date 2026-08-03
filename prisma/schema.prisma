@@ -21,6 +21,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Every session minted before this instant is refused. Sessions are 7-day
+  // JWTs with no server-side store, so without this a password change did
+  // nothing to a token already stolen — the thief kept access for the rest of
+  // the week. Set on password change and password reset; null means nothing
+  // has ever been revoked for this account.
+  sessionsValidFrom DateTime?
+
   // Gmail "send as" connection — lets client emails go out from the user's
   // own Gmail address (and land in their real Sent folder) instead of a
   // shared no-reply address. gmailAppPassword is encrypted at rest.
@@ -54,6 +61,13 @@ model User {
   // Opts out of the Friday weekly-digest email (everyone gets it by default).
   weeklyDigestOptOut Boolean @default(false)
 
+  // When this user last opened the team chat. A single per-user timestamp
+  // works because the chat is one flat thread, and unlike TeamMessage.readAt
+  // it can represent per-user read state for broadcast messages
+  // (toUserId = null), which a shared readAt could not — a broadcast marked
+  // read by one person was read for everybody.
+  teamChatReadAt DateTime?
+
   // Relations
   clientMessages       ProjectMessage[] @relation("SentByUser")
   adminUpdates         ProjectUpdate[]  @relation("CreatedByAdmin")
@@ -65,6 +79,7 @@ model User {
   sentTeamMessages     TeamMessage[]    @relation("TeamMessageSender")
   receivedTeamMessages TeamMessage[]    @relation("TeamMessageRecipient")
   csvImportLogs        CsvImportLog[]
+  uploadedMockups      LeadMockup[]     @relation("MockupUploader")
 
   @@map("users")
 }
@@ -88,6 +103,11 @@ model Client {
   mustChangePassword Boolean   @default(true) // forces a password reset on first login after being auto-generated
   lastLoginAt        DateTime?
   archivedAt         DateTime? // "decommissioned" — hidden from active lists, login blocked, but records kept intact
+  // See User.sessionsValidFrom — same contract. It matters more here: the
+  // first password a client holds was auto-generated and emailed to them in
+  // plaintext, so the change away from it is exactly when old sessions
+  // should stop working.
+  sessionsValidFrom  DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -153,6 +173,12 @@ model Project {
   // shown on the dashboard so a reminder can't be fired off twice in a row
   // by accident after a page reload forgets the button was already used.
   lastPaymentReminderSentAt DateTime?
+
+  // Capability token for the public, no-login status page (/status/[id]?t=…).
+  // Separate from the cuid PK on purpose: knowing a project's ID — which
+  // shows up in admin URLs, emails, and Stripe metadata — must not be the
+  // same thing as being allowed to read its status. Rotate to revoke a link.
+  shareToken String @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
 
   // Metadata
   createdAt DateTime @default(now())
@@ -295,15 +321,18 @@ model Lead {
 
   mockupRequested   Boolean   @default(false) // Evan asking Kiana to put together a mockup for this lead
   mockupRequestedAt DateTime?
-  mockupUrl         String? // link to the finished mockup, once delivered
+  // The most recent mockup, mirrored from the `mockups` list below so the
+  // "is this lead still waiting on design" queries and the email templates'
+  // default link stay one column lookup rather than a join. The list is the
+  // record; these two are a cache of its newest entry.
+  mockupUrl         String?
   mockupDeliveredAt DateTime?
 
-  // A PDF of the mockup, alongside the live link. The link is the better
-  // thing to show on a call; the PDF is what survives — it can be opened
-  // with no signal, forwarded to someone who wasn't on the call, and still
-  // opens in a year once the preview deployment is long gone.
-  mockupPdfUrl        String?
-  mockupPdfUploadedAt DateTime?
+  // A PDF export of the mockup is another version of it, not a different
+  // kind of thing, so it lives in the `mockups` list with a fileName set
+  // rather than in a column of its own. The link is the better thing to
+  // show on a call; the PDF is what survives — no signal, no password, and
+  // still openable in a year once the preview deployment is gone.
 
   // Mockups deploy behind Vercel's password protection so a prospect's
   // competitors (and Google) can't find their unannounced redesign. Kept
@@ -330,6 +359,12 @@ model Lead {
   // Cleared automatically the next time a send to this lead succeeds.
   emailDeliveryFailedAt     DateTime?
   emailDeliveryFailedReason String?
+
+  // The phone equivalent: set when a call reaches a dead or wrong number.
+  // A flagged lead drops out of the callable band instead of being re-dialed,
+  // but still shows under "can't reach" so it can be given a new number
+  // rather than silently disappearing.
+  phoneInvalidAt DateTime?
 
   // A short one-liner (not the full draft above) usable as the "personalized
   // observation" field the cold-outreach templates require — lets Compose
@@ -403,6 +438,12 @@ model Lead {
   agreementHash     String? // sha256 of the exact contract text shown at signing
   signedContractUrl String? // saved PDF copy of what they actually agreed to
 
+  // Capability token for the public sign-and-pay page (/sign/[id]?t=…).
+  // The link is both "read the proposal" and "agree to the contract", so it
+  // gets its own unguessable secret rather than reusing the cuid PK, which
+  // is visible in admin URLs, Stripe metadata, and activity records.
+  shareToken String @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
+
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 
@@ -423,6 +464,7 @@ model Lead {
   updatedAt DateTime @updatedAt
 
   activities LeadActivity[]
+  mockups    LeadMockup[]
 
   // Every list in the admin either filters by owner and stage, sorts by when
   // a lead arrived, or looks one up by name/email — so those are the reads
@@ -434,6 +476,37 @@ model Lead {
   @@index([email])
   @@index([company])
   @@map("leads")
+}
+
+// Every mockup that has been put in front of one lead, oldest first.
+//
+// A deal rarely gets one mockup: the first version goes out, the business
+// asks for the menu on the homepage, a second version follows. A single
+// `mockupUrl` column meant version two overwrote version one, so the rep on
+// the call had no way to open "the one I sent you last Tuesday" — and no
+// place to record what the client said about it. Each row is one version,
+// with the note the rep took against that specific version.
+model LeadMockup {
+  id     String @id @default(cuid())
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  url      String // a link (Figma, Loom, staging site) or an uploaded file's URL
+  fileName String? // set only when the mockup was uploaded rather than linked
+
+  // The rep's own notes on this version — what was shown, what came back,
+  // what to change next time. Per-version rather than per-lead, because
+  // "they hated the hero" is only true of the mockup it was said about.
+  note String @default("") @db.Text
+
+  uploadedById String?
+  uploadedBy   User?   @relation("MockupUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId, createdAt])
+  @@map("lead_mockups")
 }
 
 // A permanent receipt of every CSV lead import — who ran it, what file,
@@ -600,6 +673,32 @@ model TeamMessage {
   createdAt DateTime  @default(now())
 
   @@map("team_messages")
+}
+
+// A pending password-reset link.
+//
+// These used to live in a module-level Map inside the reset route. On
+// serverless that Map belongs to whichever instance happened to serve the
+// request, so a link minted on one instance was "invalid or expired" on the
+// next, and every outstanding link died silently on redeploy. Worse, the
+// Map was never pruned and held plaintext tokens in memory.
+//
+// Only the SHA-256 of the emailed token is stored, so a database read yields
+// no working reset links. Single-use is enforced by `usedAt`.
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  email       String
+  userType    String // "user" (team member) | "client"
+  expiresAt   DateTime
+  usedAt      DateTime?
+  // Kept for abuse investigation — who asked for the reset, not who used it.
+  requestedIp String?
+  createdAt   DateTime  @default(now())
+
+  @@index([email, userType])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // The client's answer to one onboarding question

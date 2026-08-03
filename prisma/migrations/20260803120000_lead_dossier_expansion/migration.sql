@@ -1,8 +1,7 @@
--- Deliverables a rep needs to hand over on a call: the mockup as a link and
--- as a PDF, the password guarding the preview deployment, and the invoice
--- once the lead has actually been onboarded.
-ALTER TABLE "leads" ADD COLUMN "mockupPdfUrl" TEXT;
-ALTER TABLE "leads" ADD COLUMN "mockupPdfUploadedAt" TIMESTAMP(3);
+-- Deliverables a rep needs to hand over on a call: the password guarding the
+-- preview deployment, and the invoice once the lead has been onboarded. The
+-- mockup PDF is not here — it's a row in "lead_mockups" with a fileName,
+-- since it's another version of the mockup rather than a separate artefact.
 ALTER TABLE "leads" ADD COLUMN "vercelDeployPassword" TEXT;
 ALTER TABLE "leads" ADD COLUMN "invoicePdfUrl" TEXT;
 ALTER TABLE "leads" ADD COLUMN "invoicePdfUploadedAt" TIMESTAMP(3);

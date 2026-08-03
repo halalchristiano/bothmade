@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 import { sendEmail, studioInbox } from './email';
-import { escapeHtml } from './html';
+import { escapeHtml, safeUrl } from './html';
 
 /**
  * Read at call time, not at import. A module-level const freezes whatever the
@@ -53,7 +53,17 @@ export async function getDigestRecipientEmails(): Promise<string[]> {
   return users.map((u) => u.email);
 }
 
-const wrap = (title: string, bodyHtml: string, ctaHref?: string, ctaLabel?: string) => `
+/**
+ * `title` and `ctaLabel` are escaped here and `ctaHref` is protocol-checked,
+ * so the shell is safe even if a future call site forgets. `bodyHtml` stays
+ * raw — it is markup the caller assembles, and every call site below escapes
+ * its own interpolations.
+ */
+const wrap = (rawTitle: string, bodyHtml: string, rawCtaHref?: string, rawCtaLabel?: string) => {
+  const title = escapeHtml(rawTitle);
+  const ctaHref = safeUrl(rawCtaHref);
+  const ctaLabel = escapeHtml(rawCtaLabel || '');
+  return `
 <!DOCTYPE html>
 <html>
   <head>
@@ -76,6 +86,7 @@ const wrap = (title: string, bodyHtml: string, ctaHref?: string, ctaLabel?: stri
     </div>
   </body>
 </html>`;
+};
 
 /**
  * `alsoStudioInbox` adds the shared addresses on top of the User table.

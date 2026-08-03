@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
+import { mockupInclude, normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 
@@ -25,6 +25,10 @@ export async function GET(
           orderBy: { createdAt: 'desc' },
           include: { createdBy: { select: { id: true, name: true } } },
         },
+        // Newest first, because the only two questions asked of this list on
+        // a lead's page are "what's the current mockup" and "is there a PDF
+        // of it" — both answered by the top of the list.
+        mockups: { orderBy: { createdAt: 'desc' }, include: mockupInclude },
       },
     });
 
@@ -113,8 +117,8 @@ export async function PATCH(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 
@@ -217,6 +221,10 @@ export async function PATCH(
         contactName: contactName !== undefined ? contactName : undefined,
         email: email !== undefined ? email : undefined,
         phone: phone !== undefined ? phone : undefined,
+        // A new number clears the dead-number flag: a lead whose phone has
+        // been corrected is callable again, and would otherwise sit in
+        // "can't reach" forever with a number that works.
+        phoneInvalidAt: phone !== undefined && phone !== existing.phone ? null : undefined,
         status: status !== undefined ? status : autoStatus,
         source: source !== undefined ? source : undefined,
         estimatedValue: estimatedValue !== undefined ? estimatedValue : undefined,
@@ -248,14 +256,10 @@ export async function PATCH(
         estimateLowCents: estimateLowCents !== undefined ? estimateLowCents : undefined,
         estimateHighCents: estimateHighCents !== undefined ? estimateHighCents : undefined,
 
-        // Stored deliverables. The uploaded-at stamps only move when a URL
+        // Stored deliverables. The uploaded-at stamp only moves when the URL
         // actually changes, so re-saving the same link doesn't rewrite the
-        // history of when it first landed.
-        mockupPdfUrl: mockupPdfUrl !== undefined ? mockupPdfUrl : undefined,
-        mockupPdfUploadedAt:
-          mockupPdfUrl !== undefined && mockupPdfUrl && mockupPdfUrl !== existing.mockupPdfUrl
-            ? new Date()
-            : undefined,
+        // history of when it first landed. (The mockup PDF isn't here — it
+        // becomes a row in the mockups list below.)
         invoicePdfUrl: invoicePdfUrl !== undefined ? invoicePdfUrl : undefined,
         invoicePdfUploadedAt:
           invoicePdfUrl !== undefined && invoicePdfUrl && invoicePdfUrl !== existing.invoicePdfUrl
@@ -305,19 +309,34 @@ export async function PATCH(
         },
       });
     }
-    if (mockupUrl !== undefined && mockupUrl && !existing.mockupUrl) {
-      await prisma.teamMessage.updateMany({
-        where: { relatedLeadId: leadId, urgent: true, resolved: false },
-        data: { resolved: true },
+    // A delivered link becomes a numbered mockup on the lead (which is also
+    // what resolves the urgent request and messages the team). A second link
+    // pasted later is version two, not a replacement for version one.
+    if (mockupUrl !== undefined && mockupUrl) {
+      const url = normalizeMockupUrl(mockupUrl) ?? mockupUrl;
+      // The link is already saved on the lead itself at this point, so a
+      // failure here costs the version history, not the delivery.
+      await recordLeadMockup({ leadId, url, userId: session.userId }).catch((err) => {
+        console.error('Could not record mockup version:', err);
       });
-      await prisma.teamMessage.create({
-        data: {
-          content: `✅ Mockup ready for ${lead.company}: ${mockupUrl}`,
-          fromUserId: session.userId,
-          relatedLeadId: leadId,
-          urgent: false,
-        },
-      });
+    }
+
+    // A PDF export goes into the same list rather than a column of its own —
+    // it's another version of the mockup, and keeping it here means the
+    // history survives the next revision instead of being overwritten by it.
+    // `fileName` is what tells the page to offer it as a download.
+    if (mockupPdfUrl !== undefined && mockupPdfUrl) {
+      const url = normalizeMockupUrl(mockupPdfUrl);
+      if (url) {
+        await recordLeadMockup({
+          leadId,
+          url,
+          fileName: `${existing.company} mockup.pdf`,
+          userId: session.userId,
+        }).catch((err) => {
+          console.error('Could not record mockup PDF:', err);
+        });
+      }
     }
 
     return NextResponse.json({ success: true, lead }, { status: 200 });
@@ -332,8 +351,8 @@ export async function DELETE(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 

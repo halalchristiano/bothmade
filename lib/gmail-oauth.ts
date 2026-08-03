@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { encodeMimeMessage } from '@/lib/gmail-mime';
+import { buildFromHeader, encodeMimeMessage } from '@/lib/gmail-mime';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
@@ -156,7 +156,7 @@ export async function sendViaGmailOAuth(
   try {
     const gmail = google.gmail({ version: 'v1', auth: client });
     const raw = encodeMimeMessage({
-      from: opts.fromName ? `${opts.fromName} <${opts.fromEmail}>` : opts.fromEmail,
+      from: buildFromHeader(opts.fromName, opts.fromEmail),
       to: opts.to,
       subject: opts.subject,
       html: opts.html,

@@ -25,6 +25,16 @@ export default function SignAndPayPage() {
   const params = useParams();
   const leadId = params.leadId as string;
 
+  // The capability token from the emailed link. Read off window rather than
+  // useSearchParams() so this page needs no Suspense boundary to prerender.
+  // Null means "not read yet"; '' means "no token in the URL", which the API
+  // will reject like any other wrong token.
+  const [shareToken, setShareToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    setShareToken(new URLSearchParams(window.location.search).get('t') || '');
+  }, []);
+
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,9 +44,10 @@ export default function SignAndPayPage() {
   const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
+    if (shareToken === null) return;
     const load = async () => {
       try {
-        const res = await fetch(`/api/public/leads/${leadId}/proposal`);
+        const res = await fetch(`/api/public/leads/${leadId}/proposal?t=${encodeURIComponent(shareToken)}`);
         const data = await res.json();
         if (res.ok && data.success) {
           setProposal(data.proposal);
@@ -51,13 +62,16 @@ export default function SignAndPayPage() {
       }
     };
     load();
-  }, [leadId]);
+  }, [leadId, shareToken]);
 
   const handleAgreeAndPay = async () => {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const res = await fetch(`/api/public/leads/${leadId}/agree-and-pay`, { method: 'POST' });
+      const res = await fetch(
+        `/api/public/leads/${leadId}/agree-and-pay?t=${encodeURIComponent(shareToken || '')}`,
+        { method: 'POST' }
+      );
       const data = await res.json();
       if (res.ok && data.url) {
         window.location.href = data.url;

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 
 export interface NotificationItem {
@@ -14,8 +13,8 @@ export interface NotificationItem {
 
 export async function GET() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -25,13 +24,23 @@ export async function GET() {
 
     // Unread casual messages disappear once read; flagged (urgent) ones stay
     // until explicitly marked resolved, regardless of read status.
+    // Read state comes from the per-user teamChatReadAt, not the message's own
+    // readAt. readAt is only ever stamped on messages addressed to someone
+    // (toUserId = my id), and a broadcast is addressed to nobody — so keying
+    // off it left every broadcast sitting in this list permanently, for
+    // everyone, including whoever had just read it.
+    const reader = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { teamChatReadAt: true },
+    });
+
     const [unreadMessages, unresolvedFlags] = await Promise.all([
       prisma.teamMessage.findMany({
         where: {
-          readAt: null,
           urgent: false,
           fromUserId: { not: session.userId },
           OR: [{ toUserId: session.userId }, { toUserId: null }],
+          ...(reader?.teamChatReadAt ? { createdAt: { gt: reader.teamChatReadAt } } : {}),
         },
         orderBy: { createdAt: 'desc' },
         take: 10,

@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
+import { requireStaff } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
+    const session = await requireStaff();
 
-    if (!session || session.type !== 'user') {
+    if (!session) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    // Client records and project money are ops, not sales — the admin
+    // nav already withholds these pages from a sales account.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
+
 
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId');

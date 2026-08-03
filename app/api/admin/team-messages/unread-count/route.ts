@@ -1,18 +1,29 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 
 export async function GET() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
+
+    // Unread = messages not sent by me, addressed to me or broadcast, that
+    // arrived since I last opened the chat.
+    //
+    // Keying off the per-user teamChatReadAt rather than the shared
+    // TeamMessage.readAt is the point: readAt is one column on the message
+    // itself, so the first person to open a broadcast marked it read for
+    // everybody — the rest never saw a badge for it at all.
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { teamChatReadAt: true },
+    });
 
     const count = await prisma.teamMessage.count({
       where: {
-        readAt: null,
         fromUserId: { not: session.userId },
         OR: [{ toUserId: session.userId }, { toUserId: null }],
+        ...(user?.teamChatReadAt ? { createdAt: { gt: user.teamChatReadAt } } : {}),
       },
     });
 

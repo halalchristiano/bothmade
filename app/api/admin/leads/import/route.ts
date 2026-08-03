@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import {
   isLeadStatus,
   isPainPointKey,
@@ -10,6 +9,7 @@ import {
   type SalesPoint,
 } from '@/lib/leads';
 import { resolvePointPrices, sizeCompany } from '@/lib/lead-pricing';
+import { normalizeMockupUrl } from '@/lib/mockups';
 import type { PlaybookEntry } from '@/lib/playbook-seed';
 
 const MAX_ROWS = 500;
@@ -400,8 +400,8 @@ function normalizeRow(row: Record<string, string>): Record<string, string> {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { rows, fileName } = await request.json();
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -507,6 +507,35 @@ export async function POST(request: NextRequest) {
         const assignedToId =
           (row.assignedto && usersByEmail.get(row.assignedto.trim().toLowerCase())) || session.userId;
 
+        // A link in the sheet is version one of that lead's mockups, not just
+        // a loose column — otherwise an imported lead shows "no mockups yet"
+        // beside a mockup it demonstrably has.
+        //
+        // A PDF export is another version of the same mockup, so it joins the
+        // same list rather than getting a column to itself: one place to look,
+        // and the history survives the next revision. `fileName` is what marks
+        // it as something to download rather than a link to open.
+        const mockupUrl = normalizeMockupUrl(row.mockupurl);
+        const mockupPdfUrl = normalizeMockupUrl(row.mockuppdfurl);
+        const mockupRows = [
+          ...(mockupUrl ? [{ url: mockupUrl, uploadedById: session.userId }] : []),
+          ...(mockupPdfUrl
+            ? [
+                {
+                  url: mockupPdfUrl,
+                  fileName: `${company} mockup.pdf`,
+                  uploadedById: session.userId,
+                },
+              ]
+            : []),
+        ];
+        const mockups = mockupRows.length > 0 ? { create: mockupRows } : undefined;
+        // The cached column prefers the live link, since that's what the email
+        // composer offers as a default and a PDF is a poor thing to send as
+        // "here's your mockup". It only falls back to the PDF when that's all
+        // this lead has.
+        const latestMockupUrl = mockupUrl ?? mockupPdfUrl;
+
         return {
           company,
           contactName: row.contactname || null,
@@ -524,9 +553,9 @@ export async function POST(request: NextRequest) {
             row.personalizedobservation?.trim() || row.personalisedobservation?.trim() || null,
 
           // Deliverables
-          mockupUrl: row.mockupurl?.trim() || null,
-          mockupPdfUrl: row.mockuppdfurl?.trim() || null,
-          mockupPdfUploadedAt: row.mockuppdfurl?.trim() ? new Date() : null,
+          mockupUrl: latestMockupUrl,
+          mockupDeliveredAt: latestMockupUrl ? new Date() : null,
+          mockups,
           vercelDeployPassword: row.vercelpassword?.trim() || null,
           invoicePdfUrl: row.invoicepdfurl?.trim() || null,
           invoicePdfUploadedAt: row.invoicepdfurl?.trim() ? new Date() : null,

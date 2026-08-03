@@ -25,7 +25,7 @@ import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { EmailComposer } from '@/components/admin/EmailComposer';
-import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 import {
@@ -104,7 +104,7 @@ interface LeadDetail {
   mockupRequestedAt: string | null;
   mockupUrl: string | null;
   mockupDeliveredAt: string | null;
-  mockupPdfUrl: string | null;
+  mockups: Array<{ id: string; url: string; fileName: string | null; createdAt: string }>;
   vercelDeployPassword: string | null;
   invoicePdfUrl: string | null;
   industry: string | null;
@@ -124,6 +124,8 @@ interface LeadDetail {
   clientTakenOnAt: string | null;
   agreementSignedAt: string | null;
   signedContractUrl?: string | null;
+  /** Capability token for the public sign-and-pay link. */
+  shareToken?: string;
   agreementIp: string | null;
   qualNeed: string | null;
   qualAuthority: string | null;
@@ -477,6 +479,8 @@ export default function LeadDetailPage() {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   };
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
+  const [revokingLink, setRevokingLink] = useState(false);
+  const [revokeNote, setRevokeNote] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
   const [emailingLink, setEmailingLink] = useState(false);
@@ -550,7 +554,10 @@ export default function LeadDetailPage() {
         setNotes(l.notes || '');
         setOriginalWebsite(l.originalWebsite || '');
         setSalesNote(l.salesNote || '');
-        setMockupPdfUrl(l.mockupPdfUrl || '');
+        // The PDF field starts empty rather than pre-filled: attaching one
+        // adds a version to the mockup list, so leaving the last URL sitting
+        // in the box would invite re-submitting the same file as version two.
+        setMockupPdfUrl('');
         setInvoicePdfUrl(l.invoicePdfUrl || '');
         setVercelDeployPassword(l.vercelDeployPassword || '');
         setPainPoints(
@@ -575,6 +582,13 @@ export default function LeadDetailPage() {
             // A proposal already exists server-side — that's the source of
             // truth for what the client can actually see, so it wins over
             // any local draft.
+            //
+            // Rebuild the live link too, rather than only showing it in the
+            // session where the proposal was generated: the link is what a
+            // rep comes back for, and it's what the revoke button acts on.
+            if (l.shareToken) {
+              setPaymentLinkUrl(`${window.location.origin}/sign/${l.id}?t=${l.shareToken}`);
+            }
             setProposalServiceRaw(l.proposalBaseService);
             setProposalAddOns(l.proposalAddOns.split(',').filter((a): a is AddOnKey => isAddOnKey(a)));
             if (l.proposalClientType && isClientType(l.proposalClientType)) setProposalClientType(l.proposalClientType);
@@ -1011,6 +1025,35 @@ export default function LeadDetailPage() {
   // A link has gone out (or at least been generated) the moment a proposal
   // is saved on the lead — before that there's nothing for "changed since
   // sending" to compare against.
+  // Kills every sign-and-pay link already sent for this lead and issues a
+  // fresh one. For the case where a proposal went to the wrong address, or a
+  // deal went cold and shouldn't still open a priced contract.
+  const handleRevokeLink = async () => {
+    if (!lead) return;
+    if (!confirm('Revoke the current sign & pay link?\n\nAny link already emailed for this lead will stop working immediately. You will get a new one to send.')) return;
+    setRevokingLink(true);
+    setRevokeNote('');
+    try {
+      const res = await fetch('/api/share-links/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'lead', id: leadId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPaymentLinkUrl(data.url);
+        setRevokeNote('Old links revoked. Send the new one below.');
+        load();
+      } else {
+        setRevokeNote(data.error || "Couldn't revoke that link — try again.");
+      }
+    } catch {
+      setRevokeNote('Something went wrong revoking the link.');
+    } finally {
+      setRevokingLink(false);
+    }
+  };
+
   const hasSentProposal = Boolean(lead?.proposalBaseService);
   const sameAddOns = (a: AddOnKey[], b: string) => {
     const bSet = new Set(b.split(',').filter(Boolean));
@@ -1243,6 +1286,11 @@ export default function LeadDetailPage() {
     );
   }
 
+  // A mockup that arrived as a file rather than a link is the downloadable
+  // copy — the one that still opens with no signal and no password. The list
+  // comes back newest first, so the first match is the current one.
+  const latestMockupPdf = lead.mockups.find((m) => m.fileName)?.url ?? null;
+
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10 overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1287,7 +1335,10 @@ export default function LeadDetailPage() {
           </button>
 
           <div
-            className="relative"
+            // z-40 lifts the whole popover subtree above the sticky tab bar
+            // below (z-30) — without it the tab bar's backdrop-blur paints
+            // over the open menu and smears the delete button unreadable.
+            className="relative z-40"
             onKeyDown={(e) => {
               if (e.key === 'Escape' && actionsMenuOpen) {
                 e.stopPropagation();
@@ -1571,6 +1622,7 @@ export default function LeadDetailPage() {
           defaultPainPoint={painPointSentence(lead.painPoints)}
           defaultObservation={lead.personalizedObservation}
           leadId={leadId}
+          leadShareToken={lead.shareToken}
           onClose={() => setComposingEmail(false)}
         />
       )}
@@ -1912,8 +1964,9 @@ export default function LeadDetailPage() {
             {/* Everything that can be opened or handed over, in one row, so
                 nothing has to be found mid-call. The mockup exists as both a
                 link and a PDF because the link needs signal and a password
-                and the PDF needs neither. */}
-            {(lead.originalWebsite || lead.mockupUrl || lead.mockupPdfUrl || lead.invoicePdfUrl) && (
+                and the PDF needs neither — the PDF is simply the newest
+                version in the list that came in as a file. */}
+            {(lead.originalWebsite || lead.mockupUrl || latestMockupPdf || lead.invoicePdfUrl) && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {lead.originalWebsite && (
                   <a
@@ -1935,9 +1988,9 @@ export default function LeadDetailPage() {
                     <CheckCircle2 size={13} /> Open the mockup we sent
                   </a>
                 )}
-                {lead.mockupPdfUrl && (
+                {latestMockupPdf && (
                   <a
-                    href={lead.mockupPdfUrl}
+                    href={latestMockupPdf}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 bg-purple-400/10 px-3.5 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-400/20 transition-colors"
@@ -2770,46 +2823,22 @@ export default function LeadDetailPage() {
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-lg font-bold mb-1">Mockup</h2>
+            <h2 className="text-lg font-bold mb-1">Mockups</h2>
             {lead.mockupUrl ? (
-              <>
-                <p className="text-xs text-emerald-300 mb-3">
-                  Delivered {lead.mockupDeliveredAt ? new Date(lead.mockupDeliveredAt).toLocaleDateString() : ''} — ready to send to the client.
-                </p>
-                <div className="flex gap-2 mb-2">
-                  <input readOnly value={lead.mockupUrl} className={`${inputClass} text-sm`} />
-                  <a
-                    href={lead.mockupUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
-                  >
-                    Open
-                  </a>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(lead.mockupUrl!)}
-                    className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
-                  >
-                    Copy
-                  </button>
-                </div>
-                <p className="text-xs text-white/30">Now's the time to call, email, or follow up with this in hand.</p>
-              </>
+              <p className="text-xs text-emerald-300 mb-3">
+                Latest delivered {lead.mockupDeliveredAt ? new Date(lead.mockupDeliveredAt).toLocaleDateString() : ''} — every
+                version below, with whatever you noted against it.
+              </p>
             ) : lead.mockupRequested ? (
-              <>
-                <p className="text-xs text-amber-300 mb-3">
-                  Requested {lead.mockupRequestedAt ? new Date(lead.mockupRequestedAt).toLocaleDateString() : ''} — waiting on the team.
-                </p>
-                <MockupDeliveryForm
-                  leadId={leadId}
-                  onDelivered={load}
-                  placeholder="Paste the finished mockup link here once it's ready..."
-                />
-              </>
+              <p className="text-xs text-amber-300 mb-3">
+                Requested {lead.mockupRequestedAt ? new Date(lead.mockupRequestedAt).toLocaleDateString() : ''} — waiting on the
+                team. Attach it here yourself if it reaches you first.
+              </p>
             ) : (
-              <>
+              <div className="mb-3">
                 <p className="text-xs text-white/40 mb-3">
-                  Need a visual to show this lead? Request one and it'll flag the team until it's ready.
+                  Need a visual to show this lead? Request one and it'll flag the team until it's ready — or attach one you
+                  already have.
                 </p>
                 <button
                   onClick={handleRequestMockup}
@@ -2818,7 +2847,13 @@ export default function LeadDetailPage() {
                 >
                   {requestingMockup ? 'Requesting...' : '🎨 Request Mockup'}
                 </button>
-              </>
+              </div>
+            )}
+
+            <LeadMockupsPanel leadId={leadId} onChanged={load} />
+
+            {lead.mockupUrl && (
+              <p className="text-xs text-white/30 mt-3">Now's the time to call, email, or follow up with this in hand.</p>
             )}
           </div>
 
@@ -2845,10 +2880,10 @@ export default function LeadDetailPage() {
                 <div className="space-y-3">
                   <FileField
                     label="Mockup PDF"
-                    hint="An export of the mockup Evan can download and open on a call."
+                    hint="An export Evan can download and open on a call. Saving adds it to this lead's mockup versions rather than replacing the last one."
                     value={mockupPdfUrl}
                     onChange={setMockupPdfUrl}
-                    saved={lead.mockupPdfUrl}
+                    saved={latestMockupPdf}
                     inputClass={inputClass}
                   />
                   <FileField
@@ -3443,6 +3478,19 @@ export default function LeadDetailPage() {
                     Copy
                   </button>
                 </div>
+                <div className="flex items-center justify-between gap-3 mt-2.5 pt-2.5 border-t border-white/10">
+                  <p className="text-[11px] text-white/35">
+                    Sent it to the wrong person? Revoking stops every link already out there.
+                  </p>
+                  <button
+                    onClick={handleRevokeLink}
+                    disabled={revokingLink}
+                    className="px-2.5 py-1 rounded-md border border-amber-400/30 text-[11px] text-amber-200 hover:bg-amber-400/10 disabled:opacity-50 transition-colors whitespace-nowrap"
+                  >
+                    {revokingLink ? 'Revoking…' : 'Revoke & regenerate'}
+                  </button>
+                </div>
+                {revokeNote && <p className="text-[11px] text-white/50 mt-2">{revokeNote}</p>}
               </div>
             )}
 

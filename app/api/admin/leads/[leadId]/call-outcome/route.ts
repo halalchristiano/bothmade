@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isFurtherAlong, type LeadStatus } from '@/lib/leads';
 import { findCallOutcome } from '@/lib/call-outcomes';
 
@@ -18,8 +17,8 @@ export async function POST(
   { params }: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') {
+    const session = await requireStaff();
+    if (!session) {
       return unauthorizedResponse();
     }
 
@@ -68,6 +67,7 @@ export async function POST(
       status: lead.status,
       nextFollowUpAt: lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null,
       lostReason: lead.lostReason,
+      phoneInvalidAt: lead.phoneInvalidAt ? lead.phoneInvalidAt.toISOString() : null,
     };
 
     const [activity, updated] = await prisma.$transaction([
@@ -81,6 +81,9 @@ export async function POST(
           status: nextStatus,
           nextFollowUpAt,
           lostReason: outcome.status === 'lost' ? lostReason?.trim() || 'Not interested (by phone)' : undefined,
+          // A dead/wrong number pulls the lead out of the callable band, so
+          // nobody dials it again tomorrow expecting a different result.
+          phoneInvalidAt: outcome.phoneInvalid ? new Date() : undefined,
           updatedAt: new Date(),
         },
       }),

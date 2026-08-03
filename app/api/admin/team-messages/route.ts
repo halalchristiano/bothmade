@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentSession } from '@/lib/auth';
-import { unauthorizedResponse } from '@/lib/middleware';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 
 /** Thread between the current user and every other team member — a small team, so one flat thread is simplest. */
 export async function GET() {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const messages = await prisma.teamMessage.findMany({
       orderBy: { createdAt: 'asc' },
@@ -17,9 +16,18 @@ export async function GET() {
       },
     });
 
+    // Two different things, both needed. The first is a read receipt on a
+    // direct message, which the sender sees. The second is when *I* last
+    // opened the chat — that's what the unread badge counts against, so it
+    // clears for broadcasts too, which a per-message readAt never could.
     await prisma.teamMessage.updateMany({
       where: { toUserId: session.userId, readAt: null },
       data: { readAt: new Date() },
+    });
+
+    await prisma.user.update({
+      where: { id: session.userId },
+      data: { teamChatReadAt: new Date() },
     });
 
     return NextResponse.json({ success: true, messages }, { status: 200 });
@@ -31,8 +39,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getCurrentSession();
-    if (!session || session.type !== 'user') return unauthorizedResponse();
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
 
     const { content, toUserId, relatedLeadId, relatedProjectId, urgent } = await request.json();
     if (!content || typeof content !== 'string' || !content.trim()) {
