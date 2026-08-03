@@ -3,6 +3,7 @@ import { COMPANY_ADDRESS_INLINE, COMPANY_NAME } from '@/lib/company';
 import {
   esc,
   escMultiline,
+  htmlToPlainText,
   safeUrl,
   sanitizeDisplayName,
   sanitizeEmailAddress,
@@ -119,6 +120,10 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
       to: recipients,
       subject: sanitizeSubject(data.subject),
       html: data.html,
+      // Sent alongside the HTML so the message is multipart/alternative
+      // rather than HTML-only, which is a scored spam signal on its own.
+      // Same reasoning as the Gmail path in lib/gmail-mime.ts.
+      text: htmlToPlainText(data.html),
       ...(replyTo ? { replyTo } : {}),
       ...(data.attachments ? { attachments: data.attachments } : {}),
     });
