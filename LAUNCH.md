@@ -65,20 +65,6 @@ and Vercel — no amount of code changes fixes it.
       in the dashboard; privacy-friendlier: Plausible/Fathom. Needed to
       judge ad spend at all.
 
-## Recommended before the site takes real traffic
-
-- [ ] **Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`** in
-      Vercel → Settings → Environment Variables (create a free database at
-      upstash.com → Redis, then copy the two REST values).
-
-      Every public endpoint — sign-in, sign-up, password reset, the contact
-      form, the quote form — is rate-limited by `lib/rate-limit.ts`. With
-      these two variables set, the limits are shared across every serverless
-      instance and survive cold starts. Without them the code still works and
-      still limits, but only per running instance, which on Vercel means an
-      attacker gets a fresh budget with each new instance. Nothing breaks if
-      you skip this; the sign-in limit just stops being worth much.
-
 ## Deliberately deferred engineering
 
 - [ ] **Content-Security-Policy.** Baseline security headers are shipped
@@ -88,11 +74,13 @@ and Vercel — no amount of code changes fixes it.
 
 ### Done
 
-- [x] **Durable rate limiting.** `lib/rate-limit.ts` backs onto Upstash Redis
-      when configured (see above) and falls back to a per-instance window
-      otherwise — including when Redis is unreachable, so a cache outage
-      degrades the limit rather than locking everyone out. Applied to the
-      auth routes, which previously had no limit at all.
+- [x] **Durable rate limiting.** `lib/rate-limit.ts` keeps its counters in
+      Postgres — the database the app is already connected to on these
+      routes — so limits are shared across every serverless instance and
+      survive cold starts. No extra service, no extra configuration. Applied
+      to the auth routes, which previously had no limit at all; falls back to
+      a per-instance window if the database is unreachable, so an outage
+      degrades the limit rather than locking everyone out.
 - [x] **Tests.** `npm test` runs the suite (Vitest); `.github/workflows/ci.yml`
       runs it plus a typecheck on every pull request. Coverage is aimed at
       the money path — pricing, `/api/checkout`, the Stripe webhook, CSV
