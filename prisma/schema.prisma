@@ -65,6 +65,7 @@ model User {
   sentTeamMessages     TeamMessage[]    @relation("TeamMessageSender")
   receivedTeamMessages TeamMessage[]    @relation("TeamMessageRecipient")
   csvImportLogs        CsvImportLog[]
+  uploadedMockups      LeadMockup[]     @relation("MockupUploader")
 
   @@map("users")
 }
@@ -255,7 +256,11 @@ model Lead {
 
   mockupRequested   Boolean   @default(false) // Evan asking Kiana to put together a mockup for this lead
   mockupRequestedAt DateTime?
-  mockupUrl         String? // link to the finished mockup, once delivered
+  // The most recent mockup, mirrored from the `mockups` list below so the
+  // "is this lead still waiting on design" queries and the email templates'
+  // default link stay one column lookup rather than a join. The list is the
+  // record; these two are a cache of its newest entry.
+  mockupUrl         String?
   mockupDeliveredAt DateTime?
 
   // A fully pre-written cold email (subject on the first line as "Subject: ...",
@@ -358,8 +363,40 @@ model Lead {
   updatedAt DateTime @updatedAt
 
   activities LeadActivity[]
+  mockups    LeadMockup[]
 
   @@map("leads")
+}
+
+// Every mockup that has been put in front of one lead, oldest first.
+//
+// A deal rarely gets one mockup: the first version goes out, the business
+// asks for the menu on the homepage, a second version follows. A single
+// `mockupUrl` column meant version two overwrote version one, so the rep on
+// the call had no way to open "the one I sent you last Tuesday" — and no
+// place to record what the client said about it. Each row is one version,
+// with the note the rep took against that specific version.
+model LeadMockup {
+  id     String @id @default(cuid())
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  url      String // a link (Figma, Loom, staging site) or an uploaded file's URL
+  fileName String? // set only when the mockup was uploaded rather than linked
+
+  // The rep's own notes on this version — what was shown, what came back,
+  // what to change next time. Per-version rather than per-lead, because
+  // "they hated the hero" is only true of the mockup it was said about.
+  note String @default("") @db.Text
+
+  uploadedById String?
+  uploadedBy   User?   @relation("MockupUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId, createdAt])
+  @@map("lead_mockups")
 }
 
 // A permanent receipt of every CSV lead import — who ran it, what file,

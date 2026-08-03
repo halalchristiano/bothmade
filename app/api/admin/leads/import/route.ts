@@ -271,6 +271,12 @@ export async function POST(request: NextRequest) {
           .join('\n');
         const notes = [row.notes?.trim(), extra].filter(Boolean).join('\n\n') || null;
 
+        // A link in the sheet is version one of that lead's mockups, not just
+        // a loose column — otherwise an imported lead shows "no mockups yet"
+        // beside a mockup it demonstrably has.
+        const mockupUrl = row.mockupurl?.trim() || null;
+        const mockups = mockupUrl ? { create: [{ url: mockupUrl, uploadedById: session.userId }] } : undefined;
+
         return {
           company,
           contactName: row.contactname || null,
@@ -284,7 +290,9 @@ export async function POST(request: NextRequest) {
           coldEmailDraft: row.personalisedcoldemail?.trim() || null,
           personalizedObservation:
             row.personalizedobservation?.trim() || row.personalisedobservation?.trim() || null,
-          mockupUrl: row.mockupurl?.trim() || null,
+          mockupUrl,
+          mockupDeliveredAt: mockupUrl ? new Date() : null,
+          mockups,
           originalWebsite,
           currentSiteAssessment,
           salesNote: row.salesnote?.trim() || null,
