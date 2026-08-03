@@ -121,18 +121,23 @@ afterEach(() => {
 });
 
 describe('POST /api/contact — where the message goes', () => {
-  it('notifies info@, evan@ and kiana@, not a single address', async () => {
+  it('notifies info@, evan@ and kiana@, each addressed on its own', async () => {
     const res = await POST(request(VALID, freshIp()));
 
     expect(res.status).toBe(200);
-    const notification = send.mock.calls[0][0];
-    expect(notification.to).toEqual([
+    // One message each rather than one message listing all three. This mail
+    // replies to the customer, so a shared To: header would hand them every
+    // studio address the first time anyone hit Reply-all.
+    expect(send.mock.calls.map(([mail]) => mail.to)).toEqual([
       'info@bothmade.studio',
       'evan@bothmade.studio',
       'kiana@bothmade.studio',
     ]);
-    // Hitting reply has to reach the person who wrote in, not the studio.
-    expect(notification.replyTo).toBe(VALID.email);
+    for (const [mail] of send.mock.calls) {
+      expect(typeof mail.to).toBe('string');
+      // Hitting reply has to reach the person who wrote in, not the studio.
+      expect(mail.replyTo).toBe(VALID.email);
+    }
   });
 
   it('records the enquiry as a lead in the CRM', async () => {
@@ -178,7 +183,10 @@ describe('POST /api/contact — where the message goes', () => {
 
     await POST(request(VALID, freshIp()));
 
-    expect(send.mock.calls[0][0].to).toEqual(['hello@example.com', 'second@example.com']);
+    expect(send.mock.calls.map(([mail]) => mail.to)).toEqual([
+      'hello@example.com',
+      'second@example.com',
+    ]);
   });
 });
 

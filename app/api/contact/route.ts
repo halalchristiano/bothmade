@@ -342,11 +342,23 @@ export async function POST(request: NextRequest) {
 
     // Notification to the studio — info@, evan@ and kiana@. Replying goes
     // straight back to whoever wrote in.
-    const adminEmail = await resend.emails.send({
-      from: MAIL_FROM,
-      to: studioInbox(),
-      replyTo: cleanEmail,
-      subject: `New enquiry — ${cleanName} (${SERVICE_LABELS[cleanService]})`,
+    /**
+     * One message per recipient, not one message addressed to all of them.
+     *
+     * This mail carries `replyTo: <the customer>`, and it used to put the
+     * whole studio in a single `To:` header — so one Reply-all from any of
+     * us sent the customer a message with every internal address visible in
+     * it. Nobody has to be dropped from the list to close that: addressed
+     * individually, each copy names only its own recipient, and Reply-all
+     * can't reveal an address it was never given.
+     */
+    const notifications = await Promise.all(
+      studioInbox().map((recipient) =>
+        resend.emails.send({
+          from: MAIL_FROM,
+          to: recipient,
+          replyTo: cleanEmail,
+          subject: `New enquiry — ${cleanName} (${SERVICE_LABELS[cleanService]})`,
       html: renderShell({
         eyebrow: 'New enquiry',
         title: `${cleanName}${cleanCompany ? ` — ${cleanCompany}` : ''}`,
@@ -359,13 +371,21 @@ export async function POST(request: NextRequest) {
            <p style="margin:0 0 20px;"><strong style="color:#fff;">Timeline:</strong> ${safe.timeline}</p>
            <p style="margin:0 0 6px; color:#fff; font-weight:700;">Message</p>
            <p style="margin:0; white-space:pre-wrap;">${safe.message}</p>`,
-      }),
-    });
+          }),
+        })
+      )
+    );
 
-    if (adminEmail.error) {
-      console.error('Admin notification failed:', adminEmail.error);
-      // Only a dead end if the CRM write failed too.
-      if (!recorded) {
+    // One address bouncing is not the same as nobody being told, so this
+    // only counts as a failure when every copy failed.
+    const notificationFailures = notifications.filter((result) => result.error);
+    if (notificationFailures.length > 0) {
+      console.error(
+        `Admin notification failed for ${notificationFailures.length}/${notifications.length} recipients:`,
+        notificationFailures[0].error
+      );
+      // Only a dead end if nobody heard and the CRM write failed too.
+      if (!recorded && notificationFailures.length === notifications.length) {
         return NextResponse.json({ error: 'Failed to send message.' }, { status: 502 });
       }
     }
@@ -375,8 +395,7 @@ export async function POST(request: NextRequest) {
     // links straight to the lead and matches the assignment just made.
     // Needs the lead id, so it can only go out if the CRM write succeeded.
     if (recorded && rep) {
-      const sent = await notifyRepInboundEnquiry({
-        toEmail: rep.email,
+      const alert = {
         repName: rep.name,
         leadId: recorded.leadId,
         contactName: cleanName,
@@ -386,9 +405,23 @@ export async function POST(request: NextRequest) {
         message: cleanMessage,
         returning: recorded.returning,
         via: 'the contact form',
-      });
+      };
+
+      // The rep gets it, and the shared inbox gets its own copy — this is
+      // the version worth having, since it links to the lead rather than
+      // merely restating the form. Two separate sends rather than one mail
+      // addressed to both: this alert also replies to the customer, so a
+      // shared To: would put the other internal address in front of them
+      // the first time anyone hit Reply-all.
+      const [sent, copied] = await Promise.all([
+        notifyRepInboundEnquiry({ ...alert, toEmail: rep.email }),
+        notifyRepInboundEnquiry({ ...alert, toEmail: COMPANY_EMAIL }),
+      ]);
       if (!sent) {
         console.error(`Sales alert to ${rep.email} failed for lead ${recorded.leadId}`);
+      }
+      if (!copied) {
+        console.error(`Sales alert copy to ${COMPANY_EMAIL} failed for lead ${recorded.leadId}`);
       }
     }
 
