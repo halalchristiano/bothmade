@@ -150,11 +150,21 @@ export function SplitHero() {
 
         {/* Docked below the price line rather than behind it — the two used
             to share the top-24 band and collided at every width. */}
-        <div className="absolute top-40 md:top-44 left-6 md:left-10 right-6 md:right-10 h-9 rounded-t-xl border border-sky-400/20 bg-sky-400/[0.04] flex items-center gap-2 px-4">
-          <span className="w-2.5 h-2.5 rounded-full bg-sky-400/30" />
-          <span className="w-2.5 h-2.5 rounded-full bg-sky-400/20" />
-          <span className="w-2.5 h-2.5 rounded-full bg-sky-400/10" />
-          <span className="ml-3 text-[10px] font-mono text-sky-300/40 tracking-widest truncate">
+        <div className="absolute top-40 md:top-44 left-6 md:left-10 right-6 md:right-10 h-9 rounded-t-xl border border-sky-400/20 bg-sky-400/[0.04] flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4">
+          <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-sky-400/30" />
+          <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-sky-400/20" />
+          <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-sky-400/10" />
+          {/* The bar spans the full width, but the native panel is painted
+              over its right half — so the address has to finish before the
+              seam or it gets sliced mid-word ("bothmade.stud" on a 390pt
+              phone). At a fixed 10px with widest tracking it ended at 212px
+              regardless of viewport, which only clears a seam sitting at 50%
+              once the screen is ~424pt across. Sized against the viewport
+              instead, so it fits in the web half at every width. */}
+          <span
+            className="ml-2 sm:ml-3 font-mono text-sky-300/40 tracking-normal sm:tracking-widest truncate"
+            style={{ fontSize: 'clamp(7px, 2.2vw, 10px)' }}
+          >
             bothmade.studio
           </span>
         </div>
