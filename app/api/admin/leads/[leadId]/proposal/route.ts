@@ -17,6 +17,7 @@ import {
   type AddOnKey,
 } from '@/lib/pricing';
 import { sendSignAndPayEmail } from '@/lib/email';
+import { isFurtherAlong } from '@/lib/leads';
 import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
 
 /**
@@ -149,6 +150,31 @@ export async function POST(
             createdById: session.userId,
           },
         });
+
+        // Emailing the agreement *is* sending the contract. The rep was
+        // having to remember to flip contractStatus by hand afterwards, so
+        // the CRM routinely showed "not sent" for deals the client was
+        // already reading — and the follow-up prompts keyed off it fired at
+        // the wrong time. Never moves a signed contract backwards.
+        const contractData: { contractStatus?: string; status?: string } = {};
+        if (lead.contractStatus === 'not_sent') contractData.contractStatus = 'sent';
+        if (isFurtherAlong(lead.status, 'contract_sent')) contractData.status = 'contract_sent';
+        if (Object.keys(contractData).length > 0) {
+          await prisma.lead.update({ where: { id: leadId }, data: contractData });
+        }
+      } else {
+        // The link exists but nobody received it. Flagging the address is
+        // what moves this lead onto the "couldn't reach — call instead"
+        // list rather than leaving it looking successfully contacted.
+        await prisma.lead
+          .update({
+            where: { id: leadId },
+            data: {
+              emailDeliveryFailedAt: new Date(),
+              emailDeliveryFailedReason: "Sign-and-pay link couldn't be delivered",
+            },
+          })
+          .catch(() => null);
       }
     }
 

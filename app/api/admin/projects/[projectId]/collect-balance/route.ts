@@ -66,7 +66,37 @@ export async function POST(
       restrictions: { completed_sessions: { limit: 1 } },
     });
 
-    return NextResponse.json({ success: true, url: paymentLink.url, balanceDue }, { status: 201 });
+    // Issuing the balance link is the moment the balance is invoiced, so
+    // this is where it acquires a due date and an invoice number. Without a
+    // due date "overdue" has nothing to compare against, which is why the
+    // dashboard previously had to treat every unpaid balance as late.
+    //
+    // Net 14 from issue, matching the agreement's "due upon completion of
+    // Build and prior to Launch" with a fortnight of grace.
+    const NET_DAYS = 14;
+    const balanceDueAt =
+      project.balanceDueAt ?? new Date(Date.now() + NET_DAYS * 24 * 60 * 60 * 1000);
+
+    // Sequential and human-quotable: BM-2026-0001. Assigned once and kept,
+    // so a re-issued link doesn't renumber an invoice the client already has.
+    let invoiceNumber = project.invoiceNumber;
+    if (!invoiceNumber) {
+      const year = new Date().getFullYear();
+      const issuedThisYear = await prisma.project.count({
+        where: { invoiceNumber: { startsWith: `BM-${year}-` } },
+      });
+      invoiceNumber = `BM-${year}-${String(issuedThisYear + 1).padStart(4, '0')}`;
+    }
+
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { balanceDueAt, invoiceNumber },
+    });
+
+    return NextResponse.json(
+      { success: true, url: paymentLink.url, balanceDue, balanceDueAt, invoiceNumber },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Collect balance error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

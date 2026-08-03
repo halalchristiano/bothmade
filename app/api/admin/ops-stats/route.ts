@@ -40,6 +40,10 @@ export async function GET(request: Request) {
         include: {
           client: { select: { company: true } },
           messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+          // Needed to work out when the project last actually moved, and to
+          // total what's been paid without a query per project.
+          updates: { orderBy: { createdAt: 'desc' }, take: 1 },
+          payments: { select: { amount: true } },
         },
       }),
       // Unacknowledged handoffs never age out of this list, no matter which
@@ -125,18 +129,35 @@ export async function GET(request: Request) {
     //
     // Who spoke last decides it. Our message with no reply since means the
     // ball is with them; anything else means it's with us.
+    // When did this project last actually move?
+    //
+    // This used to be project.updatedAt alone, which is not bumped when a
+    // message or an update is written — so a project with a conversation
+    // running that same morning was reported as a week silent, and the
+    // at-risk list filled up with work that was visibly fine. Whichever of
+    // the three is most recent is the honest answer.
+    const lastActivityAt = (p: (typeof activeProjects)[number]) =>
+      new Date(
+        Math.max(
+          p.updatedAt.getTime(),
+          p.messages[0]?.createdAt.getTime() ?? 0,
+          p.updates[0]?.createdAt.getTime() ?? 0
+        )
+      );
+
     const atRisk = activeProjects
-      .filter((p) => p.updatedAt < staleThreshold)
+      .filter((p) => lastActivityAt(p) < staleThreshold)
       .map((p) => {
         const last = p.messages[0];
         const waitingOnClient = !!last?.isFromAdmin;
+        const activeAt = lastActivityAt(p);
         return {
           id: p.id,
           name: p.name,
           company: p.client.company,
           status: p.status,
-          updatedAt: p.updatedAt,
-          daysSinceUpdate: Math.floor((now.getTime() - p.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          updatedAt: activeAt,
+          daysSinceUpdate: Math.floor((now.getTime() - activeAt.getTime()) / (24 * 60 * 60 * 1000)),
           waitingOnClient,
           // Days since we last chased — the number that matters when deciding
           // whether to chase again.
@@ -151,24 +172,41 @@ export async function GET(request: Request) {
     const waitingOnClient = atRisk.filter((p) => p.waitingOnClient);
     const atRiskProjects = atRisk.filter((p) => !p.waitingOnClient);
 
-    const overdueBalances = await Promise.all(
-      activeProjects.map(async (p) => {
-        const paid = await prisma.payment.aggregate({
-          where: { projectId: p.id },
-          _sum: { amount: true },
-        });
-        const amountPaid = paid._sum.amount || 0;
+    // Outstanding, not overdue.
+    //
+    // Every unpaid balance on every active project was being listed as
+    // "Overdue Balances", including deposits taken this morning on projects
+    // that have not reached Launch and whose balance is not due yet by the
+    // terms of the agreement. A list where most rows aren't actually late
+    // trains you to skim past the ones that are. `overdue` is now a real
+    // date having passed; everything else is simply outstanding.
+    //
+    // Also: this was one payment aggregate query per project. The payments
+    // come back with the projects now.
+    const outstandingBalances = activeProjects
+      .map((p) => {
+        const amountPaid = p.payments.reduce((sum, pay) => sum + pay.amount, 0);
         const balanceDue = p.totalPrice - amountPaid;
+        const dueAt = p.balanceDueAt;
+        const overdue = Boolean(dueAt && dueAt < now && balanceDue > 0);
         return {
           id: p.id,
           name: p.name,
           company: p.client.company,
           balanceDue,
           statusStage: p.statusStage,
+          balanceDueAt: dueAt,
+          overdue,
+          daysOverdue:
+            overdue && dueAt
+              ? Math.floor((now.getTime() - dueAt.getTime()) / (24 * 60 * 60 * 1000))
+              : 0,
           lastPaymentReminderSentAt: p.lastPaymentReminderSentAt,
         };
       })
-    );
+      .filter((p) => p.balanceDue > 0)
+      // Genuinely late first, then by size.
+      .sort((a, b) => Number(b.overdue) - Number(a.overdue) || b.balanceDue - a.balanceDue);
     const projectsAwaitingReply = activeProjects
       .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin)
       .map((p) => ({
@@ -215,7 +253,11 @@ export async function GET(request: Request) {
           newClientsThisWeek: newClientsInPeriod,
           atRiskProjects: atRiskProjects.slice(0, 40),
           waitingOnClient: waitingOnClient.slice(0, 40),
-          overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
+          // `overdueBalances` is kept as a key for the existing dashboard
+          // and weekly digest, but now means what it says: past its due
+          // date. Everything owed is under `outstandingBalances`.
+          outstandingBalances,
+          overdueBalances: outstandingBalances.filter((p) => p.overdue),
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
           pendingMockups: pendingMockups.map((l) => ({ id: l.id, company: l.company, mockupRequestedAt: l.mockupRequestedAt })),

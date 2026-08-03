@@ -191,9 +191,25 @@ export async function PATCH(
       autoStatus = 'qualified';
     }
 
+    // The moment a deal was actually won, recorded once.
+    //
+    // Revenue and conversion reporting used updatedAt as a stand-in, so
+    // editing a note on a deal closed in March moved it into this month's
+    // numbers and the ops and sales figures stopped reconciling. Stamped on
+    // the transition into 'won' and cleared if it ever moves back out, so
+    // the field cannot disagree with the status.
+    const effectiveStatus = status ?? autoStatus ?? existing.status;
+    const wonAt =
+      effectiveStatus === 'won'
+        ? existing.wonAt ?? new Date()
+        : existing.wonAt
+        ? null
+        : undefined;
+
     const lead = await prisma.lead.update({
       where: { id: leadId },
       data: {
+        wonAt,
         company: company !== undefined ? company : undefined,
         contactName: contactName !== undefined ? contactName : undefined,
         email: email !== undefined ? email : undefined,
@@ -251,12 +267,18 @@ export async function PATCH(
           fromUserId: session.userId,
           relatedLeadId: leadId,
           urgent: true,
+          kind: 'mockup_request',
         },
       });
     }
     if (mockupUrl !== undefined && mockupUrl && !existing.mockupUrl) {
+      // Resolve the mockup request, and only the mockup request. This used
+      // to close every urgent unresolved flag on the lead — "are we
+      // discounting this?", "is their domain transferring?" — none of which
+      // delivering a mockup answers. Those questions then vanished from the
+      // flag list having never been dealt with.
       await prisma.teamMessage.updateMany({
-        where: { relatedLeadId: leadId, urgent: true, resolved: false },
+        where: { relatedLeadId: leadId, urgent: true, resolved: false, kind: 'mockup_request' },
         data: { resolved: true },
       });
       await prisma.teamMessage.create({

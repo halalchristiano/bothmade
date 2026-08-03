@@ -198,13 +198,19 @@ interface OpsStats {
     daysSinceUpdate: number;
     daysSinceWeAsked: number | null;
   }>;
-  overdueBalances: Array<{
+  /** Everything still owed on an active project. Most of it is not late. */
+  outstandingBalances: Array<{
     id: string;
     name: string;
     company: string;
     balanceDue: number;
+    balanceDueAt: string | null;
+    overdue: boolean;
+    daysOverdue: number;
     lastPaymentReminderSentAt: string | null;
   }>;
+  /** The subset that is genuinely past its due date. */
+  overdueBalances: OpsStats['outstandingBalances'];
   projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
   pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
@@ -1152,17 +1158,41 @@ function RemindButton({
   );
 }
 
-function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
+/**
+ * Money still owed, with the genuinely-late rows called out.
+ *
+ * This card was titled "Overdue Balances" and listed every unpaid balance
+ * on every active project — including a deposit taken this morning on a
+ * project nowhere near Launch, whose balance is not due yet by the terms of
+ * the agreement. When almost nothing in a list of "overdue" items is
+ * actually overdue, the list stops being read, and the two or three real
+ * ones get skimmed past with the rest.
+ */
+function OverdueBalancesCard({ balances }: { balances: OpsStats['outstandingBalances'] }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<OverdueSort>('amount');
 
   const filtered = balances
     .filter((p) => p.company.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a, b) => (sort === 'amount' ? b.balanceDue - a.balanceDue : a.company.localeCompare(b.company)));
+    // Genuinely late always sorts to the top, whichever secondary sort is on.
+    .sort(
+      (a, b) =>
+        Number(b.overdue) - Number(a.overdue) ||
+        (sort === 'amount' ? b.balanceDue - a.balanceDue : a.company.localeCompare(b.company))
+    );
 
   return (
     <Card className="p-6">
-      <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
+      <CardHeader
+        icon={Wallet}
+        tone="amber"
+        title="Outstanding"
+        subtitle={
+          balances.some((b) => b.overdue)
+            ? `${balances.filter((b) => b.overdue).length} past due`
+            : 'Nothing past due'
+        }
+      />
       {balances.length === 0 ? (
         <EmptyState icon={Wallet} text="Nothing outstanding." tone="clear" />
       ) : (
@@ -1450,7 +1480,7 @@ function OpsDashboard({
         <AtRiskProjectsCard projects={stats.atRiskProjects} />
         <WaitingOnClientCard projects={stats.waitingOnClient ?? []} />
 
-        <OverdueBalancesCard balances={stats.overdueBalances} />
+        <OverdueBalancesCard balances={stats.outstandingBalances} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">

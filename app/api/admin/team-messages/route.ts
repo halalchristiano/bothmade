@@ -17,10 +17,18 @@ export async function GET() {
       },
     });
 
-    await prisma.teamMessage.updateMany({
-      where: { toUserId: session.userId, readAt: null },
-      data: { readAt: new Date() },
-    });
+    // Mark everything I can see as read *for me* — direct messages and
+    // broadcasts alike. skipDuplicates makes this idempotent, so opening
+    // the thread twice is free.
+    const unreadForMe = messages.filter(
+      (m) => m.fromUserId !== session.userId && (m.toUserId === session.userId || m.toUserId === null)
+    );
+    if (unreadForMe.length > 0) {
+      await prisma.teamMessageRead.createMany({
+        data: unreadForMe.map((m) => ({ messageId: m.id, userId: session.userId })),
+        skipDuplicates: true,
+      });
+    }
 
     return NextResponse.json({ success: true, messages }, { status: 200 });
   } catch (error) {
@@ -34,7 +42,7 @@ export async function POST(request: NextRequest) {
     const session = await getCurrentSession();
     if (!session || session.type !== 'user') return unauthorizedResponse();
 
-    const { content, toUserId, relatedLeadId, relatedProjectId, urgent } = await request.json();
+    const { content, toUserId, relatedLeadId, relatedProjectId, urgent, kind } = await request.json();
     if (!content || typeof content !== 'string' || !content.trim()) {
       return NextResponse.json({ error: 'Message content is required' }, { status: 400 });
     }
@@ -47,6 +55,7 @@ export async function POST(request: NextRequest) {
         relatedLeadId: relatedLeadId || null,
         relatedProjectId: relatedProjectId || null,
         urgent: Boolean(urgent),
+        kind: typeof kind === 'string' && kind ? kind : null,
       },
       include: {
         fromUser: { select: { id: true, name: true, email: true } },

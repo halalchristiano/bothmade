@@ -64,6 +64,8 @@ model User {
   createdTasks    Task[]           @relation("TaskCreator")
   sentTeamMessages     TeamMessage[] @relation("TeamMessageSender")
   receivedTeamMessages TeamMessage[] @relation("TeamMessageRecipient")
+  teamMessageReads     TeamMessageRead[] @relation("TeamMessageReader")
+  notifications        Notification[]    @relation("UserNotifications")
   csvImportLogs        CsvImportLog[]
 
   @@map("users")
@@ -132,8 +134,15 @@ model Project {
   // moment on the client dashboard once status reaches Complete.
   liveUrl String?
 
-  // Deliverables
-  deliverables String? // JSON array of milestone/deliverable objects
+  // Legacy JSON array. Superseded by the Deliverable child table (see
+  // `deliverableFiles`); kept for backfill and read as a fallback.
+  deliverables String?
+
+  // When the balance actually becomes late, so "overdue" is a date being
+  // past rather than a guess. Set when the balance is first invoiced.
+  balanceDueAt DateTime?
+  // Sequential, human-quotable invoice number for the balance invoice.
+  invoiceNumber String? @unique
 
   // Stripe checkout session that created this project (idempotency + audit)
   stripeSessionId String? @unique
@@ -164,6 +173,8 @@ model Project {
   teamNotes           TeamNote[]
   onboardingQuestions OnboardingQuestion[]
   payments            Payment[]
+  deliverableFiles    Deliverable[]
+  milestones          Milestone[]
 
   @@map("projects")
 }
@@ -339,6 +350,18 @@ model Lead {
   agreementHash     String? // sha256 of the exact contract text shown at signing
   signedContractUrl String? // saved PDF copy of what they actually agreed to
 
+  // When this deal was actually won. Revenue and conversion reporting used
+  // updatedAt as a proxy, so editing a note on a closed deal moved it into
+  // the current month and the sales and ops numbers stopped reconciling.
+  wonAt DateTime?
+
+  // The number is wrong, dead, or disconnected. Distinct from "nobody has
+  // called yet" — a lead with an unusable number should drop out of the
+  // call rotation rather than being redialled every morning forever.
+  phoneInvalid       Boolean   @default(false)
+  phoneInvalidAt     DateTime?
+  phoneInvalidReason String?
+
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
 
@@ -510,10 +533,124 @@ model TeamMessage {
   urgent   Boolean   @default(false) // a flagged question needing action, not just a casual chat message
   resolved Boolean   @default(false)
 
+  // What this message *is*, so an automated action can resolve the one flag
+  // it actually answers. Delivering a mockup used to resolve every urgent
+  // unresolved flag on the lead — including "are we discounting this?" and
+  // "is their domain transferring?", which nobody had answered.
+  // null = an ordinary message. Known kinds: "mockup_request".
+  kind String?
+
+  // Legacy single-reader stamp. Meaningless for a broadcast (toUserId null),
+  // where the first person to open the thread marked it read for everyone
+  // and the badge cleared for people who had never seen it. Kept for
+  // direct messages and backfill; TeamMessageRead is the real answer.
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
+  reads TeamMessageRead[]
+
+  @@index([toUserId, resolved])
   @@map("team_messages")
+}
+
+// One row per (message, reader). The only shape that can represent "Evan
+// has read this broadcast and Kiana hasn't" — a single readAt column on the
+// message physically cannot.
+model TeamMessageRead {
+  id        String      @id @default(cuid())
+  messageId String
+  message   TeamMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("TeamMessageReader", fields: [userId], references: [id], onDelete: Cascade)
+
+  readAt DateTime @default(now())
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("team_message_reads")
+}
+
+// A dismissible, snoozeable alert for one team member.
+//
+// The dashboard previously derived its notifications on every request from
+// whatever looked overdue, so they could not be read, dismissed, or put off
+// until Thursday — the same five items greeted you every morning until the
+// underlying thing changed, which is how people learn to ignore a bell.
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  // "lead_stale", "balance_overdue", "project_at_risk", "handoff_waiting",
+  // "flag_raised", "payment_received"
+  kind    String
+  title   String
+  body    String?
+  // Where clicking it should go.
+  href    String?
+  // low | normal | urgent — drives ordering and styling.
+  severity String @default("normal")
+
+  // What it is about, so the same underlying fact doesn't generate a second
+  // notification while the first is still open or snoozed.
+  subjectType String? // "lead" | "project" | "client"
+  subjectId   String?
+
+  readAt      DateTime?
+  dismissedAt DateTime?
+  snoozedUntil DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, kind, subjectType, subjectId])
+  @@index([userId, dismissedAt])
+  @@map("notifications")
+}
+
+// A password-reset token that survives a cold start.
+//
+// These lived in a module-level Map. On serverless every request may hit a
+// fresh instance, so a reset link generated by one invocation was almost
+// never valid by the time it was clicked — "Invalid or expired token" was
+// the normal outcome of the forgot-password flow, not the exception.
+// Only the SHA-256 of the token is stored, so a database leak doesn't hand
+// over working reset links.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  email     String
+  userType  String // "client" | "user"
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@map("password_reset_tokens")
+}
+
+// One delivered file on a project.
+//
+// Previously a JSON blob on Project.deliverables, read-modify-written by
+// every add and delete. Two uploads finishing within the same second both
+// read the old array, both appended their own file, and the second write
+// erased the first — a delivered file silently gone, with the client told
+// it had been sent.
+model Deliverable {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name String
+  url  String
+  // Human-readable, e.g. "2.4 MB" — as supplied by the uploader.
+  size String?
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@map("deliverables")
 }
 
 // The client's answer to one onboarding question
@@ -548,4 +685,32 @@ model EmailSuppression {
   updatedAt DateTime @updatedAt
 
   @@map("email_suppressions")
+}
+
+// A dated milestone on a project — the thing that makes "late" mean
+// something. Previously the only date on a project was a single
+// estimatedCompletionDate for the whole engagement, so nothing could be
+// reported as overdue at any finer grain than the entire build.
+model Milestone {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title String
+  // Which stage it belongs to — see lib/project-status.ts.
+  stage String @default("build")
+
+  dueAt       DateTime
+  completedAt DateTime?
+  // Stamped when it is completed after dueAt, so on-time rate can be read
+  // back later without re-deriving it from an edit history.
+  wasLate Boolean @default(false)
+
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, dueAt])
+  @@map("milestones")
 }

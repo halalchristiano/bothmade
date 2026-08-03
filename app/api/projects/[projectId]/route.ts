@@ -44,6 +44,9 @@ export async function GET(
         payments: {
           orderBy: { createdAt: 'desc' },
         },
+        deliverableFiles: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
@@ -101,9 +104,15 @@ export async function GET(
           amountPaid,
           balanceDue: project.totalPrice - amountPaid,
           payments: project.payments,
-          deliverables: project.deliverables
-            ? JSON.parse(project.deliverables)
-            : [],
+          // Rows now, not a JSON blob. `addedAt` is kept in the response
+          // shape so the client and admin pages don't need to change.
+          deliverables: project.deliverableFiles.map((f) => ({
+            id: f.id,
+            name: f.name,
+            url: f.url,
+            size: f.size ?? undefined,
+            addedAt: f.createdAt,
+          })),
           contractUrl: project.contractUrl,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt,
@@ -183,9 +192,10 @@ export async function PUT(
               : null
             : undefined,
         liveUrl: body.liveUrl !== undefined ? body.liveUrl || null : undefined,
-        deliverables: body.deliverables
-          ? JSON.stringify(body.deliverables)
-          : undefined,
+        // Deliverables are managed through
+        // /api/admin/projects/[projectId]/deliverables, one row per file.
+        // Writing the whole set from here would reintroduce exactly the
+        // read-modify-write race the child table exists to remove.
         // Handoff acknowledgement lives at
         // /api/admin/projects/[projectId]/handoff. It is a team-only
         // workflow action with its own side effect (a team message), and it
