@@ -52,8 +52,6 @@ interface PanelData {
   catalogue: CatalogueItem[];
   defaults: { addOns: AddOnKey[]; discountMonths: number; freeMonths: number; maxPercent: number };
   offers: Offer[];
-  /** Whether this session may stop billing — ops only, decided server-side. */
-  canCancel: boolean;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -91,10 +89,9 @@ const STATUS_LABELS: Record<string, string> = {
  * on it — so the preview always shows all three phases, including the month
  * the standard rate resumes.
  *
- * The cancel button follows the API's role split: any staff account can sell
- * and chase an offer, only ops can switch off billing that's already running.
- * Which of the two this session is comes back with the data, so the button is
- * never offered and then refused.
+ * Every action here is open to any staff account, including stopping a plan
+ * that's already billing — the ops-only tier that used to guard project money
+ * came down at the owner's request. See lib/authz.ts.
  */
 export function RecurringCarePanel({ projectId }: { projectId: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -360,7 +357,7 @@ export function RecurringCarePanel({ projectId }: { projectId: string }) {
                       </button>
                     </>
                   )}
-                  {offer.status === 'active' && data.canCancel && (
+                  {offer.status === 'active' && (
                     <button
                       onClick={() => act(offer.id, 'cancel')}
                       disabled={busy}

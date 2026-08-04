@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { requireStaff } from '@/lib/middleware';
-import { OPS, requireRole } from '@/lib/authz';
+import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { DELIVERABLE_CONTENT_TYPES, DELIVERABLE_MAX_BYTES } from '@/lib/uploads';
 
 /**
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
         // upload token's options, so handing back a response would be read as
         // a (nonsense) token config. handleUpload turns the throw into the
         // 400 below, and no token is minted either way.
-        if (requireRole(session, OPS)) {
+        if (requireRole(session, ANY_STAFF)) {
           throw new Error('You do not have access to this.');
         }
 

@@ -1,0 +1,96 @@
+.site {
+  --black: #070807;
+  --panel: #111310;
+  --soft: #d8d7d0;
+  --orange: #ff4d18;
+  --line: rgba(255,255,255,.17);
+  min-height: 100vh;
+  overflow: clip;
+  color: white;
+  background: var(--black);
+  font-family: Arial, Helvetica, sans-serif;
+  cursor: none;
+}
+.site *, .site *::before, .site *::after { box-sizing: border-box; }
+.site ::selection { color: var(--black); background: var(--orange); }
+.cursor { position: fixed; z-index: 300; top: -11px; left: -11px; width: 22px; height: 22px; border: 1px solid white; border-radius: 50%; pointer-events: none; mix-blend-mode: difference; }
+.progress { position: fixed; z-index: 250; top: 0; left: 0; right: 0; height: 3px; background: var(--orange); transform-origin: left; }
+
+.header { position: fixed; z-index: 200; top: 20px; left: 24px; right: 24px; height: 68px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 13px 0 20px; border: 1px solid rgba(255,255,255,.16); border-radius: 4px; background: rgba(7,8,7,.64); backdrop-filter: blur(20px) saturate(1.4); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.logo { justify-self: start; display: flex; align-items: center; gap: 12px; }
+.logo > span { font-size: 25px; font-weight: 900; letter-spacing: -.08em; }
+.logo > i { width: 1px; height: 29px; background: rgba(255,255,255,.32); }
+.logo > small { color: rgba(255,255,255,.55); font-size: 8px; font-weight: 700; line-height: 1.35; letter-spacing: .12em; text-transform: uppercase; }
+.header nav { display: flex; gap: 34px; color: rgba(255,255,255,.67); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.header nav a { transition: color .2s ease; }.header nav a:hover { color: white; }
+.headerCall { justify-self: end; display: flex; align-items: center; gap: 9px; padding: 14px 17px; color: var(--black); background: var(--orange); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+
+.hero { position: relative; height: 100svh; min-height: 760px; overflow: hidden; background: black; }
+.heroMedia { position: absolute; inset: 0; transform-origin: center; }
+.heroMedia img { object-fit: cover; filter: saturate(.48) contrast(1.2) brightness(.72); }
+.heroMedia::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 68% 38%,transparent 0 13%,rgba(0,0,0,.1) 42%),linear-gradient(90deg,rgba(0,0,0,.88),rgba(0,0,0,.12) 62%),linear-gradient(0deg,rgba(0,0,0,.68),transparent 48%); }
+.heroGrid,.scanGrid { position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(rgba(255,255,255,.15) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.15) 1px,transparent 1px); background-size: 6.25vw 6.25vw; mask-image: linear-gradient(90deg,black,transparent 75%); }
+.heroContent { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; padding: 132px 5.5vw 56px; }
+.heroMeta { display: flex; gap: 28px; color: rgba(255,255,255,.46); font: 9px var(--font-geist-mono); letter-spacing: .1em; text-transform: uppercase; }
+.heroMeta span:last-child { display: flex; align-items: center; gap: 8px; color: white; }.heroMeta span:last-child::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #67f27c; box-shadow: 0 0 14px #67f27c; }
+.hero h1 { max-width: 1400px; margin-top: auto; font-size: clamp(5rem,10.5vw,12.8rem); font-weight: 800; line-height: .75; letter-spacing: -.085em; text-transform: uppercase; }
+.hero h1 span,.hero h1 strong { display: block; }.hero h1 span { padding-left: 17vw; color: transparent; -webkit-text-stroke: 1px rgba(255,255,255,.7); }.hero h1 strong { font-weight: 800; }
+.heroBottom { display: flex; justify-content: space-between; align-items: end; margin-top: 44px; }
+.heroBottom p { max-width: 510px; color: rgba(255,255,255,.65); font-size: 16px; line-height: 1.6; }
+.roundLink { width: 74px; height: 74px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.6); border-radius: 50%; background: rgba(0,0,0,.22); }
+.heroRail { position: absolute; z-index: 3; top: 50%; right: 28px; display: flex; align-items: center; gap: 14px; writing-mode: vertical-rl; color: rgba(255,255,255,.44); font-size: 8px; letter-spacing: .15em; text-transform: uppercase; }
+.heroRail i { width: 1px; height: 84px; overflow: hidden; background: rgba(255,255,255,.24); }.heroRail i::after { content: ''; display: block; width: 1px; height: 50%; background: var(--orange); animation: railPulse 1.8s ease-in-out infinite; }
+
+.weatherStage { height: 420vh; position: relative; background: black; }
+.weatherSticky { position: sticky; top: 0; height: 100svh; min-height: 760px; overflow: hidden; }
+.weatherMedia { position: absolute; inset: 0; }.weatherMedia img { object-fit: cover; filter: grayscale(.4) saturate(.48) contrast(1.25); }
+.weatherOverlay { position: absolute; inset: 0; background: linear-gradient(90deg,rgba(0,0,0,.92),rgba(0,0,0,.28) 60%),linear-gradient(0deg,rgba(0,0,0,.82),transparent 60%); }
+.weatherTopline { position: absolute; top: 122px; left: 5.5vw; right: 5.5vw; display: flex; justify-content: space-between; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,.25); color: rgba(255,255,255,.62); font: 9px var(--font-geist-mono); letter-spacing: .13em; }
+.weatherTitle { position: absolute; top: 21%; left: 5.5vw; max-width: 1050px; }.weatherTitle > span,.anatomyCopy > span,.servicesHead > span,.diagnosticHead > span,.ownerCopy > span,.finalCta > span { color: var(--orange); font: 9px var(--font-geist-mono); letter-spacing: .15em; text-transform: uppercase; }
+.weatherTitle h2 { margin-top: 24px; font-size: clamp(4.5rem,8.2vw,10rem); font-weight: 700; line-height: .82; letter-spacing: -.07em; text-transform: uppercase; }.weatherTitle h2 em { color: var(--orange); font-style: normal; }
+.weatherCards { position: absolute; left: 5.5vw; right: 5.5vw; bottom: 5vh; display: grid; grid-template-columns: repeat(4,1fr); border-top: 1px solid rgba(255,255,255,.25); border-left: 1px solid rgba(255,255,255,.25); }
+.weatherCard { min-height: 230px; padding: 20px; border-right: 1px solid rgba(255,255,255,.25); border-bottom: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.34); backdrop-filter: blur(12px); }
+.weatherCard > div { display: flex; align-items: center; gap: 9px; color: rgba(255,255,255,.65); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; }
+.weatherCard strong { display: block; margin-top: 32px; font-size: clamp(2.8rem,4vw,5rem); line-height: .8; letter-spacing: -.06em; }.weatherCard strong small { margin-left: 5px; color: var(--orange); font-size: 11px; letter-spacing: .05em; }.weatherCard p { max-width: 250px; margin-top: 25px; color: rgba(255,255,255,.48); font-size: 12px; line-height: 1.5; }
+
+.anatomy { height: 430vh; position: relative; color: var(--black); background: var(--soft); }
+.anatomySticky { position: sticky; top: 0; height: 100svh; min-height: 760px; overflow: hidden; }
+.anatomyCopy { position: absolute; z-index: 3; top: 17%; left: 5.5vw; max-width: 690px; }.anatomyCopy > span { color: #ac3211; }.anatomyCopy h2 { margin-top: 22px; font-size: clamp(4rem,6.5vw,8rem); font-weight: 800; line-height: .83; letter-spacing: -.07em; text-transform: uppercase; }.anatomyCopy h2 em { color: #a93514; font-style: normal; }.anatomyCopy p { max-width: 520px; margin-top: 35px; color: rgba(7,8,7,.62); font-size: 15px; line-height: 1.7; }
+.layerMachine { position: absolute; top: 20%; right: 2vw; width: min(58vw,880px); height: 590px; transform-origin: center; }
+.roofLayer { position: absolute; left: 6%; right: 6%; min-height: 200px; display: grid; grid-template-columns: 90px 1fr; align-items: center; padding: 30px 44px; border: 1px solid rgba(0,0,0,.23); box-shadow: 0 38px 80px rgba(0,0,0,.18); }
+.roofLayer > span { align-self: start; color: rgba(0,0,0,.5); font: 10px var(--font-geist-mono); }.roofLayer h3 { font-size: clamp(1.9rem,3.2vw,3.9rem); font-weight: 800; line-height: .9; letter-spacing: -.05em; text-transform: uppercase; }.roofLayer p { margin-top: 13px; color: rgba(0,0,0,.58); font-size: 13px; }.layerOne { z-index: 3; top: 0; color: white; background: #151713; }.layerOne p { color: rgba(255,255,255,.55); }.layerOne > span { color: rgba(255,255,255,.5); }.layerTwo { z-index: 2; top: 145px; background: var(--orange); }.layerThree { z-index: 1; top: 290px; background: #aaa89f; }
+.anatomyCounter { position: absolute; left: 5.5vw; bottom: 5vh; display: grid; grid-template-columns: auto auto auto; align-items: end; gap: 8px; }.anatomyCounter > span { grid-column: 1 / -1; color: rgba(0,0,0,.5); font: 8px var(--font-geist-mono); letter-spacing: .13em; text-transform: uppercase; }.anatomyCounter strong { font-size: 72px; line-height: .75; letter-spacing: -.08em; }.anatomyCounter i { color: #ac3211; font-style: normal; font-size: 18px; }
+
+.servicesStage { height: 480vh; position: relative; background: var(--black); }
+.servicesSticky { position: sticky; top: 0; height: 100svh; min-height: 760px; overflow: hidden; padding-top: 116px; }
+.servicesHead { position: absolute; z-index: 2; top: 15%; left: 5.5vw; width: 38vw; }.servicesHead h2 { margin-top: 18px; font-size: clamp(4rem,6.7vw,8rem); font-weight: 800; line-height: .81; letter-spacing: -.07em; text-transform: uppercase; }
+.serviceTrack { position: absolute; top: 22%; left: 40vw; display: flex; gap: 1.5vw; width: max-content; }
+.serviceCard { position: relative; width: 76vw; height: 68vh; min-height: 520px; overflow: hidden; background: #222; }
+.serviceCard img { object-fit: cover; transition: transform .8s cubic-bezier(.2,.8,.2,1); }.serviceCard:hover img { transform: scale(1.05); }
+.serviceShade { position: absolute; inset: 0; background: linear-gradient(0deg,rgba(0,0,0,.9),transparent 62%),linear-gradient(90deg,rgba(0,0,0,.42),transparent 50%); }
+.serviceCard > span { position: absolute; top: 25px; left: 28px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.5); font: 9px var(--font-geist-mono); }
+.serviceCard > div:last-child { position: absolute; left: 32px; right: 32px; bottom: 30px; display: grid; grid-template-columns: 1fr auto; gap: 15px; align-items: end; }.serviceCard h3 { grid-column: 1 / -1; font-size: clamp(4rem,7vw,8.5rem); line-height: .75; letter-spacing: -.07em; text-transform: uppercase; }.serviceCard p { max-width: 570px; color: rgba(255,255,255,.65); font-size: 15px; line-height: 1.55; }
+
+.diagnostics { padding: 160px 5.5vw; color: var(--black); background: #efeee8; }
+.diagnosticHead { max-width: 1200px; }.diagnosticHead > span { color: #ac3211; }.diagnosticHead h2 { margin-top: 22px; font-size: clamp(4.4rem,8vw,9.8rem); font-weight: 800; line-height: .78; letter-spacing: -.075em; text-transform: uppercase; }.diagnosticHead h2 em { color: #ac3211; font-style: normal; }.diagnosticHead p { margin-top: 30px; color: rgba(0,0,0,.55); }
+.diagnosticInterface { margin-top: 100px; display: grid; grid-template-columns: .75fr 1.25fr; min-height: 650px; border: 1px solid rgba(0,0,0,.2); }
+.diagnosticButtons { border-right: 1px solid rgba(0,0,0,.2); }.diagnosticButtons button { width: 100%; min-height: 108px; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 15px; padding: 0 25px; border: 0; border-bottom: 1px solid rgba(0,0,0,.2); color: inherit; background: transparent; text-align: left; font-size: 18px; cursor: none; transition: color .25s,background .25s; }.diagnosticButtons button span { color: rgba(0,0,0,.4); font: 9px var(--font-geist-mono); }.diagnosticButtons .diagnosticActive { color: white; background: var(--black); }
+.diagnosticScreen { position: relative; overflow: hidden; display: grid; place-items: center; padding: 70px; color: white; background: #10120f; }.diagnosticScreen > div:last-child { position: relative; z-index: 2; max-width: 700px; }.diagnosticScreen span { color: var(--orange); font: 9px var(--font-geist-mono); letter-spacing: .15em; }.diagnosticScreen h3 { margin-top: 35px; font-size: clamp(3.8rem,6vw,7rem); line-height: .8; letter-spacing: -.07em; text-transform: uppercase; }.diagnosticScreen p { max-width: 550px; margin-top: 28px; color: rgba(255,255,255,.58); font-size: 16px; line-height: 1.7; }.diagnosticScreen strong { display: flex; align-items: center; gap: 9px; margin-top: 50px; color: rgba(255,255,255,.75); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }.scanGrid { opacity: .12; mask-image: none; }.scanPulse { position: absolute; z-index: 1; left: 0; right: 0; top: -10%; height: 20%; background: linear-gradient(transparent,rgba(255,77,24,.28),transparent); animation: scan 3.4s linear infinite; }
+
+.ownerSection { min-height: 980px; display: grid; grid-template-columns: 1fr 1fr; background: var(--black); }.ownerMedia { position: relative; min-height: 760px; overflow: hidden; }.ownerMedia img { object-fit: cover; filter: grayscale(1) contrast(1.2); }.ownerMedia::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg,transparent,rgba(7,8,7,.25)); }.ownerCopy { display: flex; flex-direction: column; justify-content: center; padding: 110px 7vw; }.ownerCopy h2 { margin-top: 25px; font-size: clamp(3.6rem,5.8vw,7rem); line-height: .84; letter-spacing: -.07em; text-transform: uppercase; }.ownerCopy h2 em { color: var(--orange); font-style: normal; }.ownerCopy > p { max-width: 650px; margin-top: 40px; color: rgba(255,255,255,.58); font-size: 16px; line-height: 1.8; }.ownerCopy > div { margin-top: 60px; display: grid; grid-template-columns: auto 1fr; gap: 10px 24px; align-items: center; }.ownerCopy strong { font-size: 42px; letter-spacing: -.05em; }.ownerCopy div span { color: rgba(255,255,255,.48); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; }
+
+.finalCta { position: relative; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; padding: 130px 5vw 40px; color: var(--black); background: var(--orange); text-align: center; }.finalCta > span { position: relative; z-index: 2; color: rgba(0,0,0,.56); }.finalCta h2 { position: relative; z-index: 2; margin-top: 28px; font-size: clamp(5rem,11vw,13rem); font-weight: 900; line-height: .73; letter-spacing: -.085em; text-transform: uppercase; }.finalCta > p { position: relative; z-index: 2; margin-top: 36px; font-weight: 700; }.finalCta > div:not(.ctaOrbit) { position: relative; z-index: 2; display: flex; gap: 12px; margin-top: 42px; }.ctaPrimary,.ctaSecondary { min-width: 230px; min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 0 22px; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }.ctaPrimary { color: white; background: var(--black); }.ctaSecondary { border: 1px solid var(--black); }.finalCta footer { position: absolute; z-index: 2; left: 5vw; right: 5vw; bottom: 30px; display: flex; justify-content: space-between; padding-top: 22px; border-top: 1px solid rgba(0,0,0,.3); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }.finalCta footer span { display: flex; align-items: center; gap: 8px; }.ctaOrbit { position: absolute; width: min(85vw,1200px); aspect-ratio: 1; border: 1px solid rgba(0,0,0,.2); border-radius: 50%; animation: orbit 18s linear infinite; }.ctaOrbit::before,.ctaOrbit::after,.ctaOrbit i { content: ''; position: absolute; inset: 13%; border: 1px solid rgba(0,0,0,.16); border-radius: 50%; }.ctaOrbit::after { inset: 28%; }.ctaOrbit i:nth-child(1) { inset: -5%; border-top-color: var(--black); }.ctaOrbit i:nth-child(2) { inset: 40%; background: rgba(0,0,0,.04); }.ctaOrbit i:nth-child(3) { inset: 48%; background: var(--black); }
+
+@keyframes railPulse { 0% { transform: translateY(-100%); } 100% { transform: translateY(200%); } }
+@keyframes scan { to { transform: translateY(650px); } }
+@keyframes orbit { to { transform: rotate(360deg); } }
+
+@media (max-width: 1000px) {
+  .site { cursor: auto; }.cursor { display: none; }.header { grid-template-columns: 1fr auto; }.header nav { display: none; }.hero h1 span { padding-left: 0; }.weatherCards { grid-template-columns: repeat(2,1fr); }.weatherCard { min-height: 180px; }.anatomyCopy { top: 14%; }.layerMachine { top: 47%; width: 90vw; right: 5vw; height: 430px; }.roofLayer { min-height: 150px; }.layerTwo { top: 100px; }.layerThree { top: 200px; }.servicesHead { width: 60vw; }.serviceTrack { top: 30%; left: 65vw; }.serviceCard { width: 82vw; height: 62vh; }.diagnosticInterface { grid-template-columns: 1fr; }.diagnosticButtons { display: grid; grid-template-columns: repeat(2,1fr); border-right: 0; }.diagnosticButtons button { min-height: 85px; border-right: 1px solid rgba(0,0,0,.2); }.ownerSection { grid-template-columns: 1fr; }.ownerMedia { min-height: 70svh; }.ownerCopy { min-height: 760px; }
+}
+
+@media (max-width: 640px) {
+  .header { top: 10px; left: 10px; right: 10px; height: 60px; padding-left: 14px; }.logo > small { display: none; }.headerCall { padding: 12px; font-size: 0; }.hero { min-height: 720px; }.heroContent { padding: 105px 20px 34px; }.heroMeta { gap: 10px; font-size: 7px; }.heroMeta span:nth-child(2) { display: none; }.hero h1 { font-size: clamp(4.2rem,22vw,6.4rem); line-height: .77; }.heroBottom { align-items: center; }.heroBottom p { max-width: 250px; font-size: 13px; }.roundLink { width: 58px; height: 58px; }.heroRail { display: none; }.weatherTopline { top: 95px; left: 20px; right: 20px; }.weatherTitle { top: 16%; left: 20px; right: 20px; }.weatherTitle h2 { font-size: 3.8rem; }.weatherCards { left: 20px; right: 20px; bottom: 20px; }.weatherCard { min-height: 145px; padding: 14px; }.weatherCard strong { margin-top: 20px; font-size: 2.35rem; }.weatherCard p { display: none; }.anatomyCopy { top: 11%; left: 20px; right: 20px; }.anatomyCopy h2 { font-size: 3.7rem; }.anatomyCopy p { font-size: 13px; }.layerMachine { top: 52%; right: -5vw; width: 110vw; }.roofLayer { grid-template-columns: 42px 1fr; min-height: 125px; padding: 20px; }.roofLayer h3 { font-size: 1.75rem; }.roofLayer p { display: none; }.anatomyCounter { left: 20px; bottom: 20px; }.servicesHead { top: 14%; left: 20px; width: 80vw; }.servicesHead h2 { font-size: 3.7rem; }.serviceTrack { top: 31%; left: 88vw; }.serviceCard { width: 88vw; height: 58vh; min-height: 440px; }.serviceCard > div:last-child { left: 20px; right: 20px; }.serviceCard h3 { font-size: 3.7rem; }.serviceCard p { font-size: 12px; }.diagnostics { padding: 95px 20px; }.diagnosticHead h2 { font-size: 3.9rem; }.diagnosticInterface { margin-top: 60px; }.diagnosticButtons { grid-template-columns: 1fr; }.diagnosticButtons button { min-height: 75px; }.diagnosticScreen { min-height: 480px; padding: 35px 24px; }.diagnosticScreen h3 { font-size: 3.8rem; }.ownerCopy { min-height: 700px; padding: 90px 22px; }.ownerCopy h2 { font-size: 3.8rem; }.finalCta { min-height: 850px; padding-left: 20px; padding-right: 20px; }.finalCta h2 { font-size: 4.8rem; }.finalCta > div:not(.ctaOrbit) { flex-direction: column; width: 100%; }.ctaPrimary,.ctaSecondary { width: 100%; }.finalCta footer { flex-direction: column; align-items: center; gap: 8px; }.ctaOrbit { width: 150vw; }
+}
+
+@media (prefers-reduced-motion: reduce) { .heroRail i::after,.scanPulse,.ctaOrbit { animation: none; } }

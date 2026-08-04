@@ -64,27 +64,81 @@ export function escParagraphs(value: unknown): string {
 
 const ALLOWED_URL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
+// Something already carrying its own scheme — `https:`, `mailto:`, and also
+// the ones we're about to reject, which have to be recognised as schemes so
+// they're rejected rather than quietly prefixed into `https://javascript:...`.
+const HAS_SCHEME = /^[a-z][a-z0-9+.\-]*:/i;
+
+// What a host looks like when someone pastes a link without the scheme —
+// `bothmade.studio/mockups`, `drive.google.com/file/d/…`, `www.loom.com/…`.
+// Requires a dot and a real-looking TLD, so ordinary prose typed into a URL
+// box ("ask me for it") still fails rather than becoming https://ask me…
+const BARE_HOST = /^[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i;
+
 /**
- * Returns the URL escaped for an href, or null when it isn't a URL we're
- * willing to link to. Rejects `javascript:`, `data:`, `vbscript:`, and
- * anything else that isn't plainly a link — a rep pasting an attacker's
- * "Loom link" into a template shouldn't be able to ship script into a
- * client's inbox.
+ * The canonical, unescaped form of a link, or null if it isn't one we're
+ * willing to point a client at.
+ *
+ * Copying a URL out of a browser gets you the scheme; typing one from memory
+ * or copying it out of a document often doesn't. Without this, a button whose
+ * link was pasted as `bothmade.studio/mockups` failed `new URL()`, came back
+ * null, and the template silently rendered no button at all — the failure
+ * looked like a missing feature rather than a missing `https://`.
+ *
+ * Rejects `javascript:`, `data:`, `vbscript:` and anything else that isn't
+ * plainly a link: a rep pasting an attacker's "Loom link" into a template
+ * shouldn't be able to ship script into a client's inbox.
  */
-export function safeUrl(value: unknown): string | null {
+export function normalizeUrl(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const raw = String(value).trim();
   if (!raw) return null;
 
+  const candidate = HAS_SCHEME.test(raw) ? raw : BARE_HOST.test(raw) ? `https://${raw}` : raw;
+
   let parsed: URL;
   try {
-    parsed = new URL(raw);
+    parsed = new URL(candidate);
   } catch {
     return null;
   }
   if (!ALLOWED_URL_PROTOCOLS.has(parsed.protocol)) return null;
+  // `https://` on its own parses fine and links nowhere.
+  if (parsed.protocol !== 'mailto:' && !parsed.hostname) return null;
 
-  return escAttr(parsed.toString());
+  return parsed.toString();
+}
+
+/** Returns the URL escaped for an href, or null when it isn't one. */
+export function safeUrl(value: unknown): string | null {
+  const normalized = normalizeUrl(value);
+  return normalized === null ? null : escAttr(normalized);
+}
+
+// A link that only resolves on the machine that composed the email. Pasting
+// one into a client's inbox produces a button that looks perfect and does
+// nothing, which is the exact failure this whole check exists to catch.
+const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|.*\.local)$/i;
+
+/**
+ * Why a link won't work, in words someone composing an email can act on, or
+ * null when it's fine. Shown next to the field rather than discovered by the
+ * recipient — safe to call from the browser, this module has no server deps.
+ */
+export function describeUrlProblem(value: unknown): string | null {
+  const raw = value === null || value === undefined ? '' : String(value).trim();
+  if (!raw) return null;
+
+  const normalized = normalizeUrl(raw);
+  if (!normalized) {
+    return "That isn't a link we can put behind a button — it needs to look like https://example.com/page.";
+  }
+
+  const parsed = new URL(normalized);
+  if (parsed.protocol !== 'mailto:' && LOCAL_HOSTS.test(parsed.hostname)) {
+    return 'That link only works on this computer — the recipient would get a button that goes nowhere.';
+  }
+  return null;
 }
 
 /**

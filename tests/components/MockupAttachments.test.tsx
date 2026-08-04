@@ -18,6 +18,19 @@ import {
 const uploadMock = vi.fn(async (..._args: unknown[]) => ({ url: 'https://blob.test/version-two.png' }));
 vi.mock('@vercel/blob/client', () => ({ upload: (...args: unknown[]) => uploadMock(...args) }));
 
+/** Exercised on its own in tests/lib/chunked-upload.test.ts. */
+const uploadInPartsMock = vi.fn(async (..._args: unknown[]) => ({ url: 'https://blob.test/big.mov' }));
+vi.mock('@/lib/chunked-upload', () => ({
+  uploadFileInParts: (...args: unknown[]) => uploadInPartsMock(...args),
+}));
+
+/** A File of a given size without allocating one. */
+function sizedFile(name: string, type: string, size: number): File {
+  const file = new File(['x'], name, { type });
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
+}
+
 function mockup(overrides: Partial<LeadMockupItem> = {}): LeadMockupItem {
   return {
     id: 'mk_1',
@@ -43,6 +56,7 @@ function mockFetch(responses: { post?: unknown; patch?: unknown; ok?: boolean })
 beforeEach(() => {
   vi.unstubAllGlobals();
   uploadMock.mockClear();
+  uploadInPartsMock.mockClear();
 });
 
 describe('the versions already on the lead', () => {
@@ -130,6 +144,116 @@ describe('bringing in the next version', () => {
       url: 'https://blob.test/version-two.png',
       fileName: 'v2.png',
     });
+  });
+
+  it('uploads a video walkthrough — the type Blob is told is the one that gets it through', async () => {
+    const user = userEvent.setup();
+    const attached = mockup({ id: 'mk_2', url: 'https://blob.test/walkthrough.mov', fileName: 'walkthrough.MOV' });
+    mockFetch({ post: { success: true, mockup: attached, index: 2 } });
+    render(<MockupAttachments leadId="lead_1" mockups={[mockup()]} onChanged={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /Import mockup 2/ }));
+    // A clip shared out of the iOS Photos app often arrives with no type at all.
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      new File(['mov'], 'walkthrough.MOV', { type: '' })
+    );
+
+    expect(uploadMock).toHaveBeenCalledWith(
+      'walkthrough.MOV',
+      expect.anything(),
+      expect.objectContaining({ contentType: 'video/quicktime' })
+    );
+  });
+
+  it('refuses an oversized file up front instead of after the upload', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: {} });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
+
+    const huge = new File(['x'], 'four-k.mp4', { type: 'video/mp4' });
+    Object.defineProperty(huge, 'size', { value: 900 * 1024 * 1024 });
+
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(screen.getByLabelText(/upload the file/i), huge);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/900 MB.*limit is 512 MB/i);
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it('shows bytes as well as a percentage — "0%" alone reads the same as stuck', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: { success: true, mockup: mockup(), index: 1 } });
+    // Hold the upload open at 12MB of 20MB so the progress line can be read.
+    uploadMock.mockImplementationOnce(async (..._args: unknown[]) => {
+      const options = _args[2] as { onUploadProgress?: (e: { loaded: number }) => void };
+      options.onUploadProgress?.({ loaded: 12 * 1024 * 1024 });
+      await new Promise(() => {}); // never settles
+      return { url: '' };
+    });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      sizedFile('walkthrough.mp4', 'video/mp4', 20 * 1024 * 1024)
+    );
+
+    expect(await screen.findByRole('status')).toHaveTextContent('12 MB of 20 MB (60%)');
+  });
+
+  it('sends a phone-sized recording through the chunked uploader, not one long request', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: { success: true, mockup: mockup(), index: 1 } });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      sizedFile('screen-recording.mov', 'video/quicktime', 334 * 1024 * 1024)
+    );
+
+    expect(uploadInPartsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ contentType: 'video/quicktime' })
+    );
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it('stops the upload when cancelled, rather than closing the panel over a live one', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: { success: true, mockup: mockup(), index: 1 } });
+    let signal: AbortSignal | undefined;
+    uploadMock.mockImplementationOnce(async (..._args: unknown[]) => {
+      signal = (_args[2] as { abortSignal?: AbortSignal }).abortSignal;
+      await new Promise((_, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+      return { url: '' };
+    });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      sizedFile('walkthrough.mp4', 'video/mp4', 20 * 1024 * 1024)
+    );
+    await user.click(await screen.findByRole('button', { name: 'Cancel upload' }));
+
+    expect(signal?.aborted).toBe(true);
+    // A cancellation is not a failure, so it gets no red line.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('marks a stored video as one, so nobody opens a recording expecting a still', () => {
+    render(
+      <MockupAttachments
+        leadId="lead_1"
+        mockups={[mockup({ url: 'https://blob.test/walkthrough.mp4', fileName: 'walkthrough.mp4' })]}
+        onChanged={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('link', { name: /Mockup 1 \(video\)/ })).toBeInTheDocument();
   });
 
   it('says what went wrong instead of quietly dropping the link', async () => {

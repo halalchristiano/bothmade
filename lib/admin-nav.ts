@@ -1,6 +1,6 @@
 import {
-  BarChart3,
   Headset,
+  BarChart3,
   Building2,
   FolderKanban,
   KanbanSquare,
@@ -17,19 +17,22 @@ import {
 } from 'lucide-react';
 
 /**
- * What's in the admin nav, who sees it, and how it's grouped.
+ * What's in the admin nav and how it's grouped.
  *
- * Lifted out of the layout so the two rules that actually matter here can be
- * tested without rendering a page that fetches on mount: a sales account never
- * being shown a destination it would be refused, and a section never rendering
- * a heading with nothing under it.
+ * Every staff account sees all of it. There used to be a `salesVisible` flag
+ * withholding Clients, Projects, Priorities, Mockups and Team from a sales
+ * account, mirroring the `OPS` tier in lib/authz.ts; both came down at the
+ * owner's request, so there is no longer a per-role list to compute.
+ *
+ * Kept out of the layout so the grouping rule can be tested without rendering
+ * a page that fetches on mount: a section must never render a heading with
+ * nothing under it.
  */
 
 export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  salesVisible: boolean;
   /** Heading this sits under. Empty string means no heading above it. */
   section: string;
 }
@@ -43,13 +46,13 @@ export interface NavItem {
  * anybody had learned to reach for has moved.
  */
 export const ADMIN_NAV_ITEMS: NavItem[] = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, salesVisible: true, section: '' },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: '' },
 
-  { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, salesVisible: true, section: 'Sales' },
-  { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, salesVisible: true, section: 'Sales' },
-  { href: '/admin/call', label: 'Call HQ', icon: Headset, salesVisible: true, section: 'Sales' },
-  { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true, section: 'Sales' },
-  { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, salesVisible: false, section: 'Sales' },
+  { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, section: 'Sales' },
+  { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, section: 'Sales' },
+  { href: '/admin/call', label: 'Call HQ', icon: Headset, section: 'Sales' },
+  { href: '/admin/leads', label: 'Leads', icon: Users, section: 'Sales' },
+  { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, section: 'Sales' },
 
   // Money after the sale, which is neither a lead nor a project, so it gets
   // its own heading rather than being filed under one of theirs. Visible to
@@ -62,36 +65,17 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   // a project in front of you, so it lives as a band across the top of
   // /admin/projects/[id] instead. Sales reaches it through the sidebar
   // search, which returns projects to every staff account.
-  { href: '/admin/billing', label: 'Billing', icon: Receipt, salesVisible: true, section: 'One-off charges' },
+  { href: '/admin/billing', label: 'Billing', icon: Receipt, section: 'One-off charges' },
 
-  { href: '/admin/priorities', label: 'Priorities', icon: ListChecks, salesVisible: false, section: 'Delivery' },
-  { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false, section: 'Delivery' },
-  { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false, section: 'Delivery' },
+  { href: '/admin/priorities', label: 'Priorities', icon: ListChecks, section: 'Delivery' },
+  { href: '/admin/clients', label: 'Clients', icon: Building2, section: 'Delivery' },
+  { href: '/admin/projects', label: 'Projects', icon: FolderKanban, section: 'Delivery' },
 
-  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, salesVisible: true, section: 'Studio' },
-  { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, salesVisible: true, section: 'Studio' },
-  { href: '/admin/team', label: 'Team', icon: UserCog, salesVisible: false, section: 'Studio' },
-  { href: '/admin/settings', label: 'Settings', icon: Settings, salesVisible: true, section: 'Studio' },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, section: 'Studio' },
+  { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, section: 'Studio' },
+  { href: '/admin/team', label: 'Team', icon: UserCog, section: 'Studio' },
+  { href: '/admin/settings', label: 'Settings', icon: Settings, section: 'Studio' },
 ];
-
-/**
- * The items this role should be offered. Hiding a link is not access control —
- * every route here enforces its own — but offering one that will 403 is its own
- * kind of broken.
- *
- * Anything that isn't a known ops role gets the narrow list, matching the rule
- * `lib/authz.ts` already states: an absent claim must never widen access. This
- * used to be `role !== 'sales'`, which meant the *unresolved* role the layout
- * holds for the first moment after mount — before `/api/auth/me` answers —
- * showed the full nav. A sales account got a visible flash of Projects,
- * Clients and Team before the list corrected itself, and a failed `me` call
- * left them there. Erring narrow costs an owner a brief under-populated
- * sidebar; erring wide showed everyone links they'd be refused.
- */
-export function visibleNavItems(role: string): NavItem[] {
-  const restricted = role !== 'owner' && role !== 'admin';
-  return ADMIN_NAV_ITEMS.filter((item) => !restricted || item.salesVisible);
-}
 
 /**
  * Consecutive items sharing a heading, grouped.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { OPS, requireRole } from '@/lib/authz';
+import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { amountPaidTowardProject } from '@/lib/billing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
@@ -20,7 +20,7 @@ export async function POST(
     }
     // Client records and project money are ops, not sales — the admin
     // nav already withholds these pages from a sales account.
-    const denied = requireRole(session, OPS);
+    const denied = requireRole(session, ANY_STAFF);
     if (denied) return denied;
 
 

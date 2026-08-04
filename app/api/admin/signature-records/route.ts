@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { amountPaidTowardProject } from '@/lib/billing';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { OPS, requireRole } from '@/lib/authz';
+import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { formatCents } from '@/lib/pricing';
 
 /**
@@ -18,7 +18,7 @@ export async function GET() {
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
-    const denied = requireRole(session, OPS);
+    const denied = requireRole(session, ANY_STAFF);
     if (denied) return denied;
 
     // Start from projects rather than clients: the certificate is per

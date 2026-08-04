@@ -7,13 +7,22 @@ export async function POST(request: NextRequest) {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
-    const { templateId, to, toName, company, fields, leadId } = await request.json();
+    const { templateId, to, toName, company, fields, attachments, leadId } = await request.json();
 
     if (!templateId || !to) {
       return NextResponse.json({ error: 'Template and recipient are required' }, { status: 400 });
     }
 
-    const result = await sendTemplatedEmail({ senderId: session.userId, templateId, to, toName, company, fields, leadId });
+    const result = await sendTemplatedEmail({
+      senderId: session.userId,
+      templateId,
+      to,
+      toName,
+      company,
+      fields,
+      attachments,
+      leadId,
+    });
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.error === 'Unknown template' ? 400 : 500 });

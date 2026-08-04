@@ -5,6 +5,22 @@ import { Send, Loader2, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
 import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
 import { draftBodyOnly, firstNameOf, personalize } from '@/lib/cold-email';
+import { describeUrlProblem } from '@/lib/html';
+import {
+  EmailAttachmentsEditor,
+  attachmentProblems,
+  attachmentsForSend,
+  type AttachmentDraft,
+} from './EmailAttachmentsEditor';
+import {
+  Avatar,
+  Field,
+  GhostButton,
+  PrimaryButton,
+  Section,
+  SelectMenu,
+  inputClasses,
+} from './composer-ui';
 import { Modal, ModalCloseButton } from './Modal';
 
 export interface BulkRecipient {
@@ -20,6 +36,13 @@ export interface BulkRecipient {
 // Sales-facing templates make sense to blast to a list; ops templates
 // (project updates, requirements requests) are always one-to-one.
 const BULK_TEMPLATES = EMAIL_TEMPLATES.filter((t) => t.audience !== 'ops');
+
+const BULK_TEMPLATE_OPTIONS = BULK_TEMPLATES.map((t) => ({
+  value: t.id,
+  label: t.label,
+  description: t.description,
+  group: t.group,
+}));
 
 export function BulkEmailComposer({
   recipients,
@@ -38,6 +61,9 @@ export function BulkEmailComposer({
     }
     return d;
   });
+  // Shared across the batch, like sharedFields — the same mockup PDF goes to
+  // everyone on the list, and survives a template change.
+  const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [perLead, setPerLead] = useState<Record<string, Record<string, string>>>({});
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sentCount: number; total: number; failures: string[] } | null>(null);
@@ -59,8 +85,22 @@ export function BulkEmailComposer({
   const setPerLeadField = (leadId: string, key: string, value: string) =>
     setPerLead((p) => ({ ...p, [leadId]: { ...(p[leadId] || {}), [key]: value } }));
 
+  const attachmentIssues = attachmentProblems(attachments);
+  const sharedFieldIssues: Record<string, string> = {};
+  for (const field of sharedTemplateFields) {
+    if (field.type !== 'url') continue;
+    const problem = describeUrlProblem(sharedFields[field.key]);
+    if (problem) sharedFieldIssues[field.key] = problem;
+  }
+  if (sharedFields.ctaLabel?.trim() && !sharedFields.ctaUrl?.trim()) {
+    sharedFieldIssues.ctaUrl = "This button has no link, so it wouldn't do anything when tapped.";
+  }
+  const sendAttachments = attachmentsForSend(attachments);
+
   const canSend =
     emailable.length > 0 &&
+    Object.keys(attachmentIssues).length === 0 &&
+    Object.keys(sharedFieldIssues).length === 0 &&
     sharedTemplateFields.every((f) => !f.required || sharedFields[f.key]) &&
     personalizeFields.every((f) => emailable.every((r) => perLead[r.id]?.[f.key]));
 
@@ -118,6 +158,7 @@ export function BulkEmailComposer({
         body: JSON.stringify({
           templateId,
           sharedFields,
+          attachments: sendAttachments,
           recipients: emailable.map((r) => ({
             leadId: r.id,
             to: r.email,
@@ -147,32 +188,39 @@ export function BulkEmailComposer({
     <Modal
       title={`Send to ${recipients.length} lead${recipients.length === 1 ? '' : 's'}`}
       onClose={onClose}
-      size="max-w-5xl"
-      panelClassName="max-h-[90vh] overflow-hidden flex flex-col"
+      size="max-w-[68rem]"
+      panelClassName="relative max-h-[92vh] overflow-hidden flex flex-col"
       showHeader={false}
       // A half-written batch of per-recipient personalization is too much to
       // lose to a misplaced click outside the panel.
       closeOnBackdrop={false}
     >
       <>
-        <div className="flex justify-between items-start p-6 pb-4 shrink-0">
-          <div>
-            <h2 className="text-lg font-bold">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-2xl bg-[radial-gradient(80%_100%_at_50%_0%,rgba(125,211,252,0.07),transparent_70%)]"
+        />
+
+        <header className="relative flex shrink-0 items-center justify-between gap-4 border-b border-white/[0.06] px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold leading-tight text-white">
               Send to {recipients.length} lead{recipients.length === 1 ? '' : 's'}
             </h2>
-            <p className="text-xs text-white/40 mt-0.5">
-              {missingEmail > 0 ? `${missingEmail} skipped — no email on file. ` : ''}
-              {emailable.length} will receive this.
+            <p className="mt-0.5 truncate text-[12.5px] text-white/35">
+              {missingEmail > 0 ? `${missingEmail} skipped — no email on file · ` : ''}
+              {emailable.length} will receive this
             </p>
           </div>
           <ModalCloseButton onClose={onClose} />
-        </div>
+        </header>
 
         {result ? (
-          <div className="py-10 text-center px-6">
-            <CheckCircle2 size={28} className="text-emerald-400 mx-auto mb-3" />
-            <p className="text-sm mb-2">
-              Sent <strong>{result.sentCount}</strong> of {result.total}.
+          <div className="px-6 py-16 text-center">
+            <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-400/10 ring-1 ring-inset ring-emerald-400/25">
+              <CheckCircle2 size={22} className="text-emerald-300" aria-hidden="true" />
+            </span>
+            <p className="mb-2 text-[15px] text-white">
+              Sent <strong className="font-semibold">{result.sentCount}</strong> of {result.total}.
             </p>
             {result.failures.length > 0 && (
               <div className="text-left mt-3 rounded-xl border border-red-400/20 bg-red-400/5 p-3 space-y-1 max-w-md mx-auto">
@@ -183,176 +231,186 @@ export function BulkEmailComposer({
                 ))}
               </div>
             )}
-            <button
-              onClick={onClose}
-              className="mt-4 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
-            >
-              Done
-            </button>
+            <div className="mt-5 flex justify-center">
+              <PrimaryButton onClick={onClose}>Done</PrimaryButton>
+            </div>
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
             {/* LEFT: form */}
-            <div className="md:w-[48%] overflow-y-auto px-6 pb-6">
-              <label className="block text-xs text-white/50 mb-1.5">Template</label>
-              <select
-                value={templateId}
-                onChange={(e) => {
-                  const nextTemplate = getTemplate(e.target.value);
-                  const selectDefaults: Record<string, string> = {};
-                  for (const f of nextTemplate?.fields || []) {
-                    if (f.type === 'select' && f.options?.[0]) selectDefaults[f.key] = f.options[0].value;
-                  }
-                  setTemplateId(e.target.value);
-                  setSharedFields(selectDefaults);
-                  setPerLead({});
-                }}
-                className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm mb-1 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-              >
-                {BULK_TEMPLATES.map((t) => (
-                  <option key={t.id} value={t.id} className="bg-[#0a0812]">
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-white/30 mb-4">{template.description}</p>
+            <div className="flex min-h-0 flex-col md:w-[47%] md:border-r md:border-white/[0.06]">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <Section title="Template">
+                  <SelectMenu
+                    ariaLabel="Email template"
+                    value={templateId}
+                    options={BULK_TEMPLATE_OPTIONS}
+                    onChange={(id) => {
+                      const selectDefaults: Record<string, string> = {};
+                      for (const f of getTemplate(id)?.fields || []) {
+                        if (f.type === 'select' && f.options?.[0]) selectDefaults[f.key] = f.options[0].value;
+                      }
+                      setTemplateId(id);
+                      setSharedFields(selectDefaults);
+                      setPerLead({});
+                    }}
+                  />
+                </Section>
 
-              {sharedTemplateFields.length > 0 && (
-                <div className="space-y-3 mb-4">
-                  <p className="text-xs font-semibold text-white/50">Same for every recipient</p>
-                  {sharedTemplateFields
-                    .filter((field) => field.key !== 'headlineCustom' || sharedFields.headline === '__custom__')
-                    .map((field) => (
-                    <div key={field.key}>
-                      <label className="block text-xs text-white/50 mb-1.5">
-                        {field.label}
-                        {field.required && <span className="text-red-400"> *</span>}
-                      </label>
-                      {field.type === 'textarea' ? (
-                        <textarea
-                          value={sharedFields[field.key] || ''}
-                          onChange={(e) => setShared(field.key, e.target.value)}
-                          placeholder={field.placeholder}
-                          rows={3}
-                          className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-                        />
-                      ) : field.type === 'select' ? (
-                        <select
-                          value={sharedFields[field.key] || field.options?.[0]?.value || ''}
-                          onChange={(e) => setShared(field.key, e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-                        >
-                          {field.options?.map((opt) => (
-                            <option key={opt.value} value={opt.value} className="bg-[#0a0812]">
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          value={sharedFields[field.key] || ''}
-                          onChange={(e) => setShared(field.key, e.target.value)}
-                          placeholder={field.placeholder}
-                          className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {withOwnDraft > 0 && (
-                <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/5 px-3 py-2.5 mb-3">
-                  <AlertTriangle size={14} className="text-sky-300 shrink-0 mt-0.5" />
-                  <p className="text-xs text-sky-200/80">
-                    {withOwnDraft} of these already {withOwnDraft === 1 ? 'has' : 'have'} its own complete
-                    drafted email with its own subject line — this composer can only send one shared subject
-                    to everyone. Cancel and use "Send prepared cold emails" back on the leads list instead to
-                    send each one's actual draft, not a shared template.
-                  </p>
-                </div>
-              )}
-
-              {personalizeFields.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2.5 mb-3">
-                    <AlertTriangle size={14} className="text-amber-300 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-200/80">
-                      {personalizeFields[0].helpText ||
-                        'These fields need a genuine answer per recipient — that personalization is what makes this different from a mail blast.'}
-                    </p>
-                  </div>
-                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                    {emailable.map((r) => (
-                      <div
-                        key={r.id}
-                        className={`rounded-xl border p-3 transition-colors ${
-                          previewFor === r.id ? 'border-sky-400/50 bg-sky-400/5' : 'border-white/10'
-                        }`}
-                      >
-                        {/* The card used to be one big clickable div wrapping
-                            its own textareas — unreachable by keyboard and
-                            invalid nesting. The name is the button now. */}
-                        <button
-                          type="button"
-                          onClick={() => setPreviewFor(r.id)}
-                          aria-pressed={previewFor === r.id}
-                          className="w-full flex items-center justify-between mb-2 text-left"
-                        >
-                          <span className="text-sm font-medium">{r.company}</span>
-                          {previewFor === r.id ? (
-                            <Eye size={12} className="text-sky-300" aria-hidden="true" />
-                          ) : (
-                            <span className="text-[10px] text-white/30">Preview</span>
-                          )}
-                        </button>
-                        {personalizeFields.map((field) => (
-                          <textarea
+                {sharedTemplateFields.length > 0 && (
+                  <Section title="Same for every recipient">
+                    <div className="space-y-4">
+                      {sharedTemplateFields
+                        .filter((field) => field.key !== 'headlineCustom' || sharedFields.headline === '__custom__')
+                        .map((field) => (
+                          <Field
                             key={field.key}
-                            value={perLead[r.id]?.[field.key] || ''}
-                            onChange={(e) => setPerLeadField(r.id, field.key, e.target.value)}
-                            onFocus={() => setPreviewFor(r.id)}
-                            placeholder={field.placeholder}
-                            aria-label={`${field.label} for ${r.company}`}
-                            rows={2}
-                            className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-                          />
+                            label={field.label}
+                            required={field.required}
+                            hint={field.hint}
+                            error={sharedFieldIssues[field.key]}
+                          >
+                            {field.type === 'textarea' ? (
+                              <textarea
+                                value={sharedFields[field.key] || ''}
+                                onChange={(e) => setShared(field.key, e.target.value)}
+                                placeholder={field.placeholder}
+                                rows={4}
+                                aria-label={field.label}
+                                className={`${inputClasses} resize-y leading-relaxed`}
+                              />
+                            ) : field.type === 'select' ? (
+                              <SelectMenu
+                                ariaLabel={field.label}
+                                value={sharedFields[field.key] || field.options?.[0]?.value || ''}
+                                options={field.options || []}
+                                onChange={(value) => setShared(field.key, value)}
+                              />
+                            ) : (
+                              <input
+                                value={sharedFields[field.key] || ''}
+                                onChange={(e) => setShared(field.key, e.target.value)}
+                                placeholder={field.placeholder}
+                                aria-label={field.label}
+                                className={inputClasses}
+                              />
+                            )}
+                          </Field>
                         ))}
-                      </div>
-                    ))}
+                    </div>
+                  </Section>
+                )}
+
+                <Section title="Attachments">
+                  <EmailAttachmentsEditor
+                    attachments={attachments}
+                    onChange={setAttachments}
+                    problems={attachmentIssues}
+                    compact
+                  />
+                </Section>
+
+                {withOwnDraft > 0 && (
+                  <Section>
+                    <div className="flex items-start gap-2.5 rounded-2xl border border-sky-400/20 bg-sky-400/[0.06] px-3.5 py-3">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0 text-sky-300" aria-hidden="true" />
+                      <p className="text-[12.5px] leading-relaxed text-sky-100/70">
+                        {withOwnDraft} of these already {withOwnDraft === 1 ? 'has' : 'have'} its own complete
+                        drafted email with its own subject line — this composer can only send one shared subject
+                        to everyone. Cancel and use “Send prepared cold emails” back on the leads list instead to
+                        send each one's actual draft, not a shared template.
+                      </p>
+                    </div>
+                  </Section>
+                )}
+
+                {personalizeFields.length > 0 && (
+                  <Section title="Written per recipient">
+                    <div className="mb-3 flex items-start gap-2.5 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] px-3.5 py-3">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-300" aria-hidden="true" />
+                      <p className="text-[12.5px] leading-relaxed text-amber-100/70">
+                        {personalizeFields[0].helpText ||
+                          'These fields need a genuine answer per recipient — that personalization is what makes this different from a mail blast.'}
+                      </p>
+                    </div>
+                    <div className="max-h-72 space-y-2.5 overflow-y-auto pr-1">
+                      {emailable.map((r) => (
+                        <div
+                          key={r.id}
+                          className={`rounded-2xl border p-3 transition-colors ${
+                            previewFor === r.id
+                              ? 'border-sky-400/40 bg-sky-400/[0.05]'
+                              : 'border-white/[0.07] bg-white/[0.02]'
+                          }`}
+                        >
+                          {/* The card used to be one big clickable div wrapping
+                              its own textareas — unreachable by keyboard and
+                              invalid nesting. The name is the button now. */}
+                          <button
+                            type="button"
+                            onClick={() => setPreviewFor(r.id)}
+                            aria-pressed={previewFor === r.id}
+                            className="mb-2 flex w-full items-center gap-2.5 text-left"
+                          >
+                            <Avatar name={r.contactName || r.company} email={r.email || ''} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13.5px] leading-tight text-white">
+                                {r.company}
+                              </span>
+                              <span className="block truncate text-[11.5px] text-white/30">{r.email}</span>
+                            </span>
+                            {previewFor === r.id ? (
+                              <Eye size={13} className="shrink-0 text-sky-300" aria-hidden="true" />
+                            ) : (
+                              <span className="shrink-0 text-[11px] text-white/25">Preview</span>
+                            )}
+                          </button>
+                          {personalizeFields.map((field) => (
+                            <textarea
+                              key={field.key}
+                              value={perLead[r.id]?.[field.key] || ''}
+                              onChange={(e) => setPerLeadField(r.id, field.key, e.target.value)}
+                              onFocus={() => setPreviewFor(r.id)}
+                              placeholder={field.placeholder}
+                              aria-label={`${field.label} for ${r.company}`}
+                              rows={2}
+                              className={`${inputClasses} resize-y leading-relaxed`}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+              </div>
+
+              <div className="shrink-0 border-t border-white/[0.06] bg-black/20 px-6 py-3.5">
+                {error && <p className="mb-2.5 text-[12.5px] text-red-300">{error}</p>}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="min-w-0 truncate text-[12px] text-white/35">
+                    {emailable.length} recipient{emailable.length === 1 ? '' : 's'}
+                  </p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <GhostButton onClick={onClose}>Cancel</GhostButton>
+                    <PrimaryButton onClick={handleSend} disabled={sending || !canSend}>
+                      {sending ? (
+                        <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Send size={15} aria-hidden="true" />
+                      )}
+                      {sending ? 'Sending' : `Send to ${emailable.length}`}
+                    </PrimaryButton>
                   </div>
                 </div>
-              )}
-
-              {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={onClose}
-                  className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSend}
-                  disabled={sending || !canSend}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
-                >
-                  {sending ? (
-                    <Loader2 size={15} className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Send size={15} aria-hidden="true" />
-                  )}
-                  {sending ? 'Sending...' : `Send to ${emailable.length}`}
-                </button>
               </div>
             </div>
 
             {/* RIGHT: live preview for the selected recipient */}
-            <div className="hidden md:flex md:w-[52%] md:border-l border-white/10 bg-black/20 flex-col">
+            <div className="hidden min-h-0 flex-1 flex-col bg-black/25 md:flex">
               <BulkPreviewPane
                 templateId={templateId}
                 sharedFields={sharedFields}
+                attachments={sendAttachments}
                 perLead={perLead}
                 recipient={emailable.find((r) => r.id === previewFor) || emailable[0]}
               />
@@ -367,11 +425,13 @@ export function BulkEmailComposer({
 function BulkPreviewPane({
   templateId,
   sharedFields,
+  attachments,
   perLead,
   recipient,
 }: {
   templateId: string;
   sharedFields: Record<string, string>;
+  attachments: ReturnType<typeof attachmentsForSend>;
   perLead: Record<string, Record<string, string>>;
   recipient?: BulkRecipient;
 }) {
@@ -391,7 +451,13 @@ function BulkPreviewPane({
         const res = await fetch('/api/admin/email/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateId, toName: recipient.contactName, company: recipient.company, fields: mergedFields }),
+          body: JSON.stringify({
+            templateId,
+            toName: recipient.contactName,
+            company: recipient.company,
+            fields: mergedFields,
+            attachments,
+          }),
         });
         const data = await res.json();
         if (res.ok) {
@@ -408,7 +474,7 @@ function BulkPreviewPane({
       if (timer.current) clearTimeout(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId, recipient?.id, JSON.stringify(mergedFields)]);
+  }, [templateId, recipient?.id, JSON.stringify(mergedFields), JSON.stringify(attachments)]);
 
   if (!recipient) {
     return <div className="flex items-center justify-center h-full text-xs text-white/30 py-10">No recipients with an email on file</div>;
@@ -416,24 +482,25 @@ function BulkPreviewPane({
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-1.5 text-xs text-white/40">
-          <Eye size={12} />
-          Preview — {recipient.company}
-          {loading && <Loader2 size={11} className="animate-spin ml-1" />}
-        </div>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-3">
+        <span className="flex min-w-0 items-center gap-2 text-[12.5px] text-white/40">
+          <span className="truncate">What {recipient.company} will receive</span>
+          {loading && <Loader2 size={11} className="animate-spin text-white/25" aria-hidden="true" />}
+        </span>
       </div>
-      {subject && (
-        <p className="px-4 py-2 text-xs text-white/50 border-b border-white/10 shrink-0 truncate">
-          <span className="text-white/30">Subject: </span>
-          {subject}
-        </p>
-      )}
-      <div className="flex-1 min-h-0 overflow-y-auto bg-white/[0.02]">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {html ? (
-          <iframe title="Email preview" srcDoc={html} className="w-full h-full min-h-[500px] bg-transparent" />
+          <div className="mx-auto flex h-full min-h-[26rem] flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0a0812] shadow-[0_24px_70px_-30px_rgba(0,0,0,0.9)]">
+            <div className="shrink-0 space-y-1 border-b border-white/[0.06] px-4 py-3">
+              <p className="truncate text-[13px] font-semibold text-white">{subject || '—'}</p>
+              <p className="truncate text-[11.5px] text-white/30">to {recipient.contactName || recipient.email}</p>
+            </div>
+            <iframe title="Email preview" srcDoc={html} className="min-h-[24rem] w-full flex-1 bg-transparent" />
+          </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-xs text-white/30 py-10">Fill in the fields to see a preview</div>
+          <div className="flex h-full items-center justify-center text-[12.5px] text-white/25">
+            Fill in the fields to see a preview
+          </div>
         )}
       </div>
     </>

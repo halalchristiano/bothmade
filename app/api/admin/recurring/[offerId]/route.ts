@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { ANY_STAFF, OPS, requireRole } from '@/lib/authz';
+import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { sendOfferInvitation, serializeOffer } from '@/lib/care-offers';
 import { cancelSubscriptionAtPeriodEnd } from '@/lib/stripe';
 
@@ -98,7 +98,7 @@ export async function PATCH(
     }
 
     if (action === 'cancel') {
-      const denied = requireRole(session, OPS);
+      const denied = requireRole(session, ANY_STAFF);
       if (denied) return denied;
 
       if (offer.status !== 'active' || !offer.stripeSubscriptionId) {

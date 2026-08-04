@@ -3,7 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
-import { ExternalLink, ImageIcon, Paperclip, StickyNote, Upload, Clock } from 'lucide-react';
+import { ExternalLink, ImageIcon, Paperclip, PlayCircle, StickyNote, Upload, Clock } from 'lucide-react';
+import {
+  DELIVERABLE_CONTENT_TYPES,
+  DELIVERABLE_MAX_BYTES,
+  MULTIPART_THRESHOLD_BYTES,
+  VIDEO_CONTENT_TYPES,
+  checkUpload,
+  contentTypeForFile,
+  formatFileSize,
+} from '@/lib/uploads';
+import { uploadFileInParts } from '@/lib/chunked-upload';
 
 /**
  * Every mockup sent to one lead, as a row of buttons — "Mockup 1", the date
@@ -41,6 +51,62 @@ export function formatUploadedAt(iso: string): string {
 /** Old rows predate any validation, so a link that can't be opened is shown, not linked. */
 function isOpenable(url: string): boolean {
   return /^https?:\/\//i.test(url);
+}
+
+/**
+ * A walkthrough recording and a flat PNG are both "mockup 2", and the row
+ * gives no clue which is which — worth knowing before clicking it on a call
+ * with the client on the line.
+ */
+function isVideo(fileName: string | null, url: string): boolean {
+  const type = contentTypeForFile(fileName || url.split('?')[0] || '', '');
+  return type !== null && VIDEO_CONTENT_TYPES.includes(type);
+}
+
+/** The policy the token route enforces, applied here so it's known up front. */
+const MOCKUP_UPLOAD_POLICY = {
+  allowed: DELIVERABLE_CONTENT_TYPES,
+  maxBytes: DELIVERABLE_MAX_BYTES,
+};
+
+/** What the picker offers — spelled out so video isn't greyed out on a phone. */
+const MOCKUP_ACCEPT = [...VIDEO_CONTENT_TYPES, 'image/*', 'application/pdf', '.mov', '.mkv'].join(',');
+
+/** No progress for this long and the connection has almost certainly gone. */
+const STALLED_AFTER_MS = 45_000;
+
+interface UploadState {
+  name: string;
+  loaded: number;
+  total: number;
+  percent: number;
+  stalled: boolean;
+}
+
+/**
+ * Holds the screen awake for the length of the upload.
+ *
+ * This is the difference between a phone upload finishing and not. A
+ * 300MB recording takes minutes; the screen locks after one, Safari
+ * suspends the tab behind it, and the upload stops where it stood. Nothing
+ * about that is reported as a failure — the tab comes back to a progress
+ * bar that hasn't moved, which is exactly what "it's not letting me upload"
+ * looks like from the outside.
+ *
+ * Not supported everywhere, and no reason to care when it isn't: the upload
+ * runs either way, it just wants the screen not to lock under it.
+ */
+async function keepScreenAwake(): Promise<{ release: () => void }> {
+  if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) {
+    return { release: () => {} };
+  }
+  try {
+    const sentinel = await navigator.wakeLock.request('screen');
+    return { release: () => void sentinel.release().catch(() => {}) };
+  } catch {
+    // Denied, or the tab wasn't visible when we asked. Upload anyway.
+    return { release: () => {} };
+  }
 }
 
 function MockupRow({
@@ -91,6 +157,8 @@ function MockupRow({
 
   const label = `Mockup ${index}`;
   const uploadedAt = formatUploadedAt(mockup.uploadedAt);
+  const video = isVideo(mockup.fileName, mockup.url);
+  const RowIcon = video ? PlayCircle : ImageIcon;
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-2.5">
@@ -102,13 +170,13 @@ function MockupRow({
             rel="noopener noreferrer"
             className="inline-flex min-w-0 items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-sm font-semibold text-sky-200 hover:bg-sky-400/20 transition-colors"
           >
-            <ImageIcon size={14} className="shrink-0" />
-            <span className="truncate">{label}</span>
+            <RowIcon size={14} className="shrink-0" />
+            <span className="truncate">{video ? `${label} (video)` : label}</span>
             <ExternalLink size={11} className="shrink-0 opacity-60" />
           </a>
         ) : (
           <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-white/50">
-            <ImageIcon size={14} /> {label} — link can&apos;t be opened
+            <RowIcon size={14} /> {label} — link can&apos;t be opened
           </span>
         )}
 
@@ -199,7 +267,46 @@ export function MockupAttachments({
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // A video takes minutes, and a button reading "Attaching..." with nothing
+  // moving behind it is the same picture as a button that has hung.
+  const [uploading, setUploading] = useState<UploadState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastProgressAt = useRef(0);
+
+  const isUploading = uploading !== null;
+
+  /**
+   * For as long as bytes are moving: hold the screen on, object to the tab
+   * being closed, and watch for the upload going quiet. A percentage that
+   * has stopped climbing is indistinguishable from one that never started,
+   * so the quiet gets named rather than left to be interpreted.
+   */
+  useEffect(() => {
+    if (!isUploading) return;
+
+    const warnBeforeLeaving = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+
+    let wakeLock: { release: () => void } | null = null;
+    let cancelled = false;
+    void keepScreenAwake().then((lock) => {
+      if (cancelled) lock.release();
+      else wakeLock = lock;
+    });
+
+    const stallCheck = setInterval(() => {
+      if (Date.now() - lastProgressAt.current < STALLED_AFTER_MS) return;
+      setUploading((prev) => (prev && !prev.stalled ? { ...prev, stalled: true } : prev));
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(stallCheck);
+      window.removeEventListener('beforeunload', warnBeforeLeaving);
+      wakeLock?.release();
+    };
+  }, [isUploading]);
 
   const nextIndex = mockups.length + 1;
   // Version one is a delivery from design; everything after it is the rep
@@ -245,20 +352,78 @@ export function MockupAttachments({
   const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const clearInput = () => {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    // Answered here rather than after the upload finishes — see checkUpload.
+    const checked = checkUpload(file, MOCKUP_UPLOAD_POLICY);
+    if ('error' in checked) {
+      setError(checked.error);
+      clearInput();
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    lastProgressAt.current = Date.now();
+
     setBusy(true);
     setError('');
+    setUploading({ name: file.name, loaded: 0, total: file.size, percent: 0, stalled: false });
     try {
-      const blob = await upload(file.name, file, {
-        access: 'public',
-        handleUploadUrl: `/api/admin/leads/${leadId}/mockups/upload`,
-      });
+      const handleUploadUrl = `/api/admin/leads/${leadId}/mockups/upload`;
+      const onProgress = (loaded: number) => {
+        lastProgressAt.current = Date.now();
+        setUploading({
+          name: file.name,
+          loaded,
+          total: file.size,
+          percent: file.size > 0 ? Math.round((loaded / file.size) * 100) : 0,
+          stalled: false,
+        });
+      };
+
+      // Anything big enough to be worth chunking goes through our own
+      // uploader, which keeps the file on disk and re-sends a part that
+      // stops moving. Below that a single request is simpler and fine.
+      const blob =
+        file.size > MULTIPART_THRESHOLD_BYTES
+          ? await uploadFileInParts({
+              file,
+              contentType: checked.contentType,
+              handleUploadUrl,
+              abortSignal: controller.signal,
+              onProgress,
+            })
+          : await upload(file.name, file, {
+              access: 'public',
+              handleUploadUrl,
+              // Blob otherwise infers the type from the file name, which is
+              // how a video the browser didn't label ends up refused.
+              // checkUpload has already worked out what this is; send that.
+              contentType: checked.contentType,
+              abortSignal: controller.signal,
+              onUploadProgress: ({ loaded }) => onProgress(loaded),
+            });
+
       if (await attach({ url: blob.url, fileName: file.name })) setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      // Stopping it yourself isn't a failure worth a red line.
+      if (!controller.signal.aborted) {
+        setError(err instanceof Error ? err.message : 'Upload failed');
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setUploading(null);
+      clearInput();
     }
+  };
+
+  const cancelUpload = () => {
+    abortRef.current?.abort();
   };
 
   return (
@@ -307,34 +472,78 @@ export function MockupAttachments({
               disabled={busy || !url.trim()}
               className="shrink-0 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
-              {busy ? 'Attaching...' : 'Attach'}
+              {isUploading ? 'Uploading' : busy ? 'Attaching...' : 'Attach'}
             </button>
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors">
               <Upload size={12} />
-              or upload the file
+              or upload the file — image, PDF or video
               <input
                 ref={fileInputRef}
                 type="file"
+                accept={MOCKUP_ACCEPT}
                 onChange={handleUploadFile}
                 disabled={busy}
                 className="hidden"
               />
             </label>
+            {/* Closing the panel mid-upload used to leave the upload running
+                with nothing on screen to show for it. While bytes are moving
+                this stops them instead. */}
             <button
               type="button"
               onClick={() => {
+                if (isUploading) {
+                  cancelUpload();
+                  return;
+                }
                 setOpen(false);
                 setUrl('');
                 setError('');
               }}
               className="text-xs text-white/40 hover:text-white/70 transition-colors"
             >
-              Cancel
+              {isUploading ? 'Cancel upload' : 'Cancel'}
             </button>
           </div>
+
+          {uploading && (
+            <div className="mt-2" role="status">
+              {/* Bytes as well as a percentage: "0%" alone doesn't say
+                  whether this is starting or stuck, and on a 300MB file the
+                  first percent takes a while to arrive. */}
+              <p className="text-xs text-white/50">
+                Uploading {uploading.name} — {formatFileSize(uploading.loaded)} of{' '}
+                {formatFileSize(uploading.total)} ({uploading.percent}%)
+              </p>
+              <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full transition-[width] duration-200 ${
+                    uploading.stalled
+                      ? 'bg-amber-400/60'
+                      : 'bg-gradient-to-r from-sky-400 to-purple-500'
+                  }`}
+                  style={{ width: `${Math.max(uploading.percent, 2)}%` }}
+                />
+              </div>
+              {uploading.stalled ? (
+                <p className="mt-1.5 text-xs text-amber-200">
+                  Nothing has moved for a while. Parts that stop are re-sent automatically, so give
+                  it a moment — if the bar still doesn&apos;t climb, cancel and send this one from a
+                  computer.
+                </p>
+              ) : (
+                uploading.total > MULTIPART_THRESHOLD_BYTES && (
+                  <p className="mt-1.5 text-xs text-white/40">
+                    A file this size takes a few minutes. Keep this tab open and in front — the
+                    upload stops if the phone locks.
+                  </p>
+                )
+              )}
+            </div>
+          )}
 
           {error && (
             <p role="alert" className="mt-2 text-xs text-red-300">

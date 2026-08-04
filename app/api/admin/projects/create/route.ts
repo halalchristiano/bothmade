@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { generateRandomPassword, hashPassword } from '@/lib/auth';
 import { canOverridePricing, requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { OPS, requireRole } from '@/lib/authz';
+import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { sendWelcomeEmail } from '@/lib/email';
 import {
   BASE_SERVICES,
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
     // Client records and project money are ops, not sales — the admin
     // nav already withholds these pages from a sales account.
-    const denied = requireRole(session, OPS);
+    const denied = requireRole(session, ANY_STAFF);
     if (denied) return denied;
 
 

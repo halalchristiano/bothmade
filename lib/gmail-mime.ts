@@ -32,6 +32,68 @@ export function buildFromHeader(name: string | null | undefined, address: string
  * whoever's left, because "we sent it somewhere" is the failure mode worth
  * avoiding.
  */
+// RFC 2045 caps an encoded line at 76 characters. Wrapping three short of
+// that leaves room for both the `=` marking a soft break and the two extra
+// characters a trailing space costs when it has to become `=20`.
+const QP_WRAP_AT = 73;
+
+/**
+ * Quoted-printable, per RFC 2045.
+ *
+ * The parts used to go out with no Content-Transfer-Encoding at all, which
+ * declares 7bit — a promise these messages don't keep on either count. The
+ * HTML is one long line per template block (a whole message body arrives from
+ * escParagraphs() with no newlines in it), routinely past the 998-octet line
+ * limit RFC 5322 sets, and the copy is full of em dashes and curly quotes
+ * that are multi-byte UTF-8. An agent in the path is entitled to re-wrap a
+ * line that long, and a break inserted inside an `href` produces exactly the
+ * failure worth avoiding: a button that renders perfectly and goes nowhere.
+ *
+ * Soft breaks here mean we choose where the wrapping happens, and the
+ * decoder puts the line back together exactly as written.
+ */
+export function encodeQuotedPrintable(input: string): string {
+  const bytes = Buffer.from(input.replace(/\r\n|\r|\n/g, '\r\n'), 'utf8');
+  const lines: string[] = [];
+  let line = '';
+
+  // Trailing whitespace does not survive transport, so it has to be encoded
+  // whenever a line ends — soft break or hard.
+  const withSafeEnding = (value: string) => {
+    if (value.endsWith(' ')) return `${value.slice(0, -1)}=20`;
+    if (value.endsWith('\t')) return `${value.slice(0, -1)}=09`;
+    return value;
+  };
+
+  for (let i = 0; i < bytes.length; i += 1) {
+    const byte = bytes[i];
+
+    if (byte === 0x0d && bytes[i + 1] === 0x0a) {
+      lines.push(withSafeEnding(line));
+      line = '';
+      i += 1;
+      continue;
+    }
+
+    // Printable ASCII except `=`, plus space and tab, travel as themselves.
+    const literal = (byte >= 33 && byte <= 126 && byte !== 61) || byte === 32 || byte === 9;
+    const chunk = literal
+      ? String.fromCharCode(byte)
+      : `=${byte.toString(16).toUpperCase().padStart(2, '0')}`;
+
+    // Appended whole, so a soft break can never land inside an `=XX` escape
+    // or between the two bytes of a multi-byte character.
+    if (line.length + chunk.length > QP_WRAP_AT) {
+      lines.push(`${withSafeEnding(line)}=`);
+      line = '';
+    }
+    line += chunk;
+  }
+
+  if (line.length > 0) lines.push(withSafeEnding(line));
+  return lines.join('\r\n');
+}
+
 export function encodeMimeMessage(opts: {
   from: string;
   to: string;
@@ -96,13 +158,15 @@ export function encodeMimeMessage(opts: {
     // Least-preferred part first: a client picks the last one it can render.
     `--${boundary}`,
     'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: quoted-printable',
     '',
-    text,
+    encodeQuotedPrintable(text),
     '',
     `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: quoted-printable',
     '',
-    opts.html,
+    encodeQuotedPrintable(opts.html),
     '',
     `--${boundary}--`,
   ];

@@ -12,12 +12,19 @@ export async function POST(request: NextRequest) {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
-    const { templateId, toName, company, fields } = await request.json();
+    const { templateId, toName, company, fields, attachments } = await request.json();
     if (!templateId) {
       return NextResponse.json({ error: 'Template is required' }, { status: 400 });
     }
 
-    const result = await buildTemplatedEmail({ senderId: session.userId, templateId, toName, company, fields });
+    const result = await buildTemplatedEmail({
+      senderId: session.userId,
+      templateId,
+      toName,
+      company,
+      fields,
+      attachments,
+    });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }

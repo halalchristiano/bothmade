@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Search, Bell, LogOut, Menu, X, Command } from 'lucide-react';
-import { groupSections, visibleNavItems, type NavItem } from '@/lib/admin-nav';
+import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
 import { Wordmark } from '@/components/Wordmark';
 
 /*
@@ -22,10 +22,10 @@ import { Wordmark } from '@/components/Wordmark';
  */
 
 /**
- * Who is signed in, fetched once by the layout and shared. Pages used to
- * each refetch /api/auth/me with their own fallback — one of them defaulted
- * an unresolved role to 'admin', the exact wide-open failure the nav's
- * narrow default exists to prevent. One fetch, one truth.
+ * Who is signed in, fetched once by the layout and shared — pages used to
+ * each refetch /api/auth/me with their own fallback. Both people see the
+ * same admin now (the owner's call), so the role only labels the account;
+ * it no longer gates navigation.
  */
 export const AdminSessionContext = createContext<{ userName: string; userRole: string }>({
   userName: '',
@@ -486,6 +486,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.push('/admin/login');
   };
 
+  // Equal admin for both people — the owner's call; the role only labels
+  // the account now, so everyone sees the full nav.
+  const navItems = ADMIN_NAV_ITEMS;
+
   const initials = (userName || '?')
     .split(' ')
     .map((p) => p[0])
@@ -493,7 +497,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     .slice(0, 2)
     .toUpperCase();
 
-  const navItems = visibleNavItems(userRole);
 
   return (
     <AdminSessionContext.Provider value={{ userName, userRole }}>

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { OPS, requireRole } from '@/lib/authz';
 import { sendMessageNotificationEmail } from '@/lib/email';
 
 /** Broadcast a message to every active project's client thread — for announcements not specific to one client. */
@@ -9,10 +8,8 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
-    // Writes into EVERY client thread and emails every client — at least as
-    // consequential as replying in one thread, which is OPS-gated.
-    const denied = requireRole(session, OPS);
-    if (denied) return denied;
+    // Equal admin (the owner's call, on main): every staff account may
+    // broadcast, the same as every other messaging surface.
 
     const { content, segment = 'active' } = await request.json();
     if (!content || typeof content !== 'string' || !content.trim()) {

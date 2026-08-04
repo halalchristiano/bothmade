@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff } from '@/lib/middleware';
-import { OPS, requireRole } from '@/lib/authz';
+import { ANY_STAFF, requireRole } from '@/lib/authz';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     }
     // Client records and project money are ops, not sales — the admin
     // nav already withholds these pages from a sales account.
-    const denied = requireRole(session, OPS);
+    const denied = requireRole(session, ANY_STAFF);
     if (denied) return denied;
 
 

@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { getTemplate } from '@/lib/email-templates';
 import { renderShell } from '@/lib/email';
+import { parseAttachments, renderAttachments } from '@/lib/email-attachments';
+import { safeUrl } from '@/lib/html';
 import { sendAsUser, type createGmailBatchTransport } from '@/lib/mailer';
 import { type GmailOAuthClient } from '@/lib/gmail-oauth';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
@@ -12,6 +14,8 @@ export interface SendTemplatedEmailInput {
   toName?: string;
   company?: string;
   fields?: Record<string, string>;
+  /** PDFs, pictures and links, rendered as buttons under the message. */
+  attachments?: unknown;
   leadId?: string;
   /** Pass one shared pooled transport/client (from createGmailBatchTransport / createGmailOAuthBatchClient) when sending many in a loop — see those functions' docs for why. */
   gmailTransport?: ReturnType<typeof createGmailBatchTransport>;
@@ -39,7 +43,7 @@ export interface BuiltTemplatedEmail {
 export async function buildTemplatedEmail(
   input: Omit<SendTemplatedEmailInput, 'leadId' | 'to'>
 ): Promise<BuiltTemplatedEmail> {
-  const { senderId, templateId, toName, company, fields } = input;
+  const { senderId, templateId, toName, company, fields, attachments } = input;
 
   const template = getTemplate(templateId);
   if (!template) return { ok: false, error: 'Unknown template' };
@@ -61,6 +65,8 @@ export async function buildTemplatedEmail(
     eyebrow: built.eyebrow,
     title: built.title,
     bodyHtml: built.bodyHtml,
+    attachmentsHtml: renderAttachments(parseAttachments(attachments)),
+    signOffHtml: built.signOffHtml,
     ctaLabel: built.ctaLabel,
     ctaUrl: built.ctaUrl,
     footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
@@ -76,7 +82,8 @@ export async function buildTemplatedEmail(
  * Compose Email flow and the bulk-send flow so both behave identically.
  */
 export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promise<SendTemplatedEmailResult> {
-  const { senderId, templateId, to, toName, company, fields, leadId, gmailTransport, gmailOAuthClient } = input;
+  const { senderId, templateId, to, toName, company, fields, attachments, leadId, gmailTransport, gmailOAuthClient } =
+    input;
 
   const template = getTemplate(templateId);
   if (!template) return { ok: false, error: 'Unknown template' };
@@ -107,10 +114,25 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     fields: fields || {},
   });
 
+  // A button with a label but no link it can use renders as nothing at all.
+  // That is how an email goes out looking finished, with the one thing the
+  // recipient was supposed to click quietly missing — so it fails the send
+  // instead, while the person who wrote it is still looking at the screen.
+  if (built.ctaLabel && !safeUrl(built.ctaUrl)) {
+    return {
+      ok: false,
+      error: built.ctaUrl
+        ? `The "${built.ctaLabel}" button link isn't a usable web address, so the button wouldn't work. Check it and try again.`
+        : `The "${built.ctaLabel}" button has no link, so it wouldn't do anything. Add one or clear the button text.`,
+    };
+  }
+
   const html = renderShell({
     eyebrow: built.eyebrow,
     title: built.title,
     bodyHtml: built.bodyHtml,
+    attachmentsHtml: renderAttachments(parseAttachments(attachments)),
+    signOffHtml: built.signOffHtml,
     ctaLabel: built.ctaLabel,
     ctaUrl: built.ctaUrl,
     footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
@@ -146,7 +168,15 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
           leadId,
           type: 'email',
           content: built.subject,
-          url: fields?.loomUrl || fields?.ctaUrl || fields?.signUrl || fields?.schedulingLink || fields?.meetingLink || fields?.onboardingLink || null,
+          url:
+            fields?.loomUrl ||
+            fields?.ctaUrl ||
+            fields?.signUrl ||
+            fields?.schedulingLink ||
+            fields?.meetingLink ||
+            fields?.onboardingLink ||
+            parseAttachments(attachments)[0]?.url ||
+            null,
           createdById: senderId,
         },
       })
