@@ -148,6 +148,21 @@
 .cardArrow { flex: none; width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.5); border-radius: 50%; transition: background .25s ease,color .25s ease; }
 .serviceCard:hover .cardArrow { background: white; color: var(--ink); }
 
+.scopeSection { padding: 145px 6vw 0; background: var(--paper-deep); }
+.scopeIntro { max-width: 1380px; margin: 0 auto 95px; display: grid; grid-template-columns: 1.05fr .95fr; gap: 10vw; align-items: end; }
+.scopeIntro h2 { margin-top: 18px; font-family: Georgia,serif; font-size: clamp(3.8rem,6.7vw,8rem); font-weight: 400; line-height: .86; letter-spacing: -.065em; }
+.scopeIntro > div:last-child { max-width: 620px; }
+.scopeIntro p { color: rgba(16,23,19,.63); font-size: 16px; line-height: 1.75; }
+.scopeIntro p + p { margin-top: 22px; }
+.scopeGrid { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: repeat(2,1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.scopeItem { min-height: 310px; padding: 38px clamp(28px,4vw,65px) 42px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.scopeItem > span { color: var(--signal); font: 10px var(--font-geist-mono); letter-spacing: .12em; }
+.scopeItem h3 { max-width: 510px; margin-top: 42px; font-family: Georgia,serif; font-size: clamp(2rem,3vw,3.5rem); font-weight: 400; line-height: 1; letter-spacing: -.04em; }
+.scopeItem p { max-width: 570px; margin-top: 20px; color: rgba(16,23,19,.58); line-height: 1.7; }
+.materialBand { max-width: 1380px; min-height: 115px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 25px 38px; color: rgba(255,255,255,.72); background: var(--ink); }
+.materialBand span { font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.materialBand strong { color: white; font-family: Georgia,serif; font-size: clamp(19px,2.2vw,32px); font-weight: 400; }
+
 .story { min-height: 900px; display: grid; grid-template-columns: 1fr 1fr; background: var(--forest); color: white; }
 .storyVisual { position: relative; min-height: 720px; overflow: hidden; }
 .storyImage { object-fit: cover; filter: saturate(.72) contrast(1.03); }
@@ -157,6 +172,16 @@
 .storyCopy > p { max-width: 570px; color: rgba(255,255,255,.65); font-size: 17px; line-height: 1.75; }
 .storyPoints { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin: 50px 0; padding-top: 28px; border-top: 1px solid rgba(255,255,255,.17); }
 .storyPoints strong { display: block; font-family: Georgia,serif; font-size: 36px; font-weight: 400; }.storyPoints span { color: rgba(255,255,255,.5); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+
+.processSection { padding: 145px 6vw; color: white; background: #09120e; }
+.processHead { max-width: 1380px; margin: 0 auto 85px; display: grid; grid-template-columns: 1.2fr .8fr; gap: 10vw; align-items: end; }
+.processHead h2 { max-width: 980px; margin-top: 18px; font-family: Georgia,serif; font-size: clamp(3.4rem,5.9vw,7rem); font-weight: 400; line-height: .9; letter-spacing: -.06em; }
+.processHead > div:last-child p { max-width: 480px; color: rgba(255,255,255,.55); font-size: 16px; line-height: 1.7; }
+.processGrid { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: repeat(4,1fr); border-top: 1px solid rgba(255,255,255,.16); border-left: 1px solid rgba(255,255,255,.16); }
+.processStep { min-height: 340px; padding: 30px 28px 36px; border-right: 1px solid rgba(255,255,255,.16); border-bottom: 1px solid rgba(255,255,255,.16); }
+.processStep > span { color: #e2685e; font: 10px var(--font-geist-mono); }
+.processStep h3 { margin-top: 90px; font-family: Georgia,serif; font-size: clamp(1.7rem,2.4vw,2.8rem); font-weight: 400; }
+.processStep p { margin-top: 18px; color: rgba(255,255,255,.5); font-size: 14px; line-height: 1.7; }
 
 .reviews { padding: 150px 5vw; background: var(--paper); }
 .reviewsGrid { max-width: 1380px; margin: 70px auto 0; display: grid; grid-template-columns: repeat(3,1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
@@ -170,6 +195,20 @@
 .serviceArea h2 { max-width: 600px; font-family: Georgia,serif; font-size: clamp(3.3rem,5.6vw,6.8rem); font-weight: 400; line-height: .92; letter-spacing: -.05em; }
 .towns { display: flex; flex-wrap: wrap; align-content: center; gap: 10px; }
 .towns span { padding: 12px 16px; border: 1px solid rgba(255,255,255,.45); border-radius: 99px; font-size: 11px; letter-spacing: .06em; }
+
+.faqSection { padding: 145px 6vw; display: grid; grid-template-columns: .8fr 1.2fr; gap: 10vw; background: var(--paper); }
+.faqIntro { position: relative; }
+.faqIntro > div { position: sticky; top: 135px; }
+.faqIntro h2 { margin: 18px 0 28px; font-family: Georgia,serif; font-size: clamp(3.7rem,5.7vw,6.8rem); font-weight: 400; line-height: .88; letter-spacing: -.06em; }
+.faqIntro p { max-width: 460px; color: rgba(16,23,19,.58); line-height: 1.7; }
+.faqList { border-top: 1px solid var(--line); }
+.faqItem { border-bottom: 1px solid var(--line); }
+.faqItem summary { min-height: 120px; display: grid; grid-template-columns: 45px 1fr 30px; gap: 18px; align-items: center; cursor: pointer; list-style: none; font-family: Georgia,serif; font-size: clamp(1.35rem,2vw,2.15rem); line-height: 1.12; }
+.faqItem summary::-webkit-details-marker { display: none; }
+.faqItem summary span { color: var(--signal); font: 9px var(--font-geist-mono); }
+.faqItem summary i { justify-self: end; font: 300 30px/1 Arial,sans-serif; transition: transform .25s ease; }
+.faqItem[open] summary i { transform: rotate(45deg); }
+.faqItem > p { max-width: 720px; padding: 0 48px 38px 63px; color: rgba(16,23,19,.62); line-height: 1.75; }
 
 .estimate { display: grid; grid-template-columns: 1fr 1fr; gap: 8vw; padding: 150px 7vw; background: #d7cfc0; }
 .estimate h2 { max-width: 650px; font-family: Georgia,serif; font-size: clamp(3.5rem,6vw,7rem); font-weight: 400; line-height: .9; letter-spacing: -.06em; }
@@ -210,6 +249,7 @@
   .nav { position: absolute; top: calc(100% + 8px); left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0; padding: 10px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 25px 50px rgba(10,20,14,.15); }.navOpen { display: flex; }.nav a { padding: 14px; }.nav a::after { display: none; }
   .hero, .pageHero { grid-template-columns: 1fr; }.heroCopy { min-height: 78svh; padding-bottom: 45px; }.heroVisual { min-height: 70svh; }.display { font-size: clamp(4.1rem,12vw,7rem); }.heroNote { margin-top: 55px; }
   .statementGrid { grid-template-columns: 1fr; }.statementFooter { grid-column: 1; }.weather, .story, .estimate { grid-template-columns: 1fr; }.weather { padding-top: 110px; }.layerStack { margin-top: 40px; }.serviceCard, .serviceCard:first-child, .serviceCard:nth-child(2), .serviceCard:nth-child(3), .serviceCard:nth-child(4) { grid-column: span 6; }.storyVisual { min-height: 75svh; }.reviewsGrid { grid-template-columns: 1fr; }.serviceAreaInner, .materialsIntro, .emergencyStepsInner { grid-template-columns: 1fr; }.footerGrid { grid-template-columns: 1fr 1fr; }.pageHeroVisual { margin: 0 24px 24px; }.emergencyHeroContent { grid-template-columns: 1fr; }.emergencyCard { max-width: 480px; }.serviceRow { grid-template-columns: 50px 1fr 50px; padding: 40px 0; }.serviceRow p { grid-column: 2; }.materialGrid { grid-template-columns: 1fr; }
+  .scopeIntro, .processHead, .faqSection { grid-template-columns: 1fr; }.scopeIntro { gap: 45px; }.materialBand { flex-wrap: wrap; justify-content: flex-start; }.materialBand span:last-child { margin-left: auto; }.processGrid { grid-template-columns: repeat(2,1fr); }.faqIntro > div { position: static; }
 }
 
 @media (max-width: 640px) {
@@ -219,9 +259,12 @@
   .statement { padding: 90px 22px; }.statement h2 { font-size: 3.2rem; }.statementFooter { grid-template-columns: 1fr; margin-top: 40px; }
   .weather { min-height: auto; padding: 100px 22px; }.weatherCopy h2 { font-size: 4rem; }.layerCard { grid-template-columns: 38px 1fr; padding: 22px 18px; }.layerCard h3 { font-size: 23px; }
   .services { padding: 95px 14px; }.sectionHead { align-items: start; flex-direction: column; padding: 0 8px; }.serviceGrid { gap: 10px; }.serviceCard, .serviceCard:first-child, .serviceCard:nth-child(2), .serviceCard:nth-child(3), .serviceCard:nth-child(4) { grid-column: span 12; min-height: 480px; }.serviceContent { left: 22px; right: 22px; bottom: 22px; }.serviceContent p { display: none; }
+  .scopeSection { padding: 95px 14px 0; }.scopeIntro { margin-bottom: 55px; padding: 0 8px; }.scopeIntro h2 { font-size: 4rem; }.scopeGrid { grid-template-columns: 1fr; }.scopeItem { min-height: 270px; padding: 30px 24px; }.scopeItem h3 { margin-top: 32px; }.materialBand { padding: 28px 22px; }.materialBand span { flex-basis: 100%; }.materialBand span:last-child { margin-left: 0; }
   .storyCopy { padding: 90px 22px; }.storyPoints { grid-template-columns: 1fr 1fr; }.storyVisual { min-height: 60svh; }.storyBadge { width: 120px; font-size: 15px; }
+  .processSection { padding: 95px 14px; }.processHead { margin-bottom: 55px; padding: 0 8px; }.processHead h2 { font-size: 3.6rem; }.processGrid { grid-template-columns: 1fr; }.processStep { min-height: 270px; }.processStep h3 { margin-top: 65px; }
   .reviews { padding: 95px 14px; }.reviewsGrid { margin-top: 40px; }.review { min-height: 310px; padding: 26px; }
   .serviceArea { padding: 90px 22px; }.towns { margin-top: 25px; }
+  .faqSection { padding: 95px 22px; gap: 55px; }.faqIntro h2 { font-size: 3.8rem; }.faqItem summary { min-height: 105px; grid-template-columns: 28px 1fr 25px; gap: 10px; }.faqItem > p { padding: 0 0 30px 38px; }
   .estimate { padding: 90px 16px; gap: 55px; }.estimate > div { padding: 0 7px; }.estimateForm { grid-template-columns: 1fr; padding: 28px 20px; }.estimateForm label,.fullField,.submitButton,.estimateForm small { grid-column: 1; }
   .footer { padding: 80px 22px 20px; }.footerLead { align-items: start; flex-direction: column; padding-bottom: 70px; }.footerGrid { grid-template-columns: 1fr; }.footerBottom { flex-direction: column; gap: 8px; }
   .pageHero { padding-top: 95px; }.pageHeroCopy { padding: 75px 22px 55px; }.pageHeroCopy h1 { font-size: 4.2rem; }.pageHeroVisual { min-height: 480px; margin: 0 12px 12px; }.serviceListPage { padding: 85px 22px; }.serviceRow { grid-template-columns: 38px 1fr 40px; gap: 12px; }.serviceRow p { grid-column: 1 / -1; }.materials { padding: 90px 22px; }

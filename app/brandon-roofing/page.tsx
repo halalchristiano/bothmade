@@ -49,6 +49,59 @@ const reviews = [
   },
 ];
 
+const roofingScope = [
+  {
+    number: '01',
+    title: 'Complete roof replacement',
+    text: 'Full tear-offs, re-roofing, additions, and new-construction roofing—planned as a complete system rather than a surface-level patch.',
+  },
+  {
+    number: '02',
+    title: 'Leak finding & repair',
+    text: 'Careful assessment of active leaks, storm damage, roof penetrations, boot collars, skylights, chimney flashing, and wall flashing.',
+  },
+  {
+    number: '03',
+    title: 'Specialty roof systems',
+    text: 'Hands-on experience with architectural shingle, slate, flat, rolled, TPO, EPDM, and torch-down roofing for homes and businesses.',
+  },
+  {
+    number: '04',
+    title: 'Drainage & exterior protection',
+    text: 'Seamless gutters, leaders, siding, soffit, fascia, and replacement windows working together to move water out and keep weather out.',
+  },
+];
+
+const process = [
+  ['01', 'Look closely', 'We inspect the roof, attic clues, flashing, drainage, and surrounding exterior—not just the first visible symptom.'],
+  ['02', 'Explain plainly', 'You get a direct assessment, practical options, and a free written estimate without a high-pressure sales handoff.'],
+  ['03', 'Build responsibly', 'An experienced crew completes the agreed scope with the owner accountable for workmanship and communication.'],
+  ['04', 'Leave it finished', 'We clean the property, review the completed work, and make sure the roof is ready for New Jersey weather.'],
+];
+
+const faqs = [
+  {
+    question: 'Do you handle both repairs and full roof replacements?',
+    answer: 'Yes. Brandon Roofing handles isolated leak repairs, storm damage, flashing and skylight issues, full tear-offs, re-roofing, additions, and new-construction roofing. The first step is an inspection to determine whether repair or replacement is the responsible recommendation.',
+  },
+  {
+    question: 'What types of roofing do you work on?',
+    answer: 'The team works on residential and commercial roofing, including architectural shingles, slate, flat and rolled roofing, TPO, EPDM, and torch-down systems. They also repair chimney flashing, wall flashing, roof penetrations, and leaking skylights.',
+  },
+  {
+    question: 'Can you respond to an active leak or storm damage?',
+    answer: 'Yes. Emergency roof repair is available 24 hours a day, seven days a week. If water is entering the building, call 973-584-7717 so the team can prioritize stopping further damage.',
+  },
+  {
+    question: 'Do you offer gutters, siding, and windows too?',
+    answer: 'Yes. Brandon Roofing installs seamless gutters and leaders, performs gutter repair and cleaning, and provides siding and replacement-window work so the full exterior can be considered together.',
+  },
+  {
+    question: 'Where do you work—and are estimates free?',
+    answer: 'Free, no-obligation estimates are available throughout Morris County and surrounding areas, including communities across Sussex, Passaic, Warren, Hunterdon, Somerset, Union, Bergen, and Essex counties.',
+  },
+];
+
 export default function BrandonHome() {
   return (
     <main>
@@ -151,18 +204,53 @@ export default function BrandonHome() {
         </div>
       </section>
 
+      <section className={styles.scopeSection}>
+        <div className={styles.scopeIntro}>
+          <Reveal>
+            <span className={styles.sectionIndex}>04 · The full scope</span>
+            <h2>One call.<br />The whole exterior.</h2>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <p>
+              The original Brandon Roofing promise is simple: experienced roofers, quality
+              materials, reasonable pricing, and work completed correctly the first time.
+              That means diagnosing the cause—not selling the biggest project.
+            </p>
+            <p>
+              From a leaking skylight to a commercial flat roof, Chris brings more than three
+              decades of hands-on experience to the details that determine whether a roof lasts.
+            </p>
+          </Reveal>
+        </div>
+        <div className={styles.scopeGrid}>
+          {roofingScope.map((item, index) => (
+            <Reveal key={item.title} className={styles.scopeItem} delay={(index % 2) * 0.06}>
+              <span>{item.number}</span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </Reveal>
+          ))}
+        </div>
+        <div className={styles.materialBand}>
+          <span>Materials selected for the property</span>
+          <strong>GAF</strong><strong>CertainTeed</strong><strong>Owens Corning</strong>
+          <span>Warranty options available</span>
+        </div>
+      </section>
+
       <section id="story" className={styles.story}>
         <div className={styles.storyVisual}>
           <Image className={styles.storyImage} src="/brandon/about.jpg" alt="Roofing professionals working together safely" fill sizes="(max-width: 980px) 100vw, 50vw" />
           <div className={styles.storyBadge}>The owner’s eye on every detail.</div>
         </div>
         <Reveal className={styles.storyCopy}>
-          <span className={styles.sectionIndex}>04 · Small by design</span>
+          <span className={styles.sectionIndex}>05 · Small by design</span>
           <h2>Accountability has a name.</h2>
           <p>
-            Brandon Roofing isn’t a national franchise or a lead broker. It’s a local company
-            built on repeat calls, neighbor-to-neighbor recommendations, and the kind of work
-            you’re still proud to point at years later.
+            Chris has spent more than 30 years working across shingle, flat, slate, flashing,
+            gutters, and leaders. Brandon Roofing isn’t a national franchise or a lead broker;
+            it is a local company built on repeat calls, neighbor-to-neighbor recommendations,
+            and an owner who takes pride in getting the work right the first time.
           </p>
           <div className={styles.storyPoints}>
             <div><strong>35+</strong><span>Years local</span></div>
@@ -172,10 +260,31 @@ export default function BrandonHome() {
         </Reveal>
       </section>
 
+      <section className={styles.processSection}>
+        <div className={styles.processHead}>
+          <Reveal>
+            <span className={styles.sectionIndex}>06 · What happens next</span>
+            <h2>A straightforward job<br />from first look to final sweep.</h2>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <p>Clear answers, a defined scope, and one accountable local team from inspection through cleanup.</p>
+          </Reveal>
+        </div>
+        <div className={styles.processGrid}>
+          {process.map(([number, title, text], index) => (
+            <Reveal key={title} className={styles.processStep} delay={index * 0.06}>
+              <span>{number}</span>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
       <section className={styles.reviews}>
         <div className={styles.sectionHead}>
           <Reveal>
-            <span className={styles.sectionIndex}>05 · Around the neighborhood</span>
+            <span className={styles.sectionIndex}>07 · Around the neighborhood</span>
             <h2>Five stars,<br />earned locally.</h2>
           </Reveal>
           <p>52 verified Google reviews from homeowners across Morris and Sussex County.</p>
@@ -197,6 +306,26 @@ export default function BrandonHome() {
           <Reveal className={styles.towns} delay={0.08}>
             {['Roxbury', 'Randolph', 'Denville', 'Rockaway', 'Mount Olive', 'Chester', 'Dover', 'Morristown', 'Sparta', 'Byram', 'Parsippany', 'Hopatcong'].map((town) => <span key={town}>{town}, NJ</span>)}
           </Reveal>
+        </div>
+      </section>
+
+      <section className={styles.faqSection}>
+        <div className={styles.faqIntro}>
+          <Reveal>
+            <span className={styles.sectionIndex}>08 · Before we climb the ladder</span>
+            <h2>Good questions.<br />Direct answers.</h2>
+            <p>What homeowners and property managers usually want to know before scheduling an inspection.</p>
+          </Reveal>
+        </div>
+        <div className={styles.faqList}>
+          {faqs.map((faq, index) => (
+            <Reveal key={faq.question} delay={index * 0.04}>
+              <details className={styles.faqItem}>
+                <summary><span>0{index + 1}</span>{faq.question}<i aria-hidden="true">+</i></summary>
+                <p>{faq.answer}</p>
+              </details>
+            </Reveal>
+          ))}
         </div>
       </section>
 
