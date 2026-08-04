@@ -145,13 +145,40 @@ export async function getCheckoutSession(
 
 /**
  * Construct event from webhook signature
+ *
+ * Returning null here is the whole sale silently going nowhere: the caller
+ * answers Stripe with a 400, so no client account is created, no project
+ * appears, and no welcome email with the generated password is sent — while
+ * the customer's card was charged perfectly happily.
+ *
+ * An unset STRIPE_WEBHOOK_SECRET lands in exactly the same place as a forged
+ * request, because an empty secret makes constructEvent throw the same way a
+ * bad signature does. Those are opposite problems — one is a misconfigured
+ * deployment, the other is an attack — so name the first one explicitly
+ * rather than making someone read a signature-mismatch trace and guess.
+ *
+ * Missing config is still a rejection. A webhook that cannot be verified is
+ * never trusted, whatever the reason.
  */
 export function constructWebhookEvent(
   body: string | Buffer,
   signature: string
 ): Stripe.Event | null {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim() || '';
+
+  if (!webhookSecret) {
+    console.error(
+      'STRIPE_WEBHOOK_SECRET is not set — rejecting this webhook. Every ' +
+        'payment will complete in Stripe while creating no client account, ' +
+        'no project and no welcome email until it is set. Copy the signing ' +
+        'secret (whsec_...) from the endpoint under Stripe > Developers > ' +
+        'Webhooks and set it in the environment. Test mode and live mode ' +
+        'issue different secrets, and each endpoint has its own.'
+    );
+    return null;
+  }
+
   try {
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
     return stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (error) {
     console.error('Webhook signature verification failed:', error);

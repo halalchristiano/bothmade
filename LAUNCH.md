@@ -44,6 +44,22 @@ Optional, and only for a brand-new deployment with an empty `users` table:
       config.authenticator provided" with a stack trace into a minified
       chunk. Copy it from dashboard.stripe.com → Developers → API keys.
 
+- [ ] **`STRIPE_WEBHOOK_SECRET`** — the one that decides whether a sale
+      turns into anything. `checkout.session.completed` is what creates the
+      client account, generates their password, emails it, and opens the
+      project; unset, every webhook is rejected unverified, so the card is
+      charged and *nothing else happens*. There is no error the customer or
+      the dashboard will show you — the only trace is a rejection in the
+      function logs.
+
+      Add the endpoint at Stripe → Developers → Webhooks, pointing at
+      `https://bothmade.studio/api/webhooks/stripe`, subscribed to
+      `checkout.session.completed`. The signing secret it issues starts
+      `whsec_`. **Test mode and live mode have separate endpoints and
+      separate secrets** — a sandbox test that creates no dashboard is
+      almost always the test-mode secret missing, or the endpoint only
+      existing in live mode.
+
 - [ ] **`DATABASE_URL` and `DIRECT_URL`** — two *different* strings, not the
       same one twice. `prisma migrate deploy` runs during the build and
       cannot go through a transaction pooler, which is why the schema
