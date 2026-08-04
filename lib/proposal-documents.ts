@@ -1,5 +1,5 @@
 import { buildContractPdf } from '@/lib/contract-pdf';
-import { buildContractSections } from '@/lib/contract-terms';
+import { buildContractSections, toContractCustomItems } from '@/lib/contract-terms';
 import { buildInvoiceForProposal, type InvoiceForProposalInput } from '@/lib/invoice-pdf';
 import {
   ADD_ONS,
@@ -53,6 +53,7 @@ export async function buildContractForProposal(
     serviceDescription: BASE_SERVICES[baseService].description,
     addOnLabels,
     addOnKeys,
+    customItems: toContractCustomItems(customItems),
     baseServiceKey: baseService,
     clientTypeKey: clientType,
     timelineKey: timeline,
@@ -77,6 +78,7 @@ export async function buildContractForProposal(
     contactName,
     serviceLabel,
     addOnLabels,
+    customItems: toContractCustomItems(customItems),
     timelineLabel,
     basePrice: formatCents(breakdown.basePrice),
     addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),

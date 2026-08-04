@@ -4,40 +4,64 @@ import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  FolderKanban,
-  BarChart3,
-  MessagesSquare,
-  KanbanSquare,
-  Search,
-  Bell,
-  LogOut,
-  Menu,
-  X,
-  Settings,
-  PhoneCall,
-  Palette,
-  ListChecks,
-  UserCog,
-} from 'lucide-react';
+import { Search, Bell, LogOut, Menu, X } from 'lucide-react';
+import { groupSections, visibleNavItems, type NavItem } from '@/lib/admin-nav';
 
-const NAV_ITEMS = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, salesVisible: true },
-  { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, salesVisible: true },
-  { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, salesVisible: true },
-  { href: '/admin/priorities', label: 'Priorities', icon: ListChecks, salesVisible: false },
-  { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true },
-  { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, salesVisible: false },
-  { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false },
-  { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
-  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, salesVisible: true },
-  { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, salesVisible: true },
-  { href: '/admin/team', label: 'Team', icon: UserCog, salesVisible: false },
-  { href: '/admin/settings', label: 'Settings', icon: Settings, salesVisible: true },
-];
+function NavLinks({
+  items,
+  pathname,
+  unreadCount,
+  compact = false,
+}: {
+  items: NavItem[];
+  pathname: string;
+  unreadCount: number;
+  /** The sidebar's tighter rows; the mobile sheet wants a bigger tap target. */
+  compact?: boolean;
+}) {
+  return (
+    <>
+      {groupSections(items).map((group) => (
+        <div key={group.section || 'top'} className={group.section ? 'pt-4' : ''}>
+          {group.section && (
+            <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/25">
+              {group.section}
+            </p>
+          )}
+          <div className={compact ? 'space-y-0.5' : 'space-y-1'}>
+            {group.items.map((item) => {
+              const active = pathname.startsWith(item.href);
+              const isChat = item.href === '/admin/team-chat';
+              const Icon = item.icon;
+
+              const tone = active
+                ? 'border-l-sky-400 text-white bg-white/[0.04]'
+                : 'border-l-transparent text-white/45 hover:text-white hover:bg-white/[0.03]';
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`relative flex items-center gap-3 pl-3 pr-3 border-l-2 text-sm font-medium transition-all ${
+                    compact ? 'py-2.5' : 'py-3'
+                  } ${tone}`}
+                >
+                  <Icon size={17} strokeWidth={2} className={active ? 'text-sky-300' : ''} />
+                  {item.label}
+                  {isChat && unreadCount > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded bg-sky-400 text-[10px] font-bold text-black px-1.5">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
 
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
@@ -348,7 +372,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     .slice(0, 2)
     .toUpperCase();
 
-  const visibleNavItems = NAV_ITEMS.filter((item) => userRole !== 'sales' || item.salesVisible);
+  const navItems = visibleNavItems(userRole);
 
   return (
     <div className="min-h-screen bg-[#050505] text-white">
@@ -362,31 +386,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <SearchBox />
         </div>
 
-        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-          {visibleNavItems.map((item) => {
-            const active = pathname.startsWith(item.href);
-            const isChat = item.href === '/admin/team-chat';
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`relative flex items-center gap-3 pl-3 pr-3 py-2.5 border-l-2 text-sm font-medium transition-all ${
-                  active
-                    ? 'border-l-sky-400 text-white bg-white/[0.04]'
-                    : 'border-l-transparent text-white/45 hover:text-white hover:bg-white/[0.03]'
-                }`}
-              >
-                <Icon size={17} strokeWidth={2} className={active ? 'text-sky-300' : ''} />
-                {item.label}
-                {isChat && unreadCount > 0 && (
-                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded bg-sky-400 text-[10px] font-bold text-black px-1.5">
-                    {unreadCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-3 pb-4 overflow-y-auto">
+          <NavLinks items={navItems} pathname={pathname} unreadCount={unreadCount} compact />
         </nav>
 
         <div className="p-3 border-t border-white/10">
@@ -473,29 +474,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             >
               <div className="px-4 py-4 space-y-4">
                 <SearchBox onNavigate={() => setMobileOpen(false)} />
-                <nav className="space-y-1">
-                  {visibleNavItems.map((item) => {
-                    const active = pathname.startsWith(item.href);
-                    const isChat = item.href === '/admin/team-chat';
-                    const Icon = item.icon;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`relative flex items-center gap-3 pl-3 pr-3 py-3 border-l-2 text-sm font-medium transition-colors ${
-                          active ? 'border-l-sky-400 text-white bg-white/[0.04]' : 'border-l-transparent text-white/50 hover:bg-white/[0.03] hover:text-white'
-                        }`}
-                      >
-                        <Icon size={17} className={active ? 'text-sky-300' : ''} />
-                        {item.label}
-                        {isChat && unreadCount > 0 && (
-                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded bg-sky-400 text-[10px] font-bold text-black px-1.5">
-                            {unreadCount}
-                          </span>
-                        )}
-                      </Link>
-                    );
-                  })}
+                {/* No onNavigate here: the effect keyed on `pathname` already
+                    closes this sheet on every route change. */}
+                <nav>
+                  <NavLinks items={navItems} pathname={pathname} unreadCount={unreadCount} />
                 </nav>
                 <div className="flex items-center justify-between pt-3 border-t border-white/10">
                   <div className="flex items-center gap-2.5">

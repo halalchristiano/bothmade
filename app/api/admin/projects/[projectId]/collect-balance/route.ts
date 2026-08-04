@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { OPS, requireRole } from '@/lib/authz';
+import { amountPaidTowardProject } from '@/lib/billing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -33,7 +34,7 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
+    const amountPaid = amountPaidTowardProject(project.payments);
     const balanceDue = project.totalPrice - amountPaid;
 
     if (balanceDue <= 0) {

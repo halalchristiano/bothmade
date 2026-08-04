@@ -10,7 +10,40 @@
 // NOT a substitute for review by a lawyer licensed in your jurisdiction
 // before it's treated as binding.
 
-import { formatCents } from '@/lib/pricing';
+import { formatCents, type CustomItem } from '@/lib/pricing';
+
+/** One line of custom work as the contract states it: what it's called, what
+ * it covers in the Agency's own words, and what it costs. */
+export interface ContractCustomItem {
+  label: string;
+  description: string;
+  /** Pre-formatted currency, e.g. "$4,000". */
+  price: string;
+}
+
+/** Maps stored custom items into the shape the contract states them in. */
+export function toContractCustomItems(items: CustomItem[]): ContractCustomItem[] {
+  return items.map((item) => ({
+    label: item.label,
+    description: item.description,
+    price: formatCents(item.priceCents),
+  }));
+}
+
+/**
+ * Only the items there is actually something to state.
+ *
+ * New proposals can't reach a contract with a blank description — the
+ * dashboard and both admin routes refuse. But a proposal sent before that
+ * rule existed still has a live sign-and-pay link, and the client clicking
+ * it must get a working agreement rather than a section reading "Scope:"
+ * with nothing after it. Those items stay priced and named in the fee
+ * breakdown, exactly as they were when the link went out; what they don't
+ * get is a scope clause promising a specificity that was never written.
+ */
+export function describedCustomItems(p: ContractParams): ContractCustomItem[] {
+  return (p.customItems ?? []).filter((item) => item.description.trim().length > 0);
+}
 
 export interface ContractParams {
   company: string;
@@ -19,6 +52,10 @@ export interface ContractParams {
   serviceDescription: string;
   addOnLabels: string[];
   addOnKeys: string[];
+  /** Ad-hoc work quoted outside the catalogue. Each one gets its scope
+   * written out verbatim in its own section — a catalogue add-on carries its
+   * own definition, custom work carries only what was written down. */
+  customItems?: ContractCustomItem[];
   baseServiceKey: string;
   clientTypeKey: string;
   timelineKey: string;
@@ -163,6 +200,11 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
       paragraphs: [
         `The Agency agrees to design, develop, and deliver the following: ${p.serviceLabel}. ${p.serviceDescription}`,
         `The following add-ons are included in this engagement: ${addOnList}.`,
+        ...(describedCustomItems(p).length > 0
+          ? [
+              'This engagement also includes custom work quoted specifically for the Client rather than drawn from the Agency\'s standard catalogue. Each such item, and the scope it covers, is set out in full in the section titled "Custom Work — Agreed Scope" below, which forms part of this Section 3.',
+            ]
+          : []),
         `The Client has been classified as "${p.clientTypeLabel}" for this engagement, which affects pricing and process overhead but does not by itself expand or restrict the Deliverables.`,
         'Any feature, page, or functionality not explicitly listed in this Section, Exhibit A, or the written scope documentation is out of scope, and the Agency is under no obligation to perform out-of-scope work absent a signed Change Order under Section 9.',
         'Where the Project integrates with third-party services or infrastructure not owned by the Agency, the Agency is not responsible for outages, policy changes, or deprecations imposed by those third parties, and accommodating such changes after delivery is billable as a Change Order.',
@@ -334,10 +376,39 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
   ];
 }
 
+/**
+ * Writes out every piece of custom work in full — its name, its price, and
+ * the description of what it covers, verbatim as it was entered.
+ *
+ * A catalogue add-on can be named and left at that, because "SEO
+ * Foundations" is defined the same way for every client. Custom work has no
+ * such shared definition: "Custom integration — $4,000" on an invoice is
+ * only ever as specific as whoever reads it assumes. This section is what
+ * makes the assumption unnecessary, and the reason the dashboard won't
+ * generate a contract until each custom item has one written.
+ */
+function buildCustomWorkSection(items: ContractCustomItem[]): ContractSection {
+  return {
+    heading: 'Custom Work — Agreed Scope',
+    paragraphs: [
+      'The following work was quoted specifically for this engagement and is not drawn from the Agency\'s standard service catalogue. The description given for each item is the definitive statement of what that item covers, and controls over any shorter label used for it elsewhere in this Agreement, in any invoice, or in any prior conversation, proposal, or correspondence between the Parties.',
+      ...items.map((item) => `${item.label} — ${item.price}. Scope: ${item.description}`),
+      'Work that falls outside the descriptions above is not included, however closely related it may appear to the item it sits next to, and is performed only under a Change Order agreed in writing under Section 9. Where either Party believes a description above is ambiguous as applied to a specific request, the Parties will resolve the ambiguity in writing before the Agency performs the work, and neither the Agency\'s estimate nor the Client\'s expectation is expanded by silence.',
+    ],
+  };
+}
+
 /** Clauses appended only when the relevant add-on, service type, timeline, or client tier is actually selected. */
 function buildConditionalClauses(p: ContractParams): ContractSection[] {
   const keys = p.addOnKeys;
   const clauses: ContractSection[] = [];
+
+  // First, so the specifics of what was bought sit ahead of the generic
+  // clauses about categories of work.
+  const custom = describedCustomItems(p);
+  if (custom.length > 0) {
+    clauses.push(buildCustomWorkSection(custom));
+  }
 
   if (has(keys, 'ecommerce', 'subscriptions')) {
     clauses.push({

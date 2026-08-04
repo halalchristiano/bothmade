@@ -60,6 +60,21 @@ Optional, and only for a brand-new deployment with an empty `users` table:
       almost always the test-mode secret missing, or the endpoint only
       existing in live mode.
 
+      **Monthly care plans need three more events on the same endpoint:**
+      `invoice.payment_succeeded`, `invoice.payment_failed`, and
+      `customer.subscription.deleted`. A subscription bills forever with
+      nobody watching, and those three are what turn each charge into an
+      emailed invoice, each decline into a warning, and each cancellation
+      into a plan that stops reading as active. Without them the money still
+      arrives and the client hears nothing about it, month after month.
+
+      Nothing else about care plans is configuration. The introductory
+      discount is a repeating Stripe coupon created per offer, with a
+      duration that includes any prepaid months, so the standard rate resumes
+      by itself — there is no scheduled job to run and nothing to remember a
+      year later. See `lib/recurring.ts` for why the coupon's duration is not
+      simply twelve.
+
 - [ ] **`DATABASE_URL` and `DIRECT_URL`** — two *different* strings, not the
       same one twice. `prisma migrate deploy` runs during the build and
       cannot go through a transaction pooler, which is why the schema

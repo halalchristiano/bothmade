@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { forbiddenResponse, requirePrincipal, unauthorizedResponse } from '@/lib/middleware';
+import { amountPaidTowardProject } from '@/lib/billing';
 
 export async function GET(
   request: NextRequest,
@@ -39,6 +40,14 @@ export async function GET(
         payments: {
           orderBy: { createdAt: 'desc' },
         },
+        // One-off charges raised against this project. Both dashboards read
+        // this list — it is the same record on either side, which is the
+        // point: a client and the studio looking at the same invoice number
+        // should never be looking at two different stories.
+        invoices: {
+          orderBy: { createdAt: 'desc' },
+          include: { issuedBy: { select: { name: true, email: true } } },
+        },
       },
     });
 
@@ -67,7 +76,9 @@ export async function GET(
             contactName: project.client.contactName,
           };
 
-    const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
+    // Only what was paid toward this project's own contracted price —
+    // one-off invoices are settled separately and listed separately.
+    const amountPaid = amountPaidTowardProject(project.payments);
 
     let sourcedLead: { id: string; company: string } | null = null;
     if (session.type === 'user' && project.convertedFromLeadId) {
@@ -97,6 +108,22 @@ export async function GET(
           amountPaid,
           balanceDue: project.totalPrice - amountPaid,
           payments: project.payments,
+          // Who raised an invoice is an internal detail — the client gets
+          // the invoice, not the org chart.
+          invoices: project.invoices.map((invoice) => ({
+            id: invoice.id,
+            number: invoice.number,
+            description: invoice.description,
+            lineItems: invoice.lineItems,
+            amountCents: invoice.amountCents,
+            status: invoice.status,
+            pdfUrl: invoice.pdfUrl,
+            paymentUrl: invoice.paymentUrl,
+            createdAt: invoice.createdAt,
+            paidAt: invoice.paidAt,
+            issuedBy: session.type === 'user' ? invoice.issuedBy?.name || invoice.issuedBy?.email || null : undefined,
+            sentToEmail: session.type === 'user' ? invoice.sentToEmail : undefined,
+          })),
           deliverables: project.deliverables
             ? JSON.parse(project.deliverables)
             : [],

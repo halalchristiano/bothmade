@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { buildContractSections } from '@/lib/contract-terms';
+import { buildContractSections, toContractCustomItems } from '@/lib/contract-terms';
 import { readShareToken, shareTokenMatches } from '@/lib/share-links';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
@@ -93,6 +93,7 @@ export async function GET(
       serviceDescription: BASE_SERVICES[baseService].description,
       addOnLabels,
       addOnKeys,
+      customItems: toContractCustomItems(customItems),
       baseServiceKey: baseService,
       clientTypeKey: clientType,
       timelineKey: timeline,
@@ -116,6 +117,7 @@ export async function GET(
           contactName: lead.contactName,
           serviceLabel,
           addOnLabels,
+          customItems: toContractCustomItems(customItems),
           timelineLabel,
           totalPrice,
           chargeAmount,

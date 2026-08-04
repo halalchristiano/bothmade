@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { amountPaidTowardProject } from '@/lib/billing';
 import { FolderKanban, Plus } from 'lucide-react';
 import { Card, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
 
@@ -16,7 +17,7 @@ interface ProjectRow {
   totalPrice: number;
   client: { company: string; email: string };
   messages: Array<{ isFromAdmin: boolean; createdAt: string }>;
-  payments: Array<{ amount: number }>;
+  payments: Array<{ amount: number; type: string }>;
 }
 
 const STATUSES = ['all', 'discovery', 'design', 'build', 'launch', 'complete'];
@@ -35,8 +36,7 @@ function isAwaitingReply(project: ProjectRow): boolean {
 }
 
 function balanceDue(project: ProjectRow): number {
-  const paid = project.payments.reduce((sum, p) => sum + p.amount, 0);
-  return project.totalPrice - paid;
+  return project.totalPrice - amountPaidTowardProject(project.payments);
 }
 
 /** Anything a PM would actually want to look at today, in one signal. */

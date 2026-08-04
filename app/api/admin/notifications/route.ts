@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { amountPaidTowardProject } from '@/lib/billing';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 
@@ -141,11 +142,11 @@ export async function GET() {
 
     const activeProjects = await prisma.project.findMany({
       where: { status: { not: 'complete' } },
-      select: { id: true, totalPrice: true, client: { select: { company: true } }, payments: { select: { amount: true } } },
+      select: { id: true, totalPrice: true, client: { select: { company: true } }, payments: { select: { amount: true, type: true } } },
       take: 40,
     });
     for (const p of activeProjects) {
-      const balanceDue = p.totalPrice - p.payments.reduce((sum, pay) => sum + pay.amount, 0);
+      const balanceDue = p.totalPrice - amountPaidTowardProject(p.payments);
       if (balanceDue <= 0) continue;
       items.push({
         id: `overdue-${p.id}`,

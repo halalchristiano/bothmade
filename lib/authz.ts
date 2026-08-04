@@ -53,16 +53,26 @@ export const ANY_STAFF: readonly Role[] = ['owner', 'admin', 'sales'];
  * someone signed in and looking at a screen they should not have, and it is
  * not information an anonymous caller ever gets.
  */
+/**
+ * The same test without the response or the log line — for deciding whether
+ * to *offer* an action, not whether to allow one. A UI that hides a button it
+ * would be refused for is kinder than one that offers it and 403s; the check
+ * that enforces anything is still `requireRole` on the route.
+ */
+export function hasRole(session: AuthPayload, allowed: readonly Role[]): boolean {
+  // A staff token with no role predates roles, or came from an older deploy.
+  // Treat it as the least privileged thing it could be — an absent claim must
+  // never widen access.
+  return allowed.includes((session.role ?? 'sales') as Role);
+}
+
 export function requireRole(
   session: AuthPayload,
   allowed: readonly Role[]
 ): NextResponse | null {
-  // A staff token with no role predates roles, or came from an older deploy.
-  // Treat it as the least privileged thing it could be — an absent claim must
-  // never widen access.
   const role = (session.role ?? 'sales') as Role;
 
-  if (allowed.includes(role)) return null;
+  if (hasRole(session, allowed)) return null;
 
   console.warn(
     `[authz] denied: role "${role}" is not in [${allowed.join(', ')}] (user ${session.userId})`

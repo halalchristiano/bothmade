@@ -699,11 +699,38 @@ export function depositAmount(totalPrice: number): number {
   return Math.round((totalPrice * DEPOSIT_PERCENT) / 100);
 }
 
-/** An ad-hoc line item Evan adds beyond the fixed catalogue — his own label and price. */
+/**
+ * An ad-hoc line item Evan adds beyond the fixed catalogue — his own label,
+ * his own price, and a written description of what the work actually is.
+ *
+ * The description is the whole point of this shape. A catalogue add-on
+ * carries its own definition, so "SEO Foundations" means the same thing to
+ * everyone. A custom line called "Custom integration" means whatever the two
+ * people on the call each thought it meant, and that difference doesn't
+ * surface until the build is underway and someone says "I thought custom X
+ * meant this." Writing the scope down at the point of adding it — before a
+ * contract can be generated from it — is what stops that.
+ */
 export interface CustomItem {
   label: string;
+  /**
+   * What this work actually covers, in Evan's own words. Legacy items saved
+   * before this field existed sanitize to '' rather than being dropped: the
+   * proposal they belong to still has to load and price correctly. What they
+   * can't do is produce a contract — see customItemsMissingScope.
+   */
+  description: string;
   priceCents: number;
 }
+
+/**
+ * Short enough that a genuine one-line scope ("Migrate 400 legacy blog posts
+ * into the new CMS") passes, long enough that "custom work" or "TBD" doesn't.
+ */
+export const MIN_CUSTOM_SCOPE_CHARS = 20;
+
+/** Longest scope we'll store — generous, since this is the definitive text. */
+export const MAX_CUSTOM_SCOPE_CHARS = 2000;
 
 /**
  * Validates and normalizes whatever shape came in over the wire (or out of
@@ -718,14 +745,35 @@ export function sanitizeCustomItems(input: unknown): CustomItem[] {
   for (const raw of input) {
     if (!raw || typeof raw !== 'object') continue;
     const label = 'label' in raw && typeof raw.label === 'string' ? raw.label.trim().slice(0, 200) : '';
+    const description =
+      'description' in raw && typeof raw.description === 'string'
+        ? raw.description.trim().slice(0, MAX_CUSTOM_SCOPE_CHARS)
+        : '';
     const priceCents =
       'priceCents' in raw && typeof raw.priceCents === 'number' && Number.isFinite(raw.priceCents)
         ? Math.round(raw.priceCents)
         : NaN;
     if (!label || !Number.isFinite(priceCents) || priceCents <= 0) continue;
-    items.push({ label, priceCents });
+    items.push({ label, description, priceCents });
   }
   return items.slice(0, 20); // a runaway list on a proposal is a mistake, not a use case
+}
+
+/**
+ * The custom items nobody has said what they mean yet — either saved before
+ * the description field existed, or added without one. A contract that
+ * itemizes "Custom integration — $4,000" and says nothing else about it is
+ * the exact document this is here to prevent, so generating one is blocked
+ * until this list is empty.
+ */
+export function customItemsMissingScope(items: CustomItem[]): CustomItem[] {
+  return items.filter((item) => item.description.trim().length < MIN_CUSTOM_SCOPE_CHARS);
+}
+
+/** The message Evan sees when he tries to generate a contract too early. */
+export function missingScopeMessage(items: CustomItem[]): string {
+  const names = items.map((i) => `"${i.label}"`).join(', ');
+  return `Describe the custom work before generating the contract: ${names}. Each custom item needs at least ${MIN_CUSTOM_SCOPE_CHARS} characters saying what it actually covers, so the contract can spell it out instead of leaving it open to interpretation.`;
 }
 
 export function customItemsTotal(items: CustomItem[]): number {
@@ -737,6 +785,25 @@ export function formatCents(cents: number): string {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0,
+  });
+}
+
+/**
+ * Same as formatCents for the round numbers the catalogue deals in, but
+ * shows the cents when there are any.
+ *
+ * formatCents drops them — right for a $14,500 quote, wrong the moment
+ * somebody types an exact amount into a custom charge. An invoice reading
+ * "$1,651" against a card charged $1,650.50 is a discrepancy a bookkeeper
+ * has to reconcile, and the invoice is the document they'll trust.
+ */
+export function formatCentsExact(cents: number): string {
+  const hasCents = cents % 100 !== 0;
+  return (cents / 100).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
   });
 }
 

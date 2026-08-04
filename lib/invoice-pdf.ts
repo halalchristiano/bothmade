@@ -11,6 +11,7 @@ import {
   customItemsTotal,
   depositAmount,
   formatCents,
+  formatCentsExact,
   isIncludedInBase,
   type AddOnKey,
   type BaseService,
@@ -52,6 +53,14 @@ export interface InvoicePdfInput {
   amountDue: string;
   isDeposit: boolean;
   balanceRemaining?: string;
+  /** Line under the invoice number, e.g. the billing period on a monthly one. */
+  subheading?: string;
+  /** One line above the table saying what the invoice is for, when the line items alone don't. */
+  summary?: string;
+  /** Overrides "Amount due" — a receipt for money already taken says "paid". */
+  amountDueLabel?: string;
+  /** Replaces the closing note, which otherwise cites a project agreement. */
+  footerNote?: string;
 }
 
 /** Greedy word-wrap against the actual measured width of the given font/size. */
@@ -155,6 +164,11 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   drawTextRight(input.date, { size: 10, color: GRAY });
   y -= 30;
 
+  if (input.subheading) {
+    drawText(input.subheading, MARGIN, { size: 10, color: GRAY });
+    y -= 22;
+  }
+
   // Who it's from and who it's for, side by side — an invoice has to carry the
   // issuing address, not just the billing one.
   const columnTop = y;
@@ -190,6 +204,16 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
 
   y = Math.min(fromBottom, y) - 14;
 
+  if (input.summary) {
+    drawText('For', MARGIN, { size: 9, f: bold, color: GRAY });
+    y -= 15;
+    for (const line of wrapText(input.summary, font, 11, CONTENT_WIDTH)) {
+      drawText(line, MARGIN, { size: 11 });
+      y -= 15;
+    }
+    y -= 8;
+  }
+
   // Line items
   drawText('Description', MARGIN, { size: 9, f: bold, color: GRAY });
   drawText('Amount', PAGE_WIDTH - MARGIN - bold.widthOfTextAtSize('Amount', 9), { size: 9, f: bold, color: GRAY });
@@ -221,12 +245,13 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     }
   } else {
     hr();
-    drawRow('Amount due', input.amountDue, { f: bold, size: 13, color: ACCENT });
+    drawRow(input.amountDueLabel || 'Amount due', input.amountDue, { f: bold, size: 13, color: ACCENT });
   }
 
   y -= 30;
   const footer = wrapText(
-    'This invoice reflects the scope agreed in the accompanying project agreement. Payment is processed securely by Stripe.',
+    input.footerNote ||
+      'This invoice reflects the scope agreed in the accompanying project agreement. Payment is processed securely by Stripe.',
     font,
     9,
     CONTENT_WIDTH
@@ -237,6 +262,115 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   }
 
   return doc.save();
+}
+
+/**
+ * A line on a one-off charge. Structurally what a CustomItem already is, so a
+ * sanitized CustomItem[] passes straight in — but not the same type on
+ * purpose: a CustomItem carries a written scope because a *contract* has to
+ * spell out what bespoke work covers, and a charge for an agreed extra states
+ * that once, in the invoice's own description. Reusing the type would drag
+ * that requirement somewhere it doesn't belong.
+ */
+export interface ChargeLine {
+  label: string;
+  priceCents: number;
+}
+
+export interface CustomChargeInvoiceInput {
+  invoiceNumber: string;
+  company: string;
+  contactName: string | null;
+  /** What the charge is for — printed under the number, above the lines. */
+  description: string;
+  lineItems: ChargeLine[];
+  issuedAt?: Date;
+}
+
+/**
+ * The invoice for a one-off charge: an amount someone on the team typed in,
+ * for work that never came out of the catalogue.
+ *
+ * Same document as the proposal invoice — deliberately, since a client
+ * should not be able to tell from the paperwork whether what they were billed
+ * for was priced by a calculator or by a person. The only difference is that
+ * there is nothing to discount, uplift, or split into a deposit: the lines
+ * are the total and the total is due.
+ */
+export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInput): Promise<Uint8Array> {
+  const total = input.lineItems.reduce((sum, item) => sum + item.priceCents, 0);
+  const issuedAt = input.issuedAt ?? new Date();
+
+  return buildInvoicePdf({
+    invoiceNumber: input.invoiceNumber,
+    date: issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    company: input.company,
+    contactName: input.contactName,
+    summary: input.description,
+    // formatCentsExact, not formatCents: a custom charge can carry cents, and
+    // an invoice that rounds them is a discrepancy against the card charge.
+    lineItems: input.lineItems.map((item) => ({ label: item.label, amount: formatCentsExact(item.priceCents) })),
+    adjustments: [],
+    subtotal: formatCentsExact(total),
+    total: formatCentsExact(total),
+    amountDue: formatCentsExact(total),
+    isDeposit: false,
+    footerNote:
+      'This invoice covers work agreed with Bothmade outside the original project scope. Payment is processed securely by Stripe.',
+  });
+}
+
+export interface CarePlanInvoiceInput {
+  /** Stripe's own invoice number when it has one, so the client's copy and
+   * the Stripe dashboard agree on which month is which. */
+  invoiceNumber: string;
+  company: string;
+  contactName: string | null;
+  addOnKeys: AddOnKey[];
+  /** The standard rate, before the introductory discount. */
+  standardCents: number;
+  /** What was actually charged. */
+  chargedCents: number;
+  /** "August 4 – September 4, 2026", or null when Stripe didn't send a period. */
+  periodLabel: string | null;
+  /** How the discount is described on the invoice, e.g. "First-year rate (15% off)". */
+  discountLabel: string | null;
+  date: string;
+}
+
+/**
+ * The monthly invoice for an active care plan.
+ *
+ * Sent because the card statement says "BOTHMADE" and nothing else — the
+ * client needs a document that names what the charge was for, which months it
+ * covered, and what the introductory rate saved them, both to file it and to
+ * see the discount is still being applied.
+ */
+export async function buildCarePlanInvoicePdf(input: CarePlanInvoiceInput): Promise<Uint8Array> {
+  const discount = input.standardCents - input.chargedCents;
+
+  return buildInvoicePdf({
+    invoiceNumber: input.invoiceNumber,
+    date: input.date,
+    subheading: input.periodLabel ? `Service period: ${input.periodLabel}` : undefined,
+    company: input.company,
+    contactName: input.contactName,
+    lineItems: input.addOnKeys.map((key) => ({
+      label: `${ADD_ONS[key].label} — monthly`,
+      amount: formatCents(ADD_ONS[key].price),
+    })),
+    adjustments:
+      discount > 0 && input.discountLabel
+        ? [{ label: input.discountLabel, amount: `-${formatCents(discount)}` }]
+        : [],
+    subtotal: formatCents(input.standardCents),
+    total: formatCents(input.chargedCents),
+    amountDue: formatCents(input.chargedCents),
+    amountDueLabel: 'Paid',
+    isDeposit: false,
+    footerNote:
+      'This is a recurring monthly charge for your care plan. Payment is processed securely by Stripe, and you can cancel at any time by replying to this email.',
+  });
 }
 
 export interface InvoiceForProposalInput {

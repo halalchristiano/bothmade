@@ -12,6 +12,7 @@ import {
   type ClientType,
   type TimelineKey,
 } from './pricing';
+import type { DiscountType } from './recurring';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -128,6 +129,143 @@ export async function createCheckoutSession(
 }
 
 export { formatCents };
+
+export interface RecurringCheckoutInput {
+  /** The RecurringOffer this checkout belongs to — the webhook reads it back. */
+  offerId: string;
+  projectId: string;
+  clientEmail: string;
+  /** Reuse the client's existing Stripe customer when there is one. */
+  stripeCustomerId?: string | null;
+  /** What the subscription is called on the Stripe page and every invoice. */
+  productName: string;
+  productDescription?: string;
+  /** The standard monthly rate the plan reverts to, in cents. */
+  monthlyCents: number;
+  discountType: DiscountType;
+  /** Percentage points, or cents off each month. Zero means no discount. */
+  discountValue: number;
+  /** Months the repeating coupon runs for — see CarePlanSchedule. */
+  couponDurationMonths: number;
+  /** Days of no charge before the first invoice. Zero bills immediately. */
+  trialDays: number;
+}
+
+/**
+ * Open a Stripe Checkout session for a monthly care plan.
+ *
+ * The shape here is what makes the introductory year end by itself:
+ *
+ *  - The **price** is always the standard rate. Discounting by charging a
+ *    lower price would mean remembering to raise it twelve months later, and
+ *    nobody is going to.
+ *  - A **repeating coupon** carries the discount for a fixed number of months.
+ *    When it lapses Stripe bills the standard price on its own, with no job to
+ *    run and nothing to forget. The coupon is created per offer because the
+ *    amount is chosen per offer.
+ *  - A **trial** covers the months the project payment already paid for. The
+ *    card is still collected up front, so month three doesn't depend on
+ *    chasing anyone for details.
+ *
+ * The coupon's clock starts with the subscription rather than with billing,
+ * which is why `couponDurationMonths` includes the trial months — see
+ * `buildSchedule` in lib/recurring.ts.
+ */
+export async function createRecurringCheckoutSession(
+  input: RecurringCheckoutInput,
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ sessionId: string; url: string; couponId: string | null } | null> {
+  try {
+    let couponId: string | null = null;
+
+    if (input.discountValue > 0) {
+      const coupon = await stripe.coupons.create({
+        name: `Introductory rate — ${input.productName}`.slice(0, 40),
+        duration: 'repeating',
+        duration_in_months: input.couponDurationMonths,
+        ...(input.discountType === 'percent'
+          ? { percent_off: input.discountValue }
+          : { amount_off: Math.round(input.discountValue), currency: 'usd' }),
+        // Single-use: a coupon minted for one client's offer must not be
+        // reusable by anyone who reads its ID out of a URL.
+        max_redemptions: 1,
+        metadata: { recurringOfferId: input.offerId, projectId: input.projectId },
+      });
+      couponId = coupon.id;
+    }
+
+    const metadata = {
+      recurringOfferId: input.offerId,
+      projectId: input.projectId,
+      paymentType: 'recurring',
+    };
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: input.productName,
+              ...(input.productDescription ? { description: input.productDescription } : {}),
+            },
+            unit_amount: input.monthlyCents,
+            recurring: { interval: 'month' },
+          },
+          quantity: 1,
+        },
+      ],
+      ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+      // Stripe rejects a session carrying both, so an existing customer wins —
+      // it keeps the client's payment methods and invoice history in one place
+      // instead of spawning a second customer record for the same company.
+      ...(input.stripeCustomerId
+        ? { customer: input.stripeCustomerId }
+        : { customer_email: input.clientEmail }),
+      subscription_data: {
+        ...(input.trialDays > 0 ? { trial_period_days: input.trialDays } : {}),
+        description: input.productName,
+        // Repeated on the subscription because invoice events arrive with a
+        // subscription, not with the checkout session that created it.
+        metadata,
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata,
+    });
+
+    if (!session.url) return null;
+
+    return { sessionId: session.id, url: session.url, couponId };
+  } catch (error) {
+    console.error('Stripe recurring checkout error:', error);
+    return null;
+  }
+}
+
+/**
+ * Stop an active care plan.
+ *
+ * Cancels at the end of the paid period rather than immediately: they've paid
+ * for the month, so they keep the month. Already-canceled and unknown
+ * subscriptions resolve as success — the caller's goal is "not billing them
+ * any more", and both of those satisfy it.
+ */
+export async function cancelSubscriptionAtPeriodEnd(subscriptionId: string): Promise<boolean> {
+  try {
+    await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+    return true;
+  } catch (error) {
+    if (error instanceof Stripe.errors.StripeInvalidRequestError && error.statusCode === 404) {
+      console.warn(`Subscription ${subscriptionId} not found in Stripe; treating as already canceled`);
+      return true;
+    }
+    console.error('Stripe subscription cancel error:', error);
+    return false;
+  }
+}
 
 /**
  * Get a Stripe session

@@ -523,6 +523,320 @@ export async function sendInvoiceOnlyEmail(
   });
 }
 
+/** One phase of a care plan's pricing, as shown to the client. */
+export interface CarePlanScheduleLine {
+  period: string;
+  detail: string;
+}
+
+/**
+ * The schedule table shared by the offer and the confirmation, so what a
+ * client was invited onto and what they're told they joined are rendered from
+ * the same rows rather than written twice.
+ */
+function renderScheduleTable(lines: CarePlanScheduleLine[]): string {
+  const rows = lines
+    .map(
+      (line) => `
+      <tr>
+        <td style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.08); color:#ffffff; font-size:14px; font-weight:700; white-space:nowrap; vertical-align:top;">${esc(line.period)}</td>
+        <td style="padding:10px 0 10px 16px; border-bottom:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.7); font-size:14px;">${esc(line.detail)}</td>
+      </tr>`
+    )
+    .join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;">${rows}</table>`;
+}
+
+/**
+ * The upsell itself: an invitation to put an existing client onto a monthly
+ * care plan, with the introductory rate spelled out phase by phase.
+ *
+ * The schedule is in the email rather than only behind the link because the
+ * thing a client is being asked to accept is a charge that changes twice — a
+ * plan whose price silently goes up in a year is the complaint this is written
+ * to avoid, so it says so before they click anything.
+ */
+export async function sendCarePlanOfferEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  offerUrl: string;
+  scheduleLines: CarePlanScheduleLine[];
+  /** What the introductory year saves them, already formatted. */
+  savingsLabel: string | null;
+  /** Whoever is selling it, in their own words. */
+  note?: string | null;
+  /** True when they took these services in the original scope. */
+  alreadyInScope: boolean;
+}): Promise<SendResult> {
+  const opener = params.alreadyInScope
+    ? `The months of ${esc(params.planLabel)} included with ${esc(params.company)}'s project are nearly up. Here's what it looks like to keep it running.`
+    : `Now that ${esc(params.company)}'s project is nearly done, here's what it takes to keep it looked after — at a rate we're only offering while we're still working together.`;
+
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>${opener}</p>
+    ${params.note ? `<p style="border-left:3px solid #38bdf8; padding-left:14px; color:rgba(255,255,255,0.75);">${escMultiline(params.note)}</p>` : ''}
+    <p style="margin-bottom:0;"><strong style="color:#fff;">${esc(params.planLabel)}</strong></p>
+    ${renderScheduleTable(params.scheduleLines)}
+    ${
+      params.savingsLabel
+        ? `<p style="color:#7dd3fc; font-weight:700; margin:0 0 16px 0;">That's ${esc(params.savingsLabel)} saved over the first year.</p>`
+        : ''
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Monthly, cancel any time — reply to this email and we'll stop it at the end of whatever month you've paid for. Billing is handled securely by Stripe; we never see or store your card details.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: params.toEmail,
+    subject: `Keep ${params.company} looked after — ${params.planLabel}`,
+    html: renderShell({
+      eyebrow: 'Ongoing care',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+      ctaLabel: 'See the plan',
+      ctaUrl: params.offerUrl,
+    }),
+  });
+}
+
+/**
+ * Sent the moment a care plan starts, so the first thing they have in writing
+ * is when the free months end and when the standard rate begins — not a
+ * surprise line on a statement three months later.
+ */
+export async function sendCarePlanStartedEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  scheduleLines: CarePlanScheduleLine[];
+  firstChargeLabel: string;
+}): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p><strong style="color:#fff;">${esc(params.planLabel)}</strong> is now running for ${esc(params.company)}. Here's the schedule you signed up to, for your records.</p>
+    ${renderScheduleTable(params.scheduleLines)}
+    <p>${esc(params.firstChargeLabel)}</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">You'll get an itemized invoice by email every month. Cancel any time by replying to this email — you keep the month you've already paid for.</p>
+  `;
+
+  return sendEmail({
+    to: params.toEmail,
+    subject: `Your care plan is active — ${params.company}`,
+    html: renderShell({
+      eyebrow: 'Care plan active',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+    }),
+  });
+}
+
+/**
+ * The monthly invoice, with the itemized PDF attached.
+ *
+ * The card statement says our name and a number and nothing else, so this is
+ * the only document that says which months it covered and that the
+ * introductory rate is still being applied. It goes out automatically on the
+ * payment succeeding rather than being something anyone has to remember.
+ */
+export async function sendCarePlanInvoiceEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  amountLabel: string;
+  periodLabel: string | null;
+  /** Set while the introductory rate is running, e.g. "First-year rate (15% off)". */
+  discountLabel: string | null;
+  savedLabel: string | null;
+  invoicePdf: Buffer;
+  fileName: string;
+}): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>We've taken this month's payment of <strong style="color:#fff;">${esc(params.amountLabel)}</strong> for ${esc(params.planLabel)}${
+      params.periodLabel ? `, covering ${esc(params.periodLabel)}` : ''
+    }. The itemized invoice is attached as a PDF.</p>
+    ${
+      params.discountLabel && params.savedLabel
+        ? `<p style="color:#7dd3fc;">${esc(params.discountLabel)} is still applied — ${esc(params.savedLabel)} off this month.</p>`
+        : ''
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Nothing to do — this is a receipt, not a request for payment.</p>
+  `;
+
+  return sendEmail({
+    to: params.toEmail,
+    subject: `${params.company} — ${params.planLabel} invoice`,
+    html: renderShell({
+      eyebrow: 'Monthly invoice',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+    }),
+    attachments: [{ filename: params.fileName, content: params.invoicePdf }],
+  });
+}
+
+/**
+ * A declined monthly charge. Stripe retries on its own schedule, so this says
+ * what will happen rather than demanding anything — the useful action is
+ * updating the card, and Stripe's own hosted invoice page is where that
+ * happens.
+ */
+export async function sendCarePlanPaymentFailedEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  amountLabel: string;
+  hostedInvoiceUrl: string | null;
+}): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>This month's payment of <strong style="color:#fff;">${esc(params.amountLabel)}</strong> for ${esc(params.planLabel)} didn't go through — usually an expired card rather than anything wrong on your end.</p>
+    <p>We'll try again automatically over the next few days. ${
+      params.hostedInvoiceUrl ? 'Updating the card below will settle it straight away.' : 'Reply to this email and we\'ll send you a new payment link.'
+    }</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Your plan stays active in the meantime.</p>
+  `;
+
+  return sendEmail({
+    to: params.toEmail,
+    subject: `Payment didn't go through — ${params.company}`,
+    html: renderShell({
+      eyebrow: 'Payment issue',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+      ...(params.hostedInvoiceUrl
+        ? { ctaLabel: 'Update payment details', ctaUrl: params.hostedInvoiceUrl }
+        : {}),
+    }),
+  });
+}
+
+/**
+ * The client's copy of a one-off charge: what it's for, what it costs, the
+ * invoice as a PDF, and a link that pays it.
+ *
+ * The PDF is attached rather than linked. An invoice is a document a client's
+ * bookkeeper files, and a link into our blob storage is not something anyone
+ * can forward to an accountant with confidence — it also stops working the
+ * day we move buckets. The pay link is the CTA; the invoice is the artefact.
+ */
+export async function sendCustomChargeEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  projectName: string;
+  invoiceNumber: string;
+  description: string;
+  amountLabel: string;
+  paymentUrl: string | null;
+  /** Null when the render failed — the charge still gets sent, without the claim that something is attached. */
+  invoicePdf: Buffer | null;
+  filename: string;
+}): Promise<SendResult> {
+  // Naming the project matters more here than anywhere else: this arrives
+  // out of the blue, for an amount the client hasn't seen in a proposal, and
+  // "which of the things we're paying you for is this?" is the first
+  // question. Answer it before they have to ask.
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Here's an invoice for <strong style="color:#fff;">${esc(input.description)}</strong> on ${esc(input.projectName)}.</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Invoice</span> <span style="color:#fff;">${esc(input.invoiceNumber)}</span></p>
+      <p style="margin:0; font-size:20px; font-weight:700; color:#fff;">${esc(input.amountLabel)}</p>
+    </div>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">${
+      input.invoicePdf
+        ? "The full invoice is attached as a PDF, and it's on your project dashboard alongside everything else."
+        : "The full invoice is on your project dashboard alongside everything else."
+    }</p>
+    ${
+      input.paymentUrl
+        ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>`
+        : `<p style="font-size:13px; color:rgba(255,255,255,0.5);">We'll follow up with a payment link shortly. Reply to this email if you'd rather pay another way.</p>`
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Questions about this invoice? Just reply — it comes straight to us.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `Invoice ${input.invoiceNumber} — ${input.description}`,
+    html: renderShell({
+      eyebrow: 'Invoice',
+      title: `${input.amountLabel} — ${input.description}`,
+      bodyHtml,
+      ...(input.paymentUrl ? { ctaLabel: 'Pay this invoice', ctaUrl: input.paymentUrl } : {}),
+    }),
+    ...(input.invoicePdf ? { attachments: [{ filename: input.filename, content: input.invoicePdf }] } : {}),
+  });
+}
+
+/**
+ * The studio's own copy of an invoice, sent to info@ the moment it's raised.
+ *
+ * Belt and braces on top of the database row, and deliberately so: the
+ * mailbox is where the accountant looks and where a paper trail survives us
+ * changing anything about this app. Same PDF, same number, attached the same
+ * way — so the copy in the inbox and the copy the client has are provably
+ * the same document.
+ */
+export async function sendInvoiceRecordEmail(input: {
+  invoiceNumber: string;
+  company: string;
+  projectName: string;
+  description: string;
+  amountLabel: string;
+  issuedByName: string | null;
+  sentToEmail: string | null;
+  clientDelivered: boolean;
+  adminUrl: string;
+  paymentUrl: string | null;
+  invoicePdf: Buffer | null;
+  filename: string;
+}): Promise<boolean> {
+  const delivery = input.sentToEmail
+    ? input.clientDelivered
+      ? `Emailed to ${esc(input.sentToEmail)}.`
+      : `<span style="color:#fca5a5;">Not delivered to ${esc(input.sentToEmail)} — the client copy failed to send, so this one needs chasing by hand.</span>`
+    : 'Not sent to the client — raised for the record only.';
+
+  const bodyHtml = `
+    <p><strong style="color:#fff;">${esc(input.invoiceNumber)}</strong> raised against ${esc(input.company)} — ${esc(input.projectName)}.</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">For</span> <span style="color:#fff;">${esc(input.description)}</span></p>
+      <p style="margin:0 0 6px 0; font-size:20px; font-weight:700; color:#fff;">${esc(input.amountLabel)}</p>
+      <p style="margin:0; font-size:13px; color:rgba(255,255,255,0.5);">Raised by ${esc(input.issuedByName) || 'the team'}. ${delivery}</p>
+    </div>
+    ${
+      input.paymentUrl
+        ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">Pay link: <a href="${safeUrl(input.paymentUrl)}" style="color:#7dd3fc;">${esc(input.paymentUrl)}</a></p>`
+        : `<p style="font-size:13px; color:#fca5a5;">No Stripe link was created for this one — the client has an invoice they can't pay online yet.</p>`
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">${
+      input.invoicePdf
+        ? "The PDF is attached. It's the same file the client received."
+        : '<span style="color:#fca5a5;">The PDF failed to render, so there is nothing attached and the client got none either — this invoice needs re-issuing.</span>'
+    }</p>
+  `;
+
+  return sendEmail({
+    to: studioInbox(),
+    subject: `Invoice ${input.invoiceNumber} — ${input.company} — ${input.amountLabel}`,
+    html: renderShell({
+      eyebrow: 'Invoice raised',
+      title: `${input.company} — ${input.amountLabel}`,
+      bodyHtml,
+      ctaLabel: 'Open in admin',
+      ctaUrl: input.adminUrl,
+    }),
+    ...(input.invoicePdf ? { attachments: [{ filename: input.filename, content: input.invoicePdf }] } : {}),
+  });
+}
+
 /**
  * Notify the internal team the moment a client agrees online — a copy of
  * exactly what they signed, ready for the books.
