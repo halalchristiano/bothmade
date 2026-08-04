@@ -1,6 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence, useScroll, useMotionValueEvent } from 'framer-motion';
+import { Wordmark } from '@/components/Wordmark';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -95,19 +96,12 @@ export function Nav() {
         <div className="max-w-6xl mx-auto px-6 flex justify-between items-center">
           <Link href="/" onClick={() => setOpen(false)} aria-label="Bothmade home">
             <motion.span
-              className="text-2xl font-bold tracking-tight inline-block"
+              className="inline-block"
               whileHover={{ scale: 1.05 }}
               transition={{ type: 'spring', stiffness: 400 }}
+              aria-hidden="true"
             >
-              {/* The mark carries the brand's split: wireframe web, solid native. */}
-              <span
-                aria-hidden="true"
-                className="text-transparent"
-                style={{ WebkitTextStroke: '1px rgba(125,211,252,0.9)' }}
-              >
-                both
-              </span>
-              <span aria-hidden="true">made</span>
+              <Wordmark />
             </motion.span>
           </Link>
 

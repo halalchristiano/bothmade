@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Headset,
   Building2,
   FolderKanban,
   KanbanSquare,
@@ -46,6 +47,7 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
 
   { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, salesVisible: true, section: 'Sales' },
   { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, salesVisible: true, section: 'Sales' },
+  { href: '/admin/call', label: 'Call HQ', icon: Headset, salesVisible: true, section: 'Sales' },
   { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true, section: 'Sales' },
   { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, salesVisible: false, section: 'Sales' },
 

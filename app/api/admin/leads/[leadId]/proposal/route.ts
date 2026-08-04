@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isFurtherAlong } from '@/lib/leads';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { canOverridePricing, requireStaff, unauthorizedResponse } from '@/lib/middleware';
@@ -189,6 +190,21 @@ export async function POST(
             createdById: session.userId,
           },
         });
+
+        // The send is the moment the deal state actually changed, and this
+        // route is the send path Evan actually uses — yet only the manual
+        // contract-download route used to advance anything, so after his
+        // most common action the pipeline still read 'Qualified' and the
+        // next-step banner told him to do the thing he had just done.
+        // The agreement travels with this email, so contract_sent is the
+        // truthful stage, and isFurtherAlong keeps a lead that is already
+        // past it from being dragged backwards.
+        const stateData: { contractStatus?: string; status?: string } = {};
+        if (lead.contractStatus === 'not_sent') stateData.contractStatus = 'sent';
+        if (isFurtherAlong(lead.status, 'contract_sent')) stateData.status = 'contract_sent';
+        if (Object.keys(stateData).length > 0) {
+          await prisma.lead.update({ where: { id: leadId }, data: stateData });
+        }
       }
     }
 

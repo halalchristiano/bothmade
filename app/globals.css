@@ -5,6 +5,24 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* The brand, as tokens.
+   One ground colour, one elevated surface, one accent pair, one easing —
+   named once so the marketing site and the dashboard stop disagreeing about
+   what black is. (The audit counted eleven distinct near-blacks; these are
+   the two that were always intended.) Tailwind v4 turns each --color-* into
+   bg-ink / bg-raised / text-accent / etc. */
+@theme {
+  /* Ground: the near-black purple every marketing surface already uses. */
+  --color-ink: #05030a;
+  /* Elevated surfaces — popovers, dropdowns, sticky bars. */
+  --color-raised: #0a0812;
+  /* The accent pair behind every gradient. */
+  --color-accent: #38bdf8;
+  --color-accent-2: #a855f7;
+  /* The house easing from the marketing set pieces. */
+  --ease-house: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
 /* Base overrides must live in @layer base — unlayered rules outrank
    every Tailwind utility and silently break spacing classes. */
 @layer base {

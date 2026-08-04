@@ -531,3 +531,56 @@ export function matchesSearch(query: string, ...fields: Array<string | null | un
   const haystack = fields.filter(Boolean).join(' ').toLowerCase();
   return q.split(/\s+/).every((word) => haystack.includes(word));
 }
+
+
+/*
+ * Take three additions: the brand voice, at dashboard volume.
+ *
+ * Take two was right that mono-caps on every box is noise; it was wrong to
+ * delete the voice entirely. These two primitives are the whole
+ * reintroduction: one kicker per page, one gradient button per screen.
+ */
+
+/** The marketing site's mono-caps kicker, for exactly one line per page. */
+export function Kicker({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <p className={`font-mono text-[10px] uppercase tracking-[0.4em] text-white/35 ${className}`}>
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The button pair every admin page was hand-rolling.
+ *
+ * `primary` is the sky-to-purple gradient — the one per screen; `quiet` is
+ * the bordered secondary. Both take the native button props, so existing
+ * onClick/disabled call sites port by swapping the element.
+ */
+export function BrandButton({
+  variant = 'primary',
+  className = '',
+  children,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'quiet' | 'danger';
+}) {
+  const styles =
+    variant === 'primary'
+      ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90'
+      : variant === 'danger'
+      ? 'border border-red-400/40 text-red-300 font-semibold hover:bg-red-400/10'
+      : 'border border-white/15 text-white font-semibold hover:bg-white/5';
+  return (
+    <button
+      {...rest}
+      className={`rounded-xl px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${styles} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The input class every page re-declared locally. One string, one place. */
+export const inputClass =
+  'w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all';

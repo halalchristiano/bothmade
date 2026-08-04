@@ -51,7 +51,14 @@ export async function POST(
 
     let nextFollowUpAt: Date | null | undefined;
     if (followUpAt) {
-      nextFollowUpAt = new Date(followUpAt);
+      // 'YYYY-MM-DD' alone parses as UTC midnight, which the call list then
+      // buckets against LOCAL start/end of day — so a follow-up booked for
+      // tomorrow surfaced tonight and read overdue a day early in any
+      // US timezone. Anchoring to local midnight makes the stored instant
+      // agree with the queue that consumes it.
+      nextFollowUpAt = /^\d{4}-\d{2}-\d{2}$/.test(followUpAt)
+        ? new Date(`${followUpAt}T00:00:00`)
+        : new Date(followUpAt);
     } else if (outcome.followUpDays !== null) {
       const d = new Date();
       d.setDate(d.getDate() + outcome.followUpDays);
