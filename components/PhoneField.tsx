@@ -17,6 +17,12 @@ import { composePhone, isValidPhone, phoneDigits, sanitizeNationalNumber } from 
  * Stores and emits one string, dial code included, exactly as the public
  * form does — so a lead typed in by hand and a lead that came through the
  * website are the same shape by the time anything reads them.
+ *
+ * Lives outside components/admin because it is no longer the CRM's alone:
+ * the pricing calculator writes to the same Lead column and now uses this
+ * too. Two implementations would mean two shapes in one column, and the
+ * dashboards, the tel: links and leadLocalTime all read that column
+ * expecting one.
  */
 export function PhoneField({
   value,

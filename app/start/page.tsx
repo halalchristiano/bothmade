@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
+import { PhoneField } from '@/components/PhoneField';
 import {
   ADD_ON_CATEGORIES,
   ADD_ON_REQUIRES,
@@ -425,13 +426,19 @@ export default function StartPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Phone (optional)</label>
-              <input
-                type="tel"
+              <label htmlFor="start-phone" className="block text-sm font-medium mb-2 text-white/70">
+                Phone (optional)
+              </label>
+              {/* The same field the contact form and the CRM use. A bare box
+                  here let "07700 900123" through with no country attached,
+                  which is a fine UK mobile and an undialable US one — and
+                  this route writes to the same Lead column as both. */}
+              <PhoneField
+                id="start-phone"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+1 (555) 000-0000"
+                onChange={setPhone}
                 className={inputClass}
+                placeholder="7700 900123"
               />
             </div>
           </div>

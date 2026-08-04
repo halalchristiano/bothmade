@@ -24,7 +24,7 @@ import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
-import { PhoneField } from '@/components/admin/PhoneField';
+import { PhoneField } from '@/components/PhoneField';
 import { PdfOrLinkField } from '@/components/admin/PdfOrLinkField';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
