@@ -33,21 +33,20 @@ function resendClient(): Resend | null {
   return client;
 }
 
-// The address mail is sent *from*, which has to belong to a domain verified
-// in Resend. Where it's sent *to* is studioInbox().
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
-
 /**
- * Sent with a display name, never as a bare address.
+ * Everything from this route is sent from info@, with a display name.
  *
- * `CONTACT_EMAIL` is a role mailbox — in production it is `notifications@` —
- * and a bare address makes the client derive the sender name from the local
- * part, so the acknowledgement arrived from a person called "notifications".
- * Reads as a phishing attempt to anyone who did not just fill in the form,
- * and an unrecognised sender name is a spam signal in its own right. Matches
- * the `${fromName} <${address}>` shape lib/email.ts already sends with.
+ * Not `process.env.CONTACT_EMAIL`: that is set to `notifications@` in
+ * production and quietly beat the `info@` default, so mail arrived from a
+ * mailbox nobody reads. Same constant lib/email.ts now uses, from
+ * lib/company.ts, so the sender cannot disagree with the address printed in
+ * the footer or on the invoices.
+ *
+ * The display name matters separately — a bare address makes the client
+ * derive a sender name from the local part, which is how the first
+ * acknowledgements arrived from a person called "notifications".
  */
-const MAIL_FROM = `${COMPANY_NAME} <${CONTACT_EMAIL}>`;
+const MAIL_FROM = `${COMPANY_NAME} <${COMPANY_EMAIL}>`;
 
 const SERVICES = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
 
