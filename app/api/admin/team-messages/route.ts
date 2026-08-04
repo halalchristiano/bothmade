@@ -1,34 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { sanitizeAttachments } from '@/lib/team-chat';
 
-/** Thread between the current user and every other team member — a small team, so one flat thread is simplest. */
-export async function GET() {
+/**
+ * The team thread.
+ *
+ * Two bugs this route used to carry, both now gone. It fetched the OLDEST
+ * 200 rows (orderBy asc + take), so once system traffic pushed history past
+ * 200 the newest messages never appeared at all — the chat silently froze
+ * in the past. And listing had write side effects: every poll stamped read
+ * receipts and teamChatReadAt, so a background tab marked everything read
+ * forever. Reads now read; marking read is its own POST (/read), called by
+ * the page only when it's actually visible.
+ *
+ * ?after=<ISO date> returns only newer rows, which is what lets the page
+ * poll cheaply instead of refetching the world every 15 seconds.
+ */
+export async function GET(request: NextRequest) {
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
+    const after = request.nextUrl.searchParams.get('after');
+    const afterDate = after ? new Date(after) : null;
+    const validAfter = afterDate && !Number.isNaN(afterDate.getTime()) ? afterDate : null;
+
     const messages = await prisma.teamMessage.findMany({
-      orderBy: { createdAt: 'asc' },
+      where: validAfter ? { createdAt: { gt: validAfter } } : undefined,
+      // Newest 200, presented oldest-first. The reverse matters: "the most
+      // recent two hundred" is what a chat means by history.
+      orderBy: { createdAt: 'desc' },
       take: 200,
       include: {
         fromUser: { select: { id: true, name: true, email: true } },
       },
     });
-
-    // Two different things, both needed. The first is a read receipt on a
-    // direct message, which the sender sees. The second is when *I* last
-    // opened the chat — that's what the unread badge counts against, so it
-    // clears for broadcasts too, which a per-message readAt never could.
-    await prisma.teamMessage.updateMany({
-      where: { toUserId: session.userId, readAt: null },
-      data: { readAt: new Date() },
-    });
-
-    await prisma.user.update({
-      where: { id: session.userId },
-      data: { teamChatReadAt: new Date() },
-    });
+    messages.reverse();
 
     return NextResponse.json({ success: true, messages }, { status: 200 });
   } catch (error) {
@@ -42,19 +51,31 @@ export async function POST(request: NextRequest) {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
-    const { content, toUserId, relatedLeadId, relatedProjectId, urgent } = await request.json();
-    if (!content || typeof content !== 'string' || !content.trim()) {
-      return NextResponse.json({ error: 'Message content is required' }, { status: 400 });
+    const { content, toUserId, relatedLeadId, relatedProjectId, urgent, attachments } =
+      await request.json();
+    const files = sanitizeAttachments(attachments);
+    if ((!content || typeof content !== 'string' || !content.trim()) && files.length === 0) {
+      return NextResponse.json({ error: 'Say something or attach something' }, { status: 400 });
+    }
+
+    // A DM to a user that doesn't exist would store silently and never be
+    // seen by anyone — the worst kind of sent message.
+    if (toUserId) {
+      const recipient = await prisma.user.findUnique({ where: { id: String(toUserId) }, select: { id: true } });
+      if (!recipient) {
+        return NextResponse.json({ error: 'That teammate no longer exists' }, { status: 400 });
+      }
     }
 
     const message = await prisma.teamMessage.create({
       data: {
-        content: content.trim(),
+        content: typeof content === 'string' ? content.trim() : '',
         fromUserId: session.userId,
         toUserId: toUserId || null,
         relatedLeadId: relatedLeadId || null,
         relatedProjectId: relatedProjectId || null,
         urgent: Boolean(urgent),
+        attachments: files as unknown as Prisma.InputJsonValue,
       },
       include: {
         fromUser: { select: { id: true, name: true, email: true } },

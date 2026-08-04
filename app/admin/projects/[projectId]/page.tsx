@@ -8,6 +8,8 @@ import { Mail } from 'lucide-react';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
+import { Linkify } from '@/components/Linkify';
+import { Paperclip, X as XIcon } from 'lucide-react';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -350,17 +352,47 @@ export default function AdminProjectDetailPage() {
     }
   };
 
+  const [messageFiles, setMessageFiles] = useState<{ name: string; url: string }[]>([]);
+  const [messageUploading, setMessageUploading] = useState(false);
+  const messageFileInput = useRef<HTMLInputElement>(null);
+
+  const handleAttachMessageFiles = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    setMessageUploading(true);
+    try {
+      for (const file of Array.from(list).slice(0, 5)) {
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/admin/team-chat/upload',
+        });
+        setMessageFiles((prev) => [...prev, { name: file.name, url: blob.url }]);
+      }
+    } catch {
+      // The composer stays usable; the missing chip is the signal.
+    } finally {
+      setMessageUploading(false);
+      if (messageFileInput.current) messageFileInput.current.value = '';
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!messageContent.trim()) return;
+    if (!messageContent.trim() && messageFiles.length === 0) return;
     setMessageSending(true);
     try {
       const response = await fetch(`/api/admin/projects/${projectId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: messageContent }),
+        // The route and schema accepted attachments all along — this UI
+        // just never offered a way to send any, so files got shoehorned
+        // into Deliverables mid-conversation.
+        body: JSON.stringify({
+          content: messageContent.trim() || '(file attached)',
+          attachments: messageFiles,
+        }),
       });
       if (response.ok) {
         setMessageContent('');
+        setMessageFiles([]);
         loadProject();
       }
     } finally {
@@ -799,7 +831,7 @@ export default function AdminProjectDetailPage() {
                         {new Date(m.createdAt).toLocaleString()}
                       </p>
                     </div>
-                    <p className="text-sm text-white/60">{m.content}</p>
+                    <p className="text-sm text-white/60 whitespace-pre-wrap break-words"><Linkify text={m.content} /></p>
                     {m.attachments && m.attachments !== '[]' && (
                       <div className="mt-2 space-y-1">
                         {(() => {
@@ -844,13 +876,48 @@ export default function AdminProjectDetailPage() {
                 className={`${inputClass} resize-none mb-3`}
                 placeholder="Type a message, or click 'Draft from selections' above..."
               />
-              <button
-                onClick={handleSendMessage}
-                disabled={messageSending || !messageContent.trim()}
-                className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                {messageSending ? 'Sending...' : 'Send Message'}
-              </button>
+              {messageFiles.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {messageFiles.map((f, i) => (
+                    <span key={i} className="flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1 text-xs text-white/70">
+                      📎 <span className="max-w-[160px] truncate">{f.name}</span>
+                      <button
+                        onClick={() => setMessageFiles((prev) => prev.filter((_, j) => j !== i))}
+                        aria-label={`Remove ${f.name}`}
+                        className="text-white/40 hover:text-white"
+                      >
+                        <XIcon size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  ref={messageFileInput}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleAttachMessageFiles(e.target.files)}
+                  aria-label="Attach files to message"
+                />
+                <button
+                  onClick={() => messageFileInput.current?.click()}
+                  disabled={messageUploading}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/15 text-white/60 hover:bg-white/5 hover:text-white disabled:opacity-40"
+                  aria-label="Attach a file"
+                  title="Attach a file — it goes to the client with this message"
+                >
+                  <Paperclip size={15} />
+                </button>
+                <button
+                  onClick={handleSendMessage}
+                  disabled={messageSending || messageUploading || (!messageContent.trim() && messageFiles.length === 0)}
+                  className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                >
+                  {messageSending ? 'Sending...' : messageUploading ? 'Uploading…' : 'Send Message'}
+                </button>
+              </div>
             </div>
           </div>
 

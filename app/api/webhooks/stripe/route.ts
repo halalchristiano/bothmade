@@ -221,6 +221,9 @@ async function handleCheckoutSessionCompleted(
           fromUserId: notifier,
           relatedLeadId: leadId,
           relatedProjectId: project.id,
+          // The app narrating, not the assigned rep speaking — rendered as a
+          // timeline row so nobody reads a celebration they never typed.
+          kind: 'system',
         },
       });
     }

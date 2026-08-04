@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Linkify } from '@/components/Linkify';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
@@ -37,6 +38,7 @@ const stagger: Variants = {
   show: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } },
 };
 
+// (Linkify import added below the imports; see components/Linkify)
 interface ClientInstalment {
   id: string;
   index: number;
@@ -1146,7 +1148,14 @@ export default function ClientDashboard() {
               <p className="text-xs text-white/40">Our team typically replies within one business day</p>
             </div>
 
-            <div className="space-y-4 mb-8 max-h-96 overflow-y-auto">
+            <div
+              className="space-y-4 mb-8 max-h-96 overflow-y-auto"
+              ref={(el) => {
+                // Land on the newest message, not the oldest — the thread
+                // reads bottom-up like every chat the client already knows.
+                if (el) el.scrollTop = el.scrollHeight;
+              }}
+            >
               {project.messages.length > 0 ? (
                 project.messages.map((message) => (
                   <div
@@ -1162,10 +1171,11 @@ export default function ClientDashboard() {
                         {message.isFromAdmin ? message.user?.name || 'Team' : 'You'}
                       </p>
                       <p className="text-xs text-white/30">
-                        {new Date(message.createdAt).toLocaleDateString()}
+                        {new Date(message.createdAt).toLocaleDateString()}{' '}
+                        {new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                       </p>
                     </div>
-                    <p className="text-white/70 text-sm">{message.content}</p>
+                    <p className="text-white/70 text-sm whitespace-pre-wrap break-words"><Linkify text={message.content} /></p>
                     {message.attachments && message.attachments !== '[]' && (
                       <div className="mt-2 space-y-1">
                         {(() => {

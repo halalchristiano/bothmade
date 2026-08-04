@@ -121,6 +121,7 @@ export async function recordLeadMockup({
 
   await prisma.teamMessage.create({
     data: {
+        kind: 'system',
       content:
         index === 1
           ? `✅ Mockup ready for ${lead.company}: ${url}`

@@ -910,9 +910,28 @@ model TeamMessage {
   urgent   Boolean @default(false) // a flagged question needing action, not just a casual chat message
   resolved Boolean @default(false)
 
+  // "chat" is a person talking; "system" is the app narrating (a payment
+  // landing, a mockup delivered). They shared one undifferentiated shape,
+  // which meant the Stripe webhook's celebration bubble rendered as words
+  // some real person never wrote. System rows keep a fromUserId (the
+  // schema requires an author and cascade anchor) but render as timeline
+  // rows, not speech.
+  kind String @default("chat")
+
+  // [{ name, url }] — files shared in the thread, stored on Blob like every
+  // other upload. Native Json, matching the newer columns, not the legacy
+  // JSON-in-string pattern.
+  attachments Json @default("[]")
+
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
+  // The unread predicate and the notifications bell filter on these every
+  // poll for every staff session; the event-bus traffic makes the table
+  // grow far faster than a two-person chat suggests.
+  @@index([createdAt])
+  @@index([toUserId, createdAt])
+  @@index([relatedLeadId, urgent, resolved])
   @@map("team_messages")
 }
 

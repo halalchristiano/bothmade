@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { unreadWhere } from '@/lib/team-chat';
 
 export async function GET() {
   try {
@@ -20,11 +21,7 @@ export async function GET() {
     });
 
     const count = await prisma.teamMessage.count({
-      where: {
-        fromUserId: { not: session.userId },
-        OR: [{ toUserId: session.userId }, { toUserId: null }],
-        ...(user?.teamChatReadAt ? { createdAt: { gt: user.teamChatReadAt } } : {}),
-      },
+      where: unreadWhere(session.userId, user?.teamChatReadAt ?? null),
     });
 
     return NextResponse.json({ success: true, count }, { status: 200 });
