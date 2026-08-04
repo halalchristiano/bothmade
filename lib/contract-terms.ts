@@ -18,7 +18,7 @@
 // NOT a substitute for review by a lawyer licensed in your jurisdiction
 // before it's treated as binding.
 
-import { formatCents, instalmentSchedule, type CustomItem } from '@/lib/pricing';
+import { formatCents, formatCentsExact, instalmentSchedule, type CustomItem } from '@/lib/pricing';
 import { COMPANY_EMAIL, LEGAL_NAME } from '@/lib/company';
 
 /** One line of custom work as the contract states it: what it's called, what
@@ -127,7 +127,10 @@ export const ABSENCE_NOTICE_BUSINESS_DAYS = 10;
 export const ABSENCE_CREDIT_THRESHOLD_BUSINESS_DAYS = 10;
 
 function money(cents: number): string {
-  return formatCents(cents);
+  // Exact, because these figures are multiplied and summed by the reader: a
+  // contract whose three instalments visibly don't add up to its own total
+  // is the kind of document a finance department bounces.
+  return formatCentsExact(cents);
 }
 
 const AGENCY_RATE = `${formatCents(AGENCY_RATE_CENTS)} per hour`;
@@ -241,7 +244,7 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
         `Payment 1 of ${first.count} — ${money(first.amountCents)} (${first.percent}% of the Total Fee), due on signing. Work is scheduled once it is received, and the Kickoff Date under Section 5 cannot occur before it clears.`,
         `Payment 2 of ${second.count} — ${money(second.amountCents)} (${second.percent}% of the Total Fee), due on Design Approval, including deemed approval under Section 4. It is invoiced on the day of approval and payable within fourteen (14) days; the Agency is not required to begin Build before it is received, and the timeline extends by any gap between approval and payment.`,
         `Payment 3 of ${third.count} — ${money(third.amountCents)} (${third.percent}% of the Total Fee), due when the Project is Ready for Launch. It is invoiced at that point and payable within fourteen (14) days. Nothing goes live, no files or source transfer, no credentials hand over, and no intellectual property assigns until it has cleared: the finished Project is visible in full on the Preview Environment while the Client decides to pay, which is exactly the order of events both Parties want in writing.`,
-        'Instalments are invoiced individually, each identified by its position in the schedule, and Exhibit B restates the full schedule in one place. Where the Client chooses to pay ahead of schedule — including paying the Total Fee in full at signing — the later gates still apply to delivery, and Section 8(d) governs what happens to prepaid amounts if the Project ends early.',
+        `Instalments are invoiced individually, each identified by its position in the schedule, and Exhibit B restates the full schedule in one place. Where the Client chooses to pay ahead of schedule — including paying the Total Fee in full at signing — the later gates still apply to delivery, and Section 8(${consumer ? 'e' : 'd'}) governs what happens to prepaid amounts if the Project ends early.`,
         `The Agency is not registered for VAT, and no VAT is charged on or added to the Fees. If the Agency becomes required to register for VAT, VAT will be added to invoices issued after registration only where the law requires it, and the Client will be told before it first appears.`,
         ...(consumer
           ? [
@@ -623,7 +626,7 @@ function buildExhibits(p: ContractParams): ContractSection[] {
         'Provided for illustration only — it does not modify Sections 7, 8, or 10, which control in the event of any inconsistency. The figures below use this engagement\'s actual numbers, so they are the amounts that would really apply.',
         ...(consumer
           ? [
-              `Cancelling in the first 14 days: the Client signed, paid ${money(first.amountCents)}, and cancels on day 10, by which point 8 hours of Discovery work (${money(8 * AGENCY_RATE_CENTS)} at the Agency Rate) had been done at the Client's request. The refund is ${money(first.amountCents - 8 * AGENCY_RATE_CENTS)} — everything paid, less the work actually supplied.`,
+              `Cancelling in the first 14 days: the Client signed, paid ${money(first.amountCents)}, and cancels on day 10, by which point 8 hours of Discovery work (${money(8 * AGENCY_RATE_CENTS)} at the Agency Rate) had been done at the Client's request. The refund is ${money(Math.max(0, first.amountCents - 8 * AGENCY_RATE_CENTS))} — everything paid, less the work actually supplied.`,
               `Cancelling later: the Client cancels after Design Approval, having paid ${money(first.amountCents + second.amountCents)} across two Instalments for gates that were reached and approved. The Agency retains payment for the work performed and provides the time record; anything paid beyond the value of work done comes back.`,
             ]
           : [

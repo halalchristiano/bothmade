@@ -29,7 +29,8 @@ export interface CallBriefLead {
   customPainPoints: string | null;
   essentialPoints: string | null;
   upsellPoints: string | null;
-  painPoints: PainPointKey[];
+  /** Comes off the wire as the stored comma-string; an already-parsed array is accepted too. */
+  painPoints: string | PainPointKey[];
   estimateLowCents: number | null;
   estimateHighCents: number | null;
   assignedTo?: { name: string | null } | null;
@@ -52,9 +53,21 @@ export function buildLeadBrief(lead: CallBriefLead): CallBrief {
   const writtenNeeds = parseSalesPoints(lead.essentialPoints);
   const writtenUpsell = parseSalesPoints(lead.upsellPoints);
 
+  // The DB stores painPoints as a comma-separated string and the lead API
+  // returns it verbatim — spreading a string iterates its CHARACTERS, which
+  // crashed the cockpit on the most common lead shape. Normalize first, and
+  // keep only keys the catalogue actually knows.
+  const painKeys: PainPointKey[] = (
+    Array.isArray(lead.painPoints)
+      ? lead.painPoints
+      : String(lead.painPoints ?? '')
+          .split(',')
+          .map((k) => k.trim())
+  ).filter((k): k is PainPointKey => k in PAIN_POINTS);
+
   const inferred =
-    writtenPains.length > 0 ? [] : inferPainPointsFromNotes(lead.notes, lead.painPoints);
-  const allPains = [...lead.painPoints, ...inferred];
+    writtenPains.length > 0 ? [] : inferPainPointsFromNotes(lead.notes, painKeys);
+  const allPains = [...painKeys, ...inferred];
   const recs = buildSalesRecommendations(allPains);
 
   // A checklist pain point already covered by a bespoke one would show the

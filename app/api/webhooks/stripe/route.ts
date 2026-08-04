@@ -144,11 +144,29 @@ async function handleCheckoutSessionCompleted(
     })()
   );
 
-  // Idempotency: Stripe may redeliver the same event
+  // Idempotency: Stripe may redeliver the same event. A redelivery can also
+  // be the retry that RESCUES a half-created project — if the first delivery
+  // died after creating the project but before (or during) seeding its
+  // instalment schedule, this is the moment to finish the job rather than
+  // silently leave a project whose schedule under-reports what is owed.
   const existingProjectForSession = await prisma.project.findFirst({
     where: { stripeSessionId: session.id },
+    include: { instalments: { select: { id: true } } },
   });
   if (existingProjectForSession) {
+    if (existingProjectForSession.instalments.length === 0) {
+      await prisma.$transaction((tx) =>
+        seedInstalments(
+          tx,
+          { id: existingProjectForSession.id, totalPrice: existingProjectForSession.totalPrice },
+          session.amount_total ??
+            (metadata.paymentType === 'deposit'
+              ? Number(metadata.depositAmount) || 0
+              : existingProjectForSession.totalPrice),
+          session.id
+        )
+      );
+    }
     return;
   }
 
@@ -258,11 +276,17 @@ async function handleCheckoutSessionCompleted(
 
   // Seed the three-instalment schedule the contract promised, marking as
   // paid whatever this checkout covered — the first instalment on a normal
-  // signing, all three on pay-in-full. From here on, every surface reads
-  // these rows instead of re-deriving "what's owed" from payment arithmetic.
-  await seedInstalments(prisma, project, amountPaid, session.id).catch((error) => {
-    console.error(`Webhook: instalment seeding failed for project ${project.id}:`, error);
-  });
+  // signing, all three on pay-in-full. Atomic, so a mid-seed failure leaves
+  // zero rows rather than a partial schedule that under-reports what is
+  // owed; and thrown, so Stripe's redelivery (caught by the idempotency
+  // branch above, which back-fills an empty schedule) gets to finish the
+  // job. On a deposit sale where Stripe ever omitted amount_total, fall
+  // back to the DEPOSIT, not the whole price — the old fallback would have
+  // marked all three instalments paid on one deposit.
+  const seedAmount =
+    session.amount_total ??
+    (metadata.paymentType === 'deposit' ? Number(metadata.depositAmount) || 0 : totalPrice);
+  await prisma.$transaction((tx) => seedInstalments(tx, project, seedAmount, session.id));
 
   await notifyAdminsPaymentReceived({
     projectId: project.id,
@@ -593,46 +617,63 @@ async function handleExistingProjectPayment(
       : 'balance';
   const invoiceId = metadata.invoiceId || null;
 
-  await prisma.payment.create({
-    data: {
-      projectId,
-      amount: amountPaid,
-      type,
-      stripeSessionId: session.id,
-      invoiceId,
-    },
-  });
+  // One transaction for the money and everything the money settles. The
+  // Payment row is the idempotency anchor for this session id — if it
+  // committed while the instalment or invoice update failed, the guard at
+  // the top would swallow the redelivery that could have finished the job,
+  // leaving a paid instalment reading "due" forever. Together they commit
+  // or together they retry.
+  await prisma.$transaction(async (tx) => {
+    await tx.payment.create({
+      data: {
+        projectId,
+        amount: amountPaid,
+        type,
+        stripeSessionId: session.id,
+        invoiceId,
+      },
+    });
 
-  // An instalment checkout carries its row's id; settle that exact row so
-  // the schedule the client sees ("Payment 2 of 3 — paid") moves the moment
-  // the money does. Scoped to not-yet-paid so a redelivered event can't
-  // rewrite paidAt.
-  if (metadata.instalmentId) {
-    await prisma.instalment
-      .updateMany({
+    // An instalment checkout carries its row's id; settle that exact row so
+    // the schedule the client sees ("Payment 2 of 3 — paid") moves the
+    // moment the money does. Scoped to not-yet-paid so a redelivered event
+    // can't rewrite paidAt.
+    if (metadata.instalmentId) {
+      await tx.instalment.updateMany({
         where: { id: metadata.instalmentId, projectId, status: { not: 'paid' } },
         data: { status: 'paid', paidAt: new Date() },
-      })
-      .catch((error) => {
-        console.error(`Payment webhook: could not mark instalment ${metadata.instalmentId} paid:`, error);
-        return null;
       });
-  }
+    } else if (type === 'deposit' || type === 'balance') {
+      // Contract-price money that arrived OUTSIDE the instalment flow — the
+      // legacy collect-balance link, a manually minted checkout. Apply it to
+      // the schedule oldest-first, whole rows only, so the books and the
+      // "Payment N of 3" display can't drift apart just because ops used an
+      // older button.
+      const openRows = await tx.instalment.findMany({
+        where: { projectId, status: { in: ['scheduled', 'due'] } },
+        orderBy: { index: 'asc' },
+      });
+      let remaining = amountPaid;
+      for (const row of openRows) {
+        if (remaining < row.amountCents) break;
+        remaining -= row.amountCents;
+        await tx.instalment.update({
+          where: { id: row.id },
+          data: { status: 'paid', paidAt: new Date() },
+        });
+      }
+    }
 
-  // Settling the invoice is what takes "Pay now" off the client's dashboard
-  // and off ours. Scoped to a still-open invoice so a redelivered event
-  // can't rewrite when it was paid.
-  if (invoiceId) {
-    await prisma.invoice
-      .updateMany({
+    // Settling the invoice is what takes "Pay now" off the client's
+    // dashboard and off ours. Scoped to a still-open invoice so a
+    // redelivered event can't rewrite when it was paid.
+    if (invoiceId) {
+      await tx.invoice.updateMany({
         where: { id: invoiceId, status: 'open' },
         data: { status: 'paid', paidAt: new Date() },
-      })
-      .catch((error) => {
-        console.error(`Payment webhook: could not mark invoice ${invoiceId} paid:`, error);
-        return null;
       });
-  }
+    }
+  });
 
   // formatCentsExact rather than formatCents: a custom charge can carry
   // cents, and a receipt line that rounds them disagrees with the card. The

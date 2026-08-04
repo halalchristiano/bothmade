@@ -34,6 +34,18 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    // Instalment-scheduled projects bill through their schedule — this
+    // lump-balance path running in parallel was a double-collection route:
+    // its payments never settled instalment rows, so the client could pay
+    // here today and still be invoiced "Payment 2 of 3" tomorrow.
+    const scheduled = await prisma.instalment.count({ where: { projectId: project.id } });
+    if (scheduled > 0) {
+      return NextResponse.json(
+        { error: 'This project bills by instalment schedule — send the next payment from the Payment schedule panel instead.' },
+        { status: 400 }
+      );
+    }
+
     const amountPaid = amountPaidTowardProject(project.payments);
     const balanceDue = project.totalPrice - amountPaid;
 

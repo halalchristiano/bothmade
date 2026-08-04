@@ -109,6 +109,25 @@ export async function GET(
           amountPaid,
           balanceDue: project.totalPrice - amountPaid,
           payments: project.payments,
+          // The schedule the whole instalment feature reads. Fetched above
+          // since the feature shipped — but never actually returned, which
+          // left the client's "Payment N of 3" list dead and the pay button
+          // falling through to the lump-balance label. Checkout internals
+          // (session ids, raw payment URLs) stay server-side; the client
+          // pays through pay-balance, which validates freshness.
+          instalments: project.instalments.map((inst) => ({
+            id: inst.id,
+            index: inst.index,
+            count: inst.count,
+            label: inst.label,
+            percent: inst.percent,
+            amountCents: inst.amountCents,
+            trigger: inst.trigger,
+            status: inst.status,
+            invoiceNumber: inst.invoiceNumber,
+            dueAt: inst.dueAt,
+            paidAt: inst.paidAt,
+          })),
           // Who raised an invoice is an internal detail — the client gets
           // the invoice, not the org chart.
           invoices: project.invoices.map((invoice) => ({

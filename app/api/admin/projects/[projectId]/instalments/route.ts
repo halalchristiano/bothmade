@@ -6,7 +6,7 @@ import { sendInstalmentEmail } from '@/lib/email';
 import { buildInstalmentInvoicePdf } from '@/lib/invoice-pdf';
 import { formatInvoiceNumber, invoiceNumberPrefix } from '@/lib/billing';
 import { instalmentDueDate, instalmentEmailCopy, instalmentsForProject } from '@/lib/instalments';
-import { formatCents } from '@/lib/pricing';
+import { formatCents, formatCentsExact } from '@/lib/pricing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -94,44 +94,66 @@ export async function POST(
       );
     }
 
-    // Re-sending a still-due instalment reuses its invoice identity: same
-    // number, same amount, fresh checkout link and a fresh email. A client
-    // must never hold two differently numbered invoices for one payment.
-    const invoiceNumber =
-      inst.invoiceNumber ??
-      (await (async () => {
-        for (let attempt = 0; attempt < 5; attempt++) {
-          const number = await claimInvoiceNumber();
-          try {
-            await prisma.instalment.update({
-              where: { id: inst.id },
-              data: { invoiceNumber: number },
-            });
-            return number;
-          } catch {
-            continue; // P2002: someone else claimed it — count again.
-          }
+    // The invoice number is claimed by creating the Invoice row itself —
+    // the ledger's unique constraint is the lock, exactly as the custom
+    // charge allocator does it. Claiming by stamping the instalment first
+    // left a number that existed nowhere in the ledger's namespace, so a
+    // concurrent custom charge could take the same number and this
+    // instalment would bind to a stranger's invoice.
+    //
+    // A re-send reuses the stored identity — same number, same amount,
+    // fresh link — but only after checking the row actually belongs to
+    // this project for this amount; anything else mints fresh.
+    let invoice: { id: string; number: string } | null = null;
+    if (inst.invoiceNumber) {
+      const existing = await prisma.invoice.findUnique({ where: { number: inst.invoiceNumber } });
+      if (existing && existing.projectId === project.id && existing.amountCents === inst.amountCents) {
+        invoice = existing;
+      }
+    }
+    if (!invoice) {
+      for (let attempt = 0; attempt < 5 && !invoice; attempt++) {
+        const number = await claimInvoiceNumber();
+        try {
+          invoice = await prisma.invoice.create({
+            data: {
+              number,
+              clientId: project.clientId,
+              projectId: project.id,
+              description: `${inst.label} — ${project.name}`,
+              lineItems: [{ label: `${inst.label} (${inst.percent}% of project total)`, priceCents: inst.amountCents }],
+              amountCents: inst.amountCents,
+              issuedById: session.userId,
+              sentToEmail: project.client.email,
+            },
+          });
+        } catch {
+          continue; // P2002: someone else took that number — count again.
         }
-        throw new Error('Could not allocate an invoice number');
-      })());
+      }
+      if (!invoice) {
+        return NextResponse.json({ error: 'Could not allocate an invoice number — try again.' }, { status: 503 });
+      }
+      await prisma.instalment.update({
+        where: { id: inst.id },
+        data: { invoiceNumber: invoice.number },
+      });
+    }
+    const invoiceNumber = invoice.number;
 
-    // The ledger row, so instalment money shows up in the same books as
-    // every other charge. Idempotent on re-send via the stored number.
-    const existingInvoice = await prisma.invoice.findUnique({ where: { number: invoiceNumber } });
-    const invoice =
-      existingInvoice ??
-      (await prisma.invoice.create({
-        data: {
-          number: invoiceNumber,
-          clientId: project.clientId,
-          projectId: project.id,
-          description: `${inst.label} — ${project.name}`,
-          lineItems: [{ label: `${inst.label} (${inst.percent}% of project total)`, priceCents: inst.amountCents }],
-          amountCents: inst.amountCents,
-          issuedById: session.userId,
-          sentToEmail: project.client.email,
-        },
-      }));
+    // Two people clicking Send at once would mint two live checkouts for one
+    // payment. Claim the row before touching Stripe: only proceed if it is
+    // still exactly as read; a 409 beats a double collection.
+    const claimed = await prisma.instalment.updateMany({
+      where: { id: inst.id, status: inst.status, stripeSessionId: inst.stripeSessionId },
+      data: { invoicedAt: inst.invoicedAt ?? new Date() },
+    });
+    if (claimed.count === 0) {
+      return NextResponse.json(
+        { error: `${inst.label} is already being sent by someone else — refresh to see it.` },
+        { status: 409 }
+      );
+    }
 
     // A re-send replaces the checkout link, so kill the old session first —
     // two live links for one instalment is the double-collection window the
@@ -188,7 +210,7 @@ export async function POST(
     try {
       const schedule = instalments.map((i) => ({
         label: i.label,
-        amount: formatCents(i.amountCents),
+        amount: formatCentsExact(i.amountCents),
         status:
           i.status === 'paid' ? ('paid' as const) : i.id === inst.id ? ('due' as const) : ('scheduled' as const),
         triggerLabel:
@@ -207,7 +229,7 @@ export async function POST(
           projectName: project.name,
           schedule,
           instalmentIndex: inst.index,
-          amountDue: formatCents(inst.amountCents),
+          amountDue: formatCentsExact(inst.amountCents),
           totalPrice: formatCents(project.totalPrice),
           dueDate: dateLabel(dueAt),
           gateLine,
@@ -249,8 +271,8 @@ export async function POST(
         title: `${inst.label} invoiced`,
         description:
           inst.trigger === 'ready-for-launch'
-            ? `Your project is ready to launch — the final invoice (${invoiceNumber}, ${formatCents(inst.amountCents)}) is in your inbox. We go live as soon as it clears.`
-            : `${inst.label} (${invoiceNumber}, ${formatCents(inst.amountCents)}) has been sent to your email with a secure payment link.`,
+            ? `Your project is ready to launch — the final invoice (${invoiceNumber}, ${formatCentsExact(inst.amountCents)}) is in your inbox. We go live as soon as it clears.`
+            : `${inst.label} (${invoiceNumber}, ${formatCentsExact(inst.amountCents)}) has been sent to your email with a secure payment link.`,
         statusStage: project.status,
         userId: session.userId,
       },

@@ -9,6 +9,10 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
+    // Writes into EVERY client thread and emails every client — at least as
+    // consequential as replying in one thread, which is OPS-gated.
+    const denied = requireRole(session, OPS);
+    if (denied) return denied;
 
     const { content, segment = 'active' } = await request.json();
     if (!content || typeof content !== 'string' || !content.trim()) {

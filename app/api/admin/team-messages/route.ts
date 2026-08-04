@@ -27,8 +27,15 @@ export async function GET(request: NextRequest) {
     const afterDate = after ? new Date(after) : null;
     const validAfter = afterDate && !Number.isNaN(afterDate.getTime()) ? afterDate : null;
 
+    // Broadcasts and MY conversations only — a DM between two other people
+    // is not this caller's to read, and the page's "Only the two of you see
+    // this" promise has to be true at the API, not just in the filter the
+    // browser applies.
+    const visibility = {
+      OR: [{ toUserId: null }, { toUserId: session.userId }, { fromUserId: session.userId }],
+    };
     const messages = await prisma.teamMessage.findMany({
-      where: validAfter ? { createdAt: { gt: validAfter } } : undefined,
+      where: validAfter ? { AND: [visibility, { createdAt: { gt: validAfter } }] } : visibility,
       // Newest 200, presented oldest-first. The reverse matters: "the most
       // recent two hundred" is what a chat means by history.
       orderBy: { createdAt: 'desc' },

@@ -40,10 +40,12 @@ const TRIGGER_LABEL: Record<string, string> = {
 };
 
 function money(cents: number): string {
+  const hasCents = cents % 100 !== 0;
   return (cents / 100).toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 0,
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
   });
 }
 

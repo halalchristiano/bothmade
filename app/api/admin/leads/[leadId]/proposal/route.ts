@@ -45,7 +45,7 @@ export async function POST(
       clientType,
       timeline,
       depositOnly = false,
-      isConsumer = false,
+      isConsumer,
       totalPriceOverride,
       sendEmail = false,
       customItems: rawCustomItems = [],
@@ -107,7 +107,10 @@ export async function POST(
         proposalTimeline: timeline,
         proposalTotalPrice: totalPrice,
         proposalDepositOnly: Boolean(depositOnly),
-        isConsumer: Boolean(isConsumer),
+        // Only written when the caller took a position — an omitted field
+        // must not silently reset a consumer lead back to the B2B form,
+        // whose terms are void against them.
+        ...(typeof isConsumer === 'boolean' ? { isConsumer } : {}),
         proposalCustomItems: customItems as unknown as Prisma.InputJsonValue,
         // A new proposal supersedes any prior agreement — the client needs
         // to re-agree if Evan changes the scope or price after they signed.

@@ -57,9 +57,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           { status: 400 }
         );
       }
-      if (due.paymentUrl) {
-        return NextResponse.json({ success: true, url: due.paymentUrl }, { status: 200 });
+      // Reuse the emailed link only while Stripe still honours it. Checkout
+      // Sessions die after 24 hours; the invoice promises 14 days — so a
+      // client paying on day 3 must get a FRESH session, not the corpse of
+      // the emailed one, and pay-balance is exactly where they land when
+      // the emailed button stops working.
+      if (due.paymentUrl && due.stripeSessionId) {
+        const stored = await stripe.checkout.sessions
+          .retrieve(due.stripeSessionId)
+          .catch(() => null);
+        if (stored?.status === 'open') {
+          return NextResponse.json({ success: true, url: due.paymentUrl }, { status: 200 });
+        }
       }
+
+      // Carry the ledger invoice into the fresh session's metadata, so the
+      // webhook settles the same invoice the emailed link would have.
+      const dueInvoice = due.invoiceNumber
+        ? await prisma.invoice.findUnique({ where: { number: due.invoiceNumber } })
+        : null;
       const instalmentCheckout = await stripe.checkout.sessions.create({
         mode: 'payment',
         customer_email: project.client.email,
@@ -78,6 +94,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         metadata: {
           existingProjectId: project.id,
           instalmentId: due.id,
+          ...(dueInvoice ? { invoiceId: dueInvoice.id, invoiceNumber: dueInvoice.number } : {}),
           paymentType: due.index === 1 ? 'deposit' : 'balance',
         },
       });

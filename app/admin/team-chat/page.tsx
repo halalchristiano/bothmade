@@ -231,7 +231,11 @@ export default function TeamChatPage() {
       case 'all':
         return messages.filter((m) => !m.toUserId || m.toUserId === me || m.fromUserId === me);
       case 'flags':
-        return messages.filter((m) => m.urgent);
+        // Server already scopes to broadcasts + my DMs; keep the same rule
+        // here so a flagged DM never surfaces outside its two parties.
+        return messages.filter(
+          (m) => m.urgent && (!m.toUserId || m.toUserId === me || m.fromUserId === me)
+        );
       case 'dm':
         return messages.filter(
           (m) =>
@@ -316,12 +320,22 @@ export default function TeamChatPage() {
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || 'send failed');
-      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...data.message } : m)));
-      if (data.message?.createdAt) lastSeenRef.current = data.message.createdAt;
+      // The poll owns the cursor. Advancing it from the POST skipped every
+      // teammate message created in the seconds before the send — silently,
+      // until a reload. The id-dedupe below makes the real row idempotent
+      // whether it arrives here or via the next poll.
+      setMessages((prev) => {
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+        return withoutTemp.some((m) => m.id === data.message.id)
+          ? withoutTemp
+          : [...withoutTemp, { ...data.message }];
+      });
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setDraft(content);
-      setPendingFiles(files);
+      // Merge, don't clobber: anything typed or attached while the send was
+      // in flight survives the rollback.
+      setDraft((cur) => (cur ? `${content}\n${cur}` : content));
+      setPendingFiles((cur) => [...files, ...cur.filter((f) => !files.some((g) => g.url === f.url))]);
       setUrgent(wasUrgent);
       setSendError(
         err instanceof Error && err.message !== 'send failed'

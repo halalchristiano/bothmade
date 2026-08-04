@@ -261,7 +261,7 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     }
   } else {
     drawParagraph(
-      'By signing below (or by making the deposit payment referenced in Section 6), both Parties agree to be bound by the terms of this Agreement in full.',
+      'By signing below (or by making the first Instalment payment referenced in Section 7), both Parties agree to be bound by the terms of this Agreement in full.',
       { size: 10, gap: 20 }
     );
     y -= 30;

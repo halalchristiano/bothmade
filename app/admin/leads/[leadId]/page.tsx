@@ -64,6 +64,7 @@ import {
   customItemsMissingScope,
   customItemsTotal,
   depositAmount,
+  firstInstalmentPercent,
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
@@ -91,6 +92,7 @@ interface Activity {
 }
 
 interface LeadDetail {
+  isConsumer?: boolean;
   id: string;
   company: string;
   contactName: string | null;
@@ -711,6 +713,7 @@ export default function LeadDetailPage() {
     if (lead.proposalClientType && isClientType(lead.proposalClientType)) setProposalClientType(lead.proposalClientType);
     if (lead.proposalTimeline && isTimelineKey(lead.proposalTimeline)) setProposalTimeline(lead.proposalTimeline);
     setDepositOnly(lead.proposalDepositOnly);
+    setIsConsumer(Boolean(lead.isConsumer));
     setCustomItems(sanitizeCustomItems(lead.proposalCustomItems || []));
   };
 
@@ -805,6 +808,10 @@ export default function LeadDetailPage() {
   const [revokingLink, setRevokingLink] = useState(false);
   const [revokeNote, setRevokeNote] = useState('');
   const [depositOnly, setDepositOnly] = useState(false);
+  // Consumer clients sign the consumer form of the agreement — the statutory
+  // 14-day cancellation variant. Has to be set here, before generation:
+  // by the time anyone reads the contract it is too late for it to change shape.
+  const [isConsumer, setIsConsumer] = useState(false);
   const [creatingLink, setCreatingLink] = useState(false);
   const [emailingLink, setEmailingLink] = useState(false);
   const [linkEmailStatus, setLinkEmailStatus] = useState('');
@@ -1537,7 +1544,7 @@ export default function LeadDetailPage() {
       const response = await fetch(`/api/admin/leads/${leadId}/proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...proposalSelection, depositOnly }),
+        body: JSON.stringify({ ...proposalSelection, depositOnly, isConsumer }),
       });
       const data = await response.json();
       if (data.success) {
@@ -1568,7 +1575,7 @@ export default function LeadDetailPage() {
       const response = await fetch(`/api/admin/leads/${leadId}/proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...proposalSelection, depositOnly, sendEmail: true }),
+        body: JSON.stringify({ ...proposalSelection, depositOnly, isConsumer, sendEmail: true }),
       });
       const data = await response.json();
       if (data.success) {
@@ -1609,7 +1616,7 @@ export default function LeadDetailPage() {
       const response = await fetch(`/api/admin/leads/${leadId}/invoice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...proposalSelection, depositOnly, recipient }),
+        body: JSON.stringify({ ...proposalSelection, depositOnly, isConsumer, recipient }),
       });
       const data = await response.json();
       if (data.success && data.sent) {
@@ -2640,7 +2647,7 @@ export default function LeadDetailPage() {
                     </p>
                     <p className="text-lg font-bold text-emerald-300 break-words">{formatCents(low)}</p>
                     <p className="text-[11px] text-emerald-200/60 mt-1 leading-snug">
-                      {formatCents(depositAmount(low))} up front (50%), rest on delivery
+                      {formatCents(depositAmount(low))} up front ({firstInstalmentPercent(low)}%), rest over the remaining two payments
                     </p>
                   </div>
                   <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-3.5 min-w-0">
@@ -3624,7 +3631,16 @@ export default function LeadDetailPage() {
               <label className="flex items-start gap-2 text-xs text-white/55 mt-4 cursor-pointer">
                 <input type="checkbox" className="mt-0.5" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
                 <span>
-                  Charge 50% deposit only ({formatCents(depositAmount(proposalGrandTotal))}) — collect the rest later
+                  Charge the first payment only ({formatCents(depositAmount(proposalGrandTotal))}, {firstInstalmentPercent(proposalGrandTotal)}%) — the rest bills at its gates
+                </span>
+              </label>
+
+              <label className="flex items-start gap-2 text-xs text-white/55 mt-2 cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={isConsumer} onChange={(e) => setIsConsumer(e.target.checked)} />
+                <span>
+                  This client is an <span className="text-white/80">individual, not a business</span> — issue the
+                  consumer form of the agreement (statutory 14-day cancellation rights). The B2B terms are void
+                  against a consumer, so guessing wrong protects nobody.
                 </span>
               </label>
             </div>

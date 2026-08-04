@@ -17,8 +17,14 @@ const prisma = {
   payment: { create: vi.fn(), findUnique: vi.fn() },
   lead: { update: vi.fn() },
   invoice: { updateMany: vi.fn() },
+  instalment: { create: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   teamMessage: { create: vi.fn() },
   user: { findFirst: vi.fn() },
+  // The route wraps money writes in transactions; the mock hands the same
+  // client back so every call stays observable on these spies.
+  $transaction: vi.fn((fn: unknown) =>
+    typeof fn === 'function' ? (fn as (tx: unknown) => unknown)(prisma) : Promise.all(fn as Promise<unknown>[])
+  ),
 };
 
 vi.mock('@/lib/stripe', () => ({
@@ -67,6 +73,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  // Prisma findMany never returns undefined; neither may the mock.
+  prisma.instalment.findMany.mockResolvedValue([]);
 
   prisma.project.findFirst.mockResolvedValue(null);
   prisma.project.create.mockResolvedValue({ id: 'proj_1' });
@@ -164,7 +172,9 @@ describe('a new sale', () => {
   });
 
   it('is idempotent — a redelivered event creates nothing twice', async () => {
-    prisma.project.findFirst.mockResolvedValue({ id: 'proj_existing' });
+    // The include guarantees instalments on the real query; a seeded project
+    // short-circuits, which is exactly the nothing-twice contract.
+    prisma.project.findFirst.mockResolvedValue({ id: 'proj_existing', totalPrice: 500000, instalments: [{ id: 'i1' }] });
     constructWebhookEvent.mockReturnValue(completedSession(NEW_SALE_METADATA));
 
     const res = await POST(request());

@@ -241,7 +241,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     hr();
     drawRow('Due now (deposit)', input.amountDue, { f: bold, size: 13, color: ACCENT });
     if (input.balanceRemaining) {
-      drawRow('Balance due on completion', input.balanceRemaining, { color: GRAY });
+      drawRow('Remaining schedule (design approval + ready to launch)', input.balanceRemaining, { color: GRAY });
     }
   } else {
     hr();

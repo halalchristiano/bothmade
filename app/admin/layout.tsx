@@ -414,9 +414,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  // Session: once, not per navigation.
+  // Session: once per signed-in period, not per navigation. Keyed on the
+  // login boundary — with [] deps a user landing on /admin/login first (i.e.
+  // every fresh login) never got a session fetch at all, so the nav stayed
+  // in its narrow salesless state until a hard refresh.
   useEffect(() => {
-    if (pathname === '/admin/login') return;
+    if (pathname === '/admin/login') {
+      setUserName('');
+      setUserRole('');
+      return;
+    }
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -427,7 +434,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pathname === '/admin/login']);
 
   // Unread chat: live on an interval, not only when the route changes — a
   // user sitting on one page all morning still sees the badge move.
@@ -453,8 +460,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setMobileSearchOpen(false);
   }, [pathname]);
 
-  // Cmd+K / Ctrl+K from anywhere in the admin.
+  // Cmd+K / Ctrl+K from anywhere in the admin — except the login page,
+  // where hijacking the browser's own shortcut helps nobody.
   useEffect(() => {
+    if (pathname === '/admin/login') {
+      setPaletteOpen(false);
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -463,7 +475,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [pathname === '/admin/login']);
 
   if (pathname === '/admin/login') {
     return <>{children}</>;

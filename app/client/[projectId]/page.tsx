@@ -167,6 +167,7 @@ export default function ClientDashboard() {
   const [payingBalance, setPayingBalance] = useState(false);
   const [payBalanceError, setPayBalanceError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [questions, setQuestions] = useState<
     Array<{ id: string; question: string; type: string; options: string; response: { answer: string } | null }>
@@ -227,6 +228,16 @@ export default function ClientDashboard() {
       setUnreadCount(Math.max(0, project.messages.length - (seenMessageCountRef.current || 0)));
     }
   }, [project, activeTab, projectId]);
+
+  // Land on the newest message when the tab opens or a new one arrives —
+  // and only then. A bare callback ref ran on every render, yanking the
+  // scroll to the bottom on each keystroke and every 20-second poll.
+  useEffect(() => {
+    if (activeTab !== 'messages') return;
+    const el = messagesScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, project?.messages?.length]);
 
   const loadOnboarding = async () => {
     try {
@@ -837,7 +848,12 @@ export default function ClientDashboard() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm truncate">
                           {inst.label}
-                          <span className="text-white/40"> · ${(inst.amountCents / 100).toLocaleString()}</span>
+                          <span className="text-white/40">
+                            {' '}· ${(inst.amountCents / 100).toLocaleString('en-US', {
+                              minimumFractionDigits: inst.amountCents % 100 ? 2 : 0,
+                              maximumFractionDigits: inst.amountCents % 100 ? 2 : 0,
+                            })}
+                          </span>
                         </p>
                         <p className="text-[11px] text-white/35 truncate">
                           {inst.status === 'paid'
@@ -874,7 +890,10 @@ export default function ClientDashboard() {
                         : (() => {
                             const due = project.instalments?.find((i) => i.status === 'due');
                             return due
-                              ? `Pay ${due.label} — $${(due.amountCents / 100).toLocaleString()}`
+                              ? `Pay ${due.label} — $${(due.amountCents / 100).toLocaleString('en-US', {
+                                  minimumFractionDigits: due.amountCents % 100 ? 2 : 0,
+                                  maximumFractionDigits: due.amountCents % 100 ? 2 : 0,
+                                })}`
                               : `Pay Balance — $${(project.balanceDue / 100).toLocaleString()}`;
                           })()}
                     </span>
@@ -1150,11 +1169,7 @@ export default function ClientDashboard() {
 
             <div
               className="space-y-4 mb-8 max-h-96 overflow-y-auto"
-              ref={(el) => {
-                // Land on the newest message, not the oldest — the thread
-                // reads bottom-up like every chat the client already knows.
-                if (el) el.scrollTop = el.scrollHeight;
-              }}
+              ref={messagesScrollRef}
             >
               {project.messages.length > 0 ? (
                 project.messages.map((message) => (

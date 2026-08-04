@@ -10,7 +10,7 @@
 
 import type { Instalment, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { formatCents, instalmentSchedule } from '@/lib/pricing';
+import { formatCentsExact, instalmentSchedule } from '@/lib/pricing';
 
 export type InstalmentStatus = 'scheduled' | 'due' | 'paid' | 'void';
 
@@ -90,7 +90,7 @@ export function instalmentEmailCopy(
   inst: { index: number; count: number; label: string; amountCents: number },
   ctx: { company: string; contactName: string | null; projectName: string }
 ): { subject: string; title: string; eyebrow: string; bodyHtml: string; ctaLabel: string } {
-  const amount = formatCents(inst.amountCents);
+  const amount = formatCentsExact(inst.amountCents);
   const name = ctx.contactName || 'there';
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

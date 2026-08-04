@@ -72,6 +72,7 @@ beforeEach(() => {
   });
   prisma.instalment.findMany.mockResolvedValue(structuredClone(SCHEDULE));
   prisma.instalment.update.mockResolvedValue({});
+  prisma.instalment.updateMany.mockResolvedValue({ count: 1 });
   prisma.invoice.count.mockResolvedValue(6);
   prisma.invoice.findUnique.mockResolvedValue(null);
   prisma.invoice.create.mockImplementation(async ({ data }: any) => ({ id: 'inv_1', ...data }));
@@ -114,7 +115,12 @@ describe('sending an instalment', () => {
     const schedule = structuredClone(SCHEDULE);
     schedule[1] = { ...schedule[1], status: 'due', invoiceNumber: 'BM-2026-0004', stripeSessionId: 'cs_old' };
     prisma.instalment.findMany.mockResolvedValue(schedule);
-    prisma.invoice.findUnique.mockResolvedValue({ id: 'inv_existing', number: 'BM-2026-0004' });
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'inv_existing',
+      number: 'BM-2026-0004',
+      projectId: 'proj_1',
+      amountCents: 600000,
+    });
 
     const res = await call({ index: 2 });
     const data = await res.json();
@@ -168,5 +174,37 @@ describe('listing the schedule', () => {
 
     expect(data.success).toBe(true);
     expect(data.instalments.map((i: { index: number }) => i.index)).toEqual([1, 2, 3]);
+  });
+});
+
+
+describe('the hardened claims', () => {
+  it('409s when someone else is sending the same instalment concurrently', async () => {
+    prisma.instalment.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await call({ index: 2 });
+
+    expect(res.status).toBe(409);
+    expect(sessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("mints a fresh number when the stored invoice turns out to be another project's", async () => {
+    const schedule = structuredClone(SCHEDULE);
+    schedule[1] = { ...schedule[1], status: 'due', invoiceNumber: 'BM-2026-0004' };
+    prisma.instalment.findMany.mockResolvedValue(schedule);
+    // Same number, different project: the reuse must be refused.
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'inv_foreign',
+      number: 'BM-2026-0004',
+      projectId: 'someone_elses_project',
+      amountCents: 600000,
+    });
+
+    const res = await call({ index: 2 });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.instalment.invoiceNumber).not.toBe('BM-2026-0004');
+    expect(prisma.invoice.create).toHaveBeenCalledOnce();
   });
 });
