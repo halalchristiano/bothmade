@@ -4,7 +4,9 @@ import {
   ADD_ON_REQUIRES,
   BASE_SERVICES,
   CLIENT_TYPES,
-  DEPOSIT_PERCENT,
+  INSTALMENT_THRESHOLD_CENTS,
+  firstInstalmentPercent,
+  instalmentSchedule,
   MAX_DISCOUNT_PERCENT,
   TIMELINES,
   calculatePrice,
@@ -201,15 +203,38 @@ describe('dependentsOf', () => {
   });
 });
 
-describe('deposit and discount floors', () => {
-  it('takes exactly half up front', () => {
-    expect(DEPOSIT_PERCENT).toBe(50);
+describe('the instalment schedule', () => {
+  it('bills half up front under the threshold, 40% at and above it', () => {
+    expect(firstInstalmentPercent(500000)).toBe(50);
     expect(depositAmount(500000)).toBe(250000);
+    // The boundary is inclusive: a $20,000 project is a 40/30/30 project.
+    expect(firstInstalmentPercent(INSTALMENT_THRESHOLD_CENTS)).toBe(40);
+    expect(depositAmount(2000000)).toBe(800000);
+    expect(firstInstalmentPercent(INSTALMENT_THRESHOLD_CENTS - 1)).toBe(50);
   });
 
-  it('rounds an odd deposit to a whole cent', () => {
-    expect(depositAmount(333333)).toBe(166667);
-    expect(Number.isInteger(depositAmount(333333))).toBe(true);
+  it('always sums to exactly the total, remainder on the last instalment', () => {
+    for (const total of [333333, 500000, 1499999, 2000000, 2350001]) {
+      const schedule = instalmentSchedule(total);
+      expect(schedule).toHaveLength(3);
+      expect(schedule.reduce((sum, i) => sum + i.amountCents, 0)).toBe(total);
+      for (const inst of schedule) expect(Number.isInteger(inst.amountCents)).toBe(true);
+    }
+  });
+
+  it('labels every instalment by its position, exactly as invoices will', () => {
+    const labels = instalmentSchedule(1500000).map((i) => i.label);
+    expect(labels).toEqual(['Payment 1 of 3', 'Payment 2 of 3', 'Payment 3 of 3']);
+  });
+
+  it('runs both shapes over the same three gates', () => {
+    for (const total of [1000000, 3000000]) {
+      expect(instalmentSchedule(total).map((i) => i.trigger)).toEqual([
+        'signing',
+        'design-approval',
+        'ready-for-launch',
+      ]);
+    }
   });
 
   it('lets a quote be discounted, but not gutted', () => {

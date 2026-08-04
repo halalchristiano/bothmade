@@ -21,7 +21,7 @@ vi.mock('stripe', () => ({
 }));
 
 const { createCheckoutSession } = await import('@/lib/stripe');
-const { calculatePrice, depositAmount, DEPOSIT_PERCENT } = await import('@/lib/pricing');
+const { calculatePrice, depositAmount, firstInstalmentPercent } = await import('@/lib/pricing');
 
 const INPUT = {
   baseService: 'website' as const,
@@ -62,7 +62,7 @@ describe('createCheckoutSession — the amount charged', () => {
     await createCheckoutSession(INPUT, 'https://x/ok', 'https://x/no');
 
     const charged = lastSession().line_items[0].price_data.unit_amount;
-    expect(charged).toBe(Math.round((totalPrice * DEPOSIT_PERCENT) / 100));
+    expect(charged).toBe(Math.round((totalPrice * firstInstalmentPercent(totalPrice)) / 100));
   });
 
   it('hands Stripe a whole number of cents', async () => {

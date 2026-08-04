@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { LEGAL_SIGNATORY } from '@/lib/company';
 import { LOGO_BACKGROUND, LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
 import { COMPANY_ADDRESS_INLINE, COMPANY_ADDRESS_LINES, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 import { winAnsi } from '@/lib/pdf-text';
@@ -269,7 +270,7 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     page.drawLine({ start: { x: MARGIN + 280, y }, end: { x: MARGIN + 500, y }, thickness: 1, color: GRAY });
     y -= 14;
     page.drawText('Client Signature', { x: MARGIN, y, size: 9, font, color: GRAY });
-    page.drawText('Bothmade Signature', { x: MARGIN + 280, y, size: 9, font, color: GRAY });
+    page.drawText(`${LEGAL_SIGNATORY} — Signature`, { x: MARGIN + 280, y, size: 9, font, color: GRAY });
     y -= 40;
 
     page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + 220, y }, thickness: 1, color: GRAY });

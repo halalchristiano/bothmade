@@ -8,6 +8,18 @@
  */
 export const COMPANY_NAME = 'Bothmade';
 
+/**
+ * The legal counterparty on every contract. Bothmade is a trading name, not a
+ * registered company, so the party that can actually sign and be sued is the
+ * proprietor — naming only the brand would give any client disputing an
+ * invoice a free argument about who they contracted with. One line to change
+ * on incorporation: swap this for the registered name and company number.
+ */
+export const LEGAL_NAME = 'Kiana Arabpour, trading as Bothmade';
+
+/** Short form for signature blocks. */
+export const LEGAL_SIGNATORY = 'Kiana Arabpour (Bothmade)';
+
 /** Postal address, one line per line as it should be printed. */
 export const COMPANY_ADDRESS_LINES = [
   'Suite 695',

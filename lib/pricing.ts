@@ -680,8 +680,73 @@ export function calculatePrice(selection: PricingSelection): PricingBreakdown {
   };
 }
 
-/** Standard deposit percentage quoted in the contract template. */
-export const DEPOSIT_PERCENT = 50;
+/**
+ * The instalment structure every engagement is billed on.
+ *
+ * Two shapes, one threshold, decided together with the contract terms they
+ * appear in: under $20,000 a project is paid in three instalments of
+ * 50/25/25; at $20,000 and above it is 40/30/30. The boundary is inclusive —
+ * a $20,000 project is a 40/30/30 project — and both shapes share the same
+ * three gates (signing, Design Approval, Ready for Launch), so the dashboard,
+ * the invoices, and the contract all describe one process with two sets of
+ * numbers rather than two processes.
+ */
+export const INSTALMENT_THRESHOLD_CENTS = 2_000_000;
+
+export type InstalmentTrigger = 'signing' | 'design-approval' | 'ready-for-launch';
+
+export interface ScheduledInstalment {
+  /** 1-based position, so labels read "Payment 1 of 3". */
+  index: number;
+  count: number;
+  /** "Payment 1 of 3" — the exact phrase used on invoices, emails and the contract. */
+  label: string;
+  percent: number;
+  amountCents: number;
+  trigger: InstalmentTrigger;
+  /** The trigger as the client reads it. */
+  triggerLabel: string;
+}
+
+const TRIGGERS: { trigger: InstalmentTrigger; triggerLabel: string }[] = [
+  { trigger: 'signing', triggerLabel: 'on signing, before work begins' },
+  { trigger: 'design-approval', triggerLabel: 'on Design Approval' },
+  { trigger: 'ready-for-launch', triggerLabel: 'when the Project is Ready for Launch' },
+];
+
+export function instalmentPercents(totalCents: number): number[] {
+  return totalCents >= INSTALMENT_THRESHOLD_CENTS ? [40, 30, 30] : [50, 25, 25];
+}
+
+/**
+ * The full schedule for a price. The last instalment takes the rounding
+ * remainder so the three amounts always sum to exactly the total — an
+ * invoice set that adds up to a cent more or less than the contract price
+ * is the kind of discrepancy a finance department bounces.
+ */
+export function instalmentSchedule(totalCents: number): ScheduledInstalment[] {
+  const percents = instalmentPercents(totalCents);
+  const count = percents.length;
+  let allocated = 0;
+  return percents.map((percent, i) => {
+    const amountCents =
+      i === count - 1 ? totalCents - allocated : Math.round((totalCents * percent) / 100);
+    allocated += amountCents;
+    return {
+      index: i + 1,
+      count,
+      label: `Payment ${i + 1} of ${count}`,
+      percent,
+      amountCents,
+      ...TRIGGERS[i],
+    };
+  });
+}
+
+/** First-instalment share for a price — 50 under the threshold, 40 at and above it. */
+export function firstInstalmentPercent(totalCents: number): number {
+  return instalmentPercents(totalCents)[0];
+}
 
 /**
  * How far below the calculated price a manual override is allowed to go —
@@ -695,8 +760,14 @@ export function minAllowedPrice(calculatedTotal: number): number {
   return Math.round(calculatedTotal * (1 - MAX_DISCOUNT_PERCENT / 100));
 }
 
+/**
+ * What is charged up front — the first instalment of the schedule. Kept under
+ * its historical name because every checkout, invoice and proposal route
+ * charges through this one function, which is exactly why changing the
+ * schedule here changes it everywhere at once.
+ */
 export function depositAmount(totalPrice: number): number {
-  return Math.round((totalPrice * DEPOSIT_PERCENT) / 100);
+  return instalmentSchedule(totalPrice)[0].amountCents;
 }
 
 /**

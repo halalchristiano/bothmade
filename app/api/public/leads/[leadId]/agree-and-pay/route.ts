@@ -16,7 +16,6 @@ import {
   ADD_ONS,
   BASE_SERVICES,
   CLIENT_TYPES,
-  DEPOSIT_PERCENT,
   TIMELINES,
   calculatePrice,
   customItemsTotal,
@@ -163,9 +162,6 @@ export async function POST(
       addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
       totalPrice: formatCents(totalPrice),
       totalPriceCents: totalPrice,
-      depositAmount: formatCents(deposit),
-      balanceAmount: formatCents(totalPrice - deposit),
-      depositPercent: DEPOSIT_PERCENT,
       effectiveDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     });
 
