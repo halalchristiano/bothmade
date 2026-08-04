@@ -65,9 +65,6 @@ function FaqAccordion() {
 }
 
 export default function StartPage() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
   const [interestLoading, setInterestLoading] = useState(false);
   const [interestSent, setInterestSent] = useState(false);
   const [interestError, setInterestError] = useState('');
@@ -110,39 +107,14 @@ export default function StartPage() {
     });
   };
 
-  const handleCheckout = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseService,
-          addOns,
-          clientType,
-          timeline,
-          clientEmail: email,
-          company,
-          contactName,
-          phone,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        window.location.href = data.redirectUrl;
-      } else {
-        setError(data.error || 'Error creating checkout session');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  /**
+   * There is no checkout handler here any more.
+   *
+   * /api/checkout still exists and is still tested — the deposit is taken
+   * once the scope has been talked through, not by a stranger clicking a
+   * gradient button. Restoring it is a button and a fetch, and the history
+   * for both is one `git log -- app/start/page.tsx` away.
+   */
   const handleRegisterInterest = async () => {
     setInterestError('');
     setInterestLoading(true);
@@ -383,18 +355,22 @@ export default function StartPage() {
             <span className="text-xl font-bold">Project total</span>
             <span className="text-3xl font-bold">{formatCents(breakdown.totalPrice)}</span>
           </div>
-          {/* What the card is actually charged today. The total above is the
-              contract value; showing only that next to a checkout button
-              charging half is how a customer ends up surprised either way. */}
+          {/* Terms, not a bill. Nothing can be charged from this page, so
+              "due today" would be describing something that cannot happen
+              here — the estimate starts a conversation and the payment
+              schedule is agreed in it. The split still belongs on screen:
+              someone weighing a five-figure number wants to know how it is
+              staged before they get on a call, not after. */}
           <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/5">
-            <span className="text-sm text-white/50">Due today — 50% deposit</span>
+            <span className="text-sm text-white/50">Usual split — 50% to start</span>
             <span className="text-lg font-semibold text-emerald-300">
               {formatCents(depositAmount(breakdown.totalPrice))}
             </span>
           </div>
           <p className="mt-2 text-xs text-white/35">
-            The remaining {formatCents(breakdown.totalPrice - depositAmount(breakdown.totalPrice))}{' '}
-            is due once Build is complete, before Launch.
+            Nothing is charged here. We agree the scope first — then the balance of{' '}
+            {formatCents(breakdown.totalPrice - depositAmount(breakdown.totalPrice))} is due
+            once Build is complete, before Launch.
           </p>
         </section>
 
@@ -460,44 +436,29 @@ export default function StartPage() {
             </div>
           </div>
 
-          {error && <div className="text-red-400 text-sm mb-4">{error}</div>}
-
-          <button
-            onClick={handleCheckout}
-            disabled={!canSubmit || loading}
-            className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-4 font-semibold text-black disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-          >
-            {loading
-              ? 'Processing...'
-              : `Proceed to Checkout — ${formatCents(depositAmount(breakdown.totalPrice))} deposit`}
-          </button>
-
-          <p className="text-center text-sm text-white/40 mt-3">
-            Secure payment powered by Stripe · 50% deposit today, balance before launch
-          </p>
-
-          <div className="flex items-center gap-3 my-6">
-            <div className="h-px flex-1 bg-white/10" />
-            <span className="text-xs text-white/30 uppercase tracking-wider">or</span>
-            <div className="h-px flex-1 bg-white/10" />
-          </div>
-
+          {/* Sending the selections is the only action here.
+              Taking a card before anyone has spoken to the client puts money
+              on the table ahead of the conversation that decides whether the
+              scope is even right — so checkout is off this page. The route
+              and the pricing maths behind it are untouched, so this is a
+              button to put back rather than a feature to rebuild. */}
           {interestSent ? (
             <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4 text-emerald-300 text-sm text-center">
-              Got it — we've got your selections and will be in touch shortly.
+              Got it — we&apos;ve got your selections and will be in touch shortly.
             </div>
           ) : (
             <>
               <button
                 onClick={handleRegisterInterest}
                 disabled={!canSubmit || interestLoading}
-                className="w-full rounded-lg border border-white/20 py-3.5 font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:border-white/40 hover:bg-white/5 transition-colors"
+                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-4 font-semibold text-black disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
               >
-                {interestLoading ? 'Sending...' : "Not ready to pay — just send us your picks"}
+                {interestLoading ? 'Sending...' : 'Send my selections'}
               </button>
               {interestError && <div className="text-red-400 text-sm mt-2 text-center">{interestError}</div>}
-              <p className="text-center text-xs text-white/30 mt-3">
-                No payment, no commitment — we'll follow up to talk it through.
+              <p className="text-center text-sm text-white/40 mt-3">
+                No payment now. We&apos;ll go through the scope with you and confirm the
+                number before anything is charged.
               </p>
             </>
           )}

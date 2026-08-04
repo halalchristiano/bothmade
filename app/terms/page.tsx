@@ -60,7 +60,9 @@ export default function TermsPage() {
             <section>
               <h2 className="text-xl font-semibold text-white mb-3">Payment</h2>
               <p>
-                Starting a project requires a 50% deposit, which is what the checkout charges.
+                Starting a project requires a 50% deposit. Nothing is charged from this
+                site: the estimate on the pricing page starts a conversation, and payment
+                is only requested once the scope is agreed and we send you an invoice.
                 The remaining balance is due once Build is complete and before Launch, unless
                 we agree something else in writing. Anything under &quot;Ongoing Care&quot; is
                 month-to-month, billed after the first month, and cancellable with 30 days
