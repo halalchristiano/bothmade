@@ -170,7 +170,7 @@ function renderCard(attachment: EmailAttachmentLink): string {
         previewHref
           ? `<tr>
               <td colspan="3" style="padding:12px 12px 0 12px;">
-                <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:block; text-decoration:none;"><img src="${previewHref}" alt="${label}" width="512" style="display:block; width:100%; max-width:100%; height:auto; background-color:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:10px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:12px; color:rgba(255,255,255,0.35); text-decoration:none;" /></a>
+                <a href="${href}" style="display:block; text-decoration:none;"><img src="${previewHref}" alt="${label}" width="512" style="display:block; width:100%; max-width:100%; height:auto; background-color:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:10px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:12px; color:rgba(255,255,255,0.35); text-decoration:none;" /></a>
               </td>
             </tr>`
           : ''
@@ -182,11 +182,11 @@ function renderCard(attachment: EmailAttachmentLink): string {
           </tr></table>
         </td>
         <td valign="middle" style="padding:14px 8px 14px 12px;">
-          <a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#ffffff; font-size:14px; font-weight:700; line-height:1.35; text-decoration:none;">${label}</a>
+          <a href="${href}" style="color:#ffffff; font-size:14px; font-weight:700; line-height:1.35; text-decoration:none;">${label}</a>
           ${note ? `<p style="margin:3px 0 0 0; font-size:12px; line-height:1.45; color:rgba(255,255,255,0.4);">${note}</p>` : ''}
         </td>
         <td align="right" valign="middle" style="padding:14px 14px 14px 0;">
-          <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:8px 15px; border-radius:999px; background-color:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#7dd3fc; font-size:12px; font-weight:700; line-height:1; text-decoration:none; white-space:nowrap;">Open</a>
+          <a href="${href}" style="display:inline-block; padding:8px 15px; border-radius:999px; background-color:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#7dd3fc; font-size:12px; font-weight:700; line-height:1; text-decoration:none; white-space:nowrap;">Open</a>
         </td>
       </tr>
     </table>`;

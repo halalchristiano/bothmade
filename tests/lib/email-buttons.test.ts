@@ -108,6 +108,26 @@ describe('renderShell CTA', () => {
     expect(shell('https://bothmade.studio')).toContain('bgcolor="#6f7ef0"');
   });
 
+  /**
+   * A mail app renders the body in a webview with nowhere to put a second
+   * window, so a `_blank` navigation can be swallowed outright — a button
+   * that looks perfect and does nothing when tapped. Webmail adds its own
+   * target when it rewrites the link, so there is nothing to gain here.
+   */
+  it('asks for no new window, on the button or the attachment cards', () => {
+    const html = renderShell({
+      title: 'T',
+      bodyHtml: '<p>Hi.</p>',
+      attachmentsHtml: renderAttachments(
+        parseAttachments([{ kind: 'pdf', label: 'Proposal', url: 'https://example.com/a.pdf' }])
+      ),
+      ctaLabel: 'View Mockups',
+      ctaUrl: 'https://bothmade.studio',
+    });
+
+    expect(html).not.toContain('target=');
+  });
+
   it('renders no button at all when there is no link to point it at', () => {
     const html = shell(undefined);
 
