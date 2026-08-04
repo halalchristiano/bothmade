@@ -1131,3 +1131,41 @@ export async function sendInstalmentEmail(params: {
       : {}),
   });
 }
+
+/**
+ * The mockup, sent on a link the studio can see through.
+ *
+ * Short on purpose. This email has exactly one job — get them to click — and
+ * every extra sentence in it is a sentence between the prospect and the work
+ * that sells the deal.
+ */
+export async function sendMockupEmail(opts: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  viewUrl: string;
+  /** The rep's own note on this version, if it says something worth saying. */
+  note?: string | null;
+}): Promise<SendResult> {
+  const { toEmail, contactName, company, viewUrl } = opts;
+  const note = opts.note?.trim();
+
+  const bodyHtml = `
+    <p>Hi ${esc(contactName) || 'there'},</p>
+    <p>We've built something for ${esc(company)} — a working preview, not a picture of one. Have a click around.</p>
+    ${note ? `<p style="color:rgba(255,255,255,0.65);">${esc(note)}</p>` : ''}
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">When you've had a look there are two buttons at the bottom of the page: one if it works for you, one if you'd like changes. Either is useful — tell us which.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: toEmail,
+    subject: `We built something for ${company} — have a look`,
+    html: renderShell({
+      eyebrow: 'Your mockup',
+      title: `${company} — a first look`,
+      bodyHtml,
+      ctaLabel: 'Open the mockup',
+      ctaUrl: viewUrl,
+    }),
+  });
+}

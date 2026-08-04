@@ -10,6 +10,38 @@ import { prisma } from '@/lib/prisma';
  * arrives with a link already in it.
  */
 
+/**
+ * Where a mockup is in its life.
+ *
+ * `viewed` is the one that earns its keep. Whether a prospect has opened the
+ * thing you built for them is the strongest signal in the whole pipeline and
+ * it used to be unrecorded, so the rep's opening line on a follow-up call was
+ * "did you get a chance to look at it?" — the weakest question in sales, and
+ * one the system could have answered for him.
+ */
+export const MOCKUP_STATUSES = ['draft', 'sent', 'viewed', 'approved', 'changes_requested'] as const;
+export type MockupStatus = (typeof MOCKUP_STATUSES)[number];
+
+export function isMockupStatus(value: unknown): value is MockupStatus {
+  return typeof value === 'string' && (MOCKUP_STATUSES as readonly string[]).includes(value);
+}
+
+/** How long a sent mockup stays reachable. */
+export const MOCKUP_LINK_DAYS = 30;
+
+export function mockupExpiryFrom(sentAt: Date): Date {
+  const expires = new Date(sentAt);
+  expires.setDate(expires.getDate() + MOCKUP_LINK_DAYS);
+  return expires;
+}
+
+export function mockupLinkExpired(
+  mockup: { expiresAt: Date | string | null },
+  now: Date = new Date()
+): boolean {
+  return Boolean(mockup.expiresAt) && new Date(mockup.expiresAt as Date) <= now;
+}
+
 export interface LeadMockupDTO {
   id: string;
   url: string;
@@ -17,6 +49,16 @@ export interface LeadMockupDTO {
   note: string;
   uploadedAt: string;
   uploadedByName: string | null;
+  status: MockupStatus;
+  shareToken: string;
+  sentAt: string | null;
+  firstViewedAt: string | null;
+  lastViewedAt: string | null;
+  viewCount: number;
+  expiresAt: string | null;
+  expired: boolean;
+  respondedAt: string | null;
+  responseNote: string | null;
 }
 
 interface MockupRow {
@@ -26,6 +68,15 @@ interface MockupRow {
   note: string;
   createdAt: Date;
   uploadedBy?: { name: string | null } | null;
+  status?: string;
+  shareToken?: string;
+  sentAt?: Date | null;
+  firstViewedAt?: Date | null;
+  lastViewedAt?: Date | null;
+  viewCount?: number;
+  expiresAt?: Date | null;
+  respondedAt?: Date | null;
+  responseNote?: string | null;
 }
 
 export const mockupInclude = { uploadedBy: { select: { name: true } } } as const;
@@ -38,7 +89,42 @@ export function toMockupDTO(m: MockupRow): LeadMockupDTO {
     note: m.note,
     uploadedAt: m.createdAt.toISOString(),
     uploadedByName: m.uploadedBy?.name ?? null,
+    status: isMockupStatus(m.status) ? m.status : 'draft',
+    shareToken: m.shareToken ?? '',
+    sentAt: m.sentAt?.toISOString() ?? null,
+    firstViewedAt: m.firstViewedAt?.toISOString() ?? null,
+    lastViewedAt: m.lastViewedAt?.toISOString() ?? null,
+    viewCount: m.viewCount ?? 0,
+    expiresAt: m.expiresAt?.toISOString() ?? null,
+    expired: mockupLinkExpired({ expiresAt: m.expiresAt ?? null }),
+    respondedAt: m.respondedAt?.toISOString() ?? null,
+    responseNote: m.responseNote ?? null,
   };
+}
+
+/**
+ * What the rep should be told about a mockup, in one line.
+ *
+ * Deliberately leads with the fact that changes what they do next. "Opened 4
+ * times, last 2 hours ago" is a reason to pick up the phone right now;
+ * "Sent 6 days ago, never opened" is a reason to try a different channel.
+ */
+export function mockupSignal(m: LeadMockupDTO, now: Date = new Date()): string {
+  if (m.status === 'approved') return 'Approved by the client';
+  if (m.status === 'changes_requested') return 'They asked for changes';
+  if (m.expired) return 'Link expired — re-send to reopen it';
+  if (m.viewCount > 0) {
+    const last = m.lastViewedAt ? new Date(m.lastViewedAt) : null;
+    const hours = last ? Math.floor((now.getTime() - last.getTime()) / 3_600_000) : null;
+    const when =
+      hours === null ? '' : hours < 1 ? ', last just now' : hours < 24 ? `, last ${hours}h ago` : `, last ${Math.floor(hours / 24)}d ago`;
+    return `Opened ${m.viewCount} time${m.viewCount === 1 ? '' : 's'}${when}`;
+  }
+  if (m.status === 'sent' || m.sentAt) {
+    const days = m.sentAt ? Math.floor((now.getTime() - new Date(m.sentAt).getTime()) / 86_400_000) : 0;
+    return days <= 0 ? 'Sent today, not opened yet' : `Sent ${days}d ago, never opened`;
+  }
+  return 'Not sent to the client yet';
 }
 
 /**
@@ -133,4 +219,48 @@ export async function recordLeadMockup({
   });
 
   return { mockup: toMockupDTO(created), index, alreadyAttached: false };
+}
+
+/**
+ * Mark a mockup as sent, stamping the clock that everything downstream reads.
+ * The expiry is set here rather than at creation because an unsent mockup has
+ * nothing to expire.
+ */
+export async function markMockupSent(mockupId: string, at: Date = new Date()) {
+  return prisma.leadMockup.update({
+    where: { id: mockupId },
+    data: {
+      status: 'sent',
+      sentAt: at,
+      expiresAt: mockupExpiryFrom(at),
+      // A re-send reopens a link that had expired and clears a stale
+      // response — the client is being asked again, about a new version.
+      respondedAt: null,
+      responseNote: null,
+    },
+  });
+}
+
+/**
+ * Record that the client opened it.
+ *
+ * Never downgrades: a mockup that has been approved and is then reopened is
+ * still approved, and overwriting that with 'viewed' would lose the only
+ * record of the client saying yes.
+ */
+export async function recordMockupView(mockupId: string, at: Date = new Date()) {
+  const current = await prisma.leadMockup.findUnique({
+    where: { id: mockupId },
+    select: { status: true, firstViewedAt: true },
+  });
+  const keepsStatus = current?.status === 'approved' || current?.status === 'changes_requested';
+  return prisma.leadMockup.update({
+    where: { id: mockupId },
+    data: {
+      viewCount: { increment: 1 },
+      lastViewedAt: at,
+      ...(current?.firstViewedAt ? {} : { firstViewedAt: at }),
+      ...(keepsStatus ? {} : { status: 'viewed' }),
+    },
+  });
 }

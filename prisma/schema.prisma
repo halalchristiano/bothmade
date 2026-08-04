@@ -528,10 +528,36 @@ model LeadMockup {
   uploadedById String?
   uploadedBy   User?   @relation("MockupUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
+  // draft → sent → viewed → approved | changes_requested.
+  //
+  // A mockup used to be a URL and a note, which meant the single most useful
+  // fact about it — whether the prospect had actually opened it — was not
+  // recorded anywhere, and a rep going into a call had to ask.
+  status String @default("draft")
+
+  // The capability token in the tracked link. The mockup's own URL is often
+  // a public staging site, so this is not secrecy — it is the only way to
+  // know which visit was the client's.
+  shareToken String @unique @default(cuid())
+
+  sentAt        DateTime?
+  firstViewedAt DateTime?
+  lastViewedAt  DateTime?
+  viewCount     Int       @default(0)
+
+  // A prospect who went quiet keeps a live link to unpaid work forever
+  // otherwise. Null means no expiry, for a mockup that was never sent.
+  expiresAt DateTime?
+
+  // What they said when they responded, in their words, and when.
+  respondedAt  DateTime?
+  responseNote String?   @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([leadId, createdAt])
+  @@index([status, sentAt])
   @@map("lead_mockups")
 }
 

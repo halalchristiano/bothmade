@@ -42,15 +42,36 @@ export function unreadWhere(userId: string, readAt: Date | null): Prisma.TeamMes
  */
 export async function postSystemMessage(input: {
   content: string;
-  fromUserId: string;
+  /**
+   * Optional, because some of these are narrated by an unauthenticated
+   * request — a client approving their mockup from an emailed link has no
+   * session and is not a team member. Left out, the message is attributed to
+   * the lead's owner if there is one and to any staff account otherwise;
+   * `kind: 'system'` is what stops it rendering as words that person typed.
+   */
+  fromUserId?: string | null;
   relatedLeadId?: string | null;
   relatedProjectId?: string | null;
   urgent?: boolean;
 }): Promise<void> {
+  let fromUserId = input.fromUserId ?? null;
+  if (!fromUserId && input.relatedLeadId) {
+    const lead = await prisma.lead
+      .findUnique({ where: { id: input.relatedLeadId }, select: { assignedToId: true } })
+      .catch(() => null);
+    fromUserId = lead?.assignedToId ?? null;
+  }
+  if (!fromUserId) {
+    fromUserId = (await prisma.user.findFirst({ select: { id: true } }))?.id ?? null;
+  }
+  // No staff account at all is a fresh install, not a failure worth throwing
+  // over — the caller is narrating, not transacting.
+  if (!fromUserId) return;
+
   await prisma.teamMessage.create({
     data: {
       content: input.content,
-      fromUserId: input.fromUserId,
+      fromUserId,
       relatedLeadId: input.relatedLeadId ?? null,
       relatedProjectId: input.relatedProjectId ?? null,
       urgent: Boolean(input.urgent),

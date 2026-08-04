@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { mockupInclude, mockupSignal, toMockupDTO } from '@/lib/mockups';
 
 /**
  * Every lead waiting on a mockup, oldest request first — the dashboard widget
@@ -42,7 +43,39 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ success: true, leads }, { status: 200 });
+    // The other half of a page called "Mockups": the ones already out with
+    // clients. Until now this screen only listed work to be built, so the
+    // moment a mockup was delivered it left the only page named after it and
+    // whether anyone had opened it was nobody's screen.
+    const live = await prisma.leadMockup
+      .findMany({
+        where: { status: { not: 'draft' } },
+        orderBy: [{ sentAt: 'desc' }],
+        take: 60,
+        include: {
+          ...mockupInclude,
+          lead: { select: { id: true, company: true, contactName: true, status: true, estimatedValue: true } },
+        },
+      })
+      .catch((err) => {
+        // Pre-migration deploys have no status column. Losing the new panel
+        // is survivable; losing the queue this page has always had is not.
+        console.error('Live mockups unavailable, serving the build queue alone:', err);
+        return [];
+      });
+
+    return NextResponse.json(
+      {
+        success: true,
+        leads,
+        live: live.map((m) => ({
+          ...toMockupDTO(m),
+          signal: mockupSignal(toMockupDTO(m)),
+          lead: m.lead,
+        })),
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Mockup queue error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

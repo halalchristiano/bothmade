@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ImageIcon, ExternalLink, Compass, Clock, Flame } from 'lucide-react';
+import { ImageIcon, ExternalLink, Compass, Clock, Eye, Flame } from 'lucide-react';
 import { Badge, Card, EmptyState, Kicker, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { PAIN_POINTS, parseSalesPoints, type PainPointKey } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
@@ -139,9 +139,29 @@ function daysWaiting(requestedAt: string | null): number | null {
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
+interface LiveMockup {
+  id: string;
+  url: string;
+  status: string;
+  signal: string;
+  viewCount: number;
+  responseNote: string | null;
+  expired: boolean;
+  lead: { id: string; company: string; contactName: string | null; status: string; estimatedValue: number | null };
+}
+
+const LIVE_TONE: Record<string, string> = {
+  sent: 'border-sky-400/25 bg-sky-400/[0.05]',
+  viewed: 'border-purple-400/30 bg-purple-400/[0.06]',
+  approved: 'border-emerald-400/30 bg-emerald-400/[0.06]',
+  changes_requested: 'border-amber-400/30 bg-amber-400/[0.06]',
+};
+
 export default function MockupQueuePage() {
   const router = useRouter();
   const [leads, setLeads] = useState<QueueRow[]>([]);
+  const [live, setLive] = useState<LiveMockup[]>([]);
+  const [tab, setTab] = useState<'build' | 'out'>('build');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const load = async () => {
@@ -152,7 +172,10 @@ export default function MockupQueuePage() {
         return;
       }
       const data = await res.json();
-      if (data.success) setLeads(data.leads);
+      if (data.success) {
+        setLeads(data.leads);
+        setLive(data.live ?? []);
+      }
     } finally {
       setLoading(false);
     }
@@ -172,6 +195,14 @@ export default function MockupQueuePage() {
   }
 
   const visible = leads.filter((l) => matchesSearch(search, l.company, l.contactName));
+  // Approved and "changes asked" float up: both are somebody waiting on a
+  // reply, and both go cold in a day.
+  const liveVisible = [...live]
+    .filter((m) => matchesSearch(search, m.lead.company, m.lead.contactName))
+    .sort((a, b) => {
+      const rank = (s: string) => (s === 'approved' ? 0 : s === 'changes_requested' ? 1 : s === 'viewed' ? 2 : 3);
+      return rank(a.status) - rank(b.status);
+    });
   const sortedByWait = [...visible].sort((a, b) => {
     if (a.hotLead !== b.hotLead) return a.hotLead ? -1 : 1;
     return (daysWaiting(a.mockupRequestedAt) ?? 0) - (daysWaiting(b.mockupRequestedAt) ?? 0) > 0 ? -1 : 1;
@@ -181,12 +212,46 @@ export default function MockupQueuePage() {
     <PageIn className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="mb-1">
         <Kicker className="mb-2">Sales</Kicker>
-        <PageTitle icon={ImageIcon} title="Mockup Queue" />
+        <PageTitle icon={ImageIcon} title="Mockups" />
         <p className="text-sm text-white/45 mt-1">
-          {leads.length === 0
-            ? 'Nothing waiting on a mockup right now.'
-            : `${leads.length} ${leads.length === 1 ? 'lead is' : 'leads are'} waiting on a mockup, longest-waiting and hot leads first.`}
+          {tab === 'build'
+            ? leads.length === 0
+              ? 'Nothing waiting on a mockup right now.'
+              : `${leads.length} ${leads.length === 1 ? 'lead is' : 'leads are'} waiting on a mockup, longest-waiting and hot leads first.`
+            : liveVisible.length === 0
+              ? 'Nothing out with a client yet. Send one from a lead and it appears here.'
+              : `${liveVisible.length} out with clients. Anything opened is warm — ring it.`}
         </p>
+      </div>
+
+      {/* Two halves of one job. This page was named after mockups but only
+          ever listed the ones still to build, so the moment a mockup was
+          delivered it left the only screen named after it — and whether the
+          client had opened it was nobody's screen at all. */}
+      <div
+        role="tablist"
+        aria-label="Mockup views"
+        className="mt-4 inline-flex items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1"
+      >
+        {(
+          [
+            ['build', 'To build', leads.length],
+            ['out', 'Out with clients', live.length],
+          ] as Array<['build' | 'out', string, number]>
+        ).map(([key, label, count]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+              tab === key ? 'bg-white/[0.09] text-white' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'
+            }`}
+          >
+            {label}
+            {count > 0 && <span className="text-xs text-white/35">{count}</span>}
+          </button>
+        ))}
       </div>
 
       <div className="mt-5 mb-5">
@@ -199,6 +264,51 @@ export default function MockupQueuePage() {
         />
       </div>
 
+      {tab === 'out' ? (
+        <div className="space-y-2">
+          {liveVisible.length === 0 && (
+            <Card className="p-4">
+              <EmptyState icon={Eye} text="Nothing out with a client yet." tone="clear" />
+            </Card>
+          )}
+          {liveVisible.map((m) => (
+            <div
+              key={m.id}
+              className={`rounded-xl border p-4 ${LIVE_TONE[m.status] ?? 'border-white/10 bg-white/[0.03]'}`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Link
+                    href={`/admin/leads/${m.lead.id}`}
+                    className="text-sm font-bold text-white/90 hover:underline break-words inline-flex items-center gap-1.5"
+                  >
+                    {m.lead.company}
+                    <ExternalLink size={11} className="opacity-40" />
+                  </Link>
+                  <p className="text-xs mt-0.5 text-white/55">{m.signal}</p>
+                  {m.responseNote && (
+                    <p className="mt-2 text-xs italic text-white/60">&ldquo;{m.responseNote}&rdquo;</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {m.lead.estimatedValue ? (
+                    <span className="text-xs text-white/35">{formatCents(m.lead.estimatedValue)}</span>
+                  ) : null}
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/5 transition-colors"
+                  >
+                    Open
+                  </a>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
       {sortedByWait.length === 0 && !search && (
         <Card className="p-4">
           <EmptyState icon={ImageIcon} text="Nothing waiting on a mockup right now." tone="clear" />
@@ -256,6 +366,8 @@ export default function MockupQueuePage() {
           );
         })}
       </div>
+        </>
+      )}
     </PageIn>
   );
 }

@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
-import { ExternalLink, ImageIcon, Paperclip, PlayCircle, StickyNote, Upload, Clock } from 'lucide-react';
+import { Eye, ExternalLink, ImageIcon, Paperclip, PlayCircle, Send, StickyNote, Upload, Clock } from 'lucide-react';
+import { mockupSignal, type LeadMockupDTO, type MockupStatus } from '@/lib/mockups';
 import {
   DELIVERABLE_CONTENT_TYPES,
   DELIVERABLE_MAX_BYTES,
@@ -33,6 +34,49 @@ export interface LeadMockupItem {
   note: string;
   uploadedAt: string;
   uploadedByName: string | null;
+  // The lifecycle. Optional so a payload from before mockups had one still
+  // renders — it just renders as a mockup nobody has sent yet, which is what
+  // an untracked mockup honestly is.
+  status?: MockupStatus;
+  shareToken?: string;
+  sentAt?: string | null;
+  firstViewedAt?: string | null;
+  lastViewedAt?: string | null;
+  viewCount?: number;
+  expiresAt?: string | null;
+  expired?: boolean;
+  respondedAt?: string | null;
+  responseNote?: string | null;
+}
+
+/** How each status reads on screen, and what it should look like. */
+const STATUS_STYLE: Record<MockupStatus, { label: string; classes: string }> = {
+  draft: { label: 'Not sent', classes: 'border-white/15 bg-white/[0.04] text-white/50' },
+  sent: { label: 'Sent', classes: 'border-sky-400/30 bg-sky-400/10 text-sky-200' },
+  viewed: { label: 'Opened', classes: 'border-purple-400/30 bg-purple-400/10 text-purple-200' },
+  approved: { label: 'Approved', classes: 'border-emerald-400/35 bg-emerald-400/10 text-emerald-200' },
+  changes_requested: { label: 'Changes asked', classes: 'border-amber-400/30 bg-amber-400/10 text-amber-200' },
+};
+
+function asDTO(m: LeadMockupItem): LeadMockupDTO {
+  return {
+    id: m.id,
+    url: m.url,
+    fileName: m.fileName,
+    note: m.note,
+    uploadedAt: m.uploadedAt,
+    uploadedByName: m.uploadedByName,
+    status: m.status ?? 'draft',
+    shareToken: m.shareToken ?? '',
+    sentAt: m.sentAt ?? null,
+    firstViewedAt: m.firstViewedAt ?? null,
+    lastViewedAt: m.lastViewedAt ?? null,
+    viewCount: m.viewCount ?? 0,
+    expiresAt: m.expiresAt ?? null,
+    expired: m.expired ?? false,
+    respondedAt: m.respondedAt ?? null,
+    responseNote: m.responseNote ?? null,
+  };
 }
 
 /** "Aug 2, 2026, 2:14 PM" — the date on its own isn't enough when two versions land the same day. */
@@ -114,13 +158,17 @@ function MockupRow({
   index,
   leadId,
   onNoteSaved,
+  onSent,
 }: {
   mockup: LeadMockupItem;
   index: number;
   leadId: string;
   onNoteSaved: (note: string) => void;
+  onSent?: (mockup: LeadMockupItem) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendNotice, setSendNotice] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
   const [note, setNote] = useState(mockup.note);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -155,6 +203,41 @@ function MockupRow({
     }
   };
 
+  /**
+   * Send it, on a link the studio can see through. Replaces the old ritual of
+   * copying a URL into an email nobody logged — which is why "have they even
+   * looked at it?" was unanswerable.
+   */
+  const handleSend = async () => {
+    setSending(true);
+    setSendNotice(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/mockups/${mockup.id}/send`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setSendNotice({ tone: 'warn', text: data.error || 'Could not send it.' });
+        return;
+      }
+      onSent?.({ ...mockup, ...data.mockup });
+      setSendNotice(
+        data.sent
+          ? { tone: 'ok', text: 'Sent. You will see it here when they open it.' }
+          : { tone: 'warn', text: `Link is ready but the email did not send${data.reason ? ` — ${data.reason}` : ''}. Copy it and send it yourself.` }
+      );
+    } catch {
+      setSendNotice({ tone: 'warn', text: 'Could not reach the server — try again.' });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const status: MockupStatus = mockup.status ?? 'draft';
+  const style = STATUS_STYLE[status];
+  const signal = mockupSignal(asDTO(mockup));
+  const trackedUrl = mockup.shareToken
+    ? `${typeof window === 'undefined' ? '' : window.location.origin}/m/${mockup.shareToken}`
+    : null;
+
   const label = `Mockup ${index}`;
   const uploadedAt = formatUploadedAt(mockup.uploadedAt);
   const video = isVideo(mockup.fileName, mockup.url);
@@ -180,6 +263,13 @@ function MockupRow({
           </span>
         )}
 
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${style.classes}`}
+        >
+          {status === 'viewed' && <Eye size={10} />}
+          {style.label}
+        </span>
+
         <span className="text-xs text-white/40">
           {uploadedAt ? `Uploaded ${uploadedAt}` : 'Uploaded'}
           {mockup.uploadedByName ? ` · ${mockup.uploadedByName}` : ''}
@@ -200,6 +290,55 @@ function MockupRow({
           {mockup.note.trim() ? `Notes on ${label.toLowerCase()}` : `Add notes to ${label.toLowerCase()}`}
         </button>
       </div>
+
+      {/* The one line that changes what the rep does next: opened four times
+          today is a reason to ring now, sent six days ago and never opened is
+          a reason to try another channel. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span
+          className={`text-xs ${
+            mockup.viewCount && mockup.viewCount > 0 ? 'text-purple-200/90 font-medium' : 'text-white/40'
+          }`}
+        >
+          {signal}
+        </span>
+
+        {(status === 'draft' || mockup.expired) && (
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={sending}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+          >
+            <Send size={12} />
+            {sending ? 'Sending…' : mockup.expired ? 'Re-send to client' : 'Send to client'}
+          </button>
+        )}
+
+        {trackedUrl && status !== 'draft' && (
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(trackedUrl)}
+            title="Copy the tracked link"
+            className="ml-auto rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-white/60 hover:bg-white/5 transition-colors"
+          >
+            Copy tracked link
+          </button>
+        )}
+      </div>
+
+      {mockup.responseNote && (
+        <p className="mt-2 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-xs italic leading-relaxed text-white/70">
+          &ldquo;{mockup.responseNote}&rdquo;
+          <span className="not-italic text-white/30"> — the client</span>
+        </p>
+      )}
+
+      {sendNotice && (
+        <p className={`mt-2 text-xs ${sendNotice.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}`}>
+          {sendNotice.text}
+        </p>
+      )}
 
       {/* The note is the point of keeping versions apart — show it without a click. */}
       {!notesOpen && mockup.note.trim() && (
@@ -436,6 +575,9 @@ export function MockupAttachments({
           leadId={leadId}
           onNoteSaved={(note) =>
             onChanged(mockups.map((existing) => (existing.id === m.id ? { ...existing, note } : existing)))
+          }
+          onSent={(sent) =>
+            onChanged(mockups.map((existing) => (existing.id === m.id ? { ...existing, ...sent } : existing)))
           }
         />
       ))}
