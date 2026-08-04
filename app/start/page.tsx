@@ -14,6 +14,7 @@ import {
   TIMELINES,
   calculatePrice,
   depositAmount,
+  firstInstalmentPercent,
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
@@ -363,15 +364,17 @@ export default function StartPage() {
               someone weighing a five-figure number wants to know how it is
               staged before they get on a call, not after. */}
           <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/5">
-            <span className="text-sm text-white/50">Usual split — 50% to start</span>
+            <span className="text-sm text-white/50">
+              To start — {firstInstalmentPercent(breakdown.totalPrice)}% of the total
+            </span>
             <span className="text-lg font-semibold text-emerald-300">
               {formatCents(depositAmount(breakdown.totalPrice))}
             </span>
           </div>
           <p className="mt-2 text-xs text-white/35">
-            Nothing is charged here. We agree the scope first — then the balance of{' '}
-            {formatCents(breakdown.totalPrice - depositAmount(breakdown.totalPrice))} is due
-            once Build is complete, before Launch.
+            Nothing is charged here. Every project is billed in three parts over the same
+            gates — {firstInstalmentPercent(breakdown.totalPrice) === 40 ? '40% / 30% / 30%' : '50% / 25% / 25%'}:
+            one to start, one when you approve the design, one when it&apos;s ready to launch.
           </p>
         </section>
 

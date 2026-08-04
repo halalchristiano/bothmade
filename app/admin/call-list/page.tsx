@@ -726,12 +726,20 @@ export default function CallListPage() {
                       )}
 
                       <div className="flex gap-2 mt-3">
+                        <Link
+                          href={`/admin/call/${row.id}`}
+                          className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-400/15 border border-emerald-400/30 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-400/25 transition-colors"
+                        >
+                          <Headset size={13} /> Start call
+                        </Link>
                         <a
                           href={`tel:${row.phone}`}
                           onClick={() => startCall(row)}
-                          className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-400/15 border border-emerald-400/30 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-400/25 transition-colors"
+                          title={`Call ${row.phone}`}
+                          aria-label={`Call ${row.company} on ${row.phone}`}
+                          className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors"
                         >
-                          <Phone size={13} /> Call {row.phone}
+                          <Phone size={13} /> Dial
                         </a>
                         <Link
                           href={`/admin/leads/${row.id}`}
@@ -753,7 +761,7 @@ export default function CallListPage() {
         <section className="mt-8">
           <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-3.5 py-2.5 mb-3">
             <p className="text-sm font-bold text-amber-200 flex items-center gap-1.5">
-              🔥 Hot, booked for later
+              <Flame size={14} /> Hot, booked for later
               <span className="ml-1 opacity-60">({visibleScheduledHot.length})</span>
             </p>
             <p className="text-xs text-amber-200/50 mt-0.5 leading-relaxed">

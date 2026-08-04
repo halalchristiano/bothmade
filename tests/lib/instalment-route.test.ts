@@ -51,7 +51,7 @@ function call(body: unknown) {
   );
 }
 
-const SCHEDULE = [
+const SCHEDULE: any[] = [
   { id: 'i1', projectId: 'proj_1', index: 1, count: 3, label: 'Payment 1 of 3', percent: 40, amountCents: 800000, trigger: 'signing', status: 'paid', invoiceNumber: null, stripeSessionId: 'cs_signing', paymentUrl: null, invoicedAt: null, dueAt: null, paidAt: new Date(), emailSentAt: null },
   { id: 'i2', projectId: 'proj_1', index: 2, count: 3, label: 'Payment 2 of 3', percent: 30, amountCents: 600000, trigger: 'design-approval', status: 'scheduled', invoiceNumber: null, stripeSessionId: null, paymentUrl: null, invoicedAt: null, dueAt: null, paidAt: null, emailSentAt: null },
   { id: 'i3', projectId: 'proj_1', index: 3, count: 3, label: 'Payment 3 of 3', percent: 30, amountCents: 600000, trigger: 'ready-for-launch', status: 'scheduled', invoiceNumber: null, stripeSessionId: null, paymentUrl: null, invoicedAt: null, dueAt: null, paidAt: null, emailSentAt: null },

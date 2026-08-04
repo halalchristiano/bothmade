@@ -60,7 +60,10 @@ export default function TermsPage() {
             <section>
               <h2 className="text-xl font-semibold text-white mb-3">Payment</h2>
               <p>
-                Starting a project requires a 50% deposit. Nothing is charged from this
+                Every project is billed in three instalments over the same gates —
+                50% / 25% / 25% under $20,000, and 40% / 30% / 30% at $20,000 and above:
+                one payment to start, one at design approval, one when the project is
+                ready to launch. Nothing is charged from this
                 site: the estimate on the pricing page starts a conversation, and payment
                 is only requested once the scope is agreed and we send you an invoice.
                 The remaining balance is due once Build is complete and before Launch, unless
