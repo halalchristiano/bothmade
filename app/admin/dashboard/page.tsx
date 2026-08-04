@@ -41,6 +41,7 @@ import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { UndoToast } from '@/components/admin/UndoToast';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
 import { MockupsCard } from '@/components/admin/MockupAttachments';
+import { SignatureCertificatesCard } from '@/components/admin/SignatureCertificates';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
@@ -1561,6 +1562,12 @@ function OpsDashboard({
           </div>
         </Card>
       )}
+
+      {/* Sits directly under "awaiting signature", because it is the other
+          end of the same story: these ones signed, and this is the proof. */}
+      <div className="mb-8">
+        <SignatureCertificatesCard />
+      </div>
 
       <div className="flex flex-wrap gap-3">
         <Link

@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare, Archive, ArchiveRestore, Trash2, AlertTriangle, Mail } from 'lucide-react';
+import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare, Archive, ArchiveRestore, Trash2, AlertTriangle, Mail, ShieldCheck } from 'lucide-react';
 import { Card, CardHeader, PageIn, EmptyState, Badge } from '@/components/admin/ui';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
+import { GenerateCertificateButton, type SignatureRecord } from '@/components/admin/SignatureCertificates';
 
 interface ClientDetail {
   id: string;
@@ -23,6 +24,8 @@ interface ClientDetail {
     status: string;
     totalPrice: number;
   }>;
+  /** One per project that has both a signature and a payment behind it. */
+  signatureRecords: SignatureRecord[];
 }
 
 export default function AdminClientDetailPage() {
@@ -251,6 +254,39 @@ export default function AdminClientDetailPage() {
           </div>
         )}
       </Card>
+
+      {client.signatureRecords?.length > 0 && (
+        <Card className="p-6 md:p-8">
+          <CardHeader
+            icon={ShieldCheck}
+            tone="emerald"
+            title="Signature Certificates"
+            subtitle="Proof this client signed — who, when, from where, and what they agreed to"
+          />
+          <div className="space-y-2">
+            {client.signatureRecords.map((record) => (
+              <div
+                key={record.projectId}
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{record.projectName}</p>
+                  <p className="text-xs text-white/40">
+                    {record.signerName ? `Signed by ${record.signerName}` : 'Signer name not captured'}
+                    {record.signedAt ? ` · ${new Date(record.signedAt).toLocaleDateString()}` : ''}
+                  </p>
+                </div>
+                <GenerateCertificateButton
+                  clientId={clientId}
+                  projectId={record.projectId}
+                  company={client.company}
+                  compact
+                />
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-6 md:p-8">
         <CardHeader icon={MessageSquare} tone="emerald" title="Message All Projects" subtitle="Sends to every project thread for this client" />
