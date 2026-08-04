@@ -58,6 +58,19 @@ export const DELIVERABLE_CONTENT_TYPES = [
 
 export const DELIVERABLE_MAX_BYTES = 250 * 1024 * 1024; // 250 MB
 
+/**
+ * The paperwork fields on a lead — the mockup PDF, the invoice PDF.
+ *
+ * Deliberately narrower than DELIVERABLE_CONTENT_TYPES: these two fields
+ * are handed to a client as "the invoice" or "the mockup", and a link
+ * labelled that which opens a video or an SVG is either a mistake nobody
+ * catches or a page dressed up as a document. One type, so the label and
+ * the file cannot disagree.
+ */
+export const DOCUMENT_CONTENT_TYPES = ['application/pdf'];
+
+export const DOCUMENT_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+
 /** A team member's headshot for the email footer. */
 export const AVATAR_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 

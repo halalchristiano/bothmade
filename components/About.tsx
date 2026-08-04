@@ -2,8 +2,10 @@
 
 import { motion } from 'framer-motion';
 import Image from 'next/image';
+import Link from 'next/link';
 import { SectionTag } from '@/components/ui';
 import { COMPANY_LOCATION } from '@/lib/company';
+import { TEAM } from '@/lib/team';
 
 /**
  * The credibility block. At this price point the biggest conversion leak is
@@ -11,49 +13,13 @@ import { COMPANY_LOCATION } from '@/lib/company';
  * says who is behind it. This section closes that gap with the two people
  * on every project, by name, with a direct email each.
  *
- * ─────────────────────────────────────────────────────────────────────────
- *  EDIT ME — everything a stranger checks before wiring money lives in
- *  this constant. What ships below is only what the rest of the site and
- *  repo already establish as true (two people; who they'll talk to; who
- *  designs what they approve). Photos and location are in; still open:
- *
- *  - `bio`: 1–2 sentences of real background per person (where you're
- *    from, what you did before, what you've shipped). The layout is
- *    complete without it, but it's the last thing a cautious buyer wants.
- * ─────────────────────────────────────────────────────────────────────────
+ * The people themselves live in lib/team.ts, shared with /about so the two
+ * accounts of who works here can't drift apart. This section is the version
+ * that has to work mid-scroll, on the way to the contact form; /about is
+ * where someone goes when they've decided to check properly.
  */
 /** Shared with the footer — change it in lib/company.ts, not here. */
 const LOCATION: string | null = COMPANY_LOCATION;
-
-const TEAM: {
-  name: string;
-  role: string;
-  /** What the client actually experiences from this person. */
-  owns: string;
-  email: string;
-  photo?: string;
-  bio?: string;
-  accent: { from: string; to: string };
-}[] = [
-  {
-    name: 'Evan',
-    role: 'Co-owner · Sales & client lead',
-    owns:
-      'Your first call, your scope, your number. Every question you send lands with him directly — no account layer in between — and he stays your point of contact from kickoff to launch.',
-    email: 'evan@bothmade.studio',
-    photo: '/team/evan.jpg',
-    accent: { from: '#38bdf8', to: '#0c2f52' },
-  },
-  {
-    name: 'Kiana',
-    role: 'Co-owner · Design & engineering',
-    owns:
-      'Every screen you approve and every line of code that ships is hers — designed against your real content, then built by the same hands, so what launches matches what you signed off.',
-    email: 'kiana@bothmade.studio',
-    photo: '/team/kiana.jpg',
-    accent: { from: '#a855f7', to: '#3b0764' },
-  },
-];
 
 export function About() {
   return (
@@ -158,6 +124,18 @@ export function About() {
           </a>
           {' '}— everything gets answered within a day.
         </p>
+
+        {/* The deeper version, for anyone who came here to check us out
+            properly rather than to send a message. */}
+        <Link
+          href="/about"
+          className="group mt-8 inline-flex items-center gap-3 text-sm font-medium text-white/70 hover:text-white transition-colors"
+        >
+          <span className="border-b border-white/25 group-hover:border-white pb-0.5 transition-colors">
+            How we work, and why there are only two of us
+          </span>
+          <span className="transition-transform duration-300 group-hover:translate-x-1.5">→</span>
+        </Link>
       </div>
     </section>
   );

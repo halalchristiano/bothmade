@@ -146,7 +146,7 @@ export type Block =
   | { type: 'dependencyDemo' }
   /** A scaled replay of Nav's mobile overlay: hamburger-to-X morph, staggered link entrance, scroll lock, Escape to close — in a bounded stage instead of the real viewport. */
   | { type: 'mobileMenuDemo' }
-  /** Side by side: a stock-photo-style placeholder vs. the site's actual dashed "honest empty frame." */
+  /** Three cards: a stock-photo fake, the old dashed "honest empty frame," and what CaseStudyPage renders today — nothing. */
   | { type: 'honestFrameDemo' }
   /** Pick a real business problem, see the real problem/costsThem framing and which add-ons actually fix it — from PAIN_POINT_BRIEFS in lib/pricing.ts. */
   | { type: 'diagnosisDemo' }
@@ -1523,9 +1523,9 @@ export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
     ],
   },
   {
-    slug: 'wed-rather-show-you-an-empty-box',
-    title: "We'd rather show you an empty box",
-    dek: "No stock photos, ever — when a real screenshot doesn't exist yet, the site shows a labeled placeholder instead of faking one. See both side by side.",
+    slug: 'we-deleted-the-empty-box',
+    title: 'We deleted the empty box',
+    dek: "No stock photos, ever — but the labeled placeholder we replaced them with turned out to be its own kind of noise. Now a screenshot that doesn't exist renders nothing at all.",
     tag: 'Design',
     accent: 'purple',
     date: '2027-02-14',
@@ -1536,19 +1536,28 @@ export function expandAddOnDependencies(selected: AddOnKey[]): AddOnKey[] {
         text: "Every case study on this site has a slot for real product screenshots — and for work that's still in progress, some of those slots are genuinely empty, because the screen doesn't exist to photograph yet. The easy fix is a stock photo: someone smiling at a laptop, a vague dashboard mockup that looks plausible from six feet away. It fills the space. It also isn't the product, and pretending otherwise for the sake of a tidier-looking page is exactly the kind of small dishonesty that compounds.",
       },
       {
-        type: 'statement',
-        text: "An empty, labeled frame tells the truth: this doesn't exist yet. A stock photo tells a small lie the same size as the box it's filling.",
+        type: 'p',
+        text: "So for a while we did the obvious honest thing instead: a dashed frame, the shot's intended caption in mono type, and a small note reading \"add src to lib/case-studies.ts\" — a reminder to ourselves about where the file goes. It was truthful. It was also, we eventually admitted, a developer's TODO list rendered at full width on a page meant for clients, three times per case study. Truthful and worth showing are not the same test.",
       },
-      { type: 'heading', text: 'Side by side' },
+      {
+        type: 'statement',
+        text: "A stock photo tells a small lie the size of the box it fills. A labeled placeholder tells the truth, at the same size — and the size was the problem.",
+      },
+      { type: 'heading', text: 'All three, side by side' },
       { type: 'honestFrameDemo' },
       {
         type: 'p',
-        text: "The real component — ShotFrame inside CaseStudy.tsx — checks whether a shot has a src. If it does, it renders the actual image with a real alt description. If it doesn't, it renders a dashed border, the shot's intended caption in mono type, and a small note pointing at exactly where to add the file once it exists. Both states use the same layout dimensions, so the page never visually jumps once a real screenshot lands — the empty frame is placeholder geometry with an honest label, not a broken image tag or a lorem-ipsum stand-in.",
+        text: "What ships today is the third card. CaseStudyPage filters the shot list down to entries that have a src before it renders anything, and the whole \"Screens\" section is behind a check on what's left — so a study with no photographed screens yet doesn't show an empty gallery, a placeholder, or a heading promising screens that aren't there. It shows the writing, and stops. ShotFrame itself no longer has a fallback branch at all; by the time a shot reaches it, the image is guaranteed to exist.",
       },
-      { type: 'heading', text: "Why this is harder than it sounds to keep doing" },
+      { type: 'heading', text: 'The data stays, the UI goes' },
       {
         type: 'p',
-        text: "The temptation to fill an empty box only gets stronger the longer it stays empty — a case study that's sat unfinished for a few weeks starts to feel like it needs to look done. The actual discipline here isn't the component, which took a few lines; it's not reaching for a placeholder image the fifth time a page feels a little sparse. The dashed frame is a small, constant reminder pointed at us as much as at anyone reading the page: this isn't finished, and the honest thing is to say so rather than dress it up.",
+        text: "The filtering happens at render, not in the content file. Every shot still carries its alt text and caption in lib/case-studies.ts, written before the screenshot exists — that's the note-to-self the dashed frame used to be, kept where notes to ourselves belong. Adding one src brings that shot back, and the section reappears with it. Nothing needs rewriting to publish; the page is already waiting for the file.",
+      },
+      { type: 'heading', text: 'What we actually learned' },
+      {
+        type: 'p',
+        text: "The first version optimised for not lying, which is the right thing to optimise for and not the only thing. An unfinished page is allowed to be shorter than a finished one — that's what unfinished looks like, and padding it with an honest label is still padding. The discipline that survived isn't the component, which is now a few lines shorter than when it had a fallback. It's the rule underneath: when there's nothing to show, show nothing, and don't reach for something to put in the gap.",
       },
     ],
   },

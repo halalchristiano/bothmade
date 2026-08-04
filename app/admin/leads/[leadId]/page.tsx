@@ -24,6 +24,8 @@ import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { leadLocalTime } from '@/lib/local-time';
 import { buildFollowUpDraft } from '@/lib/follow-up-emails';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { PhoneField } from '@/components/admin/PhoneField';
+import { PdfOrLinkField } from '@/components/admin/PdfOrLinkField';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
@@ -174,6 +176,7 @@ function FileField({
   onChange,
   saved,
   inputClass,
+  leadId,
 }: {
   label: string;
   hint: string;
@@ -181,19 +184,24 @@ function FileField({
   onChange: (v: string) => void;
   saved: string | null;
   inputClass: string;
+  leadId: string;
 }) {
   return (
     <div>
       <p className="text-xs text-white/50 mb-1 font-medium">{label}</p>
       <p className="text-[11px] text-white/30 mb-1.5">{hint}</p>
       <div className="flex gap-2">
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="https://..."
-          aria-label={label}
-          className={`${inputClass} text-sm`}
-        />
+        {/* Either a pasted link or the PDF itself — the file is usually on
+            somebody's desktop, not already hosted somewhere. */}
+        <div className="flex-1 min-w-0">
+          <PdfOrLinkField
+            value={value}
+            onChange={onChange}
+            leadId={leadId}
+            label={label}
+            inputClass={`${inputClass} text-sm`}
+          />
+        </div>
         {saved && (
           <a
             href={saved}
@@ -1167,10 +1175,19 @@ export default function LeadDetailPage() {
         setPaymentLinkUrl(data.signUrl);
         if (!data.hasEmail) {
           setLinkEmailStatus('Link created, but this lead has no email on file — add one to send it directly.');
+        } else if (data.emailSent && !data.emailError) {
+          setLinkEmailStatus(`Sent to ${lead?.email}, with the agreement and invoice attached.`);
         } else if (data.emailSent) {
-          setLinkEmailStatus(`Sent to ${lead?.email}.`);
+          // Went out, but short of a document — say which, before the client asks.
+          setLinkEmailStatus(`Sent to ${lead?.email}. ${data.emailError}`);
         } else {
-          setLinkEmailStatus('Link created, but the email failed to send — copy it manually below.');
+          // The server now says *why*. "Failed to send" left a rep with no
+          // idea whether to retry, fix a setting, or ring the client.
+          setLinkEmailStatus(
+            data.emailError
+              ? `Not sent — ${data.emailError} The link below still works.`
+              : 'Link created, but the email failed to send — copy it manually below.'
+          );
         }
         clearProposalDraft();
         load();
@@ -2554,7 +2571,7 @@ export default function LeadDetailPage() {
                 <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" className={inputClass} />
                 <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className={inputClass} />
                 <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className={inputClass} />
+                <PhoneField value={phone} onChange={setPhone} className={inputClass} />
                 <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source" className={inputClass} />
                 <input
                   value={estimatedValue}
@@ -2887,6 +2904,7 @@ export default function LeadDetailPage() {
                     onChange={setMockupPdfUrl}
                     saved={latestMockupPdf}
                     inputClass={inputClass}
+                    leadId={leadId}
                   />
                   <FileField
                     label="Invoice PDF"
@@ -2895,6 +2913,7 @@ export default function LeadDetailPage() {
                     onChange={setInvoicePdfUrl}
                     saved={lead.invoicePdfUrl}
                     inputClass={inputClass}
+                    leadId={leadId}
                   />
                   <div>
                     <p className="text-xs text-white/50 mb-1 font-medium">Vercel deployment password</p>

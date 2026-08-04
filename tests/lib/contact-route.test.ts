@@ -56,7 +56,17 @@ vi.mock('@/lib/prisma', () => ({
 
 // The rep alert goes through lib/notify, which composes it and hands it to
 // sendEmail — mocked here so the assertions are about who gets told what.
+//
+// The sender's acknowledgement reaches the same function when it falls back
+// off Gmail, which it always does under test, so a bare call count would
+// conflate the two. repAlerts() picks out the mail addressed to a rep; that
+// is what every assertion in "telling Evan" actually means.
 const sendEmail = vi.fn();
+const REP_ADDRESSES = ['evan@bothmade.studio', 'someone-else@bothmade.studio'];
+const repAlerts = () =>
+  sendEmail.mock.calls
+    .map(([mail]) => mail)
+    .filter((mail) => REP_ADDRESSES.includes(mail?.to));
 vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendEmail: (...args: unknown[]) => sendEmail(...args),
@@ -111,18 +121,23 @@ afterEach(() => {
 });
 
 describe('POST /api/contact — where the message goes', () => {
-  it('notifies info@, evan@ and kiana@, not a single address', async () => {
+  it('notifies info@, evan@ and kiana@, each addressed on its own', async () => {
     const res = await POST(request(VALID, freshIp()));
 
     expect(res.status).toBe(200);
-    const notification = send.mock.calls[0][0];
-    expect(notification.to).toEqual([
+    // One message each rather than one message listing all three. This mail
+    // replies to the customer, so a shared To: header would hand them every
+    // studio address the first time anyone hit Reply-all.
+    expect(send.mock.calls.map(([mail]) => mail.to)).toEqual([
       'info@bothmade.studio',
       'evan@bothmade.studio',
       'kiana@bothmade.studio',
     ]);
-    // Hitting reply has to reach the person who wrote in, not the studio.
-    expect(notification.replyTo).toBe(VALID.email);
+    for (const [mail] of send.mock.calls) {
+      expect(typeof mail.to).toBe('string');
+      // Hitting reply has to reach the person who wrote in, not the studio.
+      expect(mail.replyTo).toBe(VALID.email);
+    }
   });
 
   it('records the enquiry as a lead in the CRM', async () => {
@@ -168,7 +183,10 @@ describe('POST /api/contact — where the message goes', () => {
 
     await POST(request(VALID, freshIp()));
 
-    expect(send.mock.calls[0][0].to).toEqual(['hello@example.com', 'second@example.com']);
+    expect(send.mock.calls.map(([mail]) => mail.to)).toEqual([
+      'hello@example.com',
+      'second@example.com',
+    ]);
   });
 });
 
@@ -227,8 +245,8 @@ describe('POST /api/contact — telling Evan', () => {
   it('emails the sales rep directly that this client reached out', async () => {
     await POST(request(VALID, freshIp()));
 
-    expect(sendEmail).toHaveBeenCalledOnce();
-    const alert = sendEmail.mock.calls[0][0];
+    expect(repAlerts()).toHaveLength(1);
+    const alert = repAlerts()[0];
     expect(alert.to).toBe('evan@bothmade.studio');
     expect(alert.subject).toBe('Kiana Arabpour at Random just reached out');
     expect(alert.replyTo).toBe(VALID.email);
@@ -287,7 +305,7 @@ describe('POST /api/contact — telling Evan', () => {
 
     await POST(request(VALID, freshIp()));
 
-    expect(sendEmail).not.toHaveBeenCalled();
+    expect(repAlerts()).toHaveLength(0);
     expect(send).toHaveBeenCalled(); // the group notification still goes out
   });
 });
@@ -376,5 +394,66 @@ describe('POST /api/contact — rejections', () => {
     const { rateLimitKey } = await import('@/lib/rate-limit');
     const req = { headers: { get: (n: string) => headers[n.toLowerCase() as keyof typeof headers] ?? null } };
     expect(rateLimitKey('contact', req as never)).not.toBe(rateLimitKey('interest', req as never));
+  });
+});
+
+/**
+ * The acknowledgement quotes the enquiry back.
+ *
+ * Partly because it is a better email — someone who filled in a form wants
+ * to see the right thing arrived — and partly because the previous version
+ * was byte-identical on every send, which is the shape a spam filter
+ * distrusts. It was landing in spam while the invoice mail, dense with real
+ * names and figures, reached the inbox from the same domain.
+ */
+describe('POST /api/contact — the acknowledgement', () => {
+  const ackTo = (email: string) =>
+    sendEmail.mock.calls.map(([mail]) => mail).find((mail) => mail?.to === email);
+
+  it('reads their own message back to them', async () => {
+    await POST(request(VALID, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack).toBeTruthy();
+    expect(ack.html).toContain('I want an app');
+    expect(ack.html).toContain('Kiana Arabpour');
+  });
+
+  it('names what they asked about and who is replying', async () => {
+    await POST(request(VALID, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack.html).toContain('Web');
+    expect(ack.html).toContain('Evan');
+  });
+
+  it('puts their company in the subject, so it is not identical every send', async () => {
+    await POST(request(VALID, freshIp()));
+
+    expect(ackTo(VALID.email).subject).toBe('We received your message — Random');
+  });
+
+  it('falls back to a plain subject when no company was given', async () => {
+    const { company: _company, ...noCompany } = VALID;
+    await POST(request(noCompany, freshIp()));
+
+    expect(ackTo(VALID.email).subject).toBe('We received your message');
+  });
+
+  it('omits budget and timeline rows rather than printing "Not provided" at the customer', async () => {
+    await POST(request(VALID, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack.html).not.toContain('Not provided');
+    expect(ack.html).not.toContain('Budget');
+    expect(ack.html).not.toContain('Timeline');
+  });
+
+  it('shows budget and timeline when they were answered', async () => {
+    await POST(request({ ...VALID, budget: '10k-25k', timeline: '1-3-months' }, freshIp()));
+
+    const ack = ackTo(VALID.email);
+    expect(ack.html).toContain('Budget');
+    expect(ack.html).toContain('Timeline');
   });
 });

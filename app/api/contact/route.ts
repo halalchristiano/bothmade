@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { prisma } from '@/lib/prisma';
-import { studioInbox } from '@/lib/email';
+import { renderShell, studioInbox } from '@/lib/email';
+import { sendAsUser } from '@/lib/mailer';
 import { escapeHtml } from '@/lib/html';
+import { COMPANY_EMAIL, COMPANY_NAME, COMPANY_WEBSITE } from '@/lib/company';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
@@ -31,9 +33,20 @@ function resendClient(): Resend | null {
   return client;
 }
 
-// The address mail is sent *from*, which has to belong to a domain verified
-// in Resend. Where it's sent *to* is studioInbox().
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
+/**
+ * Everything from this route is sent from info@, with a display name.
+ *
+ * Not `process.env.CONTACT_EMAIL`: that is set to `notifications@` in
+ * production and quietly beat the `info@` default, so mail arrived from a
+ * mailbox nobody reads. Same constant lib/email.ts now uses, from
+ * lib/company.ts, so the sender cannot disagree with the address printed in
+ * the footer or on the invoices.
+ *
+ * The display name matters separately — a bare address makes the client
+ * derive a sender name from the local part, which is how the first
+ * acknowledgements arrived from a person called "notifications".
+ */
+const MAIL_FROM = `${COMPANY_NAME} <${COMPANY_EMAIL}>`;
 
 const SERVICES = ['web', 'ios', 'mac', 'visionpro', 'full-stack', 'other'] as const;
 
@@ -317,34 +330,61 @@ export async function POST(request: NextRequest) {
       timeline: escapeHtml(cleanTimeline ? TIMELINE_LABELS[cleanTimeline] : 'Not provided'),
     };
 
-    const shell = (inner: string) =>
-      `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;">${inner}<hr style="border:none;border-top:1px solid #eee;margin:30px 0;"><p style="color:#999;font-size:12px;">© 2026 Bothmade</p></div>`;
+    // These two used to render through a bespoke inline wrapper — a bare
+    // white div with "© 2026 Bothmade" under a rule — which is why the
+    // acknowledgement read as a phishing attempt. renderShell() is the
+    // wrapper every other email on the site already uses, including all of
+    // EMAIL_TEMPLATES: the wordmark, the gradient header, the card, and a
+    // footer carrying the company name and postal address from
+    // lib/company.ts. There was never a reason for this route to have its
+    // own.
 
     // Notification to the studio — info@, evan@ and kiana@. Replying goes
     // straight back to whoever wrote in.
-    const adminEmail = await resend.emails.send({
-      from: CONTACT_EMAIL,
-      to: studioInbox(),
-      replyTo: cleanEmail,
-      subject: `New enquiry — ${cleanName} (${SERVICE_LABELS[cleanService]})`,
-      html: shell(
-        `<h2 style="color:#000;">New contact form submission</h2>
-         <p><strong>Name:</strong> ${safe.name}</p>
-         <p><strong>Email:</strong> ${safe.email}</p>
-         <p><strong>Phone:</strong> ${safe.phone}</p>
-         <p><strong>Company:</strong> ${safe.company}</p>
-         <p><strong>Service:</strong> ${safe.service}</p>
-         <p><strong>Budget:</strong> ${safe.budget}</p>
-         <p><strong>Timeline:</strong> ${safe.timeline}</p>
-         <h3 style="color:#000;margin-top:20px;">Message</h3>
-         <p style="color:#666;white-space:pre-wrap;line-height:1.6;">${safe.message}</p>`
-      ),
-    });
+    /**
+     * One message per recipient, not one message addressed to all of them.
+     *
+     * This mail carries `replyTo: <the customer>`, and it used to put the
+     * whole studio in a single `To:` header — so one Reply-all from any of
+     * us sent the customer a message with every internal address visible in
+     * it. Nobody has to be dropped from the list to close that: addressed
+     * individually, each copy names only its own recipient, and Reply-all
+     * can't reveal an address it was never given.
+     */
+    const notifications = await Promise.all(
+      studioInbox().map((recipient) =>
+        resend.emails.send({
+          from: MAIL_FROM,
+          to: recipient,
+          replyTo: cleanEmail,
+          subject: `New enquiry — ${cleanName} (${SERVICE_LABELS[cleanService]})`,
+      html: renderShell({
+        eyebrow: 'New enquiry',
+        title: `${cleanName}${cleanCompany ? ` — ${cleanCompany}` : ''}`,
+        bodyHtml:
+          `<p style="margin:0 0 4px;"><strong style="color:#fff;">Email:</strong> ${safe.email}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Phone:</strong> ${safe.phone}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Company:</strong> ${safe.company}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Service:</strong> ${safe.service}</p>
+           <p style="margin:0 0 4px;"><strong style="color:#fff;">Budget:</strong> ${safe.budget}</p>
+           <p style="margin:0 0 20px;"><strong style="color:#fff;">Timeline:</strong> ${safe.timeline}</p>
+           <p style="margin:0 0 6px; color:#fff; font-weight:700;">Message</p>
+           <p style="margin:0; white-space:pre-wrap;">${safe.message}</p>`,
+          }),
+        })
+      )
+    );
 
-    if (adminEmail.error) {
-      console.error('Admin notification failed:', adminEmail.error);
-      // Only a dead end if the CRM write failed too.
-      if (!recorded) {
+    // One address bouncing is not the same as nobody being told, so this
+    // only counts as a failure when every copy failed.
+    const notificationFailures = notifications.filter((result) => result.error);
+    if (notificationFailures.length > 0) {
+      console.error(
+        `Admin notification failed for ${notificationFailures.length}/${notifications.length} recipients:`,
+        notificationFailures[0].error
+      );
+      // Only a dead end if nobody heard and the CRM write failed too.
+      if (!recorded && notificationFailures.length === notifications.length) {
         return NextResponse.json({ error: 'Failed to send message.' }, { status: 502 });
       }
     }
@@ -354,8 +394,7 @@ export async function POST(request: NextRequest) {
     // links straight to the lead and matches the assignment just made.
     // Needs the lead id, so it can only go out if the CRM write succeeded.
     if (recorded && rep) {
-      const sent = await notifyRepInboundEnquiry({
-        toEmail: rep.email,
+      const alert = {
         repName: rep.name,
         leadId: recorded.leadId,
         contactName: cleanName,
@@ -365,30 +404,130 @@ export async function POST(request: NextRequest) {
         message: cleanMessage,
         returning: recorded.returning,
         via: 'the contact form',
-      });
+      };
+
+      // The rep gets it, and the shared inbox gets its own copy — this is
+      // the version worth having, since it links to the lead rather than
+      // merely restating the form. Two separate sends rather than one mail
+      // addressed to both: this alert also replies to the customer, so a
+      // shared To: would put the other internal address in front of them
+      // the first time anyone hit Reply-all.
+      const [sent, copied] = await Promise.all([
+        notifyRepInboundEnquiry({ ...alert, toEmail: rep.email }),
+        notifyRepInboundEnquiry({ ...alert, toEmail: COMPANY_EMAIL }),
+      ]);
       if (!sent) {
         console.error(`Sales alert to ${rep.email} failed for lead ${recorded.leadId}`);
+      }
+      if (!copied) {
+        console.error(`Sales alert copy to ${COMPANY_EMAIL} failed for lead ${recorded.leadId}`);
       }
     }
 
     // Acknowledgement to the sender. Best-effort: if it bounces, the enquiry
     // still reached the studio, so don't fail the request over it.
-    const ackEmail = await resend.emails.send({
-      from: CONTACT_EMAIL,
-      to: cleanEmail,
-      subject: 'We received your message',
-      html: shell(
-        `<h2 style="color:#000;">Thanks for reaching out</h2>
-         <p style="color:#666;line-height:1.6;">
-           Hi ${safe.name},<br/><br/>
-           We've received your message and will get back to you within 24 hours.
-           You can reply directly to this email if you'd like to add anything.
-         </p>`
-      ),
-    });
+    /**
+     * Sent *as* info@, not merely with info@ in the From line.
+     *
+     * sendAsUser prefers domain-wide delegation, which hands the message to
+     * Gmail as the real Workspace user — so it lands in info@'s own Sent
+     * folder and the thread is there when the customer replies, exactly as
+     * if someone had typed it. A Resend send would be invisible to that
+     * mailbox: the reply arrives with no outgoing message to attach to.
+     *
+     * Falls back to Resend when delegation isn't configured, which still
+     * gets the acknowledgement out — it just won't be in Sent.
+     */
+    const ack = await sendAsUser(
+      {
+        name: COMPANY_NAME,
+        email: COMPANY_EMAIL,
+        gmailAddress: null,
+        gmailAppPassword: null,
+      },
+      {
+        to: cleanEmail,
+        // Their own company in the subject line, when they gave one. A
+        // subject identical on every send is one of the things that makes a
+        // real acknowledgement look like a blast.
+        subject: cleanCompany
+          ? `We received your message — ${cleanCompany}`
+          : 'We received your message',
+        html: renderShell({
+          eyebrow: 'Message received',
+          title: 'Thanks for reaching out',
+          /**
+           * Reads their enquiry back to them.
+           *
+           * The old version was four generic lines, byte-identical on every
+           * send and carrying nothing only this person could have caused.
+           * That is the shape a filter distrusts, and it was landing in spam
+           * while the invoice mail — dense with real names, real figures and
+           * real attachments — reached the inbox from the same domain.
+           *
+           * It is also just a better email: someone who fills in a form
+           * wants to see that the right thing arrived, and quoting it back
+           * is how you show that rather than assert it. Every value here is
+           * escaped in `safe`, and the optional rows only appear when the
+           * person actually answered them.
+           */
+          bodyHtml:
+            `<p style="margin:0 0 14px;">Hi ${safe.name},</p>
+             <p style="margin:0 0 20px;">
+               Thanks — this is just to confirm your message reached us, with what you
+               sent so you can check we have it right.
+             </p>
 
-    if (ackEmail.error) {
-      console.error('Acknowledgement email failed:', ackEmail.error);
+             <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; margin:0 0 20px;">
+               <tr>
+                 <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px; width:110px;">Looking for</td>
+                 <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.service}</td>
+               </tr>
+               ${
+                 cleanCompany
+                   ? `<tr>
+                        <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">Company</td>
+                        <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.company}</td>
+                      </tr>`
+                   : ''
+               }
+               ${
+                 cleanBudget
+                   ? `<tr>
+                        <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">Budget</td>
+                        <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.budget}</td>
+                      </tr>`
+                   : ''
+               }
+               ${
+                 cleanTimeline
+                   ? `<tr>
+                        <td style="padding:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">Timeline</td>
+                        <td style="padding:0 0 6px; color:#fff; font-size:13px;">${safe.timeline}</td>
+                      </tr>`
+                   : ''
+               }
+             </table>
+
+             <p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">What you wrote</p>
+             <p style="margin:0 0 20px; padding:0 0 0 14px; border-left:2px solid rgba(255,255,255,0.18); white-space:pre-wrap;">${safe.message}</p>
+
+             <p style="margin:0;">
+               ${rep?.name ? `${escapeHtml(rep.name)} will read this and reply` : "We'll reply"}
+               within 24 hours — usually sooner. Reply to this email if you want to add
+               anything in the meantime.
+             </p>`,
+          footerNote: `${COMPANY_NAME} — ${COMPANY_WEBSITE}`,
+        }),
+      }
+    );
+
+    if (!ack.ok) {
+      console.error('Acknowledgement email failed');
+    } else if (ack.sentVia === 'resend') {
+      // Worth knowing: the customer got the mail, but info@ has no record of
+      // having sent it, so a reply will look like it came out of nowhere.
+      console.warn('Acknowledgement sent via Resend — not in the info@ Sent folder');
     }
 
     return NextResponse.json(

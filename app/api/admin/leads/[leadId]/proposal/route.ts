@@ -17,7 +17,7 @@ import {
 } from '@/lib/pricing';
 import { sendSignAndPayEmail } from '@/lib/email';
 import { buildSignUrl } from '@/lib/share-links';
-import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
+import { buildProposalDocuments, documentFilename } from '@/lib/proposal-documents';
 
 /**
  * Saves the proposal Evan just built (service/add-ons/client type/timeline,
@@ -118,10 +118,14 @@ export async function POST(
     const signUrl = buildSignUrl(leadId, lead.shareToken);
 
     let emailSent = false;
+    let emailError: string | null = null;
     if (sendEmail && lead.email) {
       const chargeAmount = depositOnly ? depositAmount(totalPrice) : totalPrice;
 
-      const invoicePdfBytes = await buildInvoiceForProposal({
+      // Both documents, not just the invoice. The client is being asked to
+      // agree and pay in the same click, and the thing they are agreeing to
+      // should arrive with the bill rather than living only behind a link.
+      const { invoice, contract, failures } = await buildProposalDocuments({
         leadId,
         company: lead.company,
         contactName: lead.contactName,
@@ -134,15 +138,31 @@ export async function POST(
         depositOnly: Boolean(depositOnly),
       });
 
-      emailSent = await sendSignAndPayEmail(
+      const attachments = [
+        ...(contract
+          ? [{ filename: documentFilename(lead.company, 'agreement'), content: contract }]
+          : []),
+        ...(invoice
+          ? [{ filename: documentFilename(lead.company, 'invoice'), content: invoice }]
+          : []),
+      ];
+
+      const result = await sendSignAndPayEmail(
         lead.email,
         lead.contactName,
         lead.company,
         signUrl,
         formatCents(chargeAmount),
         Boolean(depositOnly),
-        Buffer.from(invoicePdfBytes)
+        attachments
       );
+      emailSent = result.sent;
+      if (!result.sent) emailError = result.reason;
+      // A send that went out short of a document is still a send, but the rep
+      // needs to know before the client asks where the agreement is.
+      else if (failures.length > 0) {
+        emailError = `Sent, but the ${failures.join(' and ')} could not be generated and was left off.`;
+      }
       if (emailSent) {
         await prisma.leadActivity.create({
           data: {
@@ -157,7 +177,7 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { success: true, signUrl, emailSent, hasEmail: Boolean(lead.email) },
+      { success: true, signUrl, emailSent, emailError, hasEmail: Boolean(lead.email) },
       { status: 200 }
     );
   } catch (error) {

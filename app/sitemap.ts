@@ -22,6 +22,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/ios', priority: 0.9 },
     { path: '/visionpro', priority: 0.9 },
     { path: '/work', priority: 0.7 },
+    // Where a brand search ("who are bothmade") should land, and the page a
+    // buyer opens to decide whether we're real.
+    { path: '/about', priority: 0.8 },
     { path: '/blog', priority: 0.7 },
     // Low priority, but a crawler finding them is part of looking legitimate.
     { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' as const },

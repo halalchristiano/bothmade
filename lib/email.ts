@@ -1,8 +1,12 @@
 import { Resend } from 'resend';
-import { COMPANY_ADDRESS_INLINE, COMPANY_NAME } from '@/lib/company';
+import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
+// Leaf module — imports only googleapis and gmail-mime — so pulling it in
+// here does not create a cycle with lib/mailer.ts, which imports this file.
+import { isDomainDelegationConfigured, sendAsDelegatedUser } from '@/lib/gmail-delegated';
 import {
   esc,
   escMultiline,
+  htmlToPlainText,
   safeUrl,
   sanitizeDisplayName,
   sanitizeEmailAddress,
@@ -25,7 +29,21 @@ function resendClient(): Resend | null {
   if (!client) client = new Resend(key);
   return client;
 }
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
+/**
+ * The address everything is sent from and as.
+ *
+ * A constant, not `process.env.CONTACT_EMAIL`. That variable is set to
+ * `notifications@` in production, which quietly won over the `info@` default
+ * and made every message come from a mailbox nobody reads — and worse, it is
+ * the account domain-wide delegation impersonates, so if it is an alias
+ * rather than a real Workspace user the delegated send fails and everything
+ * silently falls back to the provider.
+ *
+ * The address a client should reply to is not deployment configuration. It
+ * lives in lib/company.ts with the one on the invoices and the site footer,
+ * so all three cannot drift.
+ */
+const CONTACT_EMAIL = COMPANY_EMAIL;
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
 // The studio is bothmade.studio. Everything reachable from the public site
@@ -79,23 +97,83 @@ export interface EmailData {
  * someone typed into the CRM, or a lead's own email address imported from a
  * CSV. Anything that isn't a well-formed address is dropped rather than sent.
  */
-export async function sendEmail(data: EmailData): Promise<boolean> {
+/**
+ * Why a send didn't happen, in words a rep can act on.
+ *
+ * `sendEmail` returning a bare false is fine for the sends nobody is
+ * watching, but it is the wrong answer for one a person just clicked a
+ * button for: "the email failed to send" tells them nothing about whether
+ * to retry, fix a setting, or call the client instead. The reason travels
+ * to the UI so the answer is on screen rather than in a server log nobody
+ * can reach.
+ */
+export type SendResult = { sent: true } | { sent: false; reason: string };
+
+export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
   const recipients = sanitizeEmailAddresses(Array.isArray(data.to) ? data.to : [data.to]);
   if (recipients.length === 0) {
     console.error('Email send skipped: no valid recipient address', {
       attempted: Array.isArray(data.to) ? data.to.length : 1,
     });
-    return false;
+    return { sent: false, reason: 'That address is not one we can send to — check it for typos.' };
   }
 
   const fromName = sanitizeDisplayName(data.fromName) || 'Bothmade';
   const replyTo = data.replyTo ? sanitizeEmailAddress(data.replyTo) : null;
 
+  /**
+   * Gmail first, Resend as the fallback.
+   *
+   * Sent through domain-wide delegation the message leaves from the real
+   * mailbox: it lands in that account's Sent folder, a reply threads onto
+   * something that exists, and it carries the sending domain's own Gmail
+   * reputation rather than a shared provider's. Observed in practice — the
+   * mail that reached the Sent folder landed in Primary, while the same
+   * content through the provider was filed as spam even with SPF, DKIM and
+   * DMARC all passing.
+   *
+   * Two things keep a message on the Resend path. Attachments, because the
+   * MIME builder here composes multipart/alternative only and silently
+   * dropping an invoice PDF is far worse than sending from the provider.
+   * And delegation not being configured at all, which is the local and
+   * preview case.
+   *
+   * Per recipient rather than one message to many, matching how the contact
+   * route already addresses the studio: the Gmail API takes a single
+   * message, and one To: header listing everyone is what put every internal
+   * address one Reply-all away from a customer.
+   */
+  const canDelegate = !data.attachments?.length && isDomainDelegationConfigured();
+  if (canDelegate) {
+    const results = await Promise.all(
+      recipients.map((recipient) =>
+        sendAsDelegatedUser(CONTACT_EMAIL, {
+          fromName,
+          to: recipient,
+          subject: sanitizeSubject(data.subject),
+          html: data.html,
+          replyTo,
+        })
+      )
+    );
+    if (results.every(Boolean)) return { sent: true };
+    // A partial or total failure falls through to Resend rather than
+    // reporting a send that didn't happen. A duplicate to whoever did get
+    // the delegated copy is the acceptable cost of not losing the message.
+    console.error(
+      `Delegated send failed for ${results.filter((ok) => !ok).length}/${results.length} recipients; falling back to Resend`
+    );
+  }
+
   try {
     const resend = resendClient();
     if (!resend) {
       console.error('RESEND_API_KEY not configured; skipping send');
-      return false;
+      return {
+        sent: false,
+        reason:
+          'Email is not configured on this deployment (RESEND_API_KEY is not set), so nothing was sent. Copy the link below and send it yourself.',
+      };
     }
 
     const result = await resend.emails.send({
@@ -103,20 +181,32 @@ export async function sendEmail(data: EmailData): Promise<boolean> {
       to: recipients,
       subject: sanitizeSubject(data.subject),
       html: data.html,
+      // Sent alongside the HTML so the message is multipart/alternative
+      // rather than HTML-only, which is a scored spam signal on its own.
+      // Same reasoning as the Gmail path in lib/gmail-mime.ts.
+      text: htmlToPlainText(data.html),
       ...(replyTo ? { replyTo } : {}),
       ...(data.attachments ? { attachments: data.attachments } : {}),
     });
 
     if (result.error) {
       console.error('Resend error:', result.error);
-      return false;
+      // Resend's own wording is the useful part — "domain is not verified"
+      // names the fix, where "failed to send" sends someone hunting.
+      const detail = result.error.message || String(result.error);
+      return { sent: false, reason: `The mail provider refused it: ${detail}` };
     }
 
-    return true;
+    return { sent: true };
   } catch (error) {
     console.error('Email send failed:', error);
-    return false;
+    const detail = error instanceof Error ? error.message : String(error);
+    return { sent: false, reason: `The send threw an error: ${detail}` };
   }
+}
+
+export async function sendEmail(data: EmailData): Promise<boolean> {
+  return (await sendEmailDetailed(data)).sent;
 }
 
 /**
@@ -367,18 +457,28 @@ export async function sendSignAndPayEmail(
   signUrl: string,
   amountLabel: string,
   isDeposit: boolean,
-  invoicePdf?: Buffer
-): Promise<boolean> {
+  attachments: { filename: string; content: Buffer }[] = []
+): Promise<SendResult> {
+  // Named so the sentence matches what is actually attached — promising an
+  // agreement that failed to build would be worse than not mentioning it.
+  const names = attachments.map((a) => (/agreement/i.test(a.filename) ? 'agreement' : 'itemized invoice'));
+  const attachmentLine =
+    names.length === 0
+      ? ''
+      : `<p style="font-size:13px; color:rgba(255,255,255,0.5);">The ${
+          names.length === 2 ? `${names[0]} and the ${names[1]} are` : `${names[0]} is`
+        } attached to this email as ${names.length === 2 ? 'PDFs' : 'a PDF'}.</p>`;
+
   const bodyHtml = `
     <p>Hi ${esc(contactName) || 'there'},</p>
     <p>Here's everything to get ${esc(company)}'s project moving — the agreement to review and a secure place to pay ${
       isDeposit ? `your deposit of <strong style="color:#fff;">${esc(amountLabel)}</strong>` : `<strong style="color:#fff;">${esc(amountLabel)}</strong>`
     }, all on one page.</p>
-    ${invoicePdf ? '<p style="font-size:13px; color:rgba(255,255,255,0.5);">The itemized invoice is attached to this email as a PDF.</p>' : ''}
+    ${attachmentLine}
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
   `;
 
-  return sendEmail({
+  return sendEmailDetailed({
     to: toEmail,
     subject: `Review & confirm your Bothmade project — ${company}`,
     html: renderShell({
@@ -388,9 +488,7 @@ export async function sendSignAndPayEmail(
       ctaLabel: 'Review & Pay',
       ctaUrl: signUrl,
     }),
-    ...(invoicePdf
-      ? { attachments: [{ filename: `${company.replace(/[^a-z0-9]/gi, '-')}-invoice.pdf`, content: invoicePdf }] }
-      : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
   });
 }
 

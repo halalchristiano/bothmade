@@ -6,10 +6,11 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 const LINKS = [
-  { label: 'Work', href: '/work' },
   { label: 'Web', href: '/web' },
   { label: 'iOS', href: '/ios' },
   { label: 'Vision Pro', href: '/visionpro' },
+  { label: 'Work', href: '/work' },
+  { label: 'About', href: '/about' },
   { label: 'Blog', href: '/blog' },
   { label: 'Pricing', href: '/start' },
   { label: 'Contact', href: '/#contact' },
@@ -31,14 +32,14 @@ const LINKS = [
  * tablet held in portrait.
  */
 const MENU_ROW = {
-  fontSize: 'clamp(1.375rem, 3.6svh, 2.125rem)',
-  paddingBlock: 'clamp(0.25rem, 0.9svh, 0.625rem)',
+  fontSize: 'clamp(1.1875rem, 3.3svh, 2.125rem)',
+  paddingBlock: 'clamp(0.2rem, 0.75svh, 0.625rem)',
 } as const;
 
 /** The quieter last row, on the same principle at a smaller scale. */
 const MENU_FOOTER_ROW = {
-  fontSize: 'clamp(0.9375rem, 2svh, 1.125rem)',
-  paddingBlock: 'clamp(0.375rem, 1.2svh, 0.75rem)',
+  fontSize: 'clamp(0.875rem, 1.8svh, 1.125rem)',
+  paddingBlock: 'clamp(0.25rem, 1svh, 0.75rem)',
 } as const;
 
 export function Nav() {
@@ -182,7 +183,7 @@ export function Nav() {
                does overflow, centring silently hides the first row behind
                the wordmark bar and auto margins make it unreachable, so
                alignment falls back to the top instead. */
-            className="fixed inset-0 z-40 bg-[#05030a]/98 backdrop-blur-2xl md:hidden flex flex-col [justify-content:safe_center] overflow-y-auto overscroll-contain px-8 pt-24 pb-10"
+            className="fixed inset-0 z-40 bg-[#05030a]/98 backdrop-blur-2xl md:hidden flex flex-col [justify-content:safe_center] overflow-y-auto overscroll-contain px-8 pt-24 pb-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

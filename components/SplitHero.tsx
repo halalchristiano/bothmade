@@ -11,6 +11,15 @@ import {
 } from 'framer-motion';
 
 const WORD = 'BOTHMADE';
+
+/**
+ * One size for the wordmark, because three things are laid out against it:
+ * the two painted copies (web and native) and the invisible copy the price
+ * line hangs off. If they ever disagree the price line drifts away from the
+ * letters it is supposed to sit on, at some widths and not others — which is
+ * exactly the class of bug this replaced.
+ */
+const WORDMARK_SIZE = 'clamp(2.75rem, 12vw, 11rem)';
 const MIN = 6;
 const MAX = 94;
 
@@ -99,21 +108,50 @@ export function SplitHero() {
       {/* Stays at z-20: the nav's mobile overlay is z-40 and lives in the
           same stacking context, so anything higher here punches the hero
           copy through an open menu. */}
-      <div className="absolute top-28 md:top-32 left-1/2 -translate-x-1/2 z-20 w-full max-w-md md:max-w-2xl text-center px-6">
-        <h1 className="sr-only">
-          Bothmade builds websites, iOS and iPad apps, macOS software, and Vision Pro
-          experiences — one small team, start to finish.
-        </h1>
-        {/* Price anchor up front: it filters tire-kickers and reads as
-            confidence. Numbers mirror BASE_SERVICES in lib/pricing.ts.
-            Tracking tightens on narrow phones so the line survives on one
-            row at 320px instead of breaking after "iOS apps". */}
-        <a
-          href="/start"
-          className="mt-3 inline-block py-1 font-mono text-[9px] tracking-[0.14em] sm:text-[10px] sm:tracking-[0.2em] md:text-[11px] md:tracking-[0.25em] uppercase text-white/55 hover:text-white transition-colors"
-        >
-          Websites from $3k · iOS apps from $10k →
-        </a>
+      <h1 className="sr-only">
+        Bothmade builds websites, iOS and iPad apps, macOS software, and Vision Pro
+        experiences — one small team, start to finish.
+      </h1>
+
+      {/* The price line rides directly above the wordmark rather than
+          floating in its own band at the top of the hero.
+
+          It used to be absolutely positioned near the top, where it shared
+          space with the browser-chrome mock and the nav — three things
+          competing for one strip, colliding at some widths and not others.
+          Sitting it on the wordmark gives it a fixed relationship to the one
+          element it belongs with, so there is no width at which it lands
+          somewhere awkward.
+
+          The mechanism is the invisible copy of the wordmark below: it takes
+          exactly the same box as the painted ones, centred the same way, so
+          `bottom-full` anchors the price line to the real letters' top edge
+          without a magic offset to keep in sync.
+
+          Stays at z-20: the nav's mobile overlay is z-40 in the same
+          stacking context, so anything higher punches through an open menu.
+          pointer-events-none so the layer never eats the seam drag — only
+          the link itself takes the pointer back. */}
+      <div className="absolute inset-0 z-20 grid place-items-center px-6 pointer-events-none">
+        <div className="relative">
+          <p
+            aria-hidden="true"
+            className="invisible font-bold leading-none tracking-[-0.03em] whitespace-nowrap"
+            style={{ fontSize: WORDMARK_SIZE }}
+          >
+            {WORD}
+          </p>
+          {/* Price anchor up front: it filters tire-kickers and reads as
+              confidence. Numbers mirror BASE_SERVICES in lib/pricing.ts.
+              Tracking tightens on narrow phones so the line survives on one
+              row at 320px instead of breaking after "iOS apps". */}
+          <a
+            href="/start"
+            className="pointer-events-auto absolute bottom-full left-1/2 -translate-x-1/2 mb-4 sm:mb-5 md:mb-7 whitespace-nowrap py-1 font-mono text-[9px] tracking-[0.14em] sm:text-[10px] sm:tracking-[0.2em] md:text-[11px] md:tracking-[0.25em] uppercase text-white/55 hover:text-white transition-colors"
+          >
+            Websites from $3k · iOS apps from $10k →
+          </a>
+        </div>
       </div>
 
       {/* ---------- LAYER A : NATIVE (base, right side) ---------- */}
@@ -148,9 +186,10 @@ export function SplitHero() {
           }}
         />
 
-        {/* Docked below the price line rather than behind it — the two used
-            to share the top-24 band and collided at every width. */}
-        <div className="absolute top-40 md:top-44 left-6 md:left-10 right-6 md:right-10 h-9 rounded-t-xl border border-sky-400/20 bg-sky-400/[0.04] flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4">
+        {/* Sits near the top like a real browser window. It had been pushed
+            down to dodge the price line; now that the price line lives on
+            the wordmark, this strip is its own again. */}
+        <div className="absolute top-28 md:top-32 left-6 md:left-10 right-6 md:right-10 h-9 rounded-t-xl border border-sky-400/20 bg-sky-400/[0.04] flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4">
           <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-sky-400/30" />
           <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-sky-400/20" />
           <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-sky-400/10" />
@@ -243,7 +282,7 @@ function Wordmark({ variant }: { variant: 'web' | 'native' }) {
     <div className="absolute inset-0 grid place-items-center px-6" aria-hidden="true">
       <p
         className="font-bold leading-none tracking-[-0.03em] whitespace-nowrap"
-        style={{ fontSize: 'clamp(2.75rem, 12vw, 11rem)' }}
+        style={{ fontSize: WORDMARK_SIZE }}
       >
         {variant === 'web' ? (
           <span

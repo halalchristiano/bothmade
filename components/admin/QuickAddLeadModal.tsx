@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { QUICK_ADD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { Modal } from './Modal';
+import { PhoneField } from './PhoneField';
 
 /**
  * Adding a company isn't always "brand new lead" — Evan is often backfilling
@@ -118,7 +119,7 @@ export function QuickAddLeadModal({
             <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company *" className={inputClass} autoFocus />
             <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className={inputClass} />
             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className={inputClass} />
+            <PhoneField value={phone} onChange={setPhone} className={inputClass} />
             <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source (referral, cold outreach, inbound...)" className={inputClass} />
 
             <div>

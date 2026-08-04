@@ -477,13 +477,29 @@ export function ContactForm() {
           is announced unreliably. */}
       <div role="status" aria-live="polite" aria-atomic="true">
         {submitted && (
-          <motion.p
+          <motion.div
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
-            className="pt-4 font-mono text-xs uppercase tracking-[0.3em] text-emerald-700"
+            className="pt-4"
           >
-            Message received — we&apos;ll reply within 24h
-          </motion.p>
+            <p className="font-mono text-xs uppercase tracking-[0.3em] text-emerald-700">
+              Message received — we&apos;ll reply within 24h
+            </p>
+            {/* The acknowledgement is a first message from a young domain, so
+                some inboxes will filter it however clean the authentication
+                is. Saying so costs a line and turns "they never replied" into
+                a folder someone actually checks — and a message rescued from
+                spam is a positive signal to the filter, which helps the next
+                one land. */}
+            <p className="mt-3 text-sm leading-relaxed text-black/50">
+              We&apos;ve sent a confirmation to the address you gave.{' '}
+              <span className="text-black/75">
+                If it isn&apos;t there in a minute, please check your spam or promotions
+                folder
+              </span>{' '}
+              — and marking it &ldquo;not spam&rdquo; means our reply reaches you properly.
+            </p>
+          </motion.div>
         )}
 
         {error && (
