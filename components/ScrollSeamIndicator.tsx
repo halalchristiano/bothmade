@@ -2,6 +2,7 @@
 
 import { useScroll, useTransform, motion } from 'framer-motion';
 import { useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 
 /**
  * The seam line becomes a living scroll indicator. A thin vertical line
@@ -9,8 +10,11 @@ import { useEffect, useRef } from 'react';
  * The brand concept made tactile throughout the entire site.
  */
 export function ScrollSeamIndicator() {
+  const pathname = usePathname();
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll();
+
+  if (pathname.startsWith('/brandon-roofing')) return null;
 
   return (
     <motion.div
