@@ -61,6 +61,7 @@ export async function buildContractForProposal(
     basePrice: formatCents(breakdown.basePrice),
     addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
     totalPrice: formatCents(totalPrice),
+    totalPriceCents: totalPrice,
     depositAmount: formatCents(deposit),
     balanceAmount: formatCents(totalPrice - deposit),
     depositPercent: DEPOSIT_PERCENT,

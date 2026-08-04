@@ -71,6 +71,7 @@ export async function POST(
       basePrice: formatCents(breakdown.basePrice),
       addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
       totalPrice: formatCents(totalWithCustom),
+      totalPriceCents: totalWithCustom,
       depositAmount: formatCents(deposit),
       balanceAmount: formatCents(totalWithCustom - deposit),
       depositPercent: DEPOSIT_PERCENT,
