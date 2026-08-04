@@ -207,7 +207,14 @@ async function handleCheckoutSessionCompleted(
   // Stripe. Either way this is the moment the deal is actually won, so mark
   // it automatically instead of leaving it stuck until someone remembers.
   if (leadId) {
-    const lead = await prisma.lead.update({ where: { id: leadId }, data: { status: 'won' } }).catch(() => null);
+    const lead = await prisma.lead
+      .update({ where: { id: leadId }, data: { status: 'won' } })
+      .catch((error) => {
+        // The project and payment exist — a lead stuck un-won is a pipeline
+        // lie someone has to notice, so at least say it happened.
+        console.error(`Webhook: paid lead ${leadId} could not be marked won:`, error);
+        return null;
+      });
     if (lead?.signedContractUrl) {
       // Carry the signed copy over so the client can find it on their own
       // project — leads aren't visible to clients, but projects are.

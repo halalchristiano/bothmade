@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { OPS, requireRole } from '@/lib/authz';
 import { sendMessageNotificationEmail } from '@/lib/email';
 
 /** Broadcast a message to every active project's client thread — for announcements not specific to one client. */

@@ -30,7 +30,6 @@ import {
   RefreshCw,
   ExternalLink,
   ListChecks,
-  Palette as PaletteIcon,
   BarChart3,
   UserCog,
 } from 'lucide-react';

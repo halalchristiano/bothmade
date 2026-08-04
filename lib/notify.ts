@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { escMultiline } from '@/lib/html';
 import { sendEmail, studioInbox } from './email';
 import { escapeHtml, safeUrl } from './html';
 
@@ -191,7 +192,7 @@ export async function notifyAdminsNewClientMessage(params: {
   const html = wrap(
     'New client message',
     `<p><strong>${params.clientCompany}</strong> sent a message on <strong>${params.projectName}</strong>:</p>
-     <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;">${params.preview}</blockquote>`,
+     <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;">${escMultiline(params.preview)}</blockquote>`,
     `${siteUrl()}/admin/projects/${params.projectId}`,
     'Reply'
   );

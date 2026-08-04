@@ -119,19 +119,24 @@ export async function POST(
 
     // Update project status if statusStage provided
     if (statusStage) {
-      const stageMap: Record<string, string> = {
-        discovery: 'discovery',
-        design: 'design',
-        build: 'build',
-        launch: 'launch',
+      // 'complete' was missing, so the update that mattered most — telling
+      // the client their project is DONE — posted its text but never
+      // advanced the stage, and the index came from key order, which is one
+      // reordering away from renumbering every stage.
+      const STAGE_INDEX: Record<string, number> = {
+        discovery: 0,
+        design: 1,
+        build: 2,
+        launch: 3,
+        complete: 4,
       };
 
-      if (stageMap[statusStage]) {
+      if (statusStage in STAGE_INDEX) {
         await prisma.project.update({
           where: { id: projectId },
           data: {
-            status: stageMap[statusStage],
-            statusStage: Object.keys(stageMap).indexOf(statusStage),
+            status: statusStage,
+            statusStage: STAGE_INDEX[statusStage],
           },
         });
       }
