@@ -61,6 +61,24 @@ describe('encodeMimeMessage', () => {
   const decode = (raw: string) =>
     Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 
+  /** What a receiving client sees after undoing the transfer encoding. */
+  const decodeQuotedPrintable = (body: string) =>
+    Buffer.from(
+      body
+        .replace(/=\r\n/g, '')
+        .replace(/=([0-9A-F]{2})/g, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16))),
+      'binary'
+    ).toString('utf8');
+
+  /** The decoded content of one part of the message. */
+  const part = (message: string, contentType: string) => {
+    const boundary = /boundary="([^"]+)"/.exec(message)![1];
+    const section = message
+      .split(`--${boundary}`)
+      .find((chunk) => chunk.includes(contentType))!;
+    return decodeQuotedPrintable(section.split('\r\n\r\n').slice(1).join('\r\n\r\n')).trim();
+  };
+
   it('sends multipart/alternative with both parts, not HTML alone', () => {
     const message = decode(
       encodeMimeMessage({
@@ -75,7 +93,49 @@ describe('encodeMimeMessage', () => {
     expect(message).toContain('Content-Type: text/plain; charset=UTF-8');
     expect(message).toContain('Content-Type: text/html; charset=UTF-8');
     // The plaintext alternative carries the actual words, not empty filler.
-    expect(message).toContain('Thanks\nHi there.');
+    expect(part(message, 'text/plain')).toBe('Thanks\r\nHi there.');
+  });
+
+  /**
+   * The failure this guards against is a button that renders and does
+   * nothing. A part declared 7bit with a 1,200-character line is a line an
+   * agent in the path may re-wrap wherever it likes, and a break landing
+   * inside an href leaves the markup looking right and the link broken.
+   */
+  it('wraps a long line itself rather than leaving it for something in the path to break', () => {
+    const href = `https://drive.google.com/file/d/${'a'.repeat(60)}/view?usp=sharing`;
+    const html = `<p>${'A polished paragraph of copy. '.repeat(40)}</p><a href="${href}">View Mockups</a>`;
+
+    const message = decode(
+      encodeMimeMessage({
+        from: 'Bothmade <info@bothmade.studio>',
+        to: 'someone@example.com',
+        subject: 'Your mockups',
+        html,
+      })
+    );
+
+    expect(message).toContain('Content-Transfer-Encoding: quoted-printable');
+    for (const line of message.split('\r\n')) {
+      expect(line.length).toBeLessThanOrEqual(76);
+    }
+    // And it survives the round trip — the href arrives whole.
+    expect(part(message, 'text/html')).toBe(html);
+  });
+
+  it('carries the punctuation the templates actually use through intact', () => {
+    const html = '<p>Bothmade — we’d love your thoughts on “both” concepts.</p>';
+
+    const message = decode(
+      encodeMimeMessage({
+        from: 'Bothmade <info@bothmade.studio>',
+        to: 'someone@example.com',
+        subject: 'Concepts',
+        html,
+      })
+    );
+
+    expect(part(message, 'text/html')).toBe(html);
   });
 
   it('orders plaintext before HTML, since clients render the last part they understand', () => {

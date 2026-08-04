@@ -5,6 +5,13 @@ import { Send, Loader2, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
 import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
 import { draftBodyOnly, firstNameOf, personalize } from '@/lib/cold-email';
+import { describeUrlProblem } from '@/lib/html';
+import {
+  EmailAttachmentsEditor,
+  attachmentProblems,
+  attachmentsForSend,
+  type AttachmentDraft,
+} from './EmailAttachmentsEditor';
 import { Modal, ModalCloseButton } from './Modal';
 
 export interface BulkRecipient {
@@ -38,6 +45,9 @@ export function BulkEmailComposer({
     }
     return d;
   });
+  // Shared across the batch, like sharedFields — the same mockup PDF goes to
+  // everyone on the list, and survives a template change.
+  const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [perLead, setPerLead] = useState<Record<string, Record<string, string>>>({});
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sentCount: number; total: number; failures: string[] } | null>(null);
@@ -59,8 +69,22 @@ export function BulkEmailComposer({
   const setPerLeadField = (leadId: string, key: string, value: string) =>
     setPerLead((p) => ({ ...p, [leadId]: { ...(p[leadId] || {}), [key]: value } }));
 
+  const attachmentIssues = attachmentProblems(attachments);
+  const sharedFieldIssues: Record<string, string> = {};
+  for (const field of sharedTemplateFields) {
+    if (field.type !== 'url') continue;
+    const problem = describeUrlProblem(sharedFields[field.key]);
+    if (problem) sharedFieldIssues[field.key] = problem;
+  }
+  if (sharedFields.ctaLabel?.trim() && !sharedFields.ctaUrl?.trim()) {
+    sharedFieldIssues.ctaUrl = "This button has no link, so it wouldn't do anything when tapped.";
+  }
+  const sendAttachments = attachmentsForSend(attachments);
+
   const canSend =
     emailable.length > 0 &&
+    Object.keys(attachmentIssues).length === 0 &&
+    Object.keys(sharedFieldIssues).length === 0 &&
     sharedTemplateFields.every((f) => !f.required || sharedFields[f.key]) &&
     personalizeFields.every((f) => emailable.every((r) => perLead[r.id]?.[f.key]));
 
@@ -118,6 +142,7 @@ export function BulkEmailComposer({
         body: JSON.stringify({
           templateId,
           sharedFields,
+          attachments: sendAttachments,
           recipients: emailable.map((r) => ({
             leadId: r.id,
             to: r.email,
@@ -256,10 +281,20 @@ export function BulkEmailComposer({
                           className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                         />
                       )}
+                      {sharedFieldIssues[field.key] && (
+                        <p className="text-xs text-red-300 mt-1.5">{sharedFieldIssues[field.key]}</p>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
+
+              <EmailAttachmentsEditor
+                attachments={attachments}
+                onChange={setAttachments}
+                problems={attachmentIssues}
+                compact
+              />
 
               {withOwnDraft > 0 && (
                 <div className="flex items-start gap-2 rounded-xl border border-sky-400/20 bg-sky-400/5 px-3 py-2.5 mb-3">
@@ -353,6 +388,7 @@ export function BulkEmailComposer({
               <BulkPreviewPane
                 templateId={templateId}
                 sharedFields={sharedFields}
+                attachments={sendAttachments}
                 perLead={perLead}
                 recipient={emailable.find((r) => r.id === previewFor) || emailable[0]}
               />
@@ -367,11 +403,13 @@ export function BulkEmailComposer({
 function BulkPreviewPane({
   templateId,
   sharedFields,
+  attachments,
   perLead,
   recipient,
 }: {
   templateId: string;
   sharedFields: Record<string, string>;
+  attachments: ReturnType<typeof attachmentsForSend>;
   perLead: Record<string, Record<string, string>>;
   recipient?: BulkRecipient;
 }) {
@@ -391,7 +429,13 @@ function BulkPreviewPane({
         const res = await fetch('/api/admin/email/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateId, toName: recipient.contactName, company: recipient.company, fields: mergedFields }),
+          body: JSON.stringify({
+            templateId,
+            toName: recipient.contactName,
+            company: recipient.company,
+            fields: mergedFields,
+            attachments,
+          }),
         });
         const data = await res.json();
         if (res.ok) {
@@ -408,7 +452,7 @@ function BulkPreviewPane({
       if (timer.current) clearTimeout(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId, recipient?.id, JSON.stringify(mergedFields)]);
+  }, [templateId, recipient?.id, JSON.stringify(mergedFields), JSON.stringify(attachments)]);
 
   if (!recipient) {
     return <div className="flex items-center justify-center h-full text-xs text-white/30 py-10">No recipients with an email on file</div>;

@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Send, Loader2, CheckCircle2, Eye } from 'lucide-react';
 import { EMAIL_TEMPLATES, getTemplate } from '@/lib/email-templates';
+import { describeUrlProblem } from '@/lib/html';
+import {
+  EmailAttachmentsEditor,
+  attachmentProblems,
+  attachmentsForSend,
+  type AttachmentDraft,
+} from './EmailAttachmentsEditor';
 import { Modal, ModalCloseButton } from './Modal';
 
 /**
@@ -101,6 +108,10 @@ export function EmailComposer({
 
   const [templateId, setTemplateId] = useState(EMAIL_TEMPLATES[0].id);
   const [fields, setFields] = useState<Record<string, string>>(() => buildDefaultFields(EMAIL_TEMPLATES[0].id));
+  // Kept across a template change on purpose — the mockup links you're
+  // sending don't stop being the right links because you switched from
+  // "Custom message" to "Follow-up".
+  const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [to, setTo] = useState(recipientEmail);
   const [toName, setToName] = useState(recipientName || '');
   const [sending, setSending] = useState(false);
@@ -135,6 +146,23 @@ export function EmailComposer({
 
   const setField = (key: string, value: string) => setFields((f) => ({ ...f, [key]: value }));
 
+  // Every reason this email isn't ready. A button whose link is missing or
+  // unusable renders as no button at all in the email, so it's caught here
+  // rather than discovered by whoever was supposed to click it.
+  const attachmentIssues = attachmentProblems(attachments);
+  const fieldIssues: Record<string, string> = {};
+  for (const field of template.fields) {
+    if (field.type !== 'url') continue;
+    const problem = describeUrlProblem(fields[field.key]);
+    if (problem) fieldIssues[field.key] = problem;
+  }
+  if (fields.ctaLabel?.trim() && !fields.ctaUrl?.trim()) {
+    fieldIssues.ctaUrl = "This button has no link, so it wouldn't do anything when tapped.";
+  }
+  const blocked = Object.keys(attachmentIssues).length > 0 || Object.keys(fieldIssues).length > 0;
+
+  const sendPayload = attachmentsForSend(attachments);
+
   useEffect(() => {
     if (previewTimer.current) clearTimeout(previewTimer.current);
     previewTimer.current = setTimeout(async () => {
@@ -143,7 +171,7 @@ export function EmailComposer({
         const res = await fetch('/api/admin/email/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateId, toName, company, fields }),
+          body: JSON.stringify({ templateId, toName, company, fields, attachments: sendPayload }),
         });
         const data = await res.json();
         if (res.ok) {
@@ -160,7 +188,7 @@ export function EmailComposer({
       if (previewTimer.current) clearTimeout(previewTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId, toName, company, JSON.stringify(fields)]);
+  }, [templateId, toName, company, JSON.stringify(fields), JSON.stringify(sendPayload)]);
 
   const handleSend = async () => {
     setSending(true);
@@ -169,7 +197,17 @@ export function EmailComposer({
       const res = await fetch('/api/admin/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId, to, toName, company, fields, leadId, clientId, projectId }),
+        body: JSON.stringify({
+          templateId,
+          to,
+          toName,
+          company,
+          fields,
+          attachments: sendPayload,
+          leadId,
+          clientId,
+          projectId,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -302,6 +340,9 @@ export function EmailComposer({
                         className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                       />
                     )}
+                    {fieldIssues[field.key] && (
+                      <p className="text-xs text-red-300 mt-1.5">{fieldIssues[field.key]}</p>
+                    )}
                     {field.helpText && <p className="text-xs text-amber-200/70 mt-1.5">{field.helpText}</p>}
                     {field.examples && field.examples.length > 0 && (
                       <div className="mt-1.5 space-y-1">
@@ -315,6 +356,12 @@ export function EmailComposer({
                   </div>
                 ))}
               </div>
+
+              <EmailAttachmentsEditor
+                attachments={attachments}
+                onChange={setAttachments}
+                problems={attachmentIssues}
+              />
 
               {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
 
@@ -341,7 +388,8 @@ export function EmailComposer({
                 </button>
                 <button
                   onClick={handleSend}
-                  disabled={sending || !to}
+                  disabled={sending || !to || blocked}
+                  title={blocked ? 'One of the links above needs fixing first' : undefined}
                   className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
                 >
                   {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}

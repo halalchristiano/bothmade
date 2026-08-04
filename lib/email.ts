@@ -7,6 +7,7 @@ import {
   esc,
   escMultiline,
   htmlToPlainText,
+  normalizeUrl,
   safeUrl,
   sanitizeDisplayName,
   sanitizeEmailAddress,
@@ -223,16 +224,29 @@ function renderShell(opts: {
   eyebrow?: string;
   title: string;
   bodyHtml: string;
+  /** Attachment cards, rendered between the body and the button. */
+  attachmentsHtml?: string;
   ctaLabel?: string;
   ctaUrl?: string;
+  /**
+   * The "Best, <name>" block, kept out of `bodyHtml` so it can sit where it
+   * belongs — under the attachments and the button, not above them. An email
+   * that signs off and then keeps going reads like it was assembled by a
+   * machine, which is exactly what happened.
+   */
+  signOffHtml?: string;
   footerNote?: string;
   footerAvatarUrl?: string | null;
 }): string {
   const { bodyHtml } = opts;
   const eyebrow = esc(opts.eyebrow);
   const title = esc(opts.title);
+  const attachmentsHtml = opts.attachmentsHtml || '';
   const ctaLabel = esc(opts.ctaLabel);
   const ctaUrl = safeUrl(opts.ctaUrl);
+  // The same link as plain text, for the line under the button. Escaped for
+  // display, not for an href.
+  const ctaUrlText = esc(normalizeUrl(opts.ctaUrl));
   const footerNote = esc(opts.footerNote);
   const footerAvatarUrl = safeUrl(opts.footerAvatarUrl);
   return `
@@ -267,13 +281,18 @@ function renderShell(opts: {
                   <tr>
                     <td style="padding:28px 32px 32px 32px; color:rgba(255,255,255,0.75); font-size:15px; line-height:1.65;">
                       ${bodyHtml}
+                      ${attachmentsHtml}
                       ${
                         ctaLabel && ctaUrl
-                          ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px;"><tr><td style="border-radius:10px; background:linear-gradient(90deg,#38bdf8,#a855f7);">
-                              <a href="${ctaUrl}" style="display:inline-block; padding:13px 28px; font-size:14px; font-weight:700; color:#05030a; text-decoration:none;">${ctaLabel}</a>
-                            </td></tr></table>`
+                          ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0 0;"><tr>
+                              <td align="center" bgcolor="#6f7ef0" style="border-radius:12px; background-color:#6f7ef0; background-image:linear-gradient(90deg,#38bdf8,#a855f7); mso-padding-alt:14px 30px;">
+                                <a href="${ctaUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:14px 30px; border-radius:12px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px; font-weight:700; line-height:1; color:#05030a; text-decoration:none;">${ctaLabel}</a>
+                              </td>
+                            </tr></table>
+                            <p style="margin:10px 0 0 0; font-size:11px; line-height:1.5; color:rgba(255,255,255,0.28);">Button not working? <a href="${ctaUrl}" target="_blank" rel="noopener noreferrer" style="color:rgba(125,211,252,0.7); text-decoration:underline; word-break:break-all;">${ctaUrlText}</a></p>`
                           : ''
                       }
+                      ${opts.signOffHtml || ''}
                     </td>
                   </tr>
                 </table>

@@ -3,7 +3,8 @@
 // Bothmade email, so whatever Evan or Kiana sends looks consistent with the
 // rest of the brand, not a plain-text scrawl.
 
-import { esc, escMultiline, escParagraphs, safeUrl } from '@/lib/html';
+import { renderAttachments } from '@/lib/email-attachments';
+import { esc, escMultiline, escParagraphs, normalizeUrl } from '@/lib/html';
 
 export interface TemplateField {
   key: string;
@@ -43,6 +44,12 @@ export interface BuiltEmail {
   eyebrow?: string;
   title: string;
   bodyHtml: string;
+  /**
+   * The sign-off, separate from the body so the shell can put it last. Any
+   * template can now carry attachments and a button, and both of those belong
+   * above "Best, Evan" rather than trailing after it.
+   */
+  signOffHtml?: string;
   ctaLabel?: string;
   ctaUrl?: string;
 }
@@ -79,20 +86,40 @@ const LOOM_FIELD: TemplateField = {
 // renderShell() escapes those and runs ctaUrl through safeUrl(), and
 // escaping twice would put &amp; in front of the client.
 function withLoom(bodyHtml: string, loomUrl?: string): string {
-  const href = safeUrl(loomUrl);
-  if (!href) return bodyHtml;
-  return `
-    ${bodyHtml}
-    <div style="margin-top:20px; padding:14px 18px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px;">
-      <p style="margin:0 0 8px 0; font-size:13px; color:rgba(255,255,255,0.5);">A short video walkthrough:</p>
-      <a href="${href}" style="color:#7dd3fc; font-size:14px; font-weight:600; text-decoration:none;">${esc(loomUrl)}</a>
-    </div>
-  `;
+  const url = normalizeUrl(loomUrl);
+  if (!url) return bodyHtml;
+  // Rendered through the same card as any other attachment, rather than as a
+  // raw URL printed into the body — a client shouldn't have to work out that
+  // the wall of text ending in `?sid=…` is the thing they're meant to click.
+  return (
+    bodyHtml +
+    renderAttachments(
+      [{ kind: 'link', label: 'Watch the walkthrough', url, note: 'Short video — no sign-in needed' }],
+      'Video walkthrough'
+    )
+  );
 }
 
 /** Escaped — this always lands in bodyHtml, never in a header. */
 function greeting(name: string): string {
   return name && name.trim() ? esc(name.trim()) : 'there';
+}
+
+/**
+ * The sign-off block, ruled off from whatever came before it. One shape for
+ * every template that signs a message, so the spacing and the weight don't
+ * drift email to email.
+ */
+function signOff(opts: { closing?: string; name: string; title?: string }): string {
+  const lines = [
+    `<strong style="color:#fff;">${esc(opts.name)}</strong>`,
+    opts.title ? `<span style="color:rgba(255,255,255,0.5); font-size:13px;">${esc(opts.title)}</span>` : '',
+    `<span style="color:rgba(255,255,255,0.5); font-size:13px;">Bothmade Studio</span>`,
+  ].filter(Boolean);
+
+  return `<p style="margin:28px 0 0 0; padding-top:22px; border-top:1px solid rgba(255,255,255,0.08);">${esc(
+    opts.closing || 'Best,'
+  )}<br/>${lines.join('<br/>')}</p>`;
 }
 
 export const EMAIL_TEMPLATES: EmailTemplate[] = [
@@ -124,19 +151,15 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
     ],
     build: ({ recipientName, senderName, fields }) => {
       const headline = fields.headline === '__custom__' ? fields.headlineCustom || 'A note from Bothmade' : fields.headline || 'A note from Bothmade';
-      const first = senderName ? senderName.split(' ')[0] : 'The Bothmade team';
       const full = senderName || 'The Bothmade Team';
       return {
         subject: fields.subject || headline,
         title: headline,
         bodyHtml: withLoom(
-          `<p>Hi ${greeting(recipientName)},</p>` +
-            escParagraphs(fields.body) +
-            `<p style="margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.08);">Best,<br/><strong style="color:#fff;">${esc(full)}</strong>${
-              fields.senderTitle ? `<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">${esc(fields.senderTitle)}</span>` : ''
-            }<br/><span style="color:rgba(255,255,255,0.5); font-size:13px;">Bothmade Studio</span></p>`,
+          `<p>Hi ${greeting(recipientName)},</p>` + escParagraphs(fields.body),
           fields.loomUrl
         ),
+        signOffHtml: signOff({ name: full, title: fields.senderTitle }),
         ctaLabel: fields.ctaLabel || undefined,
         ctaUrl: fields.ctaUrl || undefined,
       };
@@ -187,8 +210,8 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>Rather than sending a generic sales email, we'd like to earn the opportunity to work with you by creating a bespoke homepage concept for your business.</p>` +
           `<p>We'll research your company, your customers and your competitors, then walk you through our thinking on a short call. There's no obligation — we simply believe it's the best way to demonstrate how we work.</p>` +
           `<p>If you like the direction, we can discuss taking it further. If not, you'll still leave with ideas you can use.</p>` +
-          `<p>Would you be open to a quick 15-minute conversation next week?</p>` +
-          `<p>Kind regards,<br/>${esc(full)}<br/>${esc(title)}<br/>Bothmade Studio</p>`,
+          `<p>Would you be open to a quick 15-minute conversation next week?</p>`,
+        signOffHtml: signOff({ closing: 'Kind regards,', name: full, title }),
       };
     },
   },
@@ -230,8 +253,8 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>We've already identified several opportunities that could make a meaningful difference, and rather than trying to explain them over email, we'd like to build a bespoke homepage concept and walk you through the thinking behind it.</p>` +
           `<p>No templates. No obligation. Just a genuine demonstration of how we'd approach your business if we were fortunate enough to work together.</p>` +
           `<p>If it isn't for you, that's absolutely fine. At the very least, you'll leave with ideas you can use.</p>` +
-          `<p>Would ${esc(fields.callDays) || 'next week'} work for a brief 15-minute conversation?</p>` +
-          `<p>Kind regards,<br/>${esc(full)}<br/>${esc(title)}<br/>Bothmade Studio</p>`,
+          `<p>Would ${esc(fields.callDays) || 'next week'} work for a brief 15-minute conversation?</p>`,
+        signOffHtml: signOff({ closing: 'Kind regards,', name: full, title }),
       };
     },
   },
@@ -267,8 +290,8 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>${fields.loomUrl ? 'Put together a short video with a couple of specific ideas — take a look whenever it suits.' : "Happy to pick this back up whenever it's a better time on your end."}</p>`,
         fields.loomUrl
       ),
-      ctaLabel: fields.loomUrl ? 'Watch the walkthrough' : undefined,
-      ctaUrl: fields.loomUrl,
+      // No CTA here on purpose — withLoom() already renders the video as its
+      // own button, and two buttons to the same place reads as a mistake.
     }),
   },
   {

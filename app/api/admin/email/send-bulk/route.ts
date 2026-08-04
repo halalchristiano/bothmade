@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
-    const { templateId, sharedFields, recipients } = await request.json();
+    const { templateId, sharedFields, attachments, recipients } = await request.json();
 
     if (!templateId || !Array.isArray(recipients) || recipients.length === 0) {
       return NextResponse.json({ error: 'Template and at least one recipient are required' }, { status: 400 });
@@ -67,6 +67,9 @@ export async function POST(request: NextRequest) {
         toName: recipient.toName,
         company: recipient.company,
         fields: { ...(sharedFields || {}), ...(recipient.fields || {}) },
+        // Shared across the batch: the same PDF or mockup link goes to every
+        // recipient, the same way the shared fields do.
+        attachments,
         leadId: recipient.leadId,
         gmailTransport,
         gmailOAuthClient,
