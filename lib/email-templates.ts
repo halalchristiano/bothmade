@@ -17,6 +17,12 @@ export interface TemplateField {
   // than the wording of the rest of the email (e.g. a personalized
   // observation in a cold email).
   helpText?: string;
+  /**
+   * Neutral guidance, shown quietly under the field. `helpText` is amber and
+   * meant to give someone pause; this is just an explanation, and it exists
+   * so a label can be two words instead of a sentence that wraps.
+   */
+  hint?: string;
   examples?: string[];
   // For type: 'select' — a fixed set of on-brand options. Include a
   // '__custom__' value with a friendly label to let the field fall back to
@@ -66,6 +72,8 @@ export interface EmailTemplate {
   label: string;
   description: string;
   audience: 'sales' | 'ops' | 'both';
+  /** Heading this sits under in the template picker. */
+  group: string;
   fields: TemplateField[];
   build: (ctx: TemplateContext) => BuiltEmail;
 }
@@ -74,9 +82,10 @@ export interface EmailTemplate {
 // renders the same way regardless of which template it's attached to.
 const LOOM_FIELD: TemplateField = {
   key: 'loomUrl',
-  label: 'Loom video link (optional)',
+  label: 'Loom video link',
   type: 'url',
   placeholder: 'https://www.loom.com/share/...',
+  hint: 'Renders as its own button under the message.',
 };
 
 // Everything a `build()` interpolates into `bodyHtml` is escaped, because
@@ -125,15 +134,17 @@ function signOff(opts: { closing?: string; name: string; title?: string }): stri
 export const EMAIL_TEMPLATES: EmailTemplate[] = [
   {
     id: 'custom',
+    group: 'Write your own',
     label: 'Custom message',
     description: 'Write your own — still gets the full branded header, footer, and optional button.',
     audience: 'both',
     fields: [
       {
         key: 'headline',
-        label: 'Headline (shown inside the email — separate from the subject line)',
+        label: 'Headline',
         type: 'select',
         required: true,
+        hint: 'The big line inside the email — deliberately not the same as the subject.',
         options: CUSTOM_HEADLINE_OPTIONS,
       },
       {
@@ -142,11 +153,11 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
         type: 'text',
         placeholder: 'e.g. Something worth flagging',
       },
-      { key: 'subject', label: 'Subject line (what they see in their inbox)', type: 'text', required: true },
+      { key: 'subject', label: 'Subject line', type: 'text', required: true, hint: 'What they see in their inbox.' },
       { key: 'body', label: 'Message', type: 'textarea', required: true, placeholder: "Write what you'd like to say..." },
-      { key: 'senderTitle', label: 'Your title (optional, shown in the sign-off)', type: 'text', placeholder: 'e.g. Director of Sales' },
-      { key: 'ctaLabel', label: 'Button text (optional)', type: 'text', placeholder: 'e.g. View proposal' },
-      { key: 'ctaUrl', label: 'Button link (optional)', type: 'url' },
+      { key: 'senderTitle', label: 'Your title', type: 'text', placeholder: 'e.g. Director of Sales', hint: 'Shown in the sign-off.' },
+      { key: 'ctaLabel', label: 'Main button text', type: 'text', placeholder: 'e.g. View proposal' },
+      { key: 'ctaUrl', label: 'Main button link', type: 'url', hint: 'The one big button under the message. Attachments get their own.' },
       LOOM_FIELD,
     ],
     build: ({ recipientName, senderName, fields }) => {
@@ -175,13 +186,14 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   // until it's genuinely true and specific to this business.
   {
     id: 'cold_outreach',
+    group: 'Outreach',
     label: 'Cold outreach (default)',
     description: "The standard first-contact email. Don't send until the observation field is genuinely personalized.",
     audience: 'sales',
     fields: [
       {
         key: 'observation',
-        label: 'One personalized observation (this matters more than anything else in the email)',
+        label: 'One personalized observation',
         type: 'textarea',
         required: true,
         placeholder: 'e.g. the quality of your work and customer reviews deserve a website that builds the same confidence online as you already do in person',
@@ -217,13 +229,14 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'cold_outreach_researched',
+    group: 'Outreach',
     label: 'Cold outreach (deeply researched)',
     description: 'For leads you\'ve dug into specifically — references what you\'ve already found, not just a general observation.',
     audience: 'sales',
     fields: [
       {
         key: 'observation',
-        label: 'One personalized observation (this matters more than anything else in the email)',
+        label: 'One personalized observation',
         type: 'textarea',
         required: true,
         placeholder: 'e.g. your business has clearly earned a strong reputation, but your website doesn\'t communicate that same level of quality to a first-time visitor',
@@ -235,7 +248,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
         ],
       },
       { key: 'senderTitle', label: 'Your title', type: 'text', placeholder: 'e.g. Director of Sales' },
-      { key: 'callDays', label: 'Days to propose (optional)', type: 'text', placeholder: 'e.g. Tuesday or Wednesday' },
+      { key: 'callDays', label: 'Days to propose', type: 'text', placeholder: 'e.g. Tuesday or Wednesday' },
     ],
     build: ({ recipientName, company, senderName, fields }) => {
       const first = senderName ? senderName.split(' ')[0] : 'Evan';
@@ -260,6 +273,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'followup_1',
+    group: 'Follow-up',
     label: 'Follow-up #1 (no response)',
     description: 'First nudge after initial outreach goes unanswered.',
     audience: 'sales',
@@ -276,6 +290,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'followup_2',
+    group: 'Follow-up',
     label: 'Follow-up #2 (re-engagement)',
     description: 'Second touch after continued silence — good spot to attach a Loom walkthrough.',
     audience: 'sales',
@@ -296,6 +311,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'followup_3',
+    group: 'Follow-up',
     label: 'Follow-up #3 (final)',
     description: 'Last touch in the sequence before closing the lead out.',
     audience: 'sales',
@@ -314,6 +330,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   // ── Objection handling (sales) ───────────────────────────────────────
   {
     id: 'objection_price',
+    group: 'Objections',
     label: 'Objection: price',
     description: 'Response when a lead pushes back on cost.',
     audience: 'sales',
@@ -333,6 +350,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'objection_thinking',
+    group: 'Objections',
     label: 'Objection: "need to think"',
     description: 'Response when a lead wants time before deciding.',
     audience: 'sales',
@@ -349,6 +367,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'objection_comparing',
+    group: 'Objections',
     label: 'Objection: comparing agencies',
     description: 'Response when a lead is shopping other studios.',
     audience: 'sales',
@@ -365,6 +384,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'objection_timeline',
+    group: 'Objections',
     label: 'Objection: timeline too long',
     description: 'Response when a lead is concerned about how long the project will take.',
     audience: 'sales',
@@ -383,6 +403,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   // ── Closing (sales) ──────────────────────────────────────────────────
   {
     id: 'closing_payment_sent',
+    group: 'Closing',
     label: 'Closing: payment link sent',
     description: 'Sent right after a payment link goes out, to set expectations on next steps.',
     audience: 'sales',
@@ -399,6 +420,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'closing_scarcity',
+    group: 'Closing',
     label: 'Closing: holding the quote',
     description: 'A time-bound nudge toward a decision, without being pushy.',
     audience: 'sales',
@@ -417,6 +439,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   // ── Scheduling & meetings (both) ─────────────────────────────────────
   {
     id: 'schedule_call',
+    group: 'Scheduling',
     label: 'Schedule a call',
     description: 'Propose a time to talk — for outreach or a next-step follow-up.',
     audience: 'sales',
@@ -443,6 +466,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'meeting_confirmed',
+    group: 'Scheduling',
     label: 'Meeting confirmation',
     description: 'Confirm a scheduled call with the date, link, and agenda.',
     audience: 'both',
@@ -471,12 +495,13 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   // ── Ops / delivery (Kiana's side) ────────────────────────────────────
   {
     id: 'requirements_request',
+    group: 'Delivery',
     label: 'Requirements document request',
     description: 'Ask a client to fill out project requirements/onboarding details.',
     audience: 'ops',
     fields: [
       { key: 'onboardingLink', label: 'Form / dashboard link', type: 'url', required: true },
-      { key: 'deadline', label: 'Deadline (optional)', type: 'text', placeholder: 'e.g. by end of week' },
+      { key: 'deadline', label: 'Deadline', type: 'text', placeholder: 'e.g. by end of week' },
       LOOM_FIELD,
     ],
     build: ({ recipientName, company, fields }) => ({
@@ -495,12 +520,13 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'proposal_followup',
+    group: 'Closing',
     label: 'Proposal follow-up',
     description: 'Nudge a lead to review and sign their proposal.',
     audience: 'sales',
     fields: [
       { key: 'signUrl', label: 'Sign & pay link', type: 'url', required: true },
-      { key: 'note', label: 'Personal note (optional)', type: 'textarea' },
+      { key: 'note', label: 'Personal note', type: 'textarea' },
       LOOM_FIELD,
     ],
     build: ({ recipientName, company, fields }) => ({
@@ -518,6 +544,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'contract_reminder',
+    group: 'Closing',
     label: 'Contract reminder',
     description: 'Remind a client their agreement is still awaiting signature.',
     audience: 'both',
@@ -540,6 +567,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'project_status_update',
+    group: 'Delivery',
     label: 'Project status update',
     description: 'Update a client on progress mid-project.',
     audience: 'ops',
@@ -563,6 +591,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'project_completed',
+    group: 'Delivery',
     label: 'Project completed / delivery',
     description: 'Sent when a project ships — includes warranty and care-plan follow-up.',
     audience: 'ops',
@@ -587,6 +616,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   },
   {
     id: 'check_in',
+    group: 'Delivery',
     label: 'Check-in',
     description: 'A general status/relationship check-in with no specific CTA.',
     audience: 'both',
