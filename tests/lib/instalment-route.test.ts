@@ -10,7 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const prisma = {
   project: { findUnique: vi.fn() },
-  instalment: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  $transaction: vi.fn(async (ops: unknown) => (Array.isArray(ops) ? Promise.all(ops) : ops)),
+  instalment: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn(async () => ({})) },
   invoice: { count: vi.fn(), create: vi.fn(), findUnique: vi.fn() },
   projectUpdate: { create: vi.fn() },
 };
@@ -146,14 +147,29 @@ describe('sending an instalment', () => {
     expect(data.instalment.paymentUrl).toContain('checkout.stripe.com');
   });
 
-  it('tells legacy projects to use the balance flow rather than inventing rows', async () => {
+  /**
+   * A project with no rows used to be told to use the balance flow. That flow
+   * is exactly what a schedule stands down, so the answer now is to give it
+   * the schedule it should have had — and only refuse when there is genuinely
+   * nothing to bill.
+   */
+  it('refuses only when there is no price to build a schedule from', async () => {
     prisma.instalment.findMany.mockResolvedValue([]);
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_1',
+      clientId: 'client_1',
+      name: 'Northgate — Custom Website',
+      totalPrice: 0,
+      status: 'design',
+      client: { id: 'client_1', email: 'ops@northgate.test', company: 'Northgate', contactName: 'Priya' },
+      payments: [],
+    });
 
     const res = await call({ index: 2 });
     const data = await res.json();
 
     expect(res.status).toBe(400);
-    expect(data.error).toContain('balance flow');
+    expect(data.error).toContain('no price');
   });
 
   it('locks the door to unauthenticated callers', async () => {

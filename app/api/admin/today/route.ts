@@ -113,8 +113,11 @@ export async function GET() {
         .aggregate({ where: { status: 'scheduled' }, _sum: { amountCents: true }, _count: true })
         .catch(() => ({ _sum: { amountCents: 0 }, _count: 0 })),
 
+      // 'open' is the only unpaid state an Invoice has — it goes open → paid.
+      // There is no 'sent' or 'overdue', and asking for those would have made
+      // this panel permanently, silently empty.
       prisma.invoice.findMany({
-        where: { status: { in: ['sent', 'overdue'] } },
+        where: { status: 'open' },
         orderBy: { createdAt: 'asc' },
         take: 5,
         select: {

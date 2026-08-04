@@ -5,7 +5,7 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendInstalmentEmail } from '@/lib/email';
 import { buildInstalmentInvoicePdf } from '@/lib/invoice-pdf';
 import { formatInvoiceNumber, invoiceNumberPrefix } from '@/lib/billing';
-import { ensureInstalments, instalmentDueDate, instalmentEmailCopy, instalmentsForProject } from '@/lib/instalments';
+import { ensureInstalments, instalmentDueDate, instalmentEmailCopy } from '@/lib/instalments';
 import { formatCents, formatCentsExact } from '@/lib/pricing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
@@ -73,10 +73,14 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const instalments = await instalmentsForProject(projectId);
+    // ensureInstalments, same as the GET: a legacy project reached directly —
+    // by a stale tab, or a rep who opened the panel before this shipped —
+    // should get its schedule rather than an error pointing at the balance
+    // flow that a schedule stands down.
+    const instalments = await ensureInstalments(projectId);
     if (instalments.length === 0) {
       return NextResponse.json(
-        { error: 'This project predates instalment schedules — use the balance flow instead.' },
+        { error: 'This project has no price on it, so there is no schedule to send.' },
         { status: 400 }
       );
     }
