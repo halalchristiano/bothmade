@@ -36,11 +36,7 @@ function NavLinks({
 
               const tone = active
                 ? 'border-l-sky-400 text-white bg-white/[0.04]'
-                : item.spotlight
-                  ? // Reads as a live destination rather than a link that
-                    // happens to exist, without shouting over the current page.
-                    'border-l-sky-400/40 text-white/85 bg-sky-400/[0.06] hover:bg-sky-400/10 hover:text-white'
-                  : 'border-l-transparent text-white/45 hover:text-white hover:bg-white/[0.03]';
+                : 'border-l-transparent text-white/45 hover:text-white hover:bg-white/[0.03]';
 
               return (
                 <Link
@@ -50,11 +46,7 @@ function NavLinks({
                     compact ? 'py-2.5' : 'py-3'
                   } ${tone}`}
                 >
-                  <Icon
-                    size={17}
-                    strokeWidth={2}
-                    className={active || item.spotlight ? 'text-sky-300' : ''}
-                  />
+                  <Icon size={17} strokeWidth={2} className={active ? 'text-sky-300' : ''} />
                   {item.label}
                   {isChat && unreadCount > 0 && (
                     <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded bg-sky-400 text-[10px] font-bold text-black px-1.5">

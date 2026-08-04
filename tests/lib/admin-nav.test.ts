@@ -15,8 +15,8 @@ const sectionsFor = (role: string) => groupSections(visibleNavItems(role)).map((
 const labelsFor = (role: string) => visibleNavItems(role).map((i) => i.label);
 
 describe('what a sales account is offered', () => {
-  it('includes Care Plans — the end-of-build upsell is sales work', () => {
-    expect(labelsFor('sales')).toContain('Care Plans');
+  it('includes Billing — charging a customer for extra work is sales work', () => {
+    expect(labelsFor('sales')).toContain('Billing');
   });
 
   it('still withholds the ops surface', () => {
@@ -46,14 +46,17 @@ describe('what everyone else is offered', () => {
 });
 
 describe('the sections', () => {
-  it('gives Care Plans one of its own, so it is not just another row', () => {
-    const care = ADMIN_NAV_ITEMS.find((i) => i.href === '/admin/care-plans');
-    expect(care?.section).toBe('Recurring revenue');
-    expect(ADMIN_NAV_ITEMS.filter((i) => i.section === 'Recurring revenue')).toHaveLength(1);
+  it('gives Billing one of its own, so it is not just another row', () => {
+    const billing = ADMIN_NAV_ITEMS.find((i) => i.href === '/admin/billing');
+    expect(billing?.section).toBe('One-off charges');
+    expect(ADMIN_NAV_ITEMS.filter((i) => i.section === 'One-off charges')).toHaveLength(1);
   });
 
-  it('spotlights it, and nothing else — emphasis everywhere is emphasis nowhere', () => {
-    expect(ADMIN_NAV_ITEMS.filter((i) => i.spotlight).map((i) => i.label)).toEqual(['Care Plans']);
+  it('keeps care plans out of the nav — they are per-project, not a destination', () => {
+    // The monthly upsell lives as a band on /admin/projects/[id], because it
+    // only means anything with a project in front of you. Sales reaches it
+    // through the sidebar search, which returns projects to any staff account.
+    expect(ADMIN_NAV_ITEMS.map((i) => i.href)).not.toContain('/admin/care-plans');
   });
 
   it('renders no empty section for a sales account', () => {
@@ -65,8 +68,8 @@ describe('the sections', () => {
     }
   });
 
-  it('keeps Recurring revenue for sales, since its one item survives filtering', () => {
-    expect(sectionsFor('sales')).toContain('Recurring revenue');
+  it('keeps One-off charges for sales, since its one item survives filtering', () => {
+    expect(sectionsFor('sales')).toContain('One-off charges');
   });
 
   it('loses no item to grouping', () => {

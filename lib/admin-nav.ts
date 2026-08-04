@@ -9,7 +9,6 @@ import {
   Palette,
   PhoneCall,
   Receipt,
-  Repeat,
   Settings,
   UserCog,
   Users,
@@ -32,12 +31,6 @@ export interface NavItem {
   salesVisible: boolean;
   /** Heading this sits under. Empty string means no heading above it. */
   section: string;
-  /**
-   * Carries an accent even when it isn't the current page. For the one or two
-   * destinations that are a job rather than a record to look at — if everything
-   * were emphasized, nothing would be.
-   */
-  spotlight?: boolean;
 }
 
 /**
@@ -56,28 +49,17 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/admin/leads', label: 'Leads', icon: Users, salesVisible: true, section: 'Sales' },
   { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, salesVisible: false, section: 'Sales' },
 
-  // Its own section, and the only spotlit item. It's a recurring-revenue job
-  // rather than a record to look at, it has a window that closes when the
-  // project ends, and it is the one thing here a sales account can reach that
-  // lives on a project — all of which makes it the easiest thing on this list
-  // to never notice. Visible to sales even though Projects isn't: the
-  // end-of-build upsell is sales work, and this page carries none of what
-  // Projects withholds — no files, no client records, no revenue figures.
-  {
-    href: '/admin/care-plans',
-    label: 'Care Plans',
-    icon: Repeat,
-    salesVisible: true,
-    section: 'Recurring revenue',
-    spotlight: true,
-  },
-
-  // Beside Care Plans because both are money after the sale, and separate
-  // from it because one bills monthly forever and the other bills once.
-  // Visible to sales for the same reason Care Plans is: billing a customer
-  // for extra work is sales work, and the page carries none of what Clients
-  // and Projects withhold — the customer search needs a query, returns ten
-  // rows, and projects five fields.
+  // Money after the sale, which is neither a lead nor a project, so it gets
+  // its own heading rather than being filed under one of theirs. Visible to
+  // sales because billing a customer for extra work is sales work, and the
+  // page carries none of what Clients and Projects withhold — the customer
+  // search needs a query, returns ten rows, and projects five fields.
+  //
+  // The recurring counterpart — signing a client onto a monthly care plan —
+  // deliberately has no nav item. It's per-project and only makes sense with
+  // a project in front of you, so it lives as a band across the top of
+  // /admin/projects/[id] instead. Sales reaches it through the sidebar
+  // search, which returns projects to every staff account.
   { href: '/admin/billing', label: 'Billing', icon: Receipt, salesVisible: true, section: 'One-off charges' },
 
   { href: '/admin/priorities', label: 'Priorities', icon: ListChecks, salesVisible: false, section: 'Delivery' },

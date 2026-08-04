@@ -495,6 +495,12 @@ export default function AdminProjectDetailPage() {
         </div>
       )}
 
+      {/* Full width, above everything. The monthly plan is the one thing on
+          this page that has a window — it lands while the build is still in
+          front of the client and gets much harder a month after handover — so
+          it sits where the page opens rather than under a scroll. */}
+      <RecurringCarePanel projectId={projectId} />
+
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
         {/* LEFT: Project Info */}
         <div className="lg:col-span-3 space-y-6">
@@ -750,10 +756,6 @@ export default function AdminProjectDetailPage() {
               </button>
             </div>
           </div>
-
-          {/* The upsell that belongs at this end of the job: the monthly plan
-              that keeps the thing we just built looked after. */}
-          <RecurringCarePanel projectId={projectId} />
         </div>
 
         {/* CENTER: Messages & Updates */}
