@@ -52,6 +52,12 @@ export interface InvoicePdfInput {
   amountDue: string;
   isDeposit: boolean;
   balanceRemaining?: string;
+  /** Line under the invoice number, e.g. the billing period on a monthly one. */
+  subheading?: string;
+  /** Overrides "Amount due" — a receipt for money already taken says "paid". */
+  amountDueLabel?: string;
+  /** Replaces the closing note, which otherwise cites a project agreement. */
+  footerNote?: string;
 }
 
 /** Greedy word-wrap against the actual measured width of the given font/size. */
@@ -155,6 +161,11 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   drawTextRight(input.date, { size: 10, color: GRAY });
   y -= 30;
 
+  if (input.subheading) {
+    drawText(input.subheading, MARGIN, { size: 10, color: GRAY });
+    y -= 22;
+  }
+
   // Who it's from and who it's for, side by side — an invoice has to carry the
   // issuing address, not just the billing one.
   const columnTop = y;
@@ -221,12 +232,13 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     }
   } else {
     hr();
-    drawRow('Amount due', input.amountDue, { f: bold, size: 13, color: ACCENT });
+    drawRow(input.amountDueLabel || 'Amount due', input.amountDue, { f: bold, size: 13, color: ACCENT });
   }
 
   y -= 30;
   const footer = wrapText(
-    'This invoice reflects the scope agreed in the accompanying project agreement. Payment is processed securely by Stripe.',
+    input.footerNote ||
+      'This invoice reflects the scope agreed in the accompanying project agreement. Payment is processed securely by Stripe.',
     font,
     9,
     CONTENT_WIDTH
@@ -237,6 +249,59 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   }
 
   return doc.save();
+}
+
+export interface CarePlanInvoiceInput {
+  /** Stripe's own invoice number when it has one, so the client's copy and
+   * the Stripe dashboard agree on which month is which. */
+  invoiceNumber: string;
+  company: string;
+  contactName: string | null;
+  addOnKeys: AddOnKey[];
+  /** The standard rate, before the introductory discount. */
+  standardCents: number;
+  /** What was actually charged. */
+  chargedCents: number;
+  /** "August 4 – September 4, 2026", or null when Stripe didn't send a period. */
+  periodLabel: string | null;
+  /** How the discount is described on the invoice, e.g. "First-year rate (15% off)". */
+  discountLabel: string | null;
+  date: string;
+}
+
+/**
+ * The monthly invoice for an active care plan.
+ *
+ * Sent because the card statement says "BOTHMADE" and nothing else — the
+ * client needs a document that names what the charge was for, which months it
+ * covered, and what the introductory rate saved them, both to file it and to
+ * see the discount is still being applied.
+ */
+export async function buildCarePlanInvoicePdf(input: CarePlanInvoiceInput): Promise<Uint8Array> {
+  const discount = input.standardCents - input.chargedCents;
+
+  return buildInvoicePdf({
+    invoiceNumber: input.invoiceNumber,
+    date: input.date,
+    subheading: input.periodLabel ? `Service period: ${input.periodLabel}` : undefined,
+    company: input.company,
+    contactName: input.contactName,
+    lineItems: input.addOnKeys.map((key) => ({
+      label: `${ADD_ONS[key].label} — monthly`,
+      amount: formatCents(ADD_ONS[key].price),
+    })),
+    adjustments:
+      discount > 0 && input.discountLabel
+        ? [{ label: input.discountLabel, amount: `-${formatCents(discount)}` }]
+        : [],
+    subtotal: formatCents(input.standardCents),
+    total: formatCents(input.chargedCents),
+    amountDue: formatCents(input.chargedCents),
+    amountDueLabel: 'Paid',
+    isDeposit: false,
+    footerNote:
+      'This is a recurring monthly charge for your care plan. Payment is processed securely by Stripe, and you can cancel at any time by replying to this email.',
+  });
 }
 
 export interface InvoiceForProposalInput {

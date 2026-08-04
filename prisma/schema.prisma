@@ -80,6 +80,7 @@ model User {
   receivedTeamMessages TeamMessage[]    @relation("TeamMessageRecipient")
   csvImportLogs        CsvImportLog[]
   uploadedMockups      LeadMockup[]     @relation("MockupUploader")
+  recurringOffers      RecurringOffer[] @relation("RecurringOfferAuthor")
 
   @@map("users")
 }
@@ -190,6 +191,7 @@ model Project {
   teamNotes           TeamNote[]
   onboardingQuestions OnboardingQuestion[]
   payments            Payment[]
+  recurringOffers     RecurringOffer[]
 
   @@map("projects")
 }
@@ -638,6 +640,104 @@ model Payment {
   createdAt DateTime @default(now())
 
   @@map("payments")
+}
+
+// An offer to put a client onto one of the recurring "ongoing care" services
+// — hosting, maintenance, a growth plan — either because they took it in the
+// original scope and the prepaid months are running out, or as an upsell at
+// the end of a build for someone who didn't.
+//
+// Deliberately NOT a Payment row per month. Payment is what the project's
+// balance is derived from (`totalPrice - sum(payments)`), so booking a
+// recurring charge there would show a project as overpaid every month
+// forever. Subscription money is its own ledger — see RecurringPayment.
+model RecurringOffer {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Comma-separated add-on keys, all from the catalogue's "ongoing-care"
+  // category (see lib/recurring.ts).
+  addOns String
+
+  // The standard rate the plan reverts to once the introductory year is up.
+  // Copied off the catalogue at send time rather than recomputed later, so a
+  // future price change can't quietly re-price a plan someone already agreed to.
+  monthlyCents Int
+
+  // The introductory discount, chosen per-offer by whoever is selling it.
+  // "percent" = percentage points off; "amount" = cents off each month.
+  discountType  String @default("percent")
+  discountValue Int    @default(0)
+
+  // Months at no charge before billing starts — 2 when the service was in the
+  // original scope (first month included in the project price, second month
+  // covered as the sign-on sweetener), 0 for a cold upsell.
+  freeMonths Int @default(0)
+
+  // How many billed months run at the introductory rate before the standard
+  // one resumes. Stored rather than assumed so an already-sold plan keeps its
+  // terms if the default ever changes.
+  discountMonths Int @default(12)
+
+  // The line the rep wants in the offer email, in their own words.
+  note String?
+
+  status String @default("sent") // "sent" | "active" | "declined" | "canceled"
+
+  // Capability token for the no-login offer page (/care/[token]). Same
+  // reasoning as Project.shareToken: the ID that appears in admin URLs must
+  // not also be the thing that authorizes signing up for a monthly charge.
+  token String @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
+
+  sentAt      DateTime  @default(now())
+  acceptedAt  DateTime?
+  declinedAt  DateTime?
+  canceledAt  DateTime?
+
+  stripeCheckoutSessionId String? @unique
+  stripeSubscriptionId    String? @unique
+  // Kept so the discount that's actually running can be looked up in Stripe
+  // when a client asks what they're on.
+  stripeCouponId          String?
+
+  createdById String?
+  createdBy   User?   @relation("RecurringOfferAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  payments RecurringPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, createdAt])
+  @@index([status])
+  @@map("recurring_offers")
+}
+
+// One paid monthly invoice against an active care plan. Its own table rather
+// than Payment for the reason above, and keyed on the Stripe invoice ID so a
+// redelivered webhook can't bill or email the client twice.
+model RecurringPayment {
+  id      String         @id @default(cuid())
+  offerId String
+  offer   RecurringOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  amount Int // cents actually charged, after the discount
+  // What the same month would have cost at the standard rate — kept so the
+  // invoice can show the saving rather than just a smaller number.
+  standardAmount Int
+
+  stripeInvoiceId  String  @unique
+  invoiceNumber    String?
+  hostedInvoiceUrl String?
+
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([offerId, createdAt])
+  @@map("recurring_payments")
 }
 
 // A personal to-do — assignable to any team member, optionally linked to a

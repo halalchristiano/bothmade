@@ -22,6 +22,7 @@ import {
   Palette,
   ListChecks,
   UserCog,
+  Repeat,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -33,6 +34,10 @@ const NAV_ITEMS = [
   { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, salesVisible: false },
   { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
+  // Visible to sales even though Projects isn't: the end-of-build upsell is
+  // sales work, and this page carries none of what Projects withholds — no
+  // files, no client records, no revenue figures.
+  { href: '/admin/care-plans', label: 'Care Plans', icon: Repeat, salesVisible: true },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, salesVisible: true },
   { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, salesVisible: true },
   { href: '/admin/team', label: 'Team', icon: UserCog, salesVisible: false },

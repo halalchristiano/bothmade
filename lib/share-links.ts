@@ -51,6 +51,18 @@ export function buildSignUrl(leadId: string, shareToken: string, origin?: string
   return `${origin || siteUrl()}/sign/${leadId}?${SHARE_TOKEN_PARAM}=${shareToken}`;
 }
 
+/**
+ * The public care-plan offer link.
+ *
+ * The token is the path segment rather than a `?t=` on an ID, because unlike a
+ * lead or a project there is nothing here worth addressing by its own ID — the
+ * offer has no admin URL of its own, so there is no second identifier to keep
+ * the capability separate from. One unguessable value, one link.
+ */
+export function buildCareOfferUrl(token: string, origin?: string): string {
+  return `${origin || siteUrl()}/care/${encodeURIComponent(token)}`;
+}
+
 // There is deliberately no buildStatusUrl() counterpart: the only place
 // that link is produced is the client dashboard's "copy share link" button,
 // which is a browser component and wants window.location.origin. Importing

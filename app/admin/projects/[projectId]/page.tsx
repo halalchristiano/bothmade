@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
 import { Mail } from 'lucide-react';
 import { EmailComposer } from '@/components/admin/EmailComposer';
+import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -649,6 +650,10 @@ export default function AdminProjectDetailPage() {
               </button>
             </div>
           </div>
+
+          {/* The upsell that belongs at this end of the job: the monthly plan
+              that keeps the thing we just built looked after. */}
+          <RecurringCarePanel projectId={projectId} />
         </div>
 
         {/* CENTER: Messages & Updates */}
