@@ -36,7 +36,9 @@ export async function POST(
       addOns = [],
       clientType,
       timeline,
-      depositOnly = false,
+      // Matches the proposal route: the instalment schedule is the default,
+      // so a re-sent copy shows the same Payment 1 of 3 the client already has.
+      depositOnly = true,
       customItems: rawCustomItems = [],
       recipient,
     } = await request.json();

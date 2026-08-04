@@ -10,6 +10,7 @@
 
 import type { Instalment, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { amountPaidTowardProject } from '@/lib/billing';
 import { formatCentsExact, instalmentSchedule } from '@/lib/pricing';
 
 export type InstalmentStatus = 'scheduled' | 'due' | 'paid' | 'void';
@@ -63,6 +64,143 @@ export async function instalmentsForProject(projectId: string): Promise<Instalme
     where: { projectId },
     orderBy: { index: 'asc' },
   });
+}
+
+/**
+ * The schedule a project that predates instalments should have had.
+ *
+ * Every project created before the schedule existed has zero rows, so the
+ * payment panel renders nothing and the client dashboard falls back to the
+ * old lump-balance flow. That is the honest reason the 40/30/30 work was
+ * invisible on everything anyone actually owned: it only ever seeded at
+ * checkout, so it only ever existed on deals closed after the migration.
+ *
+ * The subtlety is money already taken. A legacy project was billed 50/50,
+ * so a $30,000 job has $15,000 paid against a new schedule whose first row
+ * is $12,000 — and marking only whole rows paid would leave $3,000 sitting
+ * inside a "Payment 2 of 3" the client would be invoiced in full for.
+ *
+ * So a part-paid project's first row is set to **exactly what has cleared**,
+ * and the balance is split across the rest in the schedule's own
+ * proportions. Nobody is billed twice for the same dollar, the rows still
+ * sum to the contracted total, and each row's percent describes its own
+ * amount rather than a template the money never followed.
+ */
+export function backfillSchedule(
+  totalCents: number,
+  paidCents: number
+): Array<{
+  index: number;
+  count: number;
+  label: string;
+  percent: number;
+  amountCents: number;
+  trigger: string;
+  paid: boolean;
+}> {
+  const template = instalmentSchedule(totalCents);
+  const count = template.length;
+  const pct = (cents: number) => (totalCents > 0 ? Math.round((cents / totalCents) * 100) : 0);
+
+  // Nothing paid, or paid off entirely: the standard schedule describes it
+  // exactly, and every row's status is the same.
+  if (paidCents <= 0 || paidCents >= totalCents) {
+    return template.map((row) => ({
+      index: row.index,
+      count: row.count,
+      label: row.label,
+      percent: row.percent,
+      amountCents: row.amountCents,
+      trigger: row.trigger,
+      paid: paidCents >= totalCents,
+    }));
+  }
+
+  // Part-paid. Row 1 is what cleared; the rest share what's left in the same
+  // ratio the template gave them, with the last row taking the remainder so
+  // the three still add up to the contracted price to the cent.
+  const outstanding = totalCents - paidCents;
+  const laterPercentTotal = template.slice(1).reduce((sum, row) => sum + row.percent, 0);
+  let allocated = 0;
+
+  return template.map((row, i) => {
+    if (i === 0) {
+      return {
+        index: row.index,
+        count,
+        label: row.label,
+        percent: pct(paidCents),
+        amountCents: paidCents,
+        trigger: row.trigger,
+        paid: true,
+      };
+    }
+    const amountCents =
+      i === count - 1
+        ? outstanding - allocated
+        : Math.round((outstanding * row.percent) / laterPercentTotal);
+    allocated += amountCents;
+    return {
+      index: row.index,
+      count,
+      label: row.label,
+      percent: pct(amountCents),
+      amountCents,
+      trigger: row.trigger,
+      paid: false,
+    };
+  });
+}
+
+/**
+ * Give a legacy project the schedule it should have had, once, on first
+ * sight. Idempotent by the unique (projectId, index): two tabs opening the
+ * same project race into the same rows rather than two schedules.
+ *
+ * Returns the project's rows either way, so callers can treat this as
+ * "fetch the schedule" and not think about which era the project is from.
+ */
+export async function ensureInstalments(projectId: string): Promise<Instalment[]> {
+  const existing = await instalmentsForProject(projectId);
+  if (existing.length > 0) return existing;
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, totalPrice: true, payments: { select: { amount: true, type: true } } },
+  });
+  // A project with no price has no schedule to describe — three rows of $0
+  // would be noise on the page and a $0 invoice waiting to be sent.
+  if (!project || project.totalPrice <= 0) return [];
+
+  const paidCents = amountPaidTowardProject(project.payments);
+  const rows = backfillSchedule(project.totalPrice, paidCents);
+  const now = new Date();
+
+  try {
+    await prisma.$transaction(
+      rows.map((row) =>
+        prisma.instalment.create({
+          data: {
+            projectId: project.id,
+            index: row.index,
+            count: row.count,
+            label: row.label,
+            percent: row.percent,
+            amountCents: row.amountCents,
+            trigger: row.trigger,
+            status: row.paid ? 'paid' : 'scheduled',
+            paidAt: row.paid ? now : null,
+          },
+        })
+      )
+    );
+  } catch {
+    // Lost the race, or the write failed. Either way the read below is the
+    // truth — and a failed backfill must never take down the page that
+    // triggered it.
+  }
+
+  return instalmentsForProject(projectId);
 }
 
 /**

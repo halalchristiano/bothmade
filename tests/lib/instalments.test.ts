@@ -18,7 +18,14 @@ const tx = {
   },
 } as any;
 
-import { instalmentEmailCopy, instalmentDueDate, nextUnpaid, fullyPaid, seedInstalments } from '@/lib/instalments';
+import {
+  backfillSchedule,
+  instalmentEmailCopy,
+  instalmentDueDate,
+  nextUnpaid,
+  fullyPaid,
+  seedInstalments,
+} from '@/lib/instalments';
 
 beforeEach(() => {
   created.length = 0;
@@ -129,5 +136,69 @@ describe('due dates', () => {
   it('lands fourteen days out, matching the contract terms', () => {
     const from = new Date('2026-08-04T12:00:00Z');
     expect(instalmentDueDate(from).toISOString().slice(0, 10)).toBe('2026-08-18');
+  });
+});
+
+/**
+ * The backfill is the riskiest arithmetic in the file, because it runs
+ * against projects that have already taken real money. The failure that
+ * matters is not a rounding cent — it is billing a client for a dollar they
+ * have already paid, which is what marking only whole rows paid would do to
+ * every legacy 50/50 project above the threshold.
+ */
+describe('backfilling a project that predates the schedule', () => {
+  it('gives an untouched project the plain schedule', () => {
+    const rows = backfillSchedule(2_000_000, 0);
+
+    expect(rows.map((r) => r.percent)).toEqual([40, 30, 30]);
+    expect(rows.map((r) => r.amountCents)).toEqual([800_000, 600_000, 600_000]);
+    expect(rows.every((r) => !r.paid)).toBe(true);
+  });
+
+  it('marks a fully paid project settled across every row', () => {
+    const rows = backfillSchedule(1_000_000, 1_000_000);
+
+    expect(rows.every((r) => r.paid)).toBe(true);
+    expect(rows.reduce((s, r) => s + r.amountCents, 0)).toBe(1_000_000);
+  });
+
+  it('never re-bills money a legacy 50/50 project already took', () => {
+    // $30,000 job, half paid under the old two-payment split. The standard
+    // first row is $12,000 — so a whole-rows-only backfill would leave
+    // $3,000 of paid money sitting inside Payment 2 of 3.
+    const rows = backfillSchedule(3_000_000, 1_500_000);
+
+    expect(rows[0]).toMatchObject({ amountCents: 1_500_000, paid: true, percent: 50 });
+    expect(rows.slice(1).every((r) => !r.paid)).toBe(true);
+    // What is still owed is exactly what is still owed.
+    const outstanding = rows.filter((r) => !r.paid).reduce((s, r) => s + r.amountCents, 0);
+    expect(outstanding).toBe(1_500_000);
+  });
+
+  it('keeps the rows summing to the contracted price on an awkward split', () => {
+    for (const [total, paid] of [
+      [1_999_999, 333_333],
+      [3_000_001, 1_000_000],
+      [777_777, 1],
+      [2_000_000, 1_999_999],
+    ]) {
+      const rows = backfillSchedule(total, paid);
+      expect(rows.reduce((s, r) => s + r.amountCents, 0)).toBe(total);
+      expect(rows.every((r) => r.amountCents >= 0)).toBe(true);
+    }
+  });
+
+  it('still labels the rows as positions in one schedule', () => {
+    const rows = backfillSchedule(3_000_000, 1_500_000);
+
+    expect(rows.map((r) => r.label)).toEqual(['Payment 1 of 3', 'Payment 2 of 3', 'Payment 3 of 3']);
+    expect(rows.map((r) => r.trigger)).toEqual(['signing', 'design-approval', 'ready-for-launch']);
+  });
+
+  it('treats an overpaid project as settled rather than producing a negative row', () => {
+    const rows = backfillSchedule(1_000_000, 1_200_000);
+
+    expect(rows.every((r) => r.paid)).toBe(true);
+    expect(rows.every((r) => r.amountCents > 0)).toBe(true);
   });
 });

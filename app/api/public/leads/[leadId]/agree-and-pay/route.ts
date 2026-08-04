@@ -19,8 +19,9 @@ import {
   TIMELINES,
   calculatePrice,
   customItemsTotal,
-  depositAmount,
   formatCents,
+  formatCentsExact,
+  instalmentSchedule,
   isAddOnKey,
   isBaseService,
   isClientType,
@@ -135,7 +136,8 @@ export async function POST(
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
     const calculatedTotal = breakdown.totalPrice + customTotal;
     const totalPrice = lead.proposalTotalPrice && lead.proposalTotalPrice > 0 ? lead.proposalTotalPrice : calculatedTotal;
-    const deposit = depositAmount(totalPrice);
+    const schedule = instalmentSchedule(totalPrice);
+    const deposit = schedule[0].amountCents;
     const chargeAmount = lead.proposalDepositOnly ? deposit : totalPrice;
 
     const serviceLabel = BASE_SERVICES[baseService].label;
@@ -281,7 +283,9 @@ export async function POST(
         data: {
           leadId,
           type: 'proposal',
-          content: `Contract signed online by ${signerName} (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
+          content: `Contract signed online by ${signerName} (IP ${ip}) — proceeding to ${
+            lead.proposalDepositOnly ? schedule[0].label : 'payment in full'
+          } for ${formatCentsExact(chargeAmount)}.`,
           url: signedContractUrl || undefined,
         },
       });
@@ -319,7 +323,9 @@ export async function POST(
           data: {
             leadId,
             type: 'proposal',
-            content: `Returned to the signed proposal (IP ${ip}) — reopened checkout for ${formatCents(chargeAmount)}.`,
+            content: `Returned to the signed proposal (IP ${ip}) — reopened checkout for ${
+              lead.proposalDepositOnly ? schedule[0].label : 'payment in full'
+            }, ${formatCentsExact(chargeAmount)}.`,
             url: lead.signedContractUrl || undefined,
           },
         })
@@ -339,8 +345,20 @@ export async function POST(
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Bothmade ${serviceLabel} — ${lead.company}${lead.proposalDepositOnly ? ' (Deposit)' : ''}`,
-              description: addOnLabels.length > 0 ? addOnLabels.join(', ') : undefined,
+              // Stripe's own checkout page is the last thing the client reads
+              // before their card is charged, so it names the position too —
+              // "(Deposit)" told them nothing about what came next.
+              name: lead.proposalDepositOnly
+                ? `Bothmade ${serviceLabel} — ${lead.company} · ${schedule[0].label}`
+                : `Bothmade ${serviceLabel} — ${lead.company}`,
+              description: lead.proposalDepositOnly
+                ? `${schedule[0].percent}% of ${formatCents(totalPrice)}, due on signing. Payments ${schedule
+                    .slice(1)
+                    .map((r) => r.index)
+                    .join(' and ')} of ${schedule.length} are invoiced later, at design approval and launch.`
+                : addOnLabels.length > 0
+                ? addOnLabels.join(', ')
+                : undefined,
             },
             unit_amount: chargeAmount,
           },
@@ -361,6 +379,10 @@ export async function POST(
         totalPrice: String(totalPrice),
         customItems: JSON.stringify(customItems),
         paymentType: lead.proposalDepositOnly ? 'deposit' : 'full',
+        // The webhook's fallback when Stripe omits amount_total on a
+        // schedule sale. Without it that fallback reached for the whole
+        // project price and marked all three instalments paid.
+        depositAmount: String(deposit),
       },
     });
 

@@ -450,24 +450,21 @@ export async function sendPaymentLinkEmail(
   contactName: string | null,
   company: string,
   paymentUrl: string,
-  amountLabel: string,
-  isDeposit: boolean
+  amountLabel: string
 ): Promise<boolean> {
   const bodyHtml = `
     <p>Hi ${esc(contactName) || 'there'},</p>
-    <p>Thanks for choosing Bothmade for ${esc(company)}'s project. ${
-      isDeposit
-        ? `Here's a secure link to pay your deposit of <strong style="color:#fff;">${esc(amountLabel)}</strong> and get started.`
-        : `Here's a secure link to complete your payment of <strong style="color:#fff;">${esc(amountLabel)}</strong>.`
-    }</p>
+    <p>Thanks for choosing Bothmade for ${esc(company)}'s project. Here's a secure link to complete your payment of <strong style="color:#fff;">${esc(
+      amountLabel
+    )}</strong>.</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">This link is hosted securely by Stripe — we never see or store your card details.</p>
   `;
 
   return sendEmail({
     to: toEmail,
-    subject: `Your Bothmade payment link${isDeposit ? ' — deposit to get started' : ''}`,
+    subject: 'Your Bothmade payment link',
     html: renderShell({
-      eyebrow: isDeposit ? 'Deposit due' : 'Payment due',
+      eyebrow: 'Payment due',
       title: `${company} — Payment Link`,
       bodyHtml,
       ctaLabel: 'Pay securely',
@@ -481,15 +478,38 @@ export async function sendPaymentLinkEmail(
  * contract, and pay, all in one page, instead of a separate PDF + payment
  * link the client has to piece together themselves.
  */
-export async function sendSignAndPayEmail(
-  toEmail: string,
-  contactName: string | null,
-  company: string,
-  signUrl: string,
-  amountLabel: string,
-  isDeposit: boolean,
-  attachments: { filename: string; content: Buffer }[] = []
-): Promise<SendResult> {
+export interface SignAndPayScheduleRow {
+  label: string;
+  amount: string;
+  triggerLabel: string;
+}
+
+/**
+ * The one email that opens every deal: agreement, invoice, and the link that
+ * takes the money — and, on the normal instalment sale, the whole payment
+ * schedule laid out with **Payment 1 of 3** named as such.
+ *
+ * That naming is not decoration. This email used to call the first payment a
+ * "deposit" and say nothing about the two behind it, while the invoices for
+ * payments 2 and 3 announced their position in 26-point type. A client's
+ * first impression of how they were going to be billed therefore came from
+ * the one document that declined to explain it.
+ */
+export async function sendSignAndPayEmail(opts: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  signUrl: string;
+  /** The full schedule, or null when the client is paying the fee in one go. */
+  schedule: SignAndPayScheduleRow[] | null;
+  /** What is charged on this click. */
+  amountLabel: string;
+  totalLabel: string;
+  attachments?: { filename: string; content: Buffer }[];
+}): Promise<SendResult> {
+  const { toEmail, contactName, company, signUrl, schedule, amountLabel, totalLabel } = opts;
+  const attachments = opts.attachments ?? [];
+
   // Named so the sentence matches what is actually attached — promising an
   // agreement that failed to build would be worse than not mentioning it.
   const names = attachments.map((a) => (/agreement/i.test(a.filename) ? 'agreement' : 'itemized invoice'));
@@ -500,23 +520,73 @@ export async function sendSignAndPayEmail(
           names.length === 2 ? `${names[0]} and the ${names[1]} are` : `${names[0]} is`
         } attached to this email as ${names.length === 2 ? 'PDFs' : 'a PDF'}.</p>`;
 
-  const bodyHtml = `
+  const first = schedule?.[0];
+  const positionLabel = first?.label ?? 'the full fee';
+
+  // A three-row table beats a paragraph here: the client's whole question is
+  // "what am I committing to pay, and when," and a table answers it at a
+  // glance in every mail client that ever existed.
+  const scheduleTable = schedule
+    ? `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; margin:22px 0; border-collapse:collapse;">
+      <tr>
+        <td colspan="3" style="padding:0 0 8px; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:rgba(255,255,255,0.4);">
+          Payment schedule — ${esc(totalLabel)} total
+        </td>
+      </tr>
+      ${schedule
+        .map(
+          (row, i) => `
+      <tr>
+        <td style="padding:10px 12px; border-top:1px solid rgba(255,255,255,0.08); ${
+          i === 0 ? 'background:rgba(56,189,248,0.08);' : ''
+        } font-size:14px; color:#fff; font-weight:${i === 0 ? '700' : '400'};">${esc(row.label)}</td>
+        <td style="padding:10px 12px; border-top:1px solid rgba(255,255,255,0.08); ${
+          i === 0 ? 'background:rgba(56,189,248,0.08);' : ''
+        } font-size:13px; color:rgba(255,255,255,0.55);">${esc(row.triggerLabel)}</td>
+        <td style="padding:10px 12px; border-top:1px solid rgba(255,255,255,0.08); ${
+          i === 0 ? 'background:rgba(56,189,248,0.08);' : ''
+        } font-size:14px; color:${i === 0 ? '#7dd3fc' : 'rgba(255,255,255,0.75)'}; text-align:right; font-weight:${
+            i === 0 ? '700' : '400'
+          }; white-space:nowrap;">${esc(row.amount)}</td>
+      </tr>`
+        )
+        .join('')}
+    </table>`
+    : '';
+
+  const bodyHtml = schedule
+    ? `
     <p>Hi ${esc(contactName) || 'there'},</p>
-    <p>Here's everything to get ${esc(company)}'s project moving — the agreement to review and a secure place to pay ${
-      isDeposit ? `your deposit of <strong style="color:#fff;">${esc(amountLabel)}</strong>` : `<strong style="color:#fff;">${esc(amountLabel)}</strong>`
-    }, all on one page.</p>
+    <p>Here's everything to get ${esc(company)}'s project moving — the agreement to review and a secure place to pay, on one page.</p>
+    <p>Your fee of <strong style="color:#fff;">${esc(totalLabel)}</strong> is split across ${
+        schedule.length
+      } payments. This link takes <strong style="color:#fff;">${esc(positionLabel)} — ${esc(
+        amountLabel
+      )}</strong>. Nothing else is charged automatically; each later payment is invoiced only when you reach the milestone beside it.</p>
+    ${scheduleTable}
+    ${attachmentLine}
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
+  `
+    : `
+    <p>Hi ${esc(contactName) || 'there'},</p>
+    <p>Here's everything to get ${esc(company)}'s project moving — the agreement to review and a secure place to pay <strong style="color:#fff;">${esc(
+        amountLabel
+      )}</strong> in full, all on one page.</p>
     ${attachmentLine}
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>
   `;
 
   return sendEmailDetailed({
     to: toEmail,
-    subject: `Review & confirm your Bothmade project — ${company}`,
+    subject: schedule
+      ? `${positionLabel} — review & confirm your Bothmade project (${company})`
+      : `Review & confirm your Bothmade project — ${company}`,
     html: renderShell({
-      eyebrow: 'Ready to start',
+      eyebrow: schedule ? positionLabel : 'Ready to start',
       title: `${company} — Review & Pay`,
       bodyHtml,
-      ctaLabel: 'Review & Pay',
+      ctaLabel: schedule ? `Review & Pay ${positionLabel}` : 'Review & Pay',
       ctaUrl: signUrl,
     }),
     ...(attachments.length > 0 ? { attachments } : {}),

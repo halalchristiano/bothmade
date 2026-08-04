@@ -7,8 +7,9 @@ import {
   calculatePrice,
   customItemsMissingScope,
   customItemsTotal,
-  depositAmount,
   formatCents,
+  formatCentsExact,
+  instalmentSchedule,
   isAddOnKey,
   isBaseService,
   isClientType,
@@ -44,7 +45,11 @@ export async function POST(
       addOns = [],
       clientType,
       timeline,
-      depositOnly = false,
+      // Defaults to the instalment schedule, and that default is the whole
+      // point. This used to default to false, so a rep who forgot to tick a
+      // box billed the client the entire project fee up front — a footgun on
+      // the one request in the system that moves money.
+      depositOnly = true,
       isConsumer,
       totalPriceOverride,
       sendEmail = false,
@@ -127,7 +132,11 @@ export async function POST(
       data: {
         leadId,
         type: 'proposal',
-        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''}${customItems.length ? ` + ${customItems.map((c) => c.label).join(', ')}` : ''} — $${(totalPrice / 100).toLocaleString()}${depositOnly ? ' (deposit)' : ''}`,
+        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''}${customItems.length ? ` + ${customItems.map((c) => c.label).join(', ')}` : ''} — $${(totalPrice / 100).toLocaleString()}${
+          depositOnly
+            ? ` (${instalmentSchedule(totalPrice)[0].label} — ${formatCentsExact(instalmentSchedule(totalPrice)[0].amountCents)} on signing)`
+            : ' (paid in full)'
+        }`,
         createdById: session.userId,
       },
     });
@@ -139,7 +148,9 @@ export async function POST(
     let emailSent = false;
     let emailError: string | null = null;
     if (sendEmail && lead.email) {
-      const chargeAmount = depositOnly ? depositAmount(totalPrice) : totalPrice;
+      const schedule = instalmentSchedule(totalPrice);
+      const onSchedule = Boolean(depositOnly);
+      const chargeAmount = onSchedule ? schedule[0].amountCents : totalPrice;
 
       // Both documents, not just the invoice. The client is being asked to
       // agree and pay in the same click, and the thing they are agreeing to
@@ -167,15 +178,22 @@ export async function POST(
           : []),
       ];
 
-      const result = await sendSignAndPayEmail(
-        lead.email,
-        lead.contactName,
-        lead.company,
+      const result = await sendSignAndPayEmail({
+        toEmail: lead.email,
+        contactName: lead.contactName,
+        company: lead.company,
         signUrl,
-        formatCents(chargeAmount),
-        Boolean(depositOnly),
-        attachments
-      );
+        schedule: onSchedule
+          ? schedule.map((row) => ({
+              label: row.label,
+              amount: formatCentsExact(row.amountCents),
+              triggerLabel: row.triggerLabel,
+            }))
+          : null,
+        amountLabel: formatCentsExact(chargeAmount),
+        totalLabel: formatCents(totalPrice),
+        attachments,
+      });
       emailSent = result.sent;
       if (!result.sent) emailError = result.reason;
       // A send that went out short of a document is still a send, but the rep
@@ -188,7 +206,9 @@ export async function POST(
           data: {
             leadId,
             type: 'email',
-            content: `Sign-and-pay link emailed to ${lead.email} (${depositOnly ? 'deposit' : 'full amount'} — ${formatCents(chargeAmount)})`,
+            content: `Sign-and-pay link emailed to ${lead.email} (${
+              onSchedule ? schedule[0].label : 'full amount'
+            } — ${formatCentsExact(chargeAmount)})`,
             url: signUrl,
             createdById: session.userId,
           },

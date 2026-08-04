@@ -76,8 +76,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       project.client.contactName,
       project.client.company,
       paymentLink.url,
-      formatCents(balanceDue),
-      false
+      formatCents(balanceDue)
     );
 
     if (sent) {

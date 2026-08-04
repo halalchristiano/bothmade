@@ -152,6 +152,9 @@ export default function AdminProjectDetailPage() {
   const [questionSaving, setQuestionSaving] = useState(false);
 
   const [collectingBalance, setCollectingBalance] = useState(false);
+  // -1 until the schedule panel reports back, so the legacy balance button
+  // doesn't flash on screen for a project that turns out to have one.
+  const [instalmentCount, setInstalmentCount] = useState(-1);
   const [balanceLinkUrl, setBalanceLinkUrl] = useState('');
   const [balanceError, setBalanceError] = useState('');
 
@@ -592,7 +595,7 @@ export default function AdminProjectDetailPage() {
 
             <div className="mt-6 pt-6 border-t border-white/10">
               <div className="mb-4">
-                <InstalmentPanel projectId={projectId} />
+                <InstalmentPanel projectId={projectId} onLoaded={setInstalmentCount} />
               </div>
               <p className="text-sm font-semibold mb-3">Payment Status</p>
               <div className="flex justify-between text-sm mb-1">
@@ -612,7 +615,7 @@ export default function AdminProjectDetailPage() {
                 />
               </div>
 
-              {project.balanceDue > 0 && (
+              {project.balanceDue > 0 && instalmentCount === 0 && (
                 <>
                   <button
                     onClick={handleCollectBalance}

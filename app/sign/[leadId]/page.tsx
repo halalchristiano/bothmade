@@ -6,6 +6,16 @@ import { PillCTA, SectionTag } from '@/components/ui';
 import { CLICKWRAP_STATEMENT, SIGNER_NAME_MAX } from '@/lib/clickwrap';
 import { isValidName, sanitizeNameInput } from '@/lib/validation';
 
+interface ScheduleRow {
+  index: number;
+  count: number;
+  label: string;
+  percent: number;
+  amountCents: number;
+  amountLabel: string;
+  triggerLabel: string;
+}
+
 interface Proposal {
   company: string;
   contactName: string | null;
@@ -18,6 +28,7 @@ interface Proposal {
   depositOnly: boolean;
   depositAmount: number;
   balanceAmount: number;
+  schedule: ScheduleRow[];
   alreadySigned: boolean;
   signerName: string | null;
   signedAt: string | null;
@@ -129,6 +140,11 @@ export default function SignAndPayPage() {
   // scope to show; they stay in the fee, out of a panel with nothing in it.
   const describedCustom = (proposal.customItems ?? []).filter((i) => i.description.trim().length > 0);
 
+  // The button names the payment, not just the number — the client should
+  // never be one click from paying something they can't name.
+  const firstRow = proposal.depositOnly ? proposal.schedule?.[0] : null;
+  const chargeLabel = firstRow ? `${firstRow.label} — ${firstRow.amountLabel}` : money(proposal.chargeAmount);
+
   return (
     <main className="min-h-screen bg-[#05030a] text-white px-6 py-16 md:py-24">
       <div className="max-w-2xl mx-auto">
@@ -143,22 +159,70 @@ export default function SignAndPayPage() {
           {proposal.addOnLabels.length > 0 ? ` + ${proposal.addOnLabels.join(', ')}` : ''} · {proposal.timelineLabel}
         </p>
 
+        {/* The whole schedule, before they agree to any of it. A client who
+            can see all three payments and what triggers each one is not
+            being asked to trust a number — they're reading a plan. */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 mb-8">
-          <div className="flex justify-between items-baseline mb-2">
+          <div className="flex justify-between items-baseline mb-4">
             <span className="text-white/50 text-sm">Total project fee</span>
             <span className="text-lg font-semibold">{money(proposal.totalPrice)}</span>
           </div>
-          {proposal.depositOnly ? (
+
+          {proposal.depositOnly && proposal.schedule?.length > 0 ? (
             <>
-              <div className="flex justify-between items-baseline mb-2 pt-2 border-t border-white/10">
-                <span className="text-white/50 text-sm">Due now (deposit)</span>
-                <span className="text-2xl font-bold text-sky-300">{money(proposal.depositAmount)}</span>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35 mb-3">
+                Payment schedule
+              </p>
+              <ul className="space-y-2 mb-5">
+                {proposal.schedule.map((row) => (
+                  <li
+                    key={row.index}
+                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
+                      row.index === 1
+                        ? 'border-sky-400/40 bg-sky-400/[0.07]'
+                        : 'border-white/[0.07] bg-white/[0.01]'
+                    }`}
+                  >
+                    <span
+                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                        row.index === 1 ? 'bg-sky-400 text-black' : 'bg-white/[0.07] text-white/45'
+                      }`}
+                    >
+                      {row.index}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm ${row.index === 1 ? 'font-semibold text-white' : 'text-white/80'}`}>
+                        {row.label}
+                        <span className="text-white/35 font-normal"> · {row.percent}%</span>
+                      </p>
+                      <p className="text-xs text-white/40 capitalize">{row.triggerLabel}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 text-sm font-semibold ${
+                        row.index === 1 ? 'text-sky-300' : 'text-white/60'
+                      }`}
+                    >
+                      {row.amountLabel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="flex justify-between items-baseline pt-4 border-t border-white/10">
+                <div>
+                  <span className="text-white/50 text-sm block">Due today</span>
+                  <span className="text-xs text-white/30">
+                    {proposal.schedule[0].label} — the rest is invoiced at the milestones above
+                  </span>
+                </div>
+                <span className="text-2xl font-bold text-sky-300 shrink-0 ml-4">
+                  {proposal.schedule[0].amountLabel}
+                </span>
               </div>
-              <p className="text-xs text-white/30">Balance of {money(proposal.balanceAmount)} due before launch.</p>
             </>
           ) : (
             <div className="flex justify-between items-baseline pt-2 border-t border-white/10">
-              <span className="text-white/50 text-sm">Due now (full amount)</span>
+              <span className="text-white/50 text-sm">Due today (paid in full)</span>
               <span className="text-2xl font-bold text-sky-300">{money(proposal.chargeAmount)}</span>
             </div>
           )}
@@ -217,7 +281,7 @@ export default function SignAndPayPage() {
             </p>
             {submitError && <p className="text-sm text-red-400 mb-4">{submitError}</p>}
             <PillCTA type="button" busy={submitting} disabled={submitting} onClick={handleAgreeAndPay} size="lg">
-              {submitting ? 'Redirecting to payment…' : `Continue to Payment — ${money(proposal.chargeAmount)}`}
+              {submitting ? 'Redirecting to payment…' : `Continue to Payment — ${chargeLabel}`}
             </PillCTA>
           </>
         ) : (
@@ -259,7 +323,7 @@ export default function SignAndPayPage() {
               onClick={handleAgreeAndPay}
               size="lg"
             >
-              {submitting ? 'Redirecting to payment…' : `Agree & Pay ${money(proposal.chargeAmount)}`}
+              {submitting ? 'Redirecting to payment…' : `Agree & Pay ${chargeLabel}`}
             </PillCTA>
           </>
         )}

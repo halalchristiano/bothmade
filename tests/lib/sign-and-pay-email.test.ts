@@ -77,10 +77,18 @@ beforeEach(() => {
   sendSignAndPayEmail.mockResolvedValue({ sent: true });
 });
 
-/** The attachments argument, whatever position it sits in. */
-const attachmentsSent = () => sendSignAndPayEmail.mock.calls[0]?.at(-1) as
-  | { filename: string; content: Buffer }[]
-  | undefined;
+/** The single options object the send is called with. */
+const sendOptions = () =>
+  sendSignAndPayEmail.mock.calls[0]?.[0] as
+    | {
+        attachments?: { filename: string; content: Buffer }[];
+        schedule: Array<{ label: string; amount: string; triggerLabel: string }> | null;
+        amountLabel: string;
+        totalLabel: string;
+      }
+    | undefined;
+
+const attachmentsSent = () => sendOptions()?.attachments;
 
 describe('what the client receives', () => {
   it('attaches the agreement as well as the invoice', async () => {
@@ -102,6 +110,39 @@ describe('what the client receives', () => {
 
     expect(body.emailSent).toBe(true);
     expect(body.emailError).toBeNull();
+  });
+
+  /**
+   * The email that opens the deal has to name what is being charged. A
+   * "deposit" of an unexplained size, with no mention of the two payments
+   * behind it, is how a client arrives at payment 2 surprised.
+   */
+  it('carries the whole payment schedule, not just the amount due now', async () => {
+    await POST(request(), { params });
+
+    const schedule = sendOptions()!.schedule!;
+    expect(schedule.map((r) => r.label)).toEqual(['Payment 1 of 3', 'Payment 2 of 3', 'Payment 3 of 3']);
+    expect(sendOptions()!.amountLabel).toBe(schedule[0].amount);
+  });
+
+  /**
+   * The footgun this defaulting fixes: `depositOnly` used to default to
+   * false, so a request that omitted it charged the client the entire
+   * project fee on the first click.
+   */
+  it('bills the instalment schedule when the caller says nothing about the plan', async () => {
+    await POST(request(), { params });
+
+    expect(sendOptions()!.schedule).not.toBeNull();
+    expect(prisma.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ proposalDepositOnly: true }) })
+    );
+  });
+
+  it('drops the schedule only when pay-in-full is chosen deliberately', async () => {
+    await POST(request({ depositOnly: false }), { params });
+
+    expect(sendOptions()!.schedule).toBeNull();
   });
 });
 

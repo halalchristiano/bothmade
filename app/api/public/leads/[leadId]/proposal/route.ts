@@ -10,8 +10,9 @@ import {
   TIMELINES,
   calculatePrice,
   customItemsTotal,
-  depositAmount,
   formatCents,
+  formatCentsExact,
+  instalmentSchedule,
   isAddOnKey,
   isBaseService,
   isClientType,
@@ -75,7 +76,10 @@ export async function GET(
     const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
     const calculatedTotal = breakdown.totalPrice + customTotal;
     const totalPrice = lead.proposalTotalPrice && lead.proposalTotalPrice > 0 ? lead.proposalTotalPrice : calculatedTotal;
-    const deposit = depositAmount(totalPrice);
+    // The same schedule the invoice, the contract and the email are built
+    // from — the client sees three named payments here or nowhere.
+    const schedule = instalmentSchedule(totalPrice);
+    const deposit = schedule[0].amountCents;
     const chargeAmount = lead.proposalDepositOnly ? deposit : totalPrice;
 
     const serviceLabel = BASE_SERVICES[baseService].label;
@@ -121,6 +125,15 @@ export async function GET(
           depositOnly: lead.proposalDepositOnly,
           depositAmount: deposit,
           balanceAmount: totalPrice - deposit,
+          schedule: schedule.map((row) => ({
+            index: row.index,
+            count: row.count,
+            label: row.label,
+            percent: row.percent,
+            amountCents: row.amountCents,
+            amountLabel: formatCentsExact(row.amountCents),
+            triggerLabel: row.triggerLabel,
+          })),
           alreadySigned: !!lead.agreementSignedAt,
           // Shown back to a returning client so the page can say who signed
           // and when, rather than an unattributed "you already agreed".

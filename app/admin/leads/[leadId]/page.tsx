@@ -65,9 +65,11 @@ import {
   customItemsTotal,
   depositAmount,
   firstInstalmentPercent,
+  instalmentSchedule,
   dependentsOf,
   expandAddOnDependencies,
   formatCents,
+  formatCentsExact,
   isAddOnKey,
   isBaseService,
   isClientType,
@@ -723,14 +725,20 @@ export default function LeadDetailPage() {
   const [copiedProposalText, setCopiedProposalText] = useState(false);
   const handleCopyProposalText = async () => {
     if (!lead) return;
-    const chargeNow = depositOnly ? depositAmount(proposalGrandTotal) : proposalGrandTotal;
+    const schedule = instalmentSchedule(proposalGrandTotal);
     const lines = [
       `${lead.company} — ${BASE_SERVICES[proposalService].label}`,
       proposalAddOns.length ? `Add-ons: ${proposalAddOns.map((k) => ADD_ONS[k].label).join(', ')}` : null,
       // Spelled out rather than listed by name — a texted summary is exactly
       // where "custom X" gets read as whatever the reader was hoping for.
       ...customItems.map((c) => `${c.label} (${formatCents(c.priceCents)})${c.description ? `: ${c.description}` : ''}`),
-      `Total: ${formatCents(proposalGrandTotal)}${depositOnly ? ` — ${formatCents(chargeNow)} deposit to start` : ''}`,
+      `Total: ${formatCents(proposalGrandTotal)}`,
+      // The schedule survives the trip into a text message. A pasted summary
+      // that mentions one number is how a client ends up believing the fee
+      // is the number they were shown.
+      ...(depositOnly
+        ? schedule.map((r) => `  ${r.label} — ${formatCentsExact(r.amountCents)} (${r.triggerLabel})`)
+        : ['  Payable in full up front']),
       paymentLinkUrl ? `Review & pay: ${paymentLinkUrl}` : null,
     ].filter(Boolean);
     try {
@@ -807,7 +815,11 @@ export default function LeadDetailPage() {
   const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
   const [revokingLink, setRevokingLink] = useState(false);
   const [revokeNote, setRevokeNote] = useState('');
-  const [depositOnly, setDepositOnly] = useState(false);
+  // The instalment schedule is the default because it is the deal: the
+  // contract, the invoices and the emails are all written around three
+  // payments. This started life as an unticked box, which meant forgetting to
+  // tick it billed the client the entire project fee on day one.
+  const [depositOnly, setDepositOnly] = useState(true);
   // Consumer clients sign the consumer form of the agreement — the statutory
   // 14-day cancellation variant. Has to be set here, before generation:
   // by the time anyone reads the contract it is too late for it to change shape.
@@ -3628,12 +3640,74 @@ export default function LeadDetailPage() {
                 </span>
               </div>
 
-              <label className="flex items-start gap-2 text-xs text-white/55 mt-4 cursor-pointer">
-                <input type="checkbox" className="mt-0.5" checked={depositOnly} onChange={(e) => setDepositOnly(e.target.checked)} />
-                <span>
-                  Charge the first payment only ({formatCents(depositAmount(proposalGrandTotal))}, {firstInstalmentPercent(proposalGrandTotal)}%) — the rest bills at its gates
-                </span>
-              </label>
+              {/* The schedule, spelled out, so the number on the button is
+                  never a number Evan has to work out. Two explicit choices
+                  rather than one box: "pay in full" is a real thing a client
+                  sometimes asks for, but it has to be chosen, not defaulted
+                  into by forgetting. */}
+              <div className="mt-4 space-y-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">How they pay</p>
+
+                <button
+                  type="button"
+                  onClick={() => setDepositOnly(true)}
+                  className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
+                    depositOnly ? 'border-sky-400/40 bg-sky-400/[0.07]' : 'border-white/[0.08] hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+                        depositOnly ? 'border-sky-400 bg-sky-400' : 'border-white/25'
+                      }`}
+                    />
+                    <span className="text-sm font-semibold text-white">
+                      {instalmentSchedule(proposalGrandTotal).map((r) => `${r.percent}%`).join(' / ')} over{' '}
+                      {instalmentSchedule(proposalGrandTotal).length} payments
+                    </span>
+                    <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-sky-300/70">
+                      Standard
+                    </span>
+                  </div>
+                  <ul className="space-y-1 pl-5">
+                    {instalmentSchedule(proposalGrandTotal).map((row) => (
+                      <li key={row.index} className="flex items-baseline gap-2 text-[11px]">
+                        <span className={row.index === 1 ? 'text-white/80' : 'text-white/45'}>{row.label}</span>
+                        <span className="text-white/25 capitalize">{row.triggerLabel}</span>
+                        <span className={`ml-auto tabular-nums ${row.index === 1 ? 'text-sky-300 font-semibold' : 'text-white/50'}`}>
+                          {formatCentsExact(row.amountCents)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 pl-5 text-[11px] text-white/40">
+                    Charges {formatCentsExact(instalmentSchedule(proposalGrandTotal)[0].amountCents)} now. The rest is
+                    invoiced from the project page when each gate is reached.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDepositOnly(false)}
+                  className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
+                    !depositOnly ? 'border-amber-400/40 bg-amber-400/[0.07]' : 'border-white/[0.08] hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+                        !depositOnly ? 'border-amber-400 bg-amber-400' : 'border-white/25'
+                      }`}
+                    />
+                    <span className="text-sm font-semibold text-white">Pay the whole fee up front</span>
+                    <span className="ml-auto tabular-nums text-sm text-amber-200">{formatCents(proposalGrandTotal)}</span>
+                  </div>
+                  <p className="mt-1.5 pl-5 text-[11px] text-white/40">
+                    Only when the client has asked for it. Charges the full {formatCents(proposalGrandTotal)} on the
+                    first click, and the invoice shows no schedule.
+                  </p>
+                </button>
+              </div>
 
               <label className="flex items-start gap-2 text-xs text-white/55 mt-2 cursor-pointer">
                 <input type="checkbox" className="mt-0.5" checked={isConsumer} onChange={(e) => setIsConsumer(e.target.checked)} />
@@ -3676,11 +3750,15 @@ export default function LeadDetailPage() {
             {confirmingSend ? (
               <div className="rounded-lg border-2 border-sky-400/40 bg-sky-400/10 p-4 space-y-3">
                 <p className="text-sm">
-                  Send to <span className="font-semibold">{lead.email || '(no email on file)'}</span> for{' '}
+                  Send to <span className="font-semibold">{lead.email || '(no email on file)'}</span> — charges{' '}
                   <span className="font-semibold">
-                    {formatCents(depositOnly ? depositAmount(proposalGrandTotal) : proposalGrandTotal)}
+                    {depositOnly
+                      ? `${instalmentSchedule(proposalGrandTotal)[0].label}, ${formatCentsExact(
+                          instalmentSchedule(proposalGrandTotal)[0].amountCents
+                        )}`
+                      : `${formatCents(proposalGrandTotal)} in full`}
                   </span>
-                  {depositOnly ? ' (deposit)' : ''}?
+                  ?
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -3713,7 +3791,11 @@ export default function LeadDetailPage() {
                   }
                   className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                 >
-                  {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
+                  {emailingLink
+                    ? 'Sending...'
+                    : depositOnly
+                      ? `Email Sign & Pay — ${instalmentSchedule(proposalGrandTotal)[0].label}`
+                      : 'Email Sign & Pay — full amount'}
                 </button>
                 {!lead.email && (
                   <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 space-y-2">

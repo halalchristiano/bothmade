@@ -49,7 +49,20 @@ function money(cents: number): string {
   });
 }
 
-export function InstalmentPanel({ projectId }: { projectId: string }) {
+export function InstalmentPanel({
+  projectId,
+  onLoaded,
+}: {
+  projectId: string;
+  /**
+   * How many rows the project turned out to have. The page around this uses
+   * it to stand down its legacy "Collect Balance" button: with a schedule in
+   * play that button opens a second, parallel way to take the same money,
+   * and the server refuses it — so leaving it on screen offers a click whose
+   * only outcome is an error.
+   */
+  onLoaded?: (count: number) => void;
+}) {
   const [instalments, setInstalments] = useState<InstalmentRow[] | null>(null);
   const [sending, setSending] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
@@ -59,11 +72,13 @@ export function InstalmentPanel({ projectId }: { projectId: string }) {
       const res = await fetch(`/api/admin/projects/${projectId}/instalments`);
       if (!res.ok) return;
       const data = await res.json();
-      setInstalments(data.instalments ?? []);
+      const rows: InstalmentRow[] = data.instalments ?? [];
+      setInstalments(rows);
+      onLoaded?.(rows.length);
     } catch {
       // The panel is additive — a fetch failure just leaves it unrendered.
     }
-  }, [projectId]);
+  }, [projectId, onLoaded]);
 
   useEffect(() => {
     load();

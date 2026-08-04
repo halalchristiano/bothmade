@@ -9,9 +9,9 @@ import {
   TIMELINES,
   calculatePrice,
   customItemsTotal,
-  depositAmount,
   formatCents,
   formatCentsExact,
+  instalmentSchedule,
   isIncludedInBase,
   type AddOnKey,
   type BaseService,
@@ -48,11 +48,8 @@ export interface InvoicePdfInput {
   adjustments: InvoiceLineItem[];
   subtotal: string;
   total: string;
-  /** What this invoice is actually asking to be paid right now — the full
-   * total, or a deposit against it. */
+  /** What this invoice is actually asking to be paid right now. */
   amountDue: string;
-  isDeposit: boolean;
-  balanceRemaining?: string;
   /** Line under the invoice number, e.g. the billing period on a monthly one. */
   subheading?: string;
   /** One line above the table saying what the invoice is for, when the line items alone don't. */
@@ -237,16 +234,8 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   drawRow('Total', input.total, { f: bold, size: 14 });
   y -= 10;
 
-  if (input.isDeposit) {
-    hr();
-    drawRow('Due now (deposit)', input.amountDue, { f: bold, size: 13, color: ACCENT });
-    if (input.balanceRemaining) {
-      drawRow('Remaining schedule (design approval + ready to launch)', input.balanceRemaining, { color: GRAY });
-    }
-  } else {
-    hr();
-    drawRow(input.amountDueLabel || 'Amount due', input.amountDue, { f: bold, size: 13, color: ACCENT });
-  }
+  hr();
+  drawRow(input.amountDueLabel || 'Amount due', input.amountDue, { f: bold, size: 13, color: ACCENT });
 
   y -= 30;
   const footer = wrapText(
@@ -314,7 +303,6 @@ export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInpu
     subtotal: formatCentsExact(total),
     total: formatCentsExact(total),
     amountDue: formatCentsExact(total),
-    isDeposit: false,
     footerNote:
       'This invoice covers work agreed with Bothmade outside the original project scope. Payment is processed securely by Stripe.',
   });
@@ -367,7 +355,6 @@ export async function buildCarePlanInvoicePdf(input: CarePlanInvoiceInput): Prom
     total: formatCents(input.chargedCents),
     amountDue: formatCents(input.chargedCents),
     amountDueLabel: 'Paid',
-    isDeposit: false,
     footerNote:
       'This is a recurring monthly charge for your care plan. Payment is processed securely by Stripe, and you can cancel at any time by replying to this email.',
   });
@@ -383,24 +370,28 @@ export interface InvoiceForProposalInput {
   timeline: TimelineKey;
   customItems: CustomItem[];
   totalPrice: number; // cents — the persisted/negotiated total, may differ from the calculated one
+  /**
+   * True for the normal instalment sale — this invoice bills Payment 1 of 3.
+   * False only when the client deliberately chose to settle the whole fee in
+   * one go, which is the one case where a schedule would be a fiction.
+   */
   depositOnly: boolean;
+  /** Names the project on the instalment invoice; falls back to the service. */
+  projectName?: string;
 }
 
-/**
- * Builds the invoice for a lead's current proposal selection — shared by the
- * sign-and-pay send, a standalone re-send, and a self-copy, so all three
- * always show identical numbers for the same underlying proposal.
- */
-export async function buildInvoiceForProposal(input: InvoiceForProposalInput): Promise<Uint8Array> {
-  const { leadId, company, contactName, baseService, addOnKeys, clientType, timeline, customItems, totalPrice, depositOnly } =
-    input;
-
+/** The scope itemisation both invoice forms draw from the same selection. */
+function itemiseProposal(input: InvoiceForProposalInput): {
+  lineItems: InvoiceLineItem[];
+  adjustments: InvoiceLineItem[];
+  subtotal: string;
+} {
+  const { baseService, addOnKeys, clientType, timeline, customItems, totalPrice } = input;
   const breakdown = calculatePrice({ baseService, addOns: addOnKeys, clientType, timeline });
   const customTotal = customItemsTotal(customItems);
   const calculatedTotal = breakdown.totalPrice + customTotal;
-  const chargeAmount = depositOnly ? depositAmount(totalPrice) : totalPrice;
 
-  const lineItems = [
+  const lineItems: InvoiceLineItem[] = [
     { label: BASE_SERVICES[baseService].label, amount: formatCents(breakdown.basePrice) },
     ...addOnKeys.map((key) => ({
       label: ADD_ONS[key].label,
@@ -429,18 +420,67 @@ export async function buildInvoiceForProposal(input: InvoiceForProposalInput): P
     });
   }
 
-  return buildInvoicePdf({
-    invoiceNumber: leadId.slice(0, 8).toUpperCase(),
-    date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+  return { lineItems, adjustments, subtotal: formatCents(breakdown.subtotal + customTotal) };
+}
+
+/**
+ * Builds the invoice for a lead's current proposal selection — shared by the
+ * sign-and-pay send, a standalone re-send, and a self-copy, so all three
+ * always show identical numbers for the same underlying proposal.
+ *
+ * On the normal instalment sale this is **Payment 1 of 3**, and it says so in
+ * 26-point type, on the same document as its two siblings, with the whole
+ * schedule printed underneath. That symmetry is the point: for a long time the
+ * first invoice was a different document that called the money a "deposit"
+ * and mentioned no schedule at all, so the one payment every client actually
+ * makes was the one that never explained what it was the first of.
+ */
+export async function buildInvoiceForProposal(input: InvoiceForProposalInput): Promise<Uint8Array> {
+  const { leadId, company, contactName, baseService, totalPrice, depositOnly } = input;
+  const { lineItems, adjustments, subtotal } = itemiseProposal(input);
+  const invoiceNumber = leadId.slice(0, 8).toUpperCase();
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Pay-in-full is the one sale with no schedule to show — three rows where
+  // one of them is the entire fee reads as a mistake, not as clarity.
+  if (!depositOnly) {
+    return buildInvoicePdf({
+      invoiceNumber,
+      date,
+      company,
+      contactName,
+      lineItems,
+      adjustments,
+      subtotal,
+      total: formatCents(totalPrice),
+      amountDue: formatCents(totalPrice),
+      amountDueLabel: 'Amount due (paid in full)',
+    });
+  }
+
+  const schedule = instalmentSchedule(totalPrice);
+  return buildInstalmentInvoicePdf({
+    invoiceNumber,
+    date,
     company,
     contactName,
+    projectName: input.projectName || `${company} — ${BASE_SERVICES[baseService].label}`,
+    schedule: schedule.map((row) => ({
+      label: row.label,
+      amount: formatCentsExact(row.amountCents),
+      // Nothing is paid yet — this invoice is what gets the first one paid.
+      status: row.index === 1 ? ('due' as const) : ('scheduled' as const),
+      triggerLabel: row.triggerLabel,
+    })),
+    instalmentIndex: 1,
+    amountDue: formatCentsExact(schedule[0].amountCents),
+    totalPrice: formatCents(totalPrice),
+    dueDate: date,
+    dueNow: true,
+    gateLine: `Due on signing, before work begins — the first of ${schedule.length} payments across the project.`,
     lineItems,
     adjustments,
-    subtotal: formatCents(breakdown.subtotal + customTotal),
-    total: formatCents(totalPrice),
-    amountDue: formatCents(chargeAmount),
-    isDeposit: depositOnly,
-    balanceRemaining: depositOnly ? formatCents(totalPrice - chargeAmount) : undefined,
+    subtotal,
   });
 }
 
@@ -463,8 +503,22 @@ export interface InstalmentInvoiceInput {
   amountDue: string;
   totalPrice: string;
   dueDate: string;
+  /**
+   * Payment 1 falls due the moment it is signed, not in fourteen days —
+   * printing "payable within 14 days" on the invoice that starts the work
+   * would contradict the agreement it arrives with.
+   */
+  dueNow?: boolean;
   /** One sentence of gate context: "Due on Design Approval — approved August 4, 2026." */
   gateLine: string;
+  /**
+   * The scope, itemised. Only payment 1 carries it: that invoice is the
+   * client's record of what they bought, while 2 and 3 bill a milestone
+   * against a scope already agreed and would only repeat themselves.
+   */
+  lineItems?: InvoiceLineItem[];
+  adjustments?: InvoiceLineItem[];
+  subtotal?: string;
 }
 
 // The purple half of the wordmark gradient, print-strength. Paired with
@@ -486,7 +540,7 @@ export async function buildInstalmentInvoicePdf(input: InstalmentInvoiceInput): 
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const page: PDFPage = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let page: PDFPage = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = PAGE_HEIGHT - MARGIN;
 
   const text = (raw: string, x: number, opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; at?: number } = {}) => {
@@ -504,10 +558,40 @@ export async function buildInstalmentInvoicePdf(input: InstalmentInvoiceInput): 
     page.drawLine({ start: { x: MARGIN + width * 0.55, y: atY }, end: { x: MARGIN + width, y: atY }, thickness: 2, color: ACCENT_PURPLE });
   };
 
-  // Brand band with the wordmark on its own field.
   const logo = await doc.embedJpg(logoJpegBytes());
   const logoWidth = 140;
   const logoHeight = (logoWidth * LOGO_HEIGHT) / LOGO_WIDTH;
+
+  /** The footer strip, drawn on every page as it is finished. */
+  const drawFooterStrip = (onPage: PDFPage) => {
+    onPage.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: 36, color: BRAND_FIELD });
+    onPage.drawText(winAnsi(`${COMPANY_NAME} — ${COMPANY_EMAIL}`), { x: MARGIN, y: 14, size: 8.5, font, color: rgb(0.75, 0.78, 0.85) });
+    const fr = winAnsi(input.invoiceNumber);
+    onPage.drawText(fr, { x: PAGE_WIDTH - MARGIN - font.widthOfTextAtSize(fr, 8.5), y: 14, size: 8.5, font, color: rgb(0.75, 0.78, 0.85) });
+  };
+
+  /**
+   * Payment 1 carries the whole scope, and a scope can be forty add-ons long.
+   * Everything below measures what it is about to draw and takes a fresh page
+   * rather than writing into — or straight through — the footer strip.
+   */
+  const FLOOR = 36 + 24;
+  const ensure = (needed: number) => {
+    if (y - needed >= FLOOR) return;
+    drawFooterStrip(page);
+    page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 30, width: PAGE_WIDTH, height: 30, color: BRAND_FIELD });
+    page.drawText(winAnsi(`Invoice ${input.invoiceNumber} — continued`), {
+      x: MARGIN,
+      y: PAGE_HEIGHT - 20,
+      size: 9,
+      font,
+      color: rgb(0.75, 0.78, 0.85),
+    });
+    y = PAGE_HEIGHT - 30 - 32;
+  };
+
+  // Brand band with the wordmark on its own field.
   page.drawRectangle({ x: 0, y: PAGE_HEIGHT - BAND_HEIGHT, width: PAGE_WIDTH, height: BAND_HEIGHT, color: BRAND_FIELD });
   page.drawImage(logo, { x: MARGIN, y: PAGE_HEIGHT - BAND_HEIGHT / 2 - logoHeight / 2, width: logoWidth, height: logoHeight });
   textRight('INVOICE', { size: 16, f: bold, color: WHITE, at: PAGE_HEIGHT - BAND_HEIGHT / 2 - 6 });
@@ -553,12 +637,54 @@ export async function buildInstalmentInvoicePdf(input: InstalmentInvoiceInput): 
   text(input.projectName, col2, { size: 10, color: GRAY });
   y = Math.min(leftBottom, y) - 30;
 
+  // The scope, when this invoice is the one that establishes it.
+  if (input.lineItems && input.lineItems.length > 0) {
+    ensure(46);
+    text('WHAT THIS COVERS', MARGIN, { size: 9, f: bold, color: GRAY });
+    textRight('AMOUNT', { size: 9, f: bold, color: GRAY });
+    y -= 12;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 1, color: LIGHT_GRAY });
+    y -= 16;
+
+    const scopeRow = (item: InvoiceLineItem, color = BLACK) => {
+      const wrapped = wrapText(item.label, font, 10.5, CONTENT_WIDTH - 140);
+      ensure(wrapped.length * 14 + 4);
+      text(wrapped[0] ?? '', MARGIN, { size: 10.5, color });
+      textRight(item.amount, { size: 10.5, color });
+      y -= 14;
+      for (const extra of wrapped.slice(1)) {
+        text(extra, MARGIN, { size: 10.5, color: GRAY });
+        y -= 13;
+      }
+    };
+
+    for (const item of input.lineItems) scopeRow(item);
+    if (input.adjustments && input.adjustments.length > 0) {
+      y -= 4;
+      for (const item of input.adjustments) scopeRow(item, GRAY);
+    }
+
+    ensure(48);
+    y -= 4;
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 1, color: LIGHT_GRAY });
+    y -= 16;
+    if (input.subtotal) {
+      text('Subtotal', MARGIN, { size: 10.5, color: GRAY });
+      textRight(input.subtotal, { size: 10.5, color: GRAY });
+      y -= 16;
+    }
+    text('Project total', MARGIN, { size: 12, f: bold });
+    textRight(input.totalPrice, { size: 12, f: bold });
+    y -= 24;
+  }
+
   // The schedule table: all three payments with live status, current row on
-  // a tinted band. Three rows, fixed height — no pagination risk.
+  // a tinted band.
+  ensure(40 + input.schedule.length * 30);
   text('PAYMENT SCHEDULE', MARGIN, { size: 9, f: bold, color: GRAY });
   textRight(`Project total ${input.totalPrice}`, { size: 9, f: bold, color: GRAY });
   y -= 10;
-  const ROW_H = 34;
+  const ROW_H = 30;
   for (const inst of input.schedule) {
     const isCurrent = inst === row;
     if (isCurrent) {
@@ -576,29 +702,40 @@ export async function buildInstalmentInvoicePdf(input: InstalmentInvoiceInput): 
   }
   y -= 6;
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 1, color: LIGHT_GRAY });
-  y -= 24;
+  y -= 20;
 
-  // Amount-due block.
-  text('Amount due', MARGIN, { size: 12, f: bold });
-  textRight(input.amountDue, { size: 18, f: bold, color: ACCENT });
-  y -= 18;
-  text(`Payable within 14 days, by ${input.dueDate}.`, MARGIN, { size: 10, color: GRAY });
-  y -= 34;
-
+  const remaining = input.schedule.length - input.instalmentIndex;
   const note =
     input.instalmentIndex >= input.schedule.length
       ? 'This is the final payment on your project. Once it clears, your site goes live and all files, credentials, and intellectual property transfer to you in full, as set out in your agreement.'
+      : input.instalmentIndex === 1
+      ? `This is the first of ${input.schedule.length} payments. The remaining ${remaining} are invoiced when you reach the milestones above — nothing is charged automatically, and nothing falls due before the work it pays for is in front of you. Payments are processed securely by Stripe; Bothmade never sees your card details.`
       : 'Per your agreement, work on the next phase begins once this payment is received. Payments are processed securely by Stripe; Bothmade never sees your card details.';
-  for (const line of wrapText(note, font, 9.5, CONTENT_WIDTH)) {
+  const noteLines = wrapText(note, font, 9.5, CONTENT_WIDTH);
+
+  // Amount due and its closing note are one block — splitting "Amount due"
+  // from the sentence explaining it across a page break would be worse than
+  // taking a fresh page for both.
+  ensure(18 + 34 + noteLines.length * 13);
+  text('Amount due', MARGIN, { size: 12, f: bold });
+  textRight(input.amountDue, { size: 18, f: bold, color: ACCENT });
+  y -= 18;
+  text(
+    input.dueNow
+      ? 'Payable now, on signing. Work is scheduled once it clears.'
+      : `Payable within 14 days, by ${input.dueDate}.`,
+    MARGIN,
+    { size: 10, color: GRAY }
+  );
+  y -= 34;
+
+  for (const line of noteLines) {
     text(line, MARGIN, { size: 9.5, color: GRAY });
     y -= 13;
   }
 
   // Footer strip anchored to the page bottom, echoing the band.
-  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: 36, color: BRAND_FIELD });
-  page.drawText(winAnsi(`${COMPANY_NAME} — ${COMPANY_EMAIL}`), { x: MARGIN, y: 14, size: 8.5, font, color: rgb(0.75, 0.78, 0.85) });
-  const fr = winAnsi(input.invoiceNumber);
-  page.drawText(fr, { x: PAGE_WIDTH - MARGIN - font.widthOfTextAtSize(fr, 8.5), y: 14, size: 8.5, font, color: rgb(0.75, 0.78, 0.85) });
+  drawFooterStrip(page);
 
   return doc.save();
 }

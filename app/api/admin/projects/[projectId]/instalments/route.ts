@@ -5,7 +5,7 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendInstalmentEmail } from '@/lib/email';
 import { buildInstalmentInvoicePdf } from '@/lib/invoice-pdf';
 import { formatInvoiceNumber, invoiceNumberPrefix } from '@/lib/billing';
-import { instalmentDueDate, instalmentEmailCopy, instalmentsForProject } from '@/lib/instalments';
+import { ensureInstalments, instalmentDueDate, instalmentEmailCopy, instalmentsForProject } from '@/lib/instalments';
 import { formatCents, formatCentsExact } from '@/lib/pricing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
@@ -33,7 +33,12 @@ export async function GET(
   if (!session) return unauthorizedResponse();
 
   const { projectId } = await params;
-  const instalments = await instalmentsForProject(projectId);
+  // ensureInstalments, not instalmentsForProject: a project that predates the
+  // schedule gets one on first sight, derived from what it has already been
+  // paid. Otherwise the panel stays blank on every project the studio owned
+  // before this shipped, which is exactly how a feature ends up looking like
+  // it was never built.
+  const instalments = await ensureInstalments(projectId);
   return NextResponse.json({ success: true, instalments });
 }
 

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { forbiddenResponse, requirePrincipal, unauthorizedResponse } from '@/lib/middleware';
 import { amountPaidTowardProject } from '@/lib/billing';
+import { ensureInstalments } from '@/lib/instalments';
 
 export async function GET(
   request: NextRequest,
@@ -81,6 +82,13 @@ export async function GET(
     // one-off invoices are settled separately and listed separately.
     const amountPaid = amountPaidTowardProject(project.payments);
 
+    // A project older than the schedule gets one on first sight, derived
+    // from what it has already been paid. Without this the client's own
+    // dashboard shows them a lump "balance due" while their agreement, their
+    // invoices and their emails all describe three named payments.
+    const instalments =
+      project.instalments.length > 0 ? project.instalments : await ensureInstalments(project.id);
+
     let sourcedLead: { id: string; company: string } | null = null;
     if (session.type === 'user' && project.convertedFromLeadId) {
       sourcedLead = await prisma.lead.findUnique({
@@ -115,7 +123,7 @@ export async function GET(
           // falling through to the lump-balance label. Checkout internals
           // (session ids, raw payment URLs) stay server-side; the client
           // pays through pay-balance, which validates freshness.
-          instalments: project.instalments.map((inst) => ({
+          instalments: instalments.map((inst) => ({
             id: inst.id,
             index: inst.index,
             count: inst.count,

@@ -62,6 +62,63 @@ describe('buildInvoiceForProposal', () => {
     }
     expect(drawn).toContain(PROPOSAL.company);
   });
+
+  /**
+   * The regression this whole file exists to hold down. For a long time the
+   * first invoice — the only one most clients ever look at closely — called
+   * the money a "deposit", showed one number, and mentioned neither of the
+   * two payments behind it, while invoices 2 and 3 announced their position
+   * in 26-point type.
+   */
+  it('names the payment position and prints the whole schedule', async () => {
+    const drawn = drawnStrings(await PDFDocument.load(await buildInvoiceForProposal(PROPOSAL)));
+
+    expect(drawn).toContain('PAYMENT 1 OF 3');
+    expect(drawn).toContain('Payment 2 of 3');
+    expect(drawn).toContain('Payment 3 of 3');
+    expect(drawn).not.toContain('deposit');
+
+    // And the gate for each, so "when do I pay the rest" is answered on the
+    // page rather than in a reply to the email it arrived with.
+    expect(drawn).toContain('on Design Approval');
+    expect(drawn).toContain('Ready for Launch');
+  });
+
+  it('still itemises the scope it is establishing', async () => {
+    const drawn = drawnStrings(await PDFDocument.load(await buildInvoiceForProposal(PROPOSAL)));
+
+    expect(drawn).toContain('Web App');
+    expect(drawn).toContain('Project total');
+  });
+
+  /**
+   * Payment 1 carries the scope, and a scope can be forty add-ons long. The
+   * builder has to take a second page rather than write through the footer.
+   */
+  it('paginates a scope too long for one page instead of overflowing', async () => {
+    const { ADD_ONS } = await import('@/lib/pricing');
+    const everyAddOn = Object.keys(ADD_ONS) as Array<keyof typeof ADD_ONS>;
+
+    const doc = await PDFDocument.load(
+      await buildInvoiceForProposal({ ...PROPOSAL, addOnKeys: everyAddOn, totalPrice: 9_500_000 })
+    );
+
+    expect(doc.getPageCount()).toBeGreaterThan(1);
+    // The schedule must survive onto whichever page it lands on — a scope
+    // that pushes the payment terms off the document defeats the point.
+    const allPages = [...Array(doc.getPageCount()).keys()].map((i) => drawnStrings(doc, i)).join('\n');
+    expect(allPages).toContain('PAYMENT 1 OF 3');
+    expect(allPages).toContain('Amount due');
+  });
+
+  it('shows no schedule when the client is paying in full', async () => {
+    const drawn = drawnStrings(
+      await PDFDocument.load(await buildInvoiceForProposal({ ...PROPOSAL, depositOnly: false }))
+    );
+
+    expect(drawn).not.toContain('PAYMENT SCHEDULE');
+    expect(drawn).toContain('Amount due (paid in full)');
+  });
 });
 
 describe('buildCustomChargeInvoicePdf', () => {
@@ -112,11 +169,12 @@ describe('buildCustomChargeInvoicePdf', () => {
 });
 
 /**
- * Every string drawn on page 1. The content streams are deflated and each
- * `Tj` operand is a hex literal, so both layers come off before matching.
+ * Every string drawn on a page (page 1 by default). The content streams are
+ * deflated and each `Tj` operand is a hex literal, so both layers come off
+ * before matching.
  */
-function drawnStrings(doc: PDFDocument): string {
-  const contents = doc.getPage(0).node.normalizedEntries().Contents;
+function drawnStrings(doc: PDFDocument, pageIndex = 0): string {
+  const contents = doc.getPage(pageIndex).node.normalizedEntries().Contents;
   const refs = contents instanceof PDFArray ? contents.asArray() : [];
   const operators = refs
     .map((ref) => {
