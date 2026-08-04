@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { COMPANY_ADDRESS_INLINE, COMPANY_NAME } from '@/lib/company';
+import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 // Leaf module — imports only googleapis and gmail-mime — so pulling it in
 // here does not create a cycle with lib/mailer.ts, which imports this file.
 import { isDomainDelegationConfigured, sendAsDelegatedUser } from '@/lib/gmail-delegated';
@@ -29,7 +29,21 @@ function resendClient(): Resend | null {
   if (!client) client = new Resend(key);
   return client;
 }
-const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'info@bothmade.studio';
+/**
+ * The address everything is sent from and as.
+ *
+ * A constant, not `process.env.CONTACT_EMAIL`. That variable is set to
+ * `notifications@` in production, which quietly won over the `info@` default
+ * and made every message come from a mailbox nobody reads — and worse, it is
+ * the account domain-wide delegation impersonates, so if it is an alias
+ * rather than a real Workspace user the delegated send fails and everything
+ * silently falls back to the provider.
+ *
+ * The address a client should reply to is not deployment configuration. It
+ * lives in lib/company.ts with the one on the invoices and the site footer,
+ * so all three cannot drift.
+ */
+const CONTACT_EMAIL = COMPANY_EMAIL;
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
 // The studio is bothmade.studio. Everything reachable from the public site
