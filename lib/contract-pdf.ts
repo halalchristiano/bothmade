@@ -2,7 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 import { LOGO_BACKGROUND, LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
 import { COMPANY_ADDRESS_INLINE, COMPANY_ADDRESS_LINES, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 import { winAnsi } from '@/lib/pdf-text';
-import type { ContractSection } from '@/lib/contract-terms';
+import type { ContractCustomItem, ContractSection } from '@/lib/contract-terms';
 
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
@@ -55,6 +55,9 @@ export interface ContractPdfInput {
   contactName: string | null;
   serviceLabel: string;
   addOnLabels: string[];
+  /** Custom work, with the scope written out on the summary page rather than
+   * only in the terms — the cover is the page that actually gets read. */
+  customItems?: ContractCustomItem[];
   timelineLabel: string;
   basePrice: string;
   addOnsPrice: string;
@@ -169,6 +172,23 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     drawParagraph(`Add-ons: ${input.addOnLabels.join(', ')}`, { size: 11 });
   }
   drawParagraph(`Timeline: ${input.timelineLabel}`, { size: 11 });
+
+  // Custom work gets its scope on the summary page, not just a name in the
+  // add-on line. The full clause is in the terms; this is so nobody has to
+  // reach the terms to find out what they're buying. Items with no
+  // description are the pre-existing links described in contract-terms —
+  // they stay in the fee lines and out of a block that has nothing to say.
+  const describedCustom = (input.customItems ?? []).filter((i) => i.description.trim().length > 0);
+  if (describedCustom.length > 0) {
+    y -= 8;
+    drawLine('Custom Work Included', { size: 13, f: bold, gap: 20 });
+    for (const item of describedCustom) {
+      ensureSpace(34);
+      drawParagraph(`${item.label} — ${item.price}`, { size: 11, gap: 14 });
+      drawParagraph(item.description, { size: 10, color: GRAY });
+    }
+  }
+
   y -= 8;
   drawLine('Fees', { size: 13, f: bold, gap: 22 });
   drawParagraph(`Base: ${input.basePrice}${input.addOnsPrice !== '$0' ? `  +  Add-ons: ${input.addOnsPrice}` : ''}`, { size: 11 });

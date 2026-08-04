@@ -252,9 +252,16 @@ function NewProjectForm() {
                 ⚠ Custom items carried over from the proposal — not in the standard catalogue
               </p>
               {customItems.map((item, i) => (
-                <div key={i} className="flex justify-between text-sm font-medium text-white">
-                  <span>{item.label}</span>
-                  <span>{formatCents(item.priceCents)}</span>
+                <div key={i} className="text-sm">
+                  <div className="flex justify-between font-medium text-white">
+                    <span>{item.label}</span>
+                    <span>{formatCents(item.priceCents)}</span>
+                  </div>
+                  {/* The scope as the contract states it — the person who
+                      builds this needs it more than the person who sold it. */}
+                  {item.description && (
+                    <p className="mt-0.5 text-xs leading-relaxed text-white/60">{item.description}</p>
+                  )}
                 </div>
               ))}
             </div>

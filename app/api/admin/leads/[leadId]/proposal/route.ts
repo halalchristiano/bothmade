@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { canOverridePricing, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import {
   calculatePrice,
+  customItemsMissingScope,
   customItemsTotal,
   depositAmount,
   formatCents,
@@ -12,6 +13,7 @@ import {
   isClientType,
   isTimelineKey,
   minAllowedPrice,
+  missingScopeMessage,
   sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
@@ -52,6 +54,17 @@ export async function POST(
     }
     const addOnKeys: AddOnKey[] = Array.isArray(addOns) ? addOns.filter(isAddOnKey) : [];
     const customItems = sanitizeCustomItems(rawCustomItems);
+
+    // This link is what the client agrees to, and the agreement PDF rides
+    // along with it — so the same scope requirement that gates the contract
+    // download gates the send. Blocking here rather than at the download is
+    // the point: by the time a rep notices the gap, the client has usually
+    // already been told what "custom" meant, and only one of them remembers.
+    const undescribed = customItemsMissingScope(customItems);
+    if (undescribed.length > 0) {
+      return NextResponse.json({ error: missingScopeMessage(undescribed), needsCustomScope: true }, { status: 400 });
+    }
+
     const customTotal = customItemsTotal(customItems);
 
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });

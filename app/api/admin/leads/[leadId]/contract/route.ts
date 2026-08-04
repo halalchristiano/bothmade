@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { buildContractSections } from '@/lib/contract-terms';
+import { buildContractSections, toContractCustomItems } from '@/lib/contract-terms';
 import { buildContractPdf } from '@/lib/contract-pdf';
 import { isFurtherAlong } from '@/lib/leads';
 import {
@@ -11,6 +11,7 @@ import {
   DEPOSIT_PERCENT,
   TIMELINES,
   calculatePrice,
+  customItemsMissingScope,
   customItemsTotal,
   depositAmount,
   formatCents,
@@ -18,6 +19,7 @@ import {
   isBaseService,
   isClientType,
   isTimelineKey,
+  missingScopeMessage,
   sanitizeCustomItems,
   type AddOnKey,
 } from '@/lib/pricing';
@@ -40,6 +42,16 @@ export async function POST(
     }
     const addOnKeys: AddOnKey[] = Array.isArray(addOns) ? addOns.filter(isAddOnKey) : [];
     const customItems = sanitizeCustomItems(rawCustomItems);
+
+    // The contract can't be generated until every custom line says what it
+    // covers. Naming a piece of work and pricing it isn't the same as
+    // agreeing on it, and a signed PDF is the worst possible place to
+    // discover the two sides meant different things by "custom".
+    const undescribed = customItemsMissingScope(customItems);
+    if (undescribed.length > 0) {
+      return NextResponse.json({ error: missingScopeMessage(undescribed), needsCustomScope: true }, { status: 400 });
+    }
+
     const customTotal = customItemsTotal(customItems);
 
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
@@ -63,6 +75,7 @@ export async function POST(
       serviceDescription: BASE_SERVICES[baseService].description,
       addOnLabels,
       addOnKeys,
+      customItems: toContractCustomItems(customItems),
       baseServiceKey: baseService,
       clientTypeKey: clientType,
       timelineKey: timeline,
@@ -86,6 +99,7 @@ export async function POST(
       contactName: lead.contactName,
       serviceLabel,
       addOnLabels,
+      customItems: toContractCustomItems(customItems),
       timelineLabel: `${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`,
       basePrice: formatCents(breakdown.basePrice),
       addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),

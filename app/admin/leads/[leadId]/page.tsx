@@ -58,7 +58,10 @@ import {
   buildSalesRecommendations,
   classifyWrittenPoint,
   inferPainPointsFromNotes,
+  MAX_CUSTOM_SCOPE_CHARS,
+  MIN_CUSTOM_SCOPE_CHARS,
   calculatePrice,
+  customItemsMissingScope,
   customItemsTotal,
   depositAmount,
   dependentsOf,
@@ -160,7 +163,7 @@ interface LeadDetail {
   proposalClientType: string | null;
   proposalTimeline: string | null;
   proposalDepositOnly: boolean;
-  proposalCustomItems?: Array<{ label: string; priceCents: number }>;
+  proposalCustomItems?: Array<{ label: string; description?: string; priceCents: number }>;
 }
 
 /**
@@ -365,11 +368,13 @@ export default function LeadDetailPage() {
   };
   const [proposalClientType, setProposalClientType] = useState<ClientType>('smb');
   const [proposalTimeline, setProposalTimeline] = useState<TimelineKey>('standard');
-  // Ad-hoc items Evan adds beyond the fixed catalogue. draftLabel/draftPrice
-  // hold the add-row inputs until "Add" commits them into customItems.
+  // Ad-hoc items Evan adds beyond the fixed catalogue. draftLabel/draftPrice/
+  // draftDescription hold the add-row inputs until "Add" commits them into
+  // customItems.
   const [customItems, setCustomItems] = useState<CustomItem[]>([]);
   const [draftCustomLabel, setDraftCustomLabel] = useState('');
   const [draftCustomPrice, setDraftCustomPrice] = useState('');
+  const [draftCustomDescription, setDraftCustomDescription] = useState('');
   // Guards the one-time hydration of the builder from the saved proposal (or
   // a local draft) so later load() calls — triggered by unrelated actions
   // elsewhere on the page — never silently overwrite an in-progress edit.
@@ -429,9 +434,9 @@ export default function LeadDetailPage() {
     const lines = [
       `${lead.company} — ${BASE_SERVICES[proposalService].label}`,
       proposalAddOns.length ? `Add-ons: ${proposalAddOns.map((k) => ADD_ONS[k].label).join(', ')}` : null,
-      customItems.length
-        ? `Extras: ${customItems.map((c) => `${c.label} (${formatCents(c.priceCents)})`).join(', ')}`
-        : null,
+      // Spelled out rather than listed by name — a texted summary is exactly
+      // where "custom X" gets read as whatever the reader was hoping for.
+      ...customItems.map((c) => `${c.label} (${formatCents(c.priceCents)})${c.description ? `: ${c.description}` : ''}`),
       `Total: ${formatCents(proposalGrandTotal)}${depositOnly ? ` — ${formatCents(chargeNow)} deposit to start` : ''}`,
       paymentLinkUrl ? `Review & pay: ${paymentLinkUrl}` : null,
     ].filter(Boolean);
@@ -455,14 +460,32 @@ export default function LeadDetailPage() {
     return firstDot === -1 ? withCommas : `${withCommas}.${rest.join('').slice(0, 2)}`;
   };
 
+  const draftCustomScopeShort = draftCustomDescription.trim().length < MIN_CUSTOM_SCOPE_CHARS;
+
   const addCustomItem = () => {
     const label = draftCustomLabel.trim();
+    const description = draftCustomDescription.trim();
     const dollars = parseFloat(draftCustomPrice.replace(/,/g, ''));
     if (!label || !Number.isFinite(dollars) || dollars <= 0) return;
-    setCustomItems((prev) => [...prev, { label, priceCents: Math.round(dollars * 100) }]);
+    if (description.length < MIN_CUSTOM_SCOPE_CHARS) return;
+    setCustomItems((prev) => [...prev, { label, description, priceCents: Math.round(dollars * 100) }]);
     setDraftCustomLabel('');
     setDraftCustomPrice('');
+    setDraftCustomDescription('');
   };
+
+  /** Fills in the scope on an item that was saved before descriptions were
+   * required — the proposal still loads, it just can't produce a contract
+   * until this is written. */
+  const setCustomItemDescription = (index: number, description: string) => {
+    setCustomItems((prev) => prev.map((item, i) => (i === index ? { ...item, description } : item)));
+  };
+
+  // Everything the contract can't be generated from yet. Surfaced next to the
+  // buttons it disables so the reason is visible at the point of the block,
+  // not discovered as a failed download.
+  const customItemsNeedingScope = customItemsMissingScope(customItems);
+  const customScopeBlocked = customItemsNeedingScope.length > 0;
 
   // A deleted custom item stays recoverable for a few seconds instead of
   // being gone the instant a trash icon gets tapped by mistake.
@@ -1069,10 +1092,18 @@ export default function LeadDetailPage() {
     const bSet = new Set(b.split(',').filter(Boolean));
     return a.length === bSet.size && a.every((k) => bSet.has(k));
   };
-  const sameCustomItems = (a: CustomItem[], b?: CustomItem[]) => {
+  const sameCustomItems = (a: CustomItem[], b?: LeadDetail['proposalCustomItems']) => {
     const bItems = b || [];
     if (a.length !== bItems.length) return false;
-    return a.every((item, i) => item.label === bItems[i]?.label && item.priceCents === bItems[i]?.priceCents);
+    // Description included deliberately: rewording what a custom item covers
+    // changes the scope the client agreed to, even when the name and price
+    // are untouched, so it has to count as "changed since sent".
+    return a.every(
+      (item, i) =>
+        item.label === bItems[i]?.label &&
+        item.priceCents === bItems[i]?.priceCents &&
+        item.description === (bItems[i]?.description ?? '')
+    );
   };
   const proposalChangedSinceSent =
     hasSentProposal &&
@@ -1093,6 +1124,11 @@ export default function LeadDetailPage() {
     if (lead.status === 'lost') return null;
     if (lead.agreementSignedAt) {
       return "Next: they've signed and paid — hit \"Convert to Project\" below to kick off onboarding.";
+    }
+    if (customScopeBlocked) {
+      return `Next: say what the custom work covers (${customItemsNeedingScope
+        .map((c) => `"${c.label}"`)
+        .join(', ')}) — the contract can't be generated until it's written down.`;
     }
     if (hasSentProposal && lead.contractStatus === 'sent') {
       return proposalChangedSinceSent
@@ -3179,26 +3215,55 @@ export default function LeadDetailPage() {
             </div>
 
             <div>
-              <StepLabel n={3} label="Custom Items" hint={customItems.length ? `${customItems.length} added` : 'optional'} />
+              <StepLabel n={3} label="Custom Work" hint={customItems.length ? `${customItems.length} added` : 'optional'} />
+              <p className="text-xs text-white/45 mb-3 -mt-1">
+                Anything quoted outside the catalogue. Write down what it actually covers — that description goes
+                into the contract word for word, so "custom X" can only mean one thing later.
+              </p>
               <div className="space-y-2 mb-3">
-                {customItems.map((item, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between gap-3 rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3"
-                  >
-                    <span className="text-sm font-medium">{item.label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-amber-200">{formatCents(item.priceCents)}</span>
-                      <button
-                        onClick={() => removeCustomItem(i)}
-                        aria-label={`Remove ${item.label}`}
-                        className="text-white/40 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                {customItems.map((item, i) => {
+                  const needsScope = item.description.trim().length < MIN_CUSTOM_SCOPE_CHARS;
+                  return (
+                    <div
+                      key={i}
+                      className={`rounded-lg border-2 p-3 ${
+                        needsScope ? 'border-red-400/50 bg-red-400/10' : 'border-amber-400/40 bg-amber-400/10'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-sm font-medium">{item.label}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-sm font-medium text-amber-200">{formatCents(item.priceCents)}</span>
+                          <button
+                            onClick={() => removeCustomItem(i)}
+                            aria-label={`Remove ${item.label}`}
+                            className="text-white/40 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      {/* Editable in place: items saved before descriptions
+                          were required arrive blank, and the fix belongs
+                          right where the gap is visible. */}
+                      <textarea
+                        value={item.description}
+                        onChange={(e) => setCustomItemDescription(i, e.target.value)}
+                        rows={2}
+                        maxLength={MAX_CUSTOM_SCOPE_CHARS}
+                        placeholder="What does this actually cover? e.g. Migrate the 400 existing blog posts into the new CMS, with redirects from the old URLs."
+                        aria-label={`What "${item.label}" covers`}
+                        className="mt-2 w-full rounded-lg border border-white/15 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/85 placeholder:text-white/30 focus:border-white/30 focus:outline-none resize-y"
+                      />
+                      {needsScope && (
+                        <p className="mt-1.5 text-[11px] text-red-300">
+                          Needs at least {MIN_CUSTOM_SCOPE_CHARS} characters describing this work before a contract can
+                          be generated or sent.
+                        </p>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {lastRemovedCustomItem && (
@@ -3213,40 +3278,54 @@ export default function LeadDetailPage() {
                 </div>
               )}
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Custom item name"
-                  value={draftCustomLabel}
-                  onChange={(e) => setDraftCustomLabel(e.target.value)}
-                  className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
-                />
-                <span className="relative w-28 shrink-0">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">
-                    $
-                  </span>
+              <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    inputMode="decimal"
-                    placeholder="0"
-                    value={draftCustomPrice}
-                    onChange={(e) => setDraftCustomPrice(formatCurrencyInputValue(e.target.value))}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addCustomItem();
-                      }
-                    }}
-                    className={`${inputClass.replace('w-full', '')} w-full pl-6`}
+                    placeholder="Custom item name"
+                    value={draftCustomLabel}
+                    onChange={(e) => setDraftCustomLabel(e.target.value)}
+                    className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
                   />
-                </span>
-                <button
-                  onClick={addCustomItem}
-                  disabled={!draftCustomLabel.trim() || !draftCustomPrice}
-                  className="shrink-0 rounded-lg border border-white/20 px-4 text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors"
-                >
-                  Add
-                </button>
+                  <span className="relative w-28 shrink-0">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">
+                      $
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={draftCustomPrice}
+                      onChange={(e) => setDraftCustomPrice(formatCurrencyInputValue(e.target.value))}
+                      className={`${inputClass.replace('w-full', '')} w-full pl-6`}
+                    />
+                  </span>
+                </div>
+                <textarea
+                  value={draftCustomDescription}
+                  onChange={(e) => setDraftCustomDescription(e.target.value)}
+                  rows={3}
+                  maxLength={MAX_CUSTOM_SCOPE_CHARS}
+                  placeholder="What does this cover? Be specific enough that the client couldn't read it two ways — e.g. Migrate the 400 existing blog posts into the new CMS, with redirects from the old URLs. Excludes rewriting the copy."
+                  aria-label="What this custom work covers"
+                  className={`${inputClass} text-xs leading-relaxed resize-y`}
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[11px] text-white/40">
+                    {draftCustomDescription.trim().length === 0
+                      ? 'This wording is what goes into the contract.'
+                      : draftCustomScopeShort
+                        ? `${MIN_CUSTOM_SCOPE_CHARS - draftCustomDescription.trim().length} more characters — say what's actually included.`
+                        : 'Goes into the contract as the definitive scope for this item.'}
+                  </p>
+                  <button
+                    onClick={addCustomItem}
+                    disabled={!draftCustomLabel.trim() || !draftCustomPrice || draftCustomScopeShort}
+                    className="shrink-0 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -3338,6 +3417,18 @@ export default function LeadDetailPage() {
               </div>
             )}
 
+            {customScopeBlocked && (
+              <div className="rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-2.5 text-xs text-red-200 space-y-1">
+                <p className="font-semibold">
+                  Describe the custom work first — {customItemsNeedingScope.map((c) => `"${c.label}"`).join(', ')}
+                </p>
+                <p className="text-red-200/75">
+                  The contract quotes your description word for word. Until it's written, sending or generating one
+                  would leave what you're both agreeing to open to interpretation.
+                </p>
+              </div>
+            )}
+
             {proposalError && <p className="text-red-400 text-sm">{proposalError}</p>}
 
             {confirmingSend ? (
@@ -3370,8 +3461,14 @@ export default function LeadDetailPage() {
               <div className="space-y-2">
                 <button
                   onClick={() => setConfirmingSend(true)}
-                  disabled={emailingLink || creatingLink || !lead.email}
-                  title={!lead.email ? 'Add an email for this lead before sending' : undefined}
+                  disabled={emailingLink || creatingLink || !lead.email || customScopeBlocked}
+                  title={
+                    !lead.email
+                      ? 'Add an email for this lead before sending'
+                      : customScopeBlocked
+                        ? 'Describe the custom work above before sending — the agreement goes out with this link'
+                        : undefined
+                  }
                   className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                 >
                   {emailingLink ? 'Sending...' : `Email Sign & Pay Link${depositOnly ? ' (Deposit)' : ''}`}
@@ -3424,8 +3521,13 @@ export default function LeadDetailPage() {
               </button>
               <button
                 onClick={handleDownloadContract}
-                disabled={downloadingContract}
-                className="w-full rounded-lg border border-white/20 px-5 py-2.5 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
+                disabled={downloadingContract || customScopeBlocked}
+                title={
+                  customScopeBlocked
+                    ? 'Describe the custom work above before generating the contract'
+                    : undefined
+                }
+                className="w-full rounded-lg border border-white/20 px-5 py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/5 transition-colors"
               >
                 {downloadingContract ? 'Generating...' : 'Download Contract PDF'}
               </button>
