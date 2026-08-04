@@ -10,11 +10,13 @@ import {
   CalendarClock,
   RefreshCw,
   AlertTriangle,
+  Check,
   ChevronRight,
+  Flame,
+  Headset,
   HelpCircle,
-  Sparkles,
 } from 'lucide-react';
-import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { PageIn, SearchFilter, matchesSearch, Kicker, BrandButton, Badge } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
@@ -93,6 +95,17 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
 };
 
 const ORDER: CallReason[] = ['replied', 'bounced', 'overdue', 'today', 'no-follow-up', 'never-contacted'];
+
+/** Same semantics as REASONS[...].classes, expressed as Badge tones for the per-row chip. */
+const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'purple' | 'neutral'> = {
+  replied: 'emerald',
+  bounced: 'red',
+  overdue: 'amber',
+  today: 'sky',
+  'no-follow-up': 'purple',
+  'never-contacted': 'neutral',
+  scheduled: 'neutral',
+};
 
 export default function CallListPage() {
   const router = useRouter();
@@ -294,8 +307,8 @@ export default function CallListPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400" />
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading your call list…</p>
       </div>
     );
   }
@@ -344,6 +357,7 @@ export default function CallListPage() {
     <PageIn className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div className="min-w-0">
+          <Kicker className="mb-2">Sales</Kicker>
           <h1 className="text-2xl font-bold">Who to call</h1>
           <p className="text-xs text-white/35 mt-1">
             Start at the top and work down. Every business says why it's here.
@@ -372,14 +386,24 @@ export default function CallListPage() {
             </button>
           )}
         </div>
-        <button
-          onClick={syncBounces}
-          disabled={syncing}
-          className="shrink-0 flex items-center gap-1.5 rounded-xl border border-white/15 px-3.5 py-2 text-xs font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Checking...' : 'Check my inbox'}
-        </button>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <button
+            onClick={syncBounces}
+            disabled={syncing}
+            className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3.5 py-2 text-xs font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Checking...' : 'Check my inbox'}
+          </button>
+          {/* The one gradient action on this screen: into the live-call cockpit. */}
+          <BrandButton
+            onClick={() => router.push('/admin/call')}
+            className="inline-flex items-center gap-1.5"
+          >
+            <Headset size={15} />
+            Start calling
+          </BrandButton>
+        </div>
       </div>
 
       {showBreakdown && meta && (
@@ -434,13 +458,14 @@ export default function CallListPage() {
       <div className="flex flex-wrap items-center gap-2 -mt-1 mb-1">
         <button
           onClick={() => setReadyNow((v) => !v)}
-          className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+          className={`inline-flex items-center gap-1 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
             readyNow
               ? 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200'
               : 'border-white/15 text-white/55 hover:bg-white/5'
           }`}
         >
-          {readyNow ? '✓ ' : ''}Sensible hour there ({readyCount})
+          {readyNow && <Check size={12} />}
+          Sensible hour there ({readyCount})
         </button>
         {(['urgent', 'value', 'time'] as const).map((k) => (
           <button
@@ -474,12 +499,19 @@ export default function CallListPage() {
             );
           })()}
           <div className="flex gap-2 mt-3">
+            <Link
+              href={`/admin/call/${nextUp.id}`}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-400/15 border border-emerald-400/30 py-2.5 text-sm font-semibold text-emerald-200 hover:bg-emerald-400/25 transition-colors"
+            >
+              <Headset size={14} /> Start this call
+            </Link>
             <a
               href={`tel:${nextUp.phone}`}
               onClick={() => startCall(nextUp)}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+              aria-label={`Call ${nextUp.company}`}
+              className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/15 px-3.5 py-2.5 text-sm font-semibold hover:bg-white/5 transition-colors"
             >
-              <Phone size={14} /> Call {nextUp.company}
+              <Phone size={14} /> Dial
             </a>
             <Link
               href={`/admin/leads/${nextUp.id}`}
@@ -514,7 +546,7 @@ export default function CallListPage() {
           {meta.googleOAuthAvailable && (
             <a
               href="/api/admin/settings/gmail-oauth/start"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 mt-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/40 px-4 py-2 mt-3 text-sm font-semibold text-amber-100 hover:bg-amber-400/10 transition-colors"
             >
               {meta.gmailStatus === 'not-connected' ? 'Connect Google' : 'Reconnect Google'}
             </a>
@@ -629,16 +661,18 @@ export default function CallListPage() {
                     >
                       {/* On the row, not just the band header — the header
                           disappears the moment a different sort is chosen. */}
-                      <p
-                        className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mb-2 ${REASONS[row.reason].classes}`}
-                      >
-                        {REASONS[row.reason].short}
-                      </p>
+                      <div className="mb-2">
+                        <Badge tone={REASON_TONE[row.reason]} solid>
+                          {REASONS[row.reason].short}
+                        </Badge>
+                      </div>
 
                       <div className="flex items-start justify-between gap-3">
                         <Link href={`/admin/leads/${row.id}`} className="min-w-0 group">
                           <p className="text-sm font-bold text-white/90 group-hover:text-sky-300 transition-colors break-words">
-                            {row.hotLead && <span className="text-amber-400">★ </span>}
+                            {row.hotLead && (
+                              <Flame size={12} className="inline -mt-0.5 mr-1 text-amber-400" aria-label="Hot lead" />
+                            )}
                             {row.company}
                           </p>
                           <p className="text-xs text-white/40 mt-0.5 break-words">

@@ -7,7 +7,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, UserPlus, CheckCircle2 } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
-import { PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch, Kicker, BrandButton } from '@/components/admin/ui';
 import { KanbanSquare } from 'lucide-react';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
@@ -120,8 +120,8 @@ export default function PipelinePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading the board…</p>
       </div>
     );
   }
@@ -139,16 +139,17 @@ export default function PipelinePage() {
 
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
         <div>
+          <Kicker className="mb-2">Sales</Kicker>
           <PageTitle icon={KanbanSquare} title="Pipeline" />
           <p className="text-white/40 mt-1">Every lead, by stage. Use the arrows to move a deal forward or back.</p>
         </div>
-        <button
+        <BrandButton
           onClick={() => setShowAdd(true)}
-          className="inline-flex w-full sm:w-auto shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+          className="inline-flex w-full sm:w-auto shrink-0 items-center justify-center gap-2 whitespace-nowrap"
         >
           <UserPlus size={16} />
           Add Companies
-        </button>
+        </BrandButton>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-1">

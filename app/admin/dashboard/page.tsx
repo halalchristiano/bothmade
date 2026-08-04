@@ -42,7 +42,7 @@ import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
 import { MockupsCard } from '@/components/admin/MockupAttachments';
 import { SignatureCertificatesCard } from '@/components/admin/SignatureCertificates';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
-import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart } from '@/components/admin/ui';
+import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart, Kicker, BrandButton } from '@/components/admin/ui';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 import { USER_ROLE_LABELS, type UserRole } from '@/lib/roles';
@@ -162,9 +162,7 @@ function RangePicker({ range, onChange }: { range: StatsRange; onChange: (r: Sta
           key={opt.value}
           onClick={() => onChange(opt.value)}
           className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
-            range === opt.value
-              ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black shadow-sm'
-              : 'text-white/40 hover:text-white/70'
+            range === opt.value ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
           }`}
         >
           {opt.label}
@@ -575,15 +573,12 @@ function CallListBanner() {
   const urgent = counts.bounced + counts.overdue;
 
   return (
-    <Link
-      href="/admin/call-list"
-      className={`block mb-6 rounded-2xl border px-5 py-4 transition-colors ${
-        urgent > 0
-          ? 'border-amber-400/30 bg-amber-400/[0.08] hover:bg-amber-400/[0.13]'
-          : 'border-sky-400/25 bg-sky-400/[0.07] hover:bg-sky-400/[0.12]'
+    <div
+      className={`mb-6 rounded-2xl border px-5 py-4 ${
+        urgent > 0 ? 'border-amber-400/30 bg-amber-400/[0.08]' : 'border-sky-400/25 bg-sky-400/[0.07]'
       }`}
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-sm font-bold text-white/90">
             <Phone size={14} />
@@ -599,11 +594,23 @@ function CallListBanner() {
               .join(' · ') || 'Nothing urgent — work down the list when you can.'}
           </p>
         </div>
-        <span className="shrink-0 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black">
-          Start calling
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* The screen's one gradient: straight into Call HQ, the live-call cockpit. */}
+          <Link
+            href="/admin/call"
+            className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+          >
+            Start calling
+          </Link>
+          <Link
+            href="/admin/call-list"
+            className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
+          >
+            Full list
+          </Link>
+        </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -630,7 +637,7 @@ function SalesDashboard({
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
         <div>
-          <p className="text-sm text-sky-300/70 font-medium mb-1">Sales</p>
+          <Kicker className="mb-2">Sales</Kicker>
           <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
           <p className="text-white/40">Here's where your pipeline stands.</p>
         </div>
@@ -671,7 +678,7 @@ function SalesDashboard({
                   <span className="w-6 shrink-0 text-sm font-semibold text-right">{p.count}</span>
                   <div className="flex-1 bg-white/10 rounded-full h-1.5 overflow-hidden">
                     <div
-                      className="bg-gradient-to-r from-sky-400 to-purple-500 h-1.5 rounded-full transition-all"
+                      className="bg-sky-400/60 group-hover:bg-sky-400/80 h-1.5 rounded-full transition-all"
                       style={{ width: `${Math.max((p.value / maxPipelineValue) * 100, p.value > 0 ? 4 : 0)}%` }}
                     />
                   </div>
@@ -767,7 +774,7 @@ function SalesDashboard({
       <div className="flex flex-wrap gap-3">
         <Link
           href="/admin/pipeline"
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
         >
           View Pipeline <ArrowRight size={16} />
         </Link>
@@ -787,13 +794,10 @@ function BroadcastComposer() {
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
-      >
+      <BrandButton variant="quiet" onClick={() => setOpen(true)} className="inline-flex items-center gap-2">
         <Megaphone size={16} />
         Broadcast to Clients
-      </button>
+      </BrandButton>
     );
   }
 
@@ -939,7 +943,7 @@ function HandoffRow({
               <button
                 onClick={handleAcknowledge}
                 disabled={saving}
-                className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-400 to-sky-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+                className="text-xs px-2.5 py-1 rounded-lg border border-emerald-400/40 text-emerald-300 font-semibold disabled:opacity-50 hover:bg-emerald-400/10 transition-colors whitespace-nowrap"
               >
                 {saving ? 'Saving...' : "I've got this"}
               </button>
@@ -1427,7 +1431,7 @@ function OpsDashboard({
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
         <div>
-          <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
+          <Kicker className="mb-2">Operations</Kicker>
           <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
           <p className="text-white/40">Here's what needs you today.</p>
         </div>
@@ -1588,7 +1592,7 @@ function OpsDashboard({
           href="/admin/mockup-queue"
           className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
         >
-          <PaletteIcon size={16} /> Mockup Queue
+          <Palette size={16} /> Mockup Queue
         </Link>
         <Link
           href="/admin/analytics"
@@ -1642,7 +1646,8 @@ export default function AdminDashboardPage() {
         }
         if (!meResponse.ok) throw new Error(`Failed to load your session (${meResponse.status}).`);
         const me = await meResponse.json();
-        const userRole = me.user?.role || 'admin';
+        // Fall back narrow, like the nav does: an unresolved role must not show the ops dashboard to a sales session.
+        const userRole = me.user?.role || 'sales';
 
         const statsUrl = userRole === 'sales' ? '/api/admin/sales-stats' : '/api/admin/ops-stats';
         const res = await fetch(`${statsUrl}?range=${range}`);
@@ -1683,18 +1688,15 @@ export default function AdminDashboardPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 h-[calc(100vh-56px)] lg:h-screen px-4 text-center">
+      <div className="flex flex-col items-center justify-center gap-4 min-h-[60vh] px-4 text-center">
         <AlertTriangle className="text-red-400" size={32} />
         <div>
           <p className="font-semibold mb-1">Couldn't load your dashboard</p>
           <p className="text-white/40 text-sm">{error}</p>
         </div>
-        <button
-          onClick={() => setRetryCount((c) => c + 1)}
-          className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
-        >
+        <BrandButton variant="primary" onClick={() => setRetryCount((c) => c + 1)}>
           Try Again
-        </button>
+        </BrandButton>
       </div>
     );
   }
