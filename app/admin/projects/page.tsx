@@ -18,9 +18,12 @@ interface ProjectRow {
   client: { company: string; email: string };
   messages: Array<{ isFromAdmin: boolean; createdAt: string }>;
   payments: Array<{ amount: number; type: string }>;
+  instalments?: Array<{ index: number; label: string; amountCents: number; status: string; dueAt: string | null }>;
 }
 
 const STATUSES = ['all', 'discovery', 'design', 'build', 'launch', 'complete'];
+/** The delivery stages, in the order a project passes through them. */
+const STAGES = ['discovery', 'design', 'build', 'launch', 'complete'] as const;
 const AT_RISK_DAYS = 7;
 
 function isAtRisk(project: ProjectRow): boolean {
@@ -78,6 +81,83 @@ function HealthBadges({ project }: { project: ProjectRow }) {
     return <Badge tone="emerald">On track</Badge>;
   }
   return <div className="flex flex-wrap gap-1.5">{badges}</div>;
+}
+
+/**
+ * How far along the build is, as five pips rather than a word.
+ *
+ * A status column said "build" and left you to remember whether that was
+ * nearly done or barely started. Five pips answer it without being read.
+ */
+function StagePips({ status }: { status: string }) {
+  const at = STAGES.indexOf(status as (typeof STAGES)[number]);
+  return (
+    <div className="flex items-center gap-1" title={`Stage: ${status}`}>
+      {STAGES.map((stage, i) => (
+        <span
+          key={stage}
+          aria-hidden
+          className={`h-1.5 rounded-full transition-colors ${
+            i <= at ? 'w-6 bg-sky-400/70' : 'w-4 bg-white/[0.08]'
+          }`}
+        />
+      ))}
+      <span className="ml-2 text-xs capitalize text-white/50">{status}</span>
+    </div>
+  );
+}
+
+/**
+ * Where the money is, as the same three payments the contract promised.
+ *
+ * This is the half of a project the delivery list never showed. A project can
+ * be in "build" and fully paid, or in "launch" with two payments outstanding,
+ * and those are completely different situations that used to look identical
+ * on this page.
+ */
+function PaymentPips({ project }: { project: ProjectRow }) {
+  const rows = project.instalments ?? [];
+  if (rows.length === 0) {
+    const due = balanceDue(project);
+    return (
+      <span className="text-xs text-white/40">
+        {due > 0 ? `${(due / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} due` : 'Paid'}
+      </span>
+    );
+  }
+  const paid = rows.filter((r) => r.status === 'paid');
+  const collected = paid.reduce((sum, r) => sum + r.amountCents, 0);
+  const overdue = rows.some((r) => r.status === 'due' && r.dueAt && new Date(r.dueAt) < new Date());
+
+  return (
+    <div className="flex items-center gap-2" title={rows.map((r) => `${r.label}: ${r.status}`).join(' · ')}>
+      <div className="flex items-center gap-1">
+        {rows.map((r) => (
+          <span
+            key={r.index}
+            aria-hidden
+            className={`h-2.5 w-2.5 rounded-full ${
+              r.status === 'paid'
+                ? 'bg-emerald-400'
+                : r.status === 'due'
+                  ? overdue
+                    ? 'bg-amber-400'
+                    : 'bg-sky-400'
+                  : 'bg-white/[0.12]'
+            }`}
+          />
+        ))}
+      </div>
+      <span className={`text-xs tabular-nums ${overdue ? 'text-amber-300' : 'text-white/50'}`}>
+        {paid.length}/{rows.length} ·{' '}
+        {(collected / 100).toLocaleString('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          maximumFractionDigits: 0,
+        })}
+      </span>
+    </div>
+  );
 }
 
 export default function AdminProjectsPage() {
@@ -193,82 +273,41 @@ export default function AdminProjectsPage() {
           {search ? `Nothing matches "${search}".` : 'No projects found.'}
         </Card>
       ) : (
-        <>
-          {/* Mobile: card list */}
-          <div className="md:hidden space-y-3">
-            {shown.map((project) => (
-              <Link
-                key={project.id}
-                href={`/admin/projects/${project.id}`}
-                className={`block rounded-xl border bg-white/[0.04] backdrop-blur-xl p-4 transition-colors ${
-                  needsAttention(project) ? 'border-amber-400/30' : 'border-white/[0.08] hover:border-white/20'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-1 gap-2">
-                  <p className="font-semibold">{project.name}</p>
-                  <Badge tone="neutral" solid>
-                    <span className="capitalize">{project.status}</span>
-                  </Badge>
+        <div className="space-y-2">
+          {shown.map((project) => (
+            <Link
+              key={project.id}
+              href={`/admin/projects/${project.id}`}
+              className={`group block rounded-2xl border p-4 transition-colors ${
+                needsAttention(project)
+                  ? 'border-amber-400/25 bg-amber-400/[0.03] hover:border-amber-400/45'
+                  : 'border-white/[0.07] bg-white/[0.02] hover:border-white/20'
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                <div className="min-w-0 flex-1 basis-64">
+                  <p className="truncate font-semibold text-white">{project.client.company}</p>
+                  <p className="truncate text-xs text-white/40">{project.name}</p>
                 </div>
-                <p className="text-sm text-white/50 mb-2">{project.client.company}</p>
-                <div className="mb-2">
-                  <HealthBadges project={project} />
-                </div>
-                <div className="flex justify-between text-xs text-white/40">
-                  <span>{project.timeline || '—'}</span>
-                  <span>{new Date(project.createdAt).toLocaleDateString()}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
 
-          {/* Desktop: table */}
-          <Card className="hidden md:block overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="border-b border-white/10">
-                  <tr>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Project</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Client</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Status</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Health</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Timeline</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Created</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((project) => (
-                    <tr key={project.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 font-medium">{project.name}</td>
-                      <td className="px-6 py-4 text-white/50">{project.client.company}</td>
-                      <td className="px-6 py-4">
-                        <Badge tone="neutral" solid>
-                          <span className="capitalize">{project.status}</span>
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4">
-                        <HealthBadges project={project} />
-                      </td>
-                      <td className="px-6 py-4 text-white/50">{project.timeline || '—'}</td>
-                      <td className="px-6 py-4 text-white/50">
-                        {new Date(project.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4">
-                        <Link
-                          href={`/admin/projects/${project.id}`}
-                          className="text-sky-300 font-semibold hover:underline"
-                        >
-                          Manage
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </>
+                {/* The two halves of a project, side by side: how far the
+                    build has got, and how much of it has been paid for. */}
+                <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1.5">
+                  <StagePips status={project.status} />
+                  <PaymentPips project={project} />
+                </div>
+
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <HealthBadges project={project} />
+                  <span className="text-[11px] text-white/25">
+                    {project.timeline || '—'} · started{' '}
+                    {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
       )}
     </PageIn>
   );

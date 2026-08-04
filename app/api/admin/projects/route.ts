@@ -50,6 +50,14 @@ export async function GET(request: NextRequest) {
         payments: {
           select: { amount: true, type: true },
         },
+        // The money, on the page where the work is. A delivery list that
+        // shows status and timeline but not whether the client has paid
+        // makes the two halves of a project someone's job to hold in their
+        // head — and the half that pays the rent is the one that was missing.
+        instalments: {
+          orderBy: { index: 'asc' },
+          select: { index: true, label: true, amountCents: true, status: true, dueAt: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
