@@ -16,6 +16,7 @@ const prisma = {
   projectUpdate: { create: vi.fn() },
   payment: { create: vi.fn(), findUnique: vi.fn() },
   lead: { update: vi.fn() },
+  invoice: { updateMany: vi.fn() },
   teamMessage: { create: vi.fn() },
   user: { findFirst: vi.fn() },
 };
@@ -78,6 +79,7 @@ beforeEach(() => {
   prisma.payment.findUnique.mockResolvedValue(null);
   prisma.lead.update.mockResolvedValue({ id: 'lead_1', assignedToId: 'user_1', signedContractUrl: null });
   prisma.teamMessage.create.mockResolvedValue({});
+  prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
   prisma.user.findFirst.mockResolvedValue({ id: 'user_1' });
 });
 
@@ -270,9 +272,9 @@ describe('a new sale', () => {
   });
 });
 
-describe('a payment against an existing project', () => {
-  const BALANCE_METADATA = { existingProjectId: 'proj_9', paymentType: 'balance' };
+const BALANCE_METADATA = { existingProjectId: 'proj_9', paymentType: 'balance' };
 
+describe('a payment against an existing project', () => {
   beforeEach(() => {
     prisma.project.findUnique.mockResolvedValue({
       id: 'proj_9',
@@ -316,5 +318,72 @@ describe('a payment against an existing project', () => {
 
     expect(res.status).toBe(500);
     expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A one-off charge is the one payment that must NOT read as money toward the
+ * project's contracted price. If it files itself as a balance payment, a
+ * client billed $2,000 for a change request looks $2,000 closer to having
+ * paid off a build they still owe in full.
+ */
+describe('a custom charge being paid', () => {
+  const CUSTOM_METADATA = {
+    existingProjectId: 'proj_9',
+    paymentType: 'custom',
+    invoiceId: 'inv_1',
+    invoiceNumber: 'BM-2026-0007',
+  };
+
+  beforeEach(() => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_9',
+      name: 'Acme — Website',
+      status: 'build',
+      client: { company: 'Acme' },
+    });
+  });
+
+  it('files the payment as custom, against its invoice', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(CUSTOM_METADATA, 50000));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(prisma.payment.create.mock.calls[0][0].data).toMatchObject({
+      projectId: 'proj_9',
+      amount: 50000,
+      type: 'custom',
+      invoiceId: 'inv_1',
+    });
+  });
+
+  it('marks the invoice paid, and only while it is still open', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(CUSTOM_METADATA, 50000));
+
+    await POST(request());
+
+    const call = prisma.invoice.updateMany.mock.calls[0][0];
+    // Scoped to status 'open' so a redelivered event cannot rewrite paidAt.
+    expect(call.where).toMatchObject({ id: 'inv_1', status: 'open' });
+    expect(call.data.status).toBe('paid');
+    expect(call.data.paidAt).toBeInstanceOf(Date);
+  });
+
+  it('names the invoice in the update the client reads', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(CUSTOM_METADATA, 50000));
+
+    await POST(request());
+
+    expect(prisma.projectUpdate.create.mock.calls[0][0].data.description).toContain('BM-2026-0007');
+  });
+
+  it('leaves a balance payment unlinked to any invoice', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 150000));
+
+    await POST(request());
+
+    expect(prisma.payment.create.mock.calls[0][0].data.invoiceId).toBeNull();
+    expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -524,6 +524,127 @@ export async function sendInvoiceOnlyEmail(
 }
 
 /**
+ * The client's copy of a one-off charge: what it's for, what it costs, the
+ * invoice as a PDF, and a link that pays it.
+ *
+ * The PDF is attached rather than linked. An invoice is a document a client's
+ * bookkeeper files, and a link into our blob storage is not something anyone
+ * can forward to an accountant with confidence — it also stops working the
+ * day we move buckets. The pay link is the CTA; the invoice is the artefact.
+ */
+export async function sendCustomChargeEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  projectName: string;
+  invoiceNumber: string;
+  description: string;
+  amountLabel: string;
+  paymentUrl: string | null;
+  /** Null when the render failed — the charge still gets sent, without the claim that something is attached. */
+  invoicePdf: Buffer | null;
+  filename: string;
+}): Promise<SendResult> {
+  // Naming the project matters more here than anywhere else: this arrives
+  // out of the blue, for an amount the client hasn't seen in a proposal, and
+  // "which of the things we're paying you for is this?" is the first
+  // question. Answer it before they have to ask.
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Here's an invoice for <strong style="color:#fff;">${esc(input.description)}</strong> on ${esc(input.projectName)}.</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Invoice</span> <span style="color:#fff;">${esc(input.invoiceNumber)}</span></p>
+      <p style="margin:0; font-size:20px; font-weight:700; color:#fff;">${esc(input.amountLabel)}</p>
+    </div>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">${
+      input.invoicePdf
+        ? "The full invoice is attached as a PDF, and it's on your project dashboard alongside everything else."
+        : "The full invoice is on your project dashboard alongside everything else."
+    }</p>
+    ${
+      input.paymentUrl
+        ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">Payment is handled securely by Stripe — we never see or store your card details.</p>`
+        : `<p style="font-size:13px; color:rgba(255,255,255,0.5);">We'll follow up with a payment link shortly. Reply to this email if you'd rather pay another way.</p>`
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Questions about this invoice? Just reply — it comes straight to us.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `Invoice ${input.invoiceNumber} — ${input.description}`,
+    html: renderShell({
+      eyebrow: 'Invoice',
+      title: `${input.amountLabel} — ${input.description}`,
+      bodyHtml,
+      ...(input.paymentUrl ? { ctaLabel: 'Pay this invoice', ctaUrl: input.paymentUrl } : {}),
+    }),
+    ...(input.invoicePdf ? { attachments: [{ filename: input.filename, content: input.invoicePdf }] } : {}),
+  });
+}
+
+/**
+ * The studio's own copy of an invoice, sent to info@ the moment it's raised.
+ *
+ * Belt and braces on top of the database row, and deliberately so: the
+ * mailbox is where the accountant looks and where a paper trail survives us
+ * changing anything about this app. Same PDF, same number, attached the same
+ * way — so the copy in the inbox and the copy the client has are provably
+ * the same document.
+ */
+export async function sendInvoiceRecordEmail(input: {
+  invoiceNumber: string;
+  company: string;
+  projectName: string;
+  description: string;
+  amountLabel: string;
+  issuedByName: string | null;
+  sentToEmail: string | null;
+  clientDelivered: boolean;
+  adminUrl: string;
+  paymentUrl: string | null;
+  invoicePdf: Buffer | null;
+  filename: string;
+}): Promise<boolean> {
+  const delivery = input.sentToEmail
+    ? input.clientDelivered
+      ? `Emailed to ${esc(input.sentToEmail)}.`
+      : `<span style="color:#fca5a5;">Not delivered to ${esc(input.sentToEmail)} — the client copy failed to send, so this one needs chasing by hand.</span>`
+    : 'Not sent to the client — raised for the record only.';
+
+  const bodyHtml = `
+    <p><strong style="color:#fff;">${esc(input.invoiceNumber)}</strong> raised against ${esc(input.company)} — ${esc(input.projectName)}.</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">For</span> <span style="color:#fff;">${esc(input.description)}</span></p>
+      <p style="margin:0 0 6px 0; font-size:20px; font-weight:700; color:#fff;">${esc(input.amountLabel)}</p>
+      <p style="margin:0; font-size:13px; color:rgba(255,255,255,0.5);">Raised by ${esc(input.issuedByName) || 'the team'}. ${delivery}</p>
+    </div>
+    ${
+      input.paymentUrl
+        ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">Pay link: <a href="${safeUrl(input.paymentUrl)}" style="color:#7dd3fc;">${esc(input.paymentUrl)}</a></p>`
+        : `<p style="font-size:13px; color:#fca5a5;">No Stripe link was created for this one — the client has an invoice they can't pay online yet.</p>`
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">${
+      input.invoicePdf
+        ? "The PDF is attached. It's the same file the client received."
+        : '<span style="color:#fca5a5;">The PDF failed to render, so there is nothing attached and the client got none either — this invoice needs re-issuing.</span>'
+    }</p>
+  `;
+
+  return sendEmail({
+    to: studioInbox(),
+    subject: `Invoice ${input.invoiceNumber} — ${input.company} — ${input.amountLabel}`,
+    html: renderShell({
+      eyebrow: 'Invoice raised',
+      title: `${input.company} — ${input.amountLabel}`,
+      bodyHtml,
+      ctaLabel: 'Open in admin',
+      ctaUrl: input.adminUrl,
+    }),
+    ...(input.invoicePdf ? { attachments: [{ filename: input.filename, content: input.invoicePdf }] } : {}),
+  });
+}
+
+/**
  * Notify the internal team the moment a client agrees online — a copy of
  * exactly what they signed, ready for the books.
  */

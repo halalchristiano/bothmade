@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { amountPaidTowardProject } from '@/lib/billing';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { OPS, requireRole } from '@/lib/authz';
 import { formatCents } from '@/lib/pricing';
@@ -31,7 +32,7 @@ export async function GET() {
         totalPrice: true,
         convertedFromLeadId: true,
         client: { select: { id: true, company: true, email: true, archivedAt: true } },
-        payments: { select: { amount: true } },
+        payments: { select: { amount: true, type: true } },
       },
     });
 
@@ -61,7 +62,7 @@ export async function GET() {
           projectName: project.name,
           signerName: lead.agreementSignerName,
           signedAt: lead.agreementSignedAt,
-          paidLabel: formatCents(project.payments.reduce((sum, p) => sum + p.amount, 0)),
+          paidLabel: formatCents(amountPaidTowardProject(project.payments)),
           archived: Boolean(project.client.archivedAt),
           // Signatures taken before the executed-copy bug was fixed have no
           // document behind them. Flagged rather than hidden — a thinner

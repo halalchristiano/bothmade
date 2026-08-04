@@ -80,6 +80,7 @@ model User {
   receivedTeamMessages TeamMessage[]    @relation("TeamMessageRecipient")
   csvImportLogs        CsvImportLog[]
   uploadedMockups      LeadMockup[]     @relation("MockupUploader")
+  issuedInvoices       Invoice[]        @relation("InvoiceIssuer")
 
   @@map("users")
 }
@@ -115,6 +116,7 @@ model Client {
   projects         Project[]
   messages         ProjectMessage[]  @relation("SentByClient")
   emailPreferences EmailPreferences?
+  invoices         Invoice[]
 
   @@map("clients")
 }
@@ -190,6 +192,7 @@ model Project {
   teamNotes           TeamNote[]
   onboardingQuestions OnboardingQuestion[]
   payments            Payment[]
+  invoices            Invoice[]
 
   @@map("projects")
 }
@@ -631,13 +634,89 @@ model Payment {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   amount Int // cents
-  type   String // "deposit", "balance", "full"
+  type   String // "deposit", "balance", "full", "custom"
 
   stripeSessionId String? @unique
+
+  // Set when this payment settled a one-off custom charge rather than the
+  // project's contracted price. Those two must not be added together: a
+  // "custom" payment is money for work priced outside Project.totalPrice, so
+  // counting it against the balance would quietly mark a project paid off
+  // because someone was billed separately for a change request. See
+  // amountPaidTowardProject() in lib/billing.ts — every balance calculation
+  // goes through it.
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
   @@map("payments")
+}
+
+// A one-off charge raised against an existing customer for an amount someone
+// on the team typed in — a change request, an extra round of design, a month
+// of retainer work. Everything else in this schema prices itself from the
+// catalogue; this is the escape hatch for work that never fit it.
+//
+// The row is the record. The PDF is generated and stored the moment the
+// charge is raised (not on demand later) so the invoice a client is looking
+// at and the invoice in our books are the same file, and it is kept whether
+// or not the charge is ever paid — an issued invoice that vanished because
+// nobody paid it is not a record.
+model Invoice {
+  id String @id @default(cuid())
+
+  // Human-facing, sequential within the year: "BM-2026-0007". Unique, because
+  // two invoices sharing a number is the one accounting error nobody can
+  // untangle afterwards.
+  number String @unique
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // Which project this hangs off. Required: the client's dashboard is
+  // per-project, so an invoice with no project is an invoice the client has
+  // nowhere to see.
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // What the charge is for, in the words that go on the invoice and in the
+  // email subject.
+  description String
+
+  // [{ label, priceCents }] — the same shape as Project.customItems, so the
+  // PDF builder takes either without translation.
+  lineItems Json @default("[]")
+
+  amountCents Int
+  currency    String @default("usd")
+
+  // "open" — issued, unpaid. "paid" — settled via Stripe (or marked by hand).
+  // "void" — cancelled; kept, never deleted.
+  status String @default("open")
+
+  // The stored PDF and the Stripe link that pays it. Both nullable: a failure
+  // to render or to reach Stripe must not lose the charge itself, and the
+  // invoice stays visible with whichever half succeeded.
+  pdfUrl              String?
+  paymentUrl          String?
+  stripePaymentLinkId String?
+
+  // Who raised it, and where the client's copy went.
+  issuedById  String?
+  issuedBy    User?   @relation("InvoiceIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+  sentToEmail String?
+
+  paidAt    DateTime?
+  voidedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  payments Payment[]
+
+  @@index([clientId])
+  @@index([projectId])
+  @@map("invoices")
 }
 
 // A personal to-do — assignable to any team member, optionally linked to a

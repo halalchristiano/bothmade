@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ClientHeader } from '@/components/portal/ClientHeader';
 import { GridBackdrop, CountUp } from '@/components/ui';
+import { formatCentsExact } from '@/lib/pricing';
 
 // The one motion signature carried over from the marketing site — the same
 // ease-out-expo curve used there, so the dashboard a client lives in every
@@ -49,6 +50,18 @@ interface Project {
   amountPaid: number;
   balanceDue: number;
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
+  /** One-off charges for work outside the original scope — priced and invoiced separately from the project total. */
+  invoices: Array<{
+    id: string;
+    number: string;
+    description: string;
+    amountCents: number;
+    status: string;
+    pdfUrl: string | null;
+    paymentUrl: string | null;
+    createdAt: string;
+    paidAt: string | null;
+  }>;
   estimatedCompletionDate: string | null;
   liveUrl: string | null;
   /** Capability token for the public /status link — see lib/share-links.ts. */
@@ -361,6 +374,9 @@ export default function ClientDashboard() {
 
   const currentStage = STATUS_STAGES[Math.min(project.statusStage, 4)];
   const progressPct = ((Math.min(project.statusStage + 1, 5)) / 5) * 100;
+  // Defaulted, because a dashboard already open in a tab when this shipped
+  // is holding a project payload from before invoices existed.
+  const invoices = project.invoices ?? [];
 
   // The public status link carries a capability token, so the project ID
   // alone doesn't open it. Without the token there's nothing to share.
@@ -834,6 +850,80 @@ export default function ClientDashboard() {
                 <p className="text-sm text-white/40">No payments recorded yet.</p>
               )}
             </motion.div>
+
+            {/* Invoices — one-off charges for work agreed outside the original
+                scope. Kept separate from the balance above on purpose: these
+                are billed and paid on their own, so folding them into the
+                project total would make both numbers wrong. */}
+            {invoices.length > 0 && (
+              <motion.div variants={fadeUp} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+                <h2 className="text-xl font-bold mb-2">Invoices</h2>
+                <p className="text-xs text-white/40 mb-6">
+                  Additional work agreed outside your original project scope. Each one is billed on its own.
+                </p>
+
+                <div className="space-y-3">
+                  {invoices.map((invoice) => {
+                    const paid = invoice.status === 'paid';
+                    const voided = invoice.status === 'void';
+                    return (
+                      <div key={invoice.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{invoice.description}</p>
+                            <p className="text-xs text-white/30 mt-0.5">
+                              {invoice.number} · {new Date(invoice.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-semibold">{formatCentsExact(invoice.amountCents)}</p>
+                            <span
+                              className={`inline-block mt-1 text-[10px] uppercase tracking-wider font-semibold ${
+                                paid ? 'text-emerald-300' : voided ? 'text-white/30' : 'text-amber-300'
+                              }`}
+                            >
+                              {paid ? 'Paid' : voided ? 'Cancelled' : 'Due'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 mt-3">
+                          {!paid && !voided && invoice.paymentUrl && (
+                            <a
+                              href={invoice.paymentUrl}
+                              className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-xs font-semibold"
+                            >
+                              Pay {formatCentsExact(invoice.amountCents)}
+                            </a>
+                          )}
+                          {invoice.pdfUrl && (
+                            <a
+                              href={invoice.pdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 rounded-lg border border-white/15 text-xs text-white/70 hover:text-white hover:border-white/30 transition-colors inline-flex items-center gap-1.5"
+                            >
+                              <Download size={12} />
+                              Invoice PDF
+                            </a>
+                          )}
+                          {!paid && !voided && !invoice.paymentUrl && (
+                            <span className="text-[11px] text-white/40">
+                              We&apos;ll send a payment link for this shortly.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="text-white/30 text-[11px] mt-4 flex items-center gap-1">
+                  <ShieldCheck size={11} className="text-emerald-400/60" />
+                  Secure checkout by Stripe — we never see or store your card details.
+                </p>
+              </motion.div>
+            )}
 
             {/* Signed Agreement */}
             {project.contractUrl && (

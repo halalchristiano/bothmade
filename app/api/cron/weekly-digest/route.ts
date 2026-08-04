@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { amountPaidTowardProject } from '@/lib/billing';
 import { requireCronAuth } from '@/lib/cron-auth';
 import { getDigestRecipientEmails } from '@/lib/notify';
 import { sendWeeklyDigestEmail } from '@/lib/email';
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.project.findMany({
         where: { status: { not: 'complete' } },
-        select: { id: true, totalPrice: true, updatedAt: true, payments: { select: { amount: true } } },
+        select: { id: true, totalPrice: true, updatedAt: true, payments: { select: { amount: true, type: true } } },
       }),
     ]);
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     const revenueThisMonth = paymentsThisMonth.reduce((sum, p) => sum + p.amount, 0);
     const atRiskProjects = activeProjects.filter((p) => p.updatedAt < staleThreshold).length;
     const overdueBalances = activeProjects.filter(
-      (p) => p.totalPrice - p.payments.reduce((s, pay) => s + pay.amount, 0) > 0
+      (p) => p.totalPrice - amountPaidTowardProject(p.payments) > 0
     ).length;
 
     const emails = await getDigestRecipientEmails();

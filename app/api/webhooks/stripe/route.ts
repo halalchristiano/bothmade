@@ -251,7 +251,17 @@ async function handleExistingProjectPayment(
   }
 
   const amountPaid = session.amount_total ?? 0;
-  const type = metadata.paymentType === 'deposit' ? 'deposit' : 'balance';
+  // A one-off charge settles its own invoice and nothing else. It must not
+  // read as a payment toward the project's contracted price — see
+  // amountPaidTowardProject() in lib/billing.ts, which is what keeps a $2,000
+  // change request from marking a $20,000 build 10% closer to paid off.
+  const type =
+    metadata.paymentType === 'deposit'
+      ? 'deposit'
+      : metadata.paymentType === 'custom'
+      ? 'custom'
+      : 'balance';
+  const invoiceId = metadata.invoiceId || null;
 
   await prisma.payment.create({
     data: {
@@ -259,14 +269,33 @@ async function handleExistingProjectPayment(
       amount: amountPaid,
       type,
       stripeSessionId: session.id,
+      invoiceId,
     },
   });
+
+  // Settling the invoice is what takes "Pay now" off the client's dashboard
+  // and off ours. Scoped to a still-open invoice so a redelivered event
+  // can't rewrite when it was paid.
+  if (invoiceId) {
+    await prisma.invoice
+      .updateMany({
+        where: { id: invoiceId, status: 'open' },
+        data: { status: 'paid', paidAt: new Date() },
+      })
+      .catch((error) => {
+        console.error(`Payment webhook: could not mark invoice ${invoiceId} paid:`, error);
+        return null;
+      });
+  }
 
   await prisma.projectUpdate.create({
     data: {
       projectId,
       title: type === 'deposit' ? 'Deposit received' : 'Payment received',
-      description: `We've received your payment of ${formatCents(amountPaid)}. Thank you!`,
+      description:
+        type === 'custom' && metadata.invoiceNumber
+          ? `We've received your payment of ${formatCents(amountPaid)} for invoice ${metadata.invoiceNumber}. Thank you!`
+          : `We've received your payment of ${formatCents(amountPaid)}. Thank you!`,
       statusStage: project.status,
       userId: null,
     },

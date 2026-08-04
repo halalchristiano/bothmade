@@ -22,6 +22,7 @@ import {
   Palette,
   ListChecks,
   UserCog,
+  Receipt,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -33,6 +34,11 @@ const NAV_ITEMS = [
   { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, salesVisible: false },
   { href: '/admin/clients', label: 'Clients', icon: Building2, salesVisible: false },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, salesVisible: false },
+  // Visible to sales, unlike Clients and Projects beside it. Billing a
+  // customer for extra work is a sales action, and the page only ever shows
+  // the customers you search for plus the invoices raised — not the client
+  // book those two pages open up.
+  { href: '/admin/billing', label: 'Billing', icon: Receipt, salesVisible: true },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, salesVisible: true },
   { href: '/admin/team-chat', label: 'Team Chat', icon: MessagesSquare, salesVisible: true },
   { href: '/admin/team', label: 'Team', icon: UserCog, salesVisible: false },

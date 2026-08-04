@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
+import { amountPaidTowardProject } from '@/lib/billing';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { OPS, requireRole } from '@/lib/authz';
 import { sendPaymentLinkEmail } from '@/lib/email';
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
+    const amountPaid = amountPaidTowardProject(project.payments);
     const balanceDue = project.totalPrice - amountPaid;
     if (balanceDue <= 0) {
       return NextResponse.json({ error: 'No balance remaining on this project' }, { status: 400 });

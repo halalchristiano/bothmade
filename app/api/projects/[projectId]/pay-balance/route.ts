@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { forbiddenResponse, requireClient } from '@/lib/middleware';
+import { amountPaidTowardProject } from '@/lib/billing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return forbiddenResponse();
     }
 
-    const amountPaid = project.payments.reduce((sum, p) => sum + p.amount, 0);
+    const amountPaid = amountPaidTowardProject(project.payments);
     const balanceDue = project.totalPrice - amountPaid;
     if (balanceDue <= 0) {
       return NextResponse.json({ error: 'No balance remaining on this project' }, { status: 400 });

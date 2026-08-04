@@ -11,6 +11,7 @@ import {
   customItemsTotal,
   depositAmount,
   formatCents,
+  formatCentsExact,
   isIncludedInBase,
   type AddOnKey,
   type BaseService,
@@ -52,6 +53,10 @@ export interface InvoicePdfInput {
   amountDue: string;
   isDeposit: boolean;
   balanceRemaining?: string;
+  /** One line above the table saying what the invoice is for, when the line items alone don't. */
+  summary?: string;
+  /** Overrides the closing note — the default one cites a project agreement that a one-off charge has no equivalent of. */
+  footerNote?: string;
 }
 
 /** Greedy word-wrap against the actual measured width of the given font/size. */
@@ -190,6 +195,16 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
 
   y = Math.min(fromBottom, y) - 14;
 
+  if (input.summary) {
+    drawText('For', MARGIN, { size: 9, f: bold, color: GRAY });
+    y -= 15;
+    for (const line of wrapText(input.summary, font, 11, CONTENT_WIDTH)) {
+      drawText(line, MARGIN, { size: 11 });
+      y -= 15;
+    }
+    y -= 8;
+  }
+
   // Line items
   drawText('Description', MARGIN, { size: 9, f: bold, color: GRAY });
   drawText('Amount', PAGE_WIDTH - MARGIN - bold.widthOfTextAtSize('Amount', 9), { size: 9, f: bold, color: GRAY });
@@ -226,7 +241,8 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
 
   y -= 30;
   const footer = wrapText(
-    'This invoice reflects the scope agreed in the accompanying project agreement. Payment is processed securely by Stripe.',
+    input.footerNote ??
+      'This invoice reflects the scope agreed in the accompanying project agreement. Payment is processed securely by Stripe.',
     font,
     9,
     CONTENT_WIDTH
@@ -237,6 +253,49 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   }
 
   return doc.save();
+}
+
+export interface CustomChargeInvoiceInput {
+  invoiceNumber: string;
+  company: string;
+  contactName: string | null;
+  /** What the charge is for — printed under the number, above the lines. */
+  description: string;
+  lineItems: CustomItem[];
+  issuedAt?: Date;
+}
+
+/**
+ * The invoice for a one-off charge: an amount someone on the team typed in,
+ * for work that never came out of the catalogue.
+ *
+ * Same document as the proposal invoice — deliberately, since a client
+ * should not be able to tell from the paperwork whether what they were billed
+ * for was priced by a calculator or by a person. The only difference is that
+ * there is nothing to discount, uplift, or split into a deposit: the lines
+ * are the total and the total is due.
+ */
+export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInput): Promise<Uint8Array> {
+  const total = customItemsTotal(input.lineItems);
+  const issuedAt = input.issuedAt ?? new Date();
+
+  return buildInvoicePdf({
+    invoiceNumber: input.invoiceNumber,
+    date: issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    company: input.company,
+    contactName: input.contactName,
+    summary: input.description,
+    // formatCentsExact, not formatCents: a custom charge can carry cents, and
+    // an invoice that rounds them is a discrepancy against the card charge.
+    lineItems: input.lineItems.map((item) => ({ label: item.label, amount: formatCentsExact(item.priceCents) })),
+    adjustments: [],
+    subtotal: formatCentsExact(total),
+    total: formatCentsExact(total),
+    amountDue: formatCentsExact(total),
+    isDeposit: false,
+    footerNote:
+      'This invoice covers work agreed with Bothmade outside the original project scope. Payment is processed securely by Stripe.',
+  });
 }
 
 export interface InvoiceForProposalInput {

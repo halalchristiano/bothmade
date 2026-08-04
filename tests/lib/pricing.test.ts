@@ -13,6 +13,7 @@ import {
   depositAmount,
   expandAddOnDependencies,
   formatCents,
+  formatCentsExact,
   isAddOnKey,
   isBaseService,
   isClientType,
@@ -290,6 +291,24 @@ describe('formatCents', () => {
   it('renders whole dollars with no cents', () => {
     expect(formatCents(300000)).toBe('$3,000');
     expect(formatCents(0)).toBe('$0');
+  });
+});
+
+describe('formatCentsExact', () => {
+  it('reads the same as formatCents for the round numbers the catalogue quotes', () => {
+    expect(formatCentsExact(300000)).toBe('$3,000');
+    expect(formatCentsExact(0)).toBe('$0');
+  });
+
+  /**
+   * A custom charge can be any amount someone types. Rounding $1,650.50 to
+   * "$1,651" on the invoice would leave the document disagreeing with the
+   * card charge, and the invoice is the one a bookkeeper trusts.
+   */
+  it('keeps the cents when a charge actually has them', () => {
+    expect(formatCentsExact(165050)).toBe('$1,650.50');
+    expect(formatCentsExact(99)).toBe('$0.99');
+    expect(formatCents(165050)).toBe('$1,651'); // the behaviour it exists to avoid
   });
 });
 

@@ -741,6 +741,25 @@ export function formatCents(cents: number): string {
 }
 
 /**
+ * Same as formatCents for the round numbers the catalogue deals in, but
+ * shows the cents when there are any.
+ *
+ * formatCents drops them — right for a $14,500 quote, wrong the moment
+ * somebody types an exact amount into a custom charge. An invoice reading
+ * "$1,651" against a card charged $1,650.50 is a discrepancy a bookkeeper
+ * has to reconcile, and the invoice is the document they'll trust.
+ */
+export function formatCentsExact(cents: number): string {
+  const hasCents = cents % 100 !== 0;
+  return (cents / 100).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  });
+}
+
+/**
  * Everything the panel on a lead's page needs to say about one pain point,
  * written for someone who has never built software: what's actually wrong,
  * what it's costing the business (the bit that makes them care), and a line

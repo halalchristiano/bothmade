@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           orderBy: { createdAt: 'desc' },
         },
         payments: {
-          select: { amount: true },
+          select: { amount: true, type: true },
         },
       },
       orderBy: { createdAt: 'desc' },

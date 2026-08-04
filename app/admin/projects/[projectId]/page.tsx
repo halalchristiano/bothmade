@@ -10,6 +10,7 @@ import {
   ADD_ONS,
   BASE_SERVICES,
   formatCents,
+  formatCentsExact,
   isAddOnKey,
   isBaseService,
   type AddOnKey,
@@ -38,6 +39,19 @@ interface ProjectDetail {
   amountPaid: number;
   balanceDue: number;
   payments: Array<{ id: string; amount: number; type: string; createdAt: string }>;
+  invoices?: Array<{
+    id: string;
+    number: string;
+    description: string;
+    amountCents: number;
+    status: string;
+    pdfUrl: string | null;
+    paymentUrl: string | null;
+    createdAt: string;
+    paidAt: string | null;
+    issuedBy?: string | null;
+    sentToEmail?: string | null;
+  }>;
   deliverables: Deliverable[];
   createdAt: string;
   client: { id: string; email: string; company: string; contactName?: string | null };
@@ -427,6 +441,8 @@ export default function AdminProjectDetailPage() {
     ...project.messages.map((m) => ({ type: 'message' as const, at: m.createdAt, data: m })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
+  const invoices = project.invoices ?? [];
+
   const inputClass =
     'w-full px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
 
@@ -567,6 +583,82 @@ export default function AdminProjectDetailPage() {
                     </div>
                   )}
                 </>
+              )}
+            </div>
+
+            {/* One-off charges. Deliberately below the balance rather than
+                inside it: these are billed outside the contracted price, and
+                showing them as one number is how a project reads as paid off
+                because somebody was invoiced for a change request. */}
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold">Custom Charges</p>
+                <Link
+                  href={`/admin/billing?projectId=${project.id}`}
+                  className="text-xs text-sky-300 hover:text-sky-200 transition-colors"
+                >
+                  New charge →
+                </Link>
+              </div>
+              {invoices.length === 0 ? (
+                <p className="text-xs text-white/40">
+                  Nothing billed outside the project scope yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {invoices.map((invoice) => (
+                    <div key={invoice.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{invoice.description}</p>
+                          <p className="text-[11px] text-white/40 mt-0.5">
+                            {invoice.number} · {new Date(invoice.createdAt).toLocaleDateString()}
+                            {invoice.issuedBy ? ` · ${invoice.issuedBy}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-semibold">{formatCentsExact(invoice.amountCents)}</p>
+                          <span
+                            className={`text-[10px] uppercase tracking-wider font-semibold ${
+                              invoice.status === 'paid'
+                                ? 'text-emerald-300'
+                                : invoice.status === 'void'
+                                ? 'text-white/30'
+                                : 'text-amber-300'
+                            }`}
+                          >
+                            {invoice.status === 'paid' ? 'Paid' : invoice.status === 'void' ? 'Void' : 'Open'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px]">
+                        {invoice.pdfUrl && (
+                          <a
+                            href={invoice.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sky-300 hover:text-sky-200 transition-colors"
+                          >
+                            Invoice PDF
+                          </a>
+                        )}
+                        {invoice.paymentUrl && (
+                          <button
+                            onClick={() => navigator.clipboard.writeText(invoice.paymentUrl as string)}
+                            className="text-white/50 hover:text-white transition-colors"
+                          >
+                            Copy pay link
+                          </button>
+                        )}
+                        {invoice.sentToEmail ? (
+                          <span className="text-white/30">Sent to {invoice.sentToEmail}</span>
+                        ) : (
+                          <span className="text-white/30">Not emailed to the client</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 

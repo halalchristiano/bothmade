@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
 import { COMPANY_ADDRESS_LINES } from '@/lib/company';
-import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
+import { buildCustomChargeInvoicePdf, buildInvoiceForProposal } from '@/lib/invoice-pdf';
 
 /**
  * The invoice is the one document a client's accountant reads, so the two
@@ -61,6 +61,53 @@ describe('buildInvoiceForProposal', () => {
       expect(drawn).toContain(line);
     }
     expect(drawn).toContain(PROPOSAL.company);
+  });
+});
+
+describe('buildCustomChargeInvoicePdf', () => {
+  const CHARGE = {
+    invoiceNumber: 'BM-2026-0007',
+    company: 'Northgate Dental Group',
+    contactName: 'Priya Raman',
+    description: 'Second round of homepage design',
+    lineItems: [
+      { label: 'Design round', priceCents: 120000 },
+      { label: 'Copywriting', priceCents: 45000 },
+    ],
+    issuedAt: new Date('2026-08-04T10:00:00Z'),
+  };
+
+  it('prints the number, what it is for, and the total of the lines', async () => {
+    const drawn = drawnStrings(await PDFDocument.load(await buildCustomChargeInvoicePdf(CHARGE)));
+
+    expect(drawn).toContain('BM-2026-0007');
+    expect(drawn).toContain('Second round of homepage design');
+    expect(drawn).toContain('Design round');
+    // 120000 + 45000 in cents, formatted — the amount actually due.
+    expect(drawn).toContain('$1,650');
+  });
+
+  /**
+   * The proposal invoice's closing line cites "the accompanying project
+   * agreement". A one-off charge has no such document, and pointing a client
+   * at paperwork that doesn't exist is how a simple invoice turns into a
+   * dispute.
+   */
+  it('does not cite a project agreement it has no equivalent of', async () => {
+    const drawn = drawnStrings(await PDFDocument.load(await buildCustomChargeInvoicePdf(CHARGE)));
+
+    expect(drawn).not.toContain('accompanying project agreement');
+    expect(drawn).toContain('outside the original project scope');
+  });
+
+  it('stays a single page and carries the issuing address', async () => {
+    const doc = await PDFDocument.load(await buildCustomChargeInvoicePdf(CHARGE));
+
+    expect(doc.getPageCount()).toBe(1);
+    const drawn = drawnStrings(doc);
+    for (const line of COMPANY_ADDRESS_LINES) {
+      expect(drawn).toContain(line);
+    }
   });
 });
 
