@@ -41,60 +41,91 @@ function section(p: ContractParams, startsWith: string) {
   return found.paragraphs.join('\n');
 }
 
-describe('termination settlement schedule', () => {
-  it('prints each tier as money, not as homework for the client', () => {
+describe('cancellation inside the 14-day window', () => {
+  it('states the flat deduction as money, not as a percentage to work out', () => {
+    // 30% of $20,000.
+    expect(section(BASE, '8.')).toContain('$6,000');
+  });
+
+  it('derives the hourly rate from the fee and the estimated hours, to the cent', () => {
+    // $20,000 over 160 hours.
+    expect(section(BASE, '8.')).toContain('$125.00 per hour');
+  });
+
+  it('keeps the cents on a rate that does not divide evenly', () => {
+    // $23,500 over 160 hours is $146.875 — the rounding has to survive.
+    const odd = section({ ...BASE, totalPriceCents: 2_350_000, totalPrice: '$23,500' }, '8.');
+
+    expect(odd).toContain('$146.88 per hour');
+  });
+
+  it('falls back to the documented hour estimate when none was recorded', () => {
+    expect(section(BASE, '8.')).toContain('160 estimated hours');
+  });
+
+  it('uses the recorded estimate where there is one, and reprices the hour', () => {
+    const scoped = section({ ...BASE, estimatedHours: 250 }, '8.');
+
+    expect(scoped).toContain('250 estimated hours');
+    expect(scoped).toContain('$80.00 per hour');
+  });
+
+  it('deducts the greater of the two legs, not the sum', () => {
     const refunds = section(BASE, '8.');
 
-    // 25 / 50 / 62.5 / 100 percent of a $20,000 engagement.
-    expect(refunds).toContain('$5,000');
-    expect(refunds).toContain('$10,000');
-    expect(refunds).toContain('$12,500');
-    expect(refunds).toContain('$20,000');
+    expect(refunds).toContain('less the greater of');
+    expect(refunds).not.toContain('plus thirty percent');
   });
 
-  it('renders 62.5% without dropping the half, and whole numbers without a decimal', () => {
+  it('never turns a refund into a debt', () => {
     const refunds = section(BASE, '8.');
 
-    expect(refunds).toContain('62.5% of the Total Fee');
-    expect(refunds).toContain('25% of the Total Fee');
-    expect(refunds).not.toContain('25.0%');
+    expect(refunds).toContain('No refund will exceed the amount actually paid');
+    expect(refunds).toContain('does not create a debt');
   });
+});
 
-  it('scales the figures to the actual deal rather than a template price', () => {
-    const smaller = section({ ...BASE, totalPriceCents: 800_000, totalPrice: '$8,000' }, '8.');
-
-    expect(smaller).toContain('$2,000'); // 25%
-    expect(smaller).toContain('$5,000'); // 62.5%
-    expect(smaller).not.toContain('$12,500');
-  });
-
-  it('caps the client at the Total Fee, so leaving never costs more than finishing', () => {
-    expect(section(BASE, '8.')).toContain('never require the Client to pay more than the Total Fee');
-  });
-
-  it('drops the cancellation element when the Agency is the one walking away', () => {
+describe('cancellation after the window', () => {
+  it('earns the upfront payment outright and calls the balance due', () => {
     const refunds = section(BASE, '8.');
 
-    expect(refunds).toContain('no cancellation element is retained');
+    expect(refunds).toContain('fully earned and non-refundable');
+    expect(refunds).toContain('becomes due according to the payment terms');
   });
 
-  it('states the pre-estimate rationale the schedule needs to read as damages, not a penalty', () => {
-    const refunds = section(BASE, '8.');
-
-    expect(refunds).toContain('genuine pre-estimate');
-    expect(refunds).toContain('rather than a punishment');
+  it('runs the window from the Project Start Date, which is the Kickoff Date', () => {
+    expect(section(BASE, '1.')).toContain('"Project Start Date"');
+    expect(section(BASE, '8.')).toContain('calendar days following the Project Start Date');
   });
 
-  it('fixes the stage at the notice date, so the notice period cannot inflate the bill', () => {
+  it('fixes the side of the window by the notice date, not the notice expiry', () => {
     expect(section(BASE, '11.')).toContain('not the date the notice period expires');
   });
+});
 
-  it('works the numbers through in Exhibit C using the same figures', () => {
+describe('the worked examples', () => {
+  it('shows the flat leg winning when little time has gone in', () => {
     const exhibit = section(BASE, 'Exhibit C');
 
-    expect(exhibit).toContain('cancelled mid-Build');
-    expect(exhibit).toContain('$12,500');
-    expect(exhibit).toContain('a further $2,500');
+    // 40 hours at $125 is $5,000, under the $6,000 floor, so $10,000 - $6,000.
+    expect(exhibit).toContain('40 hours');
+    expect(exhibit).toContain('refunded $4,000');
+  });
+
+  it('shows the hourly leg taking over once real work has gone in', () => {
+    const exhibit = section(BASE, 'Exhibit C');
+
+    // 80 hours at $125 is $10,000, over the floor, so the deposit is consumed.
+    expect(exhibit).toContain('80 hours');
+    expect(exhibit).toContain('refunded $0');
+  });
+
+  it('names the crossover so nobody has to derive it mid-argument', () => {
+    expect(section(BASE, 'Exhibit C')).toContain('at 48 hours');
+  });
+
+  it('drops the flat deduction when the Agency is the one walking away', () => {
+    expect(section(BASE, '8.')).toContain('no deduction under (b)(1) applies');
   });
 });
 
@@ -158,7 +189,7 @@ describe('testimonial discount', () => {
 
 describe('cross-references', () => {
   it('points Section 10 at the renumbered agency-delay clause', () => {
-    expect(section(BASE, '10.')).toContain('Section 8(g)');
+    expect(section(BASE, '10.')).toContain('Section 8(i)');
   });
 
   it('leaves no reference to the lettering the refund section used to have', () => {
@@ -166,9 +197,10 @@ describe('cross-references', () => {
       .flatMap((s) => s.paragraphs)
       .join('\n');
 
-    // (d) was agency delay and (f) was chargebacks before the rewrite; both
-    // moved, and a stale pointer would send a client to the wrong clause.
-    expect(whole).not.toContain('Section 8(d)');
+    // The refund section has been relettered twice. A pointer at the old
+    // lettering would send a client to a clause about something else.
+    expect(whole).not.toContain('Section 8(e)');
     expect(whole).not.toContain('Section 8(f)');
+    expect(whole).not.toContain('Termination Settlement');
   });
 });

@@ -70,12 +70,20 @@ export interface ContractParams {
   effectiveDate: string;
   /**
    * The Total Fee in cents. The other money fields arrive pre-formatted, which
-   * is fine for quoting them back, but the termination schedule in Section 8
-   * has to do arithmetic on the number — a client reading "62.5% of the Total
-   * Fee" and a client reading "$12,500" are not being told the same thing, and
-   * only one of them can check it without a calculator.
+   * is fine for quoting them back, but the cancellation terms in Section 8 have
+   * to do arithmetic on the number — a client reading "30% of the Total Fee"
+   * and a client reading "$6,000" are not being told the same thing, and only
+   * one of them can check it without a calculator. It also divides into the
+   * estimated hours to give the Cancellation Rate.
    */
   totalPriceCents: number;
+  /**
+   * Estimated total hours for the Project. Divided into the Total Fee to give
+   * the cancellation rate in Section 8, so it is a term the Client is agreeing
+   * to, not an internal guess — it belongs in the proposal before it is quoted
+   * back here. Falls back to a documented default when nothing was recorded.
+   */
+  estimatedHours?: number;
   /**
    * True where the Client accepted a reduced price in exchange for providing a
    * testimonial. Turns on the export hold in Section 4 — the work is reviewable
@@ -102,61 +110,86 @@ function has(keys: string[], ...targets: string[]): boolean {
 }
 
 /**
- * What the Agency keeps when the Client walks away, by the stage the Project
- * had reached.
+ * Cancelling for convenience: one window, and one deduction that is the
+ * greater of a floor and the work actually done.
  *
- * This is stage-based rather than hours-based on purpose. Billing a cancelled
- * fixed-fee project by timesheet is defensible in principle and miserable in
- * practice: it asks a client to accept a number derived from a document they
- * have never seen, at the exact moment they have stopped trusting the Agency.
- * A stage is something both sides can check against the dashboard — the status
- * field says "design" or it doesn't — so the settlement is arithmetic on an
- * agreed fact instead of an argument about effort.
+ * The window is short and dated rather than tied to a Milestone, so neither
+ * side has to argue about which stage the Project had reached. Inside it, the
+ * Client gets back what they paid less a deduction; outside it, the money
+ * already paid is earned and the balance falls due under the payment terms.
  *
- * The percentages track what the market actually publishes: the deposit is
- * gone once design work is real, the tail of the project is billed in full,
- * and the middle carries a cancellation fee of a quarter of the balance still
- * outstanding. Retaining 100% before Launch is deliberate and matches the
- * common "past ~85% complete, the full fee is payable" tier — at that point
- * the Agency has substantially performed and the Client is cancelling a thing
- * that is nearly built.
+ * The deduction takes the greater of a flat 30% of the Total Fee and the value
+ * of time actually worked, which is the part that makes it fair in both
+ * directions. The 30% floor covers what a cancellation costs regardless of
+ * hours logged — the reserved delivery slot, the declined work, the restart
+ * cost on whatever fills the gap. The hourly leg takes over only once real
+ * effort has gone in, and because the rate is the Total Fee divided by the
+ * estimated hours, that crossover lands at exactly 30% of the estimated hours.
+ * A Project quoted at 160 hours reaches it at 48. The Client is therefore
+ * never charged twice for the same thing, and the Agency is never left billing
+ * a floor after two weeks of real work.
  */
-interface SettlementTier {
-  /** Stage boundary, phrased as the Client would read it in the dashboard. */
-  when: string;
-  /** Share of the Total Fee the Agency retains if terminated in this stage. */
-  retainedPercent: number;
+const CANCELLATION_WINDOW_DAYS = 14;
+const CANCELLATION_FLOOR_PERCENT = 30;
+
+/**
+ * Hours a Project is assumed to take when no estimate was recorded against it.
+ *
+ * The cancellation rate is the Total Fee divided by this, so it is not a
+ * throwaway default: too low and the rate is inflated, too high and real work
+ * bills under the floor. It stays here rather than in the pricing catalogue
+ * because it is only ever used to price a cancellation.
+ */
+const DEFAULT_ESTIMATED_HOURS = 160;
+
+function estimatedHours(p: ContractParams): number {
+  return p.estimatedHours && p.estimatedHours > 0 ? p.estimatedHours : DEFAULT_ESTIMATED_HOURS;
 }
 
-const SETTLEMENT_TIERS: SettlementTier[] = [
-  { when: 'Before the Kickoff Date', retainedPercent: 0 },
-  { when: 'On or after the Kickoff Date, during Discovery', retainedPercent: 25 },
-  { when: 'During Design', retainedPercent: 50 },
-  { when: 'During Build, before the Project is 85% complete', retainedPercent: 62.5 },
-  {
-    when: 'Once the Project is 85% or more complete, during Launch, or at any time after Launch',
-    retainedPercent: 100,
-  },
-];
-
-/** "62.5%" without a trailing ".0" on the whole numbers. */
-function percentLabel(percent: number): string {
-  return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`;
+/**
+ * The Total Fee spread across the estimated hours.
+ *
+ * Rendered to the cent, unlike every other figure in the contract: a rate is
+ * multiplied by hours before anyone reads the result, so rounding it to whole
+ * dollars would quietly move the answer.
+ */
+function cancellationRate(p: ContractParams): string {
+  const perHour = p.totalPriceCents / estimatedHours(p) / 100;
+  return perHour.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-/** Dollar figure for a tier, so the contract states money rather than homework. */
-function tierAmount(totalPriceCents: number, percent: number): string {
-  return formatCents(Math.round((totalPriceCents * percent) / 100));
+/** The flat leg of the deduction, as money. */
+function cancellationFloor(p: ContractParams): string {
+  return formatCents(Math.round((p.totalPriceCents * CANCELLATION_FLOOR_PERCENT) / 100));
 }
 
-function settlementScheduleParagraphs(p: ContractParams): string[] {
-  return SETTLEMENT_TIERS.map(
-    (tier) =>
-      `${tier.when}: the Agency retains ${percentLabel(tier.retainedPercent)} of the Total Fee — ${tierAmount(
-        p.totalPriceCents,
-        tier.retainedPercent
-      )} on this engagement.`
-  );
+/** Value of a given number of hours at the Cancellation Rate, as money. */
+function timeValue(p: ContractParams, hours: number): string {
+  return formatCents(Math.round((p.totalPriceCents / estimatedHours(p)) * hours));
+}
+
+/**
+ * Hours at which the time-worked leg overtakes the flat floor.
+ *
+ * Because the rate is the fee over the estimated hours, this is always the
+ * floor percentage of the estimate — no arithmetic needed, but worth stating
+ * in the contract so nobody has to derive it mid-argument.
+ */
+function crossoverHours(p: ContractParams): number {
+  return Math.round((estimatedHours(p) * CANCELLATION_FLOOR_PERCENT) / 100);
+}
+
+/** What actually comes back on a cancellation inside the window. */
+function refundAfterHours(p: ContractParams, hours: number): string {
+  const paid = Math.round((p.totalPriceCents * p.depositPercent) / 100);
+  const worked = Math.round((p.totalPriceCents / estimatedHours(p)) * hours);
+  const floor = Math.round((p.totalPriceCents * CANCELLATION_FLOOR_PERCENT) / 100);
+  return formatCents(Math.max(0, paid - Math.max(floor, worked)));
 }
 
 /** The always-present core of the agreement — applies to every engagement regardless of what was selected. */
@@ -179,10 +212,10 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
         '"Client Dependencies" means any content, access, approvals, or feedback the Client must provide under Section 6.',
         '"Deliverable(s)" means any design file, source code, document, or other work product the Agency produces under this Agreement.',
         '"Fees" means all amounts payable by the Client under this Agreement.',
-        '"Kickoff Date" has the meaning given in Section 5, and is the date from which the Project timeline runs.',
+        '"Cancellation Rate" means the Total Fee divided by the estimated total Project hours, as calculated in Section 8(c).',
+        '"Kickoff Date" has the meaning given in Section 5. It is also the "Project Start Date" wherever that term is used, and is the date from which both the Project timeline and the cancellation window in Section 8 run.',
         '"Milestone" means a defined stage of the Project — Discovery, Design, Build, or Launch — described in Section 5 and Exhibit A.',
         '"Preview Environment" means any Agency-controlled staging address, including a subdomain of a domain the Agency owns, on which Deliverables are made available for review under Section 4.',
-        '"Termination Settlement" means the amount calculated under Section 8(b) when the Project ends before completion.',
         '"Total Fee" means the aggregate fee for the Project set out in Section 7, exclusive of later Change Orders.',
         '"Warranty Period" has the meaning given in Section 14.',
       ],
@@ -227,7 +260,8 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
         `The Parties have agreed to a target timeline of ${p.timelineLabel}. That timeline does not begin on the Effective Date, on signature, or on payment alone. It begins on the "Kickoff Date," which is the later of the following two events — both are required, and neither on its own starts the clock:`,
         `(a) Deposit cleared: the deposit of ${p.depositAmount} has been received and cleared by the Agency's payment processor, which the dashboard records with a date; and`,
         '(b) Inputs signed off: the Agency has confirmed in writing, through the dashboard, that it has received every Client Dependency under Section 6 needed to begin Discovery — content, credentials, access, brand assets, and a named point of contact — and that the Project is ready to start.',
-        'Where the deposit clears first, the timeline does not start until the Agency confirms inputs are complete; where inputs are complete first, the timeline does not start until the deposit clears. The Agency will not unreasonably withhold or delay the confirmation in (b), and will tell the Client specifically what is outstanding where it does. The dashboard record of the Kickoff Date is the operative date for Sections 5, 6, 8, and 10.',
+        'Where the deposit clears first, the timeline does not start until the Agency confirms inputs are complete; where inputs are complete first, the timeline does not start until the deposit clears. The Agency will not unreasonably withhold or delay the confirmation in (b), and will tell the Client specifically what is outstanding where it does.',
+        `The Kickoff Date is also the Project Start Date for the purposes of Section 8, and so is the date the ${CANCELLATION_WINDOW_DAYS}-day cancellation window runs from. Because it is recorded in the dashboard on the day it happens, both Parties can tell afterwards exactly when that window opened and closed. The dashboard record of the Kickoff Date is the operative date for Sections 5, 6, 8, and 10.`,
         'This timeline is a good-faith estimate, not a guaranteed delivery date, unless the Parties separately and explicitly agree in writing to a fixed date with associated penalty terms. Time is not "of the essence" for purposes of this Agreement absent such a separate written agreement.',
         'The Agency will notify the Client as soon as it becomes aware that a Milestone is at risk, together with a revised estimate where possible. Milestones generally follow Discovery, Design, Build, and Launch, as further itemized in Exhibit A.',
       ],
@@ -247,7 +281,7 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
         `A deposit of ${p.depositAmount} (${p.depositPercent}% of the Total Fee) is due before work begins. The remaining balance of ${p.balanceAmount} is due upon completion of the Build phase and prior to Launch, unless the Parties agree to a different schedule in writing (see Exhibit B).`,
         'All Fees are in USD, exclusive of applicable taxes, which are the Client\'s responsibility except where the Agency is legally required to collect them.',
         'Payments not received within seven (7) days of their due date are late. The Agency may pause work without penalty until payment is current, and may apply a late fee of 1.5% per month or the maximum rate permitted by law, whichever is lower.',
-        `The Deposit begins to be earned on the Kickoff Date and is fully earned once Design work commences, reflecting the immediate cost to the Agency of allocating personnel and pausing other engagements to begin the Project. Before the Kickoff Date it is refundable; between the Kickoff Date and the start of Design it is partly refundable; from the start of Design onward it is not refundable. The precise amount in each case is fixed by the termination schedule in Section 8(b), which controls.`,
+        `The Deposit begins to be earned on the Kickoff Date and is fully earned on the ${CANCELLATION_WINDOW_DAYS}th calendar day after it, reflecting the immediate cost to the Agency of allocating personnel and pausing other engagements to begin the Project. Within that window it is refundable net of the deduction in Section 8(b); after it, it is not refundable. Section 8 controls the calculation in every case.`,
         'Payments made via a Bothmade-generated payment link are processed by Stripe, Inc. under Stripe\'s own terms; the Agency does not store or have access to the Client\'s card details.',
       ],
     },
@@ -255,19 +289,27 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
       heading: '8. Refund Policy and Termination Settlement',
       paragraphs: [
         'Refunds are governed exclusively by this Section, which controls over any general expectation of refund availability:',
-        '(a) The single rule. Where the Project ends before completion, the Parties settle by comparing two numbers: what the Agency has retained under the schedule in (b), and what the Client has actually paid. If the Client has paid more than the retained amount, the Agency refunds the difference. If the Client has paid less, the difference becomes immediately due. Nothing else is owed by either Party on account of the termination itself.',
-        `(b) The schedule. What the Agency retains depends on the stage the Project had reached when written notice of termination was given. Because the Total Fee for this engagement is ${p.totalPrice}, the figures are:`,
-        ...settlementScheduleParagraphs(p),
-        `The stage is the one recorded in the Bothmade client dashboard on the date notice is given, so both Parties can read the applicable figure off the same record. Where the Project is terminated before the Kickoff Date, the Agency additionally retains any third-party cost it has already committed on the Client's behalf and cannot recover — domain registrations, licenses, or stock assets — itemized in writing.`,
-        `(c) Ceiling and floor. The Termination Settlement can never require the Client to pay more than the Total Fee of ${p.totalPrice} in aggregate: cancelling a Project is never more expensive than completing it. Nor does it fall below the Deposit of ${p.depositAmount} once Design has begun — from that point the Deposit is fully earned under Section 7 and is not refunded, whatever the schedule would otherwise produce. Amounts already invoiced for approved Change Orders and for work genuinely performed under them sit outside this cap and remain payable.`,
-        '(d) Why these figures. The Parties acknowledge that the retained percentages are a genuine pre-estimate, agreed in advance, of the loss the Agency suffers when a Project is cancelled part-built — personnel allocated and now idle, a delivery slot reserved and now unfillable at short notice, other engagements declined, and completed work that has no resale value to anyone but the Client. The Parties agree these amounts are a reasonable forecast of that loss rather than a punishment for terminating, that the escalation by stage reflects the Agency\'s increasing unrecovered investment as the Project proceeds, and that the Fees were set on the basis of this allocation of risk. The Agency will, on request, provide a written summary of the work performed to the date of termination.',
-        '(e) Where the Agency is the one leaving. The schedule in (b) applies to termination for convenience by the Client. Where instead the Agency terminates for convenience under Section 11, or the Client terminates because of the Agency\'s uncured material breach or its default under (g) below, no cancellation element is retained: the Agency retains only the value of work actually performed and accepted to that date, assessed against the Milestones in Exhibit A, and refunds the balance of everything paid.',
-        '(f) Missed timeline estimates: a timeline running longer than projected does NOT, on its own, entitle the Client to a refund, provided the Agency continues to work in good faith and has not abandoned the Project — particularly where delay is caused or contributed to by Client Dependencies (Section 6), scope changes (Section 9), or third-party dependencies (Section 3).',
-        '(g) Agency-caused unreasonable delay: where the Agency ceases substantive work for more than forty-five (45) consecutive days without a Client-caused reason and without reasonable communication, the Client may issue written notice of default. If the Agency does not resume work or provide a remediation plan within fifteen (15) Business Days, the Client may terminate and be refunded on the basis set out in (e).',
-        '(h) Completed and accepted Deliverables are not refundable except for the Agency\'s gross negligence or willful misconduct in producing that specific Deliverable.',
-        '(i) Chargebacks: initiating a card chargeback in lieu of the process in this Section is a material breach and may result in immediate suspension of Deliverables, Preview Environments, and dashboard access; the Agency may contest any chargeback with evidence of work performed.',
-        '(j) A refund due under this Section is processed to the original payment method within fifteen (15) Business Days, less any non-recoverable processor fees. An amount due from the Client under (a) is payable within fifteen (15) Business Days of the Agency\'s written statement of the settlement.',
-        '(k) This Refund Policy is the Client\'s sole and exclusive remedy for dissatisfaction with the pace, quality, or outcome of the Project, except where a separate remedy is expressly provided elsewhere in this Agreement or required by non-waivable consumer protection law.',
+        `(a) Payment structure. The Total Fee is paid in two installments: ${p.depositPercent}% (${p.depositAmount}) before work begins, and the remaining ${100 - p.depositPercent}% (${p.balanceAmount}) as specified in Section 7 and Exhibit B. There are no intermediate Milestone payments.`,
+        `(b) Cancellation within the first ${CANCELLATION_WINDOW_DAYS} days. The Client may request cancellation in writing during the first fourteen (${CANCELLATION_WINDOW_DAYS}) calendar days following the Project Start Date. Any refund during that period will equal the amount paid by the Client, less the greater of:`,
+        `(1) thirty percent (${CANCELLATION_FLOOR_PERCENT}%) of the Total Fee — ${cancellationFloor(
+          p
+        )} on this engagement; or`,
+        `(2) the value of all time worked, calculated using the Cancellation Rate stated in (c), together with all nonrecoverable or third-party project expenses.`,
+        `(c) The Cancellation Rate. The Cancellation Rate is the Total Fee divided by the estimated total Project hours. For this engagement that is ${
+          p.totalPrice
+        } over ${estimatedHours(p)} estimated hours, giving a Cancellation Rate of ${cancellationRate(
+          p
+        )} per hour. Compensable project time includes research, planning, meetings, communications, administration, design, production, revisions, and related work. The Agency will provide a written record of time worked with any refund calculation under (b).`,
+        `(d) Limits. No refund will exceed the amount actually paid, and no refund calculation will result in a payment owed to the Client greater than the amount received. A deduction larger than the amount paid reduces the refund to zero; it does not create a debt.`,
+        `(e) Cancellation on or after the ${CANCELLATION_WINDOW_DAYS}th day. Beginning on the fourteenth (${CANCELLATION_WINDOW_DAYS}th) calendar day after the Project Start Date, the initial ${p.depositPercent}% payment of ${p.depositAmount} is fully earned and non-refundable. The remaining ${100 - p.depositPercent}% of ${p.balanceAmount} becomes due according to the payment terms in Section 7 and Exhibit B.`,
+        '(f) Scope of this policy. Paragraphs (b) through (e) apply to cancellation by the Client for convenience, and do not eliminate any rights or remedies that cannot legally be waived.',
+        '(g) Where the Agency is the one leaving. Where instead the Agency terminates for convenience under Section 11, or the Client terminates because of the Agency\'s uncured material breach or its default under (i) below, no deduction under (b)(1) applies: the Agency retains only the value of time worked at the Cancellation Rate plus nonrecoverable expenses, and refunds the balance of everything paid.',
+        '(h) Missed timeline estimates: a timeline running longer than projected does NOT, on its own, entitle the Client to a refund, provided the Agency continues to work in good faith and has not abandoned the Project — particularly where delay is caused or contributed to by Client Dependencies (Section 6), scope changes (Section 9), or third-party dependencies (Section 3).',
+        '(i) Agency-caused unreasonable delay: where the Agency ceases substantive work for more than forty-five (45) consecutive days without a Client-caused reason and without reasonable communication, the Client may issue written notice of default. If the Agency does not resume work or provide a remediation plan within fifteen (15) Business Days, the Client may terminate and be refunded on the basis set out in (g), whether or not the cancellation window in (b) has closed.',
+        '(j) Completed and accepted Deliverables are not refundable except for the Agency\'s gross negligence or willful misconduct in producing that specific Deliverable.',
+        '(k) Chargebacks: initiating a card chargeback in lieu of the process in this Section is a material breach and may result in immediate suspension of Deliverables, Preview Environments, and dashboard access; the Agency may contest any chargeback with evidence of work performed.',
+        '(l) A refund due under this Section is processed to the original payment method within fifteen (15) Business Days, less any non-recoverable processor fees. An amount due from the Client under (e) is payable within fifteen (15) Business Days of the Agency\'s written statement of the amount.',
+        '(m) This Refund Policy is the Client\'s sole and exclusive remedy for dissatisfaction with the pace, quality, or outcome of the Project, except where a separate remedy is expressly provided elsewhere in this Agreement or required by non-waivable consumer protection law.',
       ],
     },
     {
@@ -281,15 +323,15 @@ function buildSkeleton(p: ContractParams, addOnList: string): ContractSection[] 
       heading: '10. Delays and Extensions',
       paragraphs: [
         'The Project timeline is extended, without penalty to the Agency, for delay attributable to: (a) Client Dependencies not met on schedule; (b) Change Orders; (c) third-party services or infrastructure outside the Agency\'s control; (d) Force Majeure Events under Section 17; or (e) any period during which Client payment is overdue.',
-        'Where a delay is solely and directly attributable to the Agency\'s own scheduling (and none of the causes above), the Client\'s sole remedy is set out in Section 8(g) — the Client is not entitled to consequential damages, lost profits, or the cost of a replacement vendor, subject to Section 15 (Limitation of Liability).',
+        'Where a delay is solely and directly attributable to the Agency\'s own scheduling (and none of the causes above), the Client\'s sole remedy is set out in Section 8(i) — the Client is not entitled to consequential damages, lost profits, or the cost of a replacement vendor, subject to Section 15 (Limitation of Liability).',
       ],
     },
     {
       heading: '11. Termination',
       paragraphs: [
-        'Either Party may terminate for convenience on thirty (30) days\' written notice. The financial consequence is fixed entirely by the Termination Settlement in Section 8 — the schedule in Section 8(b) where the Client terminates, and Section 8(e) where the Agency does — and no other cancellation charge, fee, or damages arise from the termination itself.',
-        'The stage used to calculate the settlement is the stage reached on the date notice is given, not the date the notice period expires. During the notice period the Agency will perform only wind-down work: completing or safely stopping work in progress, preparing a handover, and transferring credentials and materials. The Agency will not advance the Project to a later stage during the notice period, and the settlement does not increase because time passed while the notice ran.',
-        'On termination the Agency will deliver all completed Deliverables covered by the settlement in their then-current state, along with the source, credentials, and documentation within scope for the stages paid for. Any Preview Environment stays available for thirty (30) days from termination so the Client can retrieve its material, then comes down.',
+        'Either Party may terminate for convenience on thirty (30) days\' written notice. The financial consequence is fixed entirely by Section 8 — paragraphs (b) to (e) where the Client terminates, and paragraph (g) where the Agency does — and no other cancellation charge, fee, or damages arise from the termination itself.',
+        `Whether a Client cancellation falls inside or outside the ${CANCELLATION_WINDOW_DAYS}-day window is decided by the date written notice is given, not the date the notice period expires. During the notice period the Agency will perform only wind-down work: completing or safely stopping work in progress, preparing a handover, and transferring credentials and materials. Time worked during wind-down is compensable under Section 8(c), but the Agency will not begin new work in order to increase it.`,
+        'On termination the Agency will deliver all completed Deliverables covered by the settlement in their then-current state, along with the source, credentials, and documentation within scope for the work paid for. Any Preview Environment stays available for thirty (30) days from termination so the Client can retrieve its material, then comes down.',
         'Either Party may terminate immediately for a material breach the other Party fails to cure within fifteen (15) Business Days of written notice describing the breach. The Agency may also terminate immediately, without further delivery obligation, if the Client\'s balance remains overdue more than thirty (30) days past its due date.',
         'Sections 1, 7 (as to amounts due), 8, 12 (as to ownership of unpaid work), 13, 14, 15, 16, and 18 survive termination for any reason.',
       ],
@@ -559,38 +601,58 @@ export function buildContractSections(p: ContractParams): ContractSection[] {
       paragraphs: [
         `Unless the Parties agree otherwise in writing: (1) the Deposit, equal to ${p.depositPercent}% of the Total Fee — ${p.depositAmount} — is due before Discovery begins; and (2) the Balance of ${p.balanceAmount} is due upon completion of Build and prior to Launch.`,
         'Where the Client has selected a recurring add-on, the first month\'s fee is included in the Total Fee above; subsequent months are billed separately per that add-on\'s own terms.',
-        `If the Project ends early, what the Agency retains is set by Section 8(b) and depends on the stage reached. In summary, for this engagement: ${SETTLEMENT_TIERS.map(
-          (t) => `${t.when.toLowerCase()} — ${tierAmount(p.totalPriceCents, t.retainedPercent)}`
-        ).join('; ')}. Section 8 controls if this summary and it ever diverge.`,
+        `Estimated total Project hours: ${estimatedHours(
+          p
+        )}. Dividing the Total Fee by that figure gives a Cancellation Rate of ${cancellationRate(
+          p
+        )} per hour, which is the rate used to value time worked under Section 8(c).`,
+        `If the Client cancels within ${CANCELLATION_WINDOW_DAYS} calendar days of the Project Start Date, the refund is what was paid less the greater of ${cancellationFloor(
+          p
+        )} (${CANCELLATION_FLOOR_PERCENT}% of the Total Fee) or time worked at the Cancellation Rate plus nonrecoverable expenses. On or after the ${CANCELLATION_WINDOW_DAYS}th day, the ${p.depositAmount} paid up front is fully earned and the ${p.balanceAmount} balance falls due. Section 8 controls if this summary and it ever diverge.`,
       ],
     },
     {
       heading: 'Exhibit C — Illustrative Delay and Refund Scenarios',
       paragraphs: [
         'Provided for illustration only — it does not modify Section 8 or Section 10, which control in the event of any inconsistency. The figures below use this engagement\'s actual numbers, so they are the amounts that would really apply.',
-        `Worked example, cancelled during Discovery: the Client has paid the deposit of ${p.depositAmount} and terminates for convenience before Design starts. The Agency retains ${tierAmount(
-          p.totalPriceCents,
-          25
-        )} under Section 8(b) and refunds ${tierAmount(p.totalPriceCents, 25)}. Nothing further is owed by either Party.`,
-        `Worked example, cancelled during Design: the Client has paid the deposit of ${p.depositAmount} and terminates once design work is underway. The Agency retains ${tierAmount(
-          p.totalPriceCents,
-          50
-        )} — exactly the deposit. There is no refund and no further payment.`,
-        `Worked example, cancelled mid-Build: the Client has paid the deposit of ${p.depositAmount} and terminates while the Project is under 85% complete. The Agency retains ${tierAmount(
-          p.totalPriceCents,
-          62.5
-        )}, so the Client pays a further ${tierAmount(
-          p.totalPriceCents,
-          12.5
-        )} and keeps the completed work. This is the case where terminating costs more than what has been paid so far.`,
-        `Worked example, cancelled just before Launch: the Project is 85% or more complete. The Agency retains the full Total Fee of ${p.totalPrice}, so the Client owes the outstanding balance of ${p.balanceAmount} and receives the completed Deliverables.`,
+        `The numbers these examples use: Total Fee ${p.totalPrice}; paid up front ${
+          p.depositAmount
+        }; estimated ${estimatedHours(p)} hours; Cancellation Rate ${cancellationRate(
+          p
+        )} per hour; flat deduction ${cancellationFloor(p)}. The time-worked leg overtakes the flat deduction at ${crossoverHours(
+          p
+        )} hours.`,
+        `Worked example, cancelled early in the window with little time spent: the Client cancels in writing on day 5, by which point ${Math.round(
+          estimatedHours(p) * 0.25
+        )} hours have gone in — worth ${timeValue(
+          p,
+          Math.round(estimatedHours(p) * 0.25)
+        )}. That is less than the flat ${cancellationFloor(
+          p
+        )}, so the flat figure is deducted and the Client is refunded ${refundAfterHours(
+          p,
+          Math.round(estimatedHours(p) * 0.25)
+        )} of the ${p.depositAmount} paid.`,
+        `Worked example, cancelled later in the window with real work done: the Client cancels on day 12, by which point ${Math.round(
+          estimatedHours(p) * 0.5
+        )} hours have gone in — worth ${timeValue(
+          p,
+          Math.round(estimatedHours(p) * 0.5)
+        )}. That now exceeds the flat ${cancellationFloor(
+          p
+        )}, so the time figure is deducted instead and the Client is refunded ${refundAfterHours(
+          p,
+          Math.round(estimatedHours(p) * 0.5)
+        )}. The Client is charged for the work done, not the work done plus a fee.`,
+        `Worked example, the deduction exceeds what was paid: if enough time has gone in that the deduction is larger than the ${p.depositAmount} already paid, the refund is zero. It does not become a debt — under Section 8(d) the calculation cannot produce an amount owed by the Client.`,
+        `Worked example, cancelled after the window: the Client cancels on day 20. The ${p.depositAmount} paid up front is fully earned and not refundable, and the remaining ${p.balanceAmount} falls due under the payment terms. Hours worked are not recalculated either way.`,
         'Client feedback runs slow, pushing the timeline out: this is a Client-caused delay under Section 6; the timeline extends automatically and no refund is owed.',
-        'The Client pays the deposit but never sends content or access: the Kickoff Date under Section 5 never arrives, so the timeline never starts. If the Client walks away at that point, termination is "before the Kickoff Date" and the deposit is refunded, less any committed third-party costs.',
-        'The Agency goes quiet for over 45 days with no explanation: the Client may issue a written default notice under Section 8(g); if the Agency doesn\'t resume or provide a plan within 15 Business Days, the Client can terminate and be refunded on the Section 8(e) basis — the Agency keeps only the value of work actually performed and accepted, with no cancellation element.',
-        'The Client changes their mind mid-Build for reasons unrelated to Agency performance: the Client can terminate for convenience under Section 11, and the settlement is the mid-Build figure above. Giving 30 days\' notice does not move the Project into a later, more expensive stage — the stage is fixed on the date notice is given.',
+        'The Client pays the deposit but never sends content or access: the Kickoff Date under Section 5 never arrives, so neither the timeline nor the cancellation window ever starts. The window cannot expire against a Client whose Project never began.',
+        'The Agency goes quiet for over 45 days with no explanation: the Client may issue a written default notice under Section 8(i); if the Agency doesn\'t resume or provide a plan within 15 Business Days, the Client can terminate and be refunded on the Section 8(g) basis — the Agency keeps only the value of work actually performed and accepted, with no cancellation element.',
+        'The Client changes their mind mid-Build for reasons unrelated to Agency performance: if that is more than 14 days after the Project Start Date, the money paid is earned and the balance falls due. Giving 30 days\' notice does not reopen the window — what matters is the date written notice is given.',
         'A delivered feature genuinely doesn\'t match the agreed spec: this is a non-conformance under Section 4, corrected at no charge and without counting against the revision allowance.',
         'The Client adds new features mid-Project, then blames the resulting delay on the Agency: added scope is a Change Order under Section 9, and the resulting timeline extension is excluded from the definition of Agency delay.',
-        'The Client files a card chargeback instead of requesting a refund: this is treated as a breach separate from the underlying Fee dispute under Section 8(i), and the Agency may suspend access while contesting it with evidence of work performed.',
+        'The Client files a card chargeback instead of requesting a refund: this is treated as a breach separate from the underlying Fee dispute under Section 8(k), and the Agency may suspend access while contesting it with evidence of work performed.',
       ],
     },
   ];
