@@ -107,6 +107,11 @@
 .trustRailDark { color: rgba(255,255,255,.76); background: #101813; border-color: rgba(255,255,255,.12); }
 .trustRailDark > span { border-color: rgba(255,255,255,.12); }
 
+.expertiseMarquee { overflow: hidden; padding: 22px 0; color: white; background: var(--signal); }
+.expertiseMarquee > div { width: max-content; display: flex; align-items: center; gap: 30px; animation: brMarquee 28s linear infinite; }
+.expertiseMarquee span { font-family: Georgia,serif; font-size: clamp(24px,2.5vw,42px); white-space: nowrap; }
+.expertiseMarquee i { font-size: 9px; font-style: normal; opacity: .62; }
+
 .statement { padding: clamp(110px,15vw,220px) 6vw; background: var(--paper); }
 .statementGrid { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: .45fr 1.55fr; gap: 8vw; }
 .sectionIndex { color: var(--signal); font-size: 10px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; }
@@ -183,6 +188,20 @@
 .processStep h3 { margin-top: 90px; font-family: Georgia,serif; font-size: clamp(1.7rem,2.4vw,2.8rem); font-weight: 400; }
 .processStep p { margin-top: 18px; color: rgba(255,255,255,.5); font-size: 14px; line-height: 1.7; }
 
+.inspectionSection { min-height: 1300px; display: grid; grid-template-columns: .9fr 1.1fr; gap: 8vw; padding: 150px 6vw; color: white; background: var(--signal); }
+.inspectionLead { position: relative; }
+.inspectionLead > div { position: sticky; top: 135px; }
+.inspectionKicker { margin: 65px 0 18px; color: rgba(255,255,255,.62); font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.inspectionLead h2 { max-width: 760px; font-family: Georgia,serif; font-size: clamp(3.7rem,5.6vw,7rem); font-weight: 400; line-height: .88; letter-spacing: -.06em; }
+.inspectionLead h2 em { color: #121713; font-weight: 400; }
+.inspectionLead h2 + p { max-width: 610px; margin-top: 38px; color: rgba(255,255,255,.68); font-size: 16px; line-height: 1.75; }
+.inspectionList { border-top: 1px solid rgba(255,255,255,.32); }
+.inspectionItem { min-height: 170px; display: grid; grid-template-columns: 62px 1fr; gap: 18px; align-items: start; padding: 34px 0; border-bottom: 1px solid rgba(255,255,255,.32); transition: padding .3s ease, background .3s ease; }
+.inspectionItem:hover { padding-left: 22px; padding-right: 22px; background: rgba(16,23,19,.1); }
+.inspectionItem > span { padding-top: 8px; color: rgba(255,255,255,.52); font: 10px var(--font-geist-mono); }
+.inspectionItem h3 { font-family: Georgia,serif; font-size: clamp(1.8rem,2.7vw,3.4rem); font-weight: 400; line-height: 1; }
+.inspectionItem p { max-width: 600px; margin-top: 12px; color: rgba(255,255,255,.65); line-height: 1.65; }
+
 .reviews { padding: 150px 5vw; background: var(--paper); }
 .reviewsGrid { max-width: 1380px; margin: 70px auto 0; display: grid; grid-template-columns: repeat(3,1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .review { min-height: 360px; display: flex; flex-direction: column; padding: 34px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -236,20 +255,50 @@
 .pageHeroCopy { padding: 100px 6vw 80px; display: flex; flex-direction: column; justify-content: center; }.pageHeroCopy h1 { max-width: 760px; font-family: Georgia,serif; font-size: clamp(4rem,7.5vw,9rem); font-weight: 400; line-height: .85; letter-spacing: -.07em; }.pageHeroCopy p { max-width: 520px; margin-top: 34px; color: rgba(16,23,19,.62); font-size: 17px; line-height: 1.7; }
 .pageHeroVisual { position: relative; min-height: 650px; margin: 25px 25px 25px 0; overflow: hidden; }.pageHeroVisual img { object-fit: cover; }.pageHeroVisual::after { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg,rgba(5,14,9,.6),transparent 55%); }.pageHeroCaption { position: absolute; z-index: 2; left: 30px; bottom: 28px; color: white; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
 .serviceListPage { padding: 130px 5vw; background: #e9e2d5; }.serviceRow { max-width: 1380px; min-height: 310px; margin: 0 auto; display: grid; grid-template-columns: 80px .8fr 1.2fr 50px; gap: 35px; align-items: center; border-top: 1px solid var(--line); }.serviceRow:last-child { border-bottom: 1px solid var(--line); }.serviceRow > span { color: var(--signal); font: 10px var(--font-geist-mono); }.serviceRow h2 { font-family: Georgia,serif; font-size: clamp(2rem,3.3vw,4.4rem); font-weight: 400; line-height: 1; }.serviceRow p { max-width: 600px; color: rgba(16,23,19,.6); line-height: 1.75; }.serviceRow a { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--ink); border-radius: 50%; }
+.serviceDepthSection { padding: 150px 6vw; color: white; background: #09120e; }
+.serviceDepthLead { max-width: 1380px; margin: 0 auto 120px; display: grid; grid-template-columns: 1fr 1fr; }
+.serviceDepthLead > div { grid-column: 2; }
+.serviceDepthLead h2 { max-width: 780px; margin: 18px 0 30px; font-family: Georgia,serif; font-size: clamp(4rem,6.6vw,8rem); font-weight: 400; line-height: .86; letter-spacing: -.065em; }
+.serviceDepthLead p { max-width: 590px; color: rgba(255,255,255,.56); font-size: 16px; line-height: 1.75; }
+.serviceDepthList { max-width: 1380px; margin: 0 auto; }
+.serviceDepthArticle { min-height: 610px; display: grid; grid-template-columns: 1fr 1fr; gap: 8vw; align-items: start; padding: 90px 0; border-top: 1px solid rgba(255,255,255,.18); }
+.serviceDepthTitle > span { color: #ef776c; font: 10px var(--font-geist-mono); letter-spacing: .11em; text-transform: uppercase; }
+.serviceDepthTitle h2 { max-width: 650px; margin-top: 45px; font-family: Georgia,serif; font-size: clamp(3rem,5vw,6.3rem); font-weight: 400; line-height: .9; letter-spacing: -.055em; }
+.serviceDepthBody > div > p { max-width: 680px; color: rgba(255,255,255,.65); font-size: 17px; line-height: 1.8; }
+.serviceDepthBody ul { margin-top: 55px; border-top: 1px solid rgba(255,255,255,.18); }
+.serviceDepthBody li { min-height: 62px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid rgba(255,255,255,.18); color: rgba(255,255,255,.74); font-size: 13px; letter-spacing: .03em; }
+.serviceDepthBody li::before { content: '↗'; color: #ef776c; }
 .materials { padding: 140px 6vw; background: var(--forest); color: white; }.materialsInner { max-width: 1380px; margin: 0 auto; }.materialsIntro { display: grid; grid-template-columns: .7fr 1.3fr; gap: 8vw; margin-bottom: 80px; }.materialsIntro h2 { font-family: Georgia,serif; font-size: clamp(3.2rem,6vw,7rem); font-weight: 400; line-height: .9; letter-spacing: -.06em; }.materialGrid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; background: rgba(255,255,255,.18); }.material { min-height: 280px; padding: 32px; background: var(--forest); }.material span { color: #9db2a3; font: 10px var(--font-geist-mono); }.material h3 { margin: 90px 0 15px; font-family: Georgia,serif; font-size: 28px; font-weight: 400; }.material p { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.6; }
 
 .emergencyHero { min-height: 100svh; position: relative; display: flex; align-items: end; padding: 170px 6vw 90px; color: white; background: #07110d; overflow: hidden; }.emergencyHeroImage { object-fit: cover; opacity: .42; filter: grayscale(.3) saturate(.45) brightness(.7); }.emergencyHero::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 75% 28%,rgba(93,153,198,.22),transparent 25%), linear-gradient(90deg,rgba(4,12,8,.95),rgba(4,12,8,.23)); }.emergencyHeroContent { position: relative; z-index: 2; width: 100%; display: grid; grid-template-columns: 1.2fr .8fr; gap: 8vw; align-items: end; }.emergencyHero h1 { max-width: 880px; margin: 15px 0 35px; font-size: clamp(4.4rem,8vw,9.5rem); line-height: .83; letter-spacing: -.075em; }.emergencyHero p { max-width: 560px; color: rgba(255,255,255,.65); font-size: 17px; line-height: 1.7; }.emergencyCard { padding: 32px; border: 1px solid rgba(255,255,255,.19); background: rgba(8,20,14,.68); backdrop-filter: blur(15px); }.emergencyCard > span { display: flex; align-items: center; gap: 9px; color: #ff8377; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }.emergencyCard strong { display: block; margin: 22px 0 8px; font-family: Georgia,serif; font-size: clamp(29px,3vw,46px); font-weight: 400; }.emergencyCard > a { display: flex; align-items: center; gap: 10px; width: max-content; margin-top: 25px; padding-bottom: 6px; border-bottom: 1px solid white; font-size: 18px; }
 .emergencySteps { padding: 130px 6vw; background: var(--paper); }.emergencyStepsInner { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: .75fr 1.25fr; gap: 9vw; }.emergencySteps h2 { font-family: Georgia,serif; font-size: clamp(3.3rem,5.5vw,6.6rem); font-weight: 400; line-height: .92; letter-spacing: -.055em; }.steps { counter-reset: brSteps; }.step { counter-increment: brSteps; min-height: 170px; display: grid; grid-template-columns: 70px 1fr; align-items: start; padding: 30px 0; border-top: 1px solid var(--line); }.step::before { content: '0' counter(brSteps); color: var(--signal); font: 10px var(--font-geist-mono); }.step h3 { font-family: Georgia,serif; font-size: 28px; font-weight: 400; }.step p { max-width: 590px; margin-top: 10px; color: rgba(16,23,19,.58); line-height: 1.7; }
+.emergencyDepth { padding: 150px 6vw; color: white; background: var(--signal); }
+.emergencyDepthIntro { max-width: 1380px; margin: 0 auto 100px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 9vw; align-items: end; }
+.emergencyDepthIntro h2 { max-width: 900px; margin-top: 18px; font-family: Georgia,serif; font-size: clamp(3.8rem,6.4vw,7.6rem); font-weight: 400; line-height: .87; letter-spacing: -.065em; }
+.emergencyDepthIntro > div:last-child p { color: rgba(255,255,255,.7); font-size: 16px; line-height: 1.75; }
+.emergencyDepthIntro > div:last-child p + p { margin-top: 22px; }
+.emergencyCapabilityGrid { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: repeat(3,1fr); border-top: 1px solid rgba(255,255,255,.32); border-left: 1px solid rgba(255,255,255,.32); }
+.emergencyCapability { min-height: 300px; padding: 30px; border-right: 1px solid rgba(255,255,255,.32); border-bottom: 1px solid rgba(255,255,255,.32); }
+.emergencyCapability > span { color: rgba(255,255,255,.55); font: 10px var(--font-geist-mono); }
+.emergencyCapability h3 { margin-top: 70px; font-family: Georgia,serif; font-size: clamp(1.9rem,2.7vw,3.4rem); font-weight: 400; line-height: 1; }
+.emergencyCapability p { margin-top: 18px; color: rgba(255,255,255,.67); font-size: 14px; line-height: 1.7; }
+.flatRoofAlert { min-height: 850px; display: grid; grid-template-columns: .9fr 1.1fr; align-items: center; overflow: hidden; color: white; background: #070c09; }
+.flatRoofNumber { align-self: stretch; display: grid; place-items: center; color: #0f1a14; background: #d8d0c0; font-family: Georgia,serif; font-size: clamp(18rem,38vw,45rem); line-height: .8; letter-spacing: -.13em; text-indent: -.13em; }
+.flatRoofCopy { max-width: 850px; padding: 100px 7vw; }
+.flatRoofCopy h2 { margin: 22px 0 34px; font-family: Georgia,serif; font-size: clamp(3.5rem,6vw,7rem); font-weight: 400; line-height: .88; letter-spacing: -.06em; }
+.flatRoofCopy p { max-width: 680px; color: rgba(255,255,255,.6); font-size: 17px; line-height: 1.8; }
+.flatRoofCopy a { width: max-content; display: flex; align-items: center; gap: 12px; margin-top: 42px; padding-bottom: 8px; border-bottom: 1px solid white; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 
 @keyframes brPulse { 70% { box-shadow: 0 0 0 8px rgba(183,42,32,0); } 100% { box-shadow: 0 0 0 0 rgba(183,42,32,0); } }
 @keyframes brRain { to { transform: rotate(12deg) translateY(55px); } }
+@keyframes brMarquee { to { transform: translateX(-50%); } }
 
 @media (max-width: 980px) {
   .header { grid-template-columns: 1fr auto auto; left: 12px; right: 12px; top: 12px; height: 66px; }.headerCall span { display: none; }.headerCall { padding: 11px; }.menuButton { display: block; margin-left: 8px; }
   .nav { position: absolute; top: calc(100% + 8px); left: 0; right: 0; display: none; flex-direction: column; align-items: stretch; gap: 0; padding: 10px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 25px 50px rgba(10,20,14,.15); }.navOpen { display: flex; }.nav a { padding: 14px; }.nav a::after { display: none; }
   .hero, .pageHero { grid-template-columns: 1fr; }.heroCopy { min-height: 78svh; padding-bottom: 45px; }.heroVisual { min-height: 70svh; }.display { font-size: clamp(4.1rem,12vw,7rem); }.heroNote { margin-top: 55px; }
-  .statementGrid { grid-template-columns: 1fr; }.statementFooter { grid-column: 1; }.weather, .story, .estimate { grid-template-columns: 1fr; }.weather { padding-top: 110px; }.layerStack { margin-top: 40px; }.serviceCard, .serviceCard:first-child, .serviceCard:nth-child(2), .serviceCard:nth-child(3), .serviceCard:nth-child(4) { grid-column: span 6; }.storyVisual { min-height: 75svh; }.reviewsGrid { grid-template-columns: 1fr; }.serviceAreaInner, .materialsIntro, .emergencyStepsInner { grid-template-columns: 1fr; }.footerGrid { grid-template-columns: 1fr 1fr; }.pageHeroVisual { margin: 0 24px 24px; }.emergencyHeroContent { grid-template-columns: 1fr; }.emergencyCard { max-width: 480px; }.serviceRow { grid-template-columns: 50px 1fr 50px; padding: 40px 0; }.serviceRow p { grid-column: 2; }.materialGrid { grid-template-columns: 1fr; }
-  .scopeIntro, .processHead, .faqSection { grid-template-columns: 1fr; }.scopeIntro { gap: 45px; }.materialBand { flex-wrap: wrap; justify-content: flex-start; }.materialBand span:last-child { margin-left: auto; }.processGrid { grid-template-columns: repeat(2,1fr); }.faqIntro > div { position: static; }
+  .statementGrid { grid-template-columns: 1fr; }.statementFooter { grid-column: 1; }.weather, .story, .estimate { grid-template-columns: 1fr; }.weather { padding-top: 110px; }.layerStack { margin-top: 40px; }.serviceCard, .serviceCard:first-child, .serviceCard:nth-child(2), .serviceCard:nth-child(3), .serviceCard:nth-child(4) { grid-column: span 6; }.storyVisual { min-height: 75svh; }.reviewsGrid { grid-template-columns: 1fr; }.serviceAreaInner, .materialsIntro, .emergencyStepsInner, .emergencyDepthIntro { grid-template-columns: 1fr; }.footerGrid { grid-template-columns: 1fr 1fr; }.pageHeroVisual { margin: 0 24px 24px; }.emergencyHeroContent { grid-template-columns: 1fr; }.emergencyCard { max-width: 480px; }.serviceRow { grid-template-columns: 50px 1fr 50px; padding: 40px 0; }.serviceRow p { grid-column: 2; }.serviceDepthLead { grid-template-columns: 1fr; }.serviceDepthLead > div { grid-column: 1; }.serviceDepthArticle { grid-template-columns: 1fr; gap: 60px; }.materialGrid { grid-template-columns: 1fr; }.emergencyCapabilityGrid { grid-template-columns: repeat(2,1fr); }.flatRoofAlert { grid-template-columns: 1fr; }.flatRoofNumber { min-height: 500px; font-size: 34rem; }
+  .scopeIntro, .processHead, .inspectionSection, .faqSection { grid-template-columns: 1fr; }.scopeIntro { gap: 45px; }.materialBand { flex-wrap: wrap; justify-content: flex-start; }.materialBand span:last-child { margin-left: auto; }.processGrid { grid-template-columns: repeat(2,1fr); }.inspectionSection { min-height: auto; }.inspectionLead > div, .faqIntro > div { position: static; }
 }
 
 @media (max-width: 640px) {
@@ -262,13 +311,16 @@
   .scopeSection { padding: 95px 14px 0; }.scopeIntro { margin-bottom: 55px; padding: 0 8px; }.scopeIntro h2 { font-size: 4rem; }.scopeGrid { grid-template-columns: 1fr; }.scopeItem { min-height: 270px; padding: 30px 24px; }.scopeItem h3 { margin-top: 32px; }.materialBand { padding: 28px 22px; }.materialBand span { flex-basis: 100%; }.materialBand span:last-child { margin-left: 0; }
   .storyCopy { padding: 90px 22px; }.storyPoints { grid-template-columns: 1fr 1fr; }.storyVisual { min-height: 60svh; }.storyBadge { width: 120px; font-size: 15px; }
   .processSection { padding: 95px 14px; }.processHead { margin-bottom: 55px; padding: 0 8px; }.processHead h2 { font-size: 3.6rem; }.processGrid { grid-template-columns: 1fr; }.processStep { min-height: 270px; }.processStep h3 { margin-top: 65px; }
+  .inspectionSection { padding: 95px 22px; gap: 65px; }.inspectionKicker { margin-top: 40px; }.inspectionLead h2 { font-size: 3.7rem; }.inspectionItem { grid-template-columns: 38px 1fr; min-height: 150px; }.inspectionItem:hover { padding-left: 0; padding-right: 0; background: transparent; }
   .reviews { padding: 95px 14px; }.reviewsGrid { margin-top: 40px; }.review { min-height: 310px; padding: 26px; }
   .serviceArea { padding: 90px 22px; }.towns { margin-top: 25px; }
   .faqSection { padding: 95px 22px; gap: 55px; }.faqIntro h2 { font-size: 3.8rem; }.faqItem summary { min-height: 105px; grid-template-columns: 28px 1fr 25px; gap: 10px; }.faqItem > p { padding: 0 0 30px 38px; }
   .estimate { padding: 90px 16px; gap: 55px; }.estimate > div { padding: 0 7px; }.estimateForm { grid-template-columns: 1fr; padding: 28px 20px; }.estimateForm label,.fullField,.submitButton,.estimateForm small { grid-column: 1; }
   .footer { padding: 80px 22px 20px; }.footerLead { align-items: start; flex-direction: column; padding-bottom: 70px; }.footerGrid { grid-template-columns: 1fr; }.footerBottom { flex-direction: column; gap: 8px; }
   .pageHero { padding-top: 95px; }.pageHeroCopy { padding: 75px 22px 55px; }.pageHeroCopy h1 { font-size: 4.2rem; }.pageHeroVisual { min-height: 480px; margin: 0 12px 12px; }.serviceListPage { padding: 85px 22px; }.serviceRow { grid-template-columns: 38px 1fr 40px; gap: 12px; }.serviceRow p { grid-column: 1 / -1; }.materials { padding: 90px 22px; }
+  .serviceDepthSection { padding: 95px 22px; }.serviceDepthLead { margin-bottom: 70px; }.serviceDepthLead h2 { font-size: 4rem; }.serviceDepthArticle { min-height: auto; padding: 70px 0; gap: 45px; }.serviceDepthTitle h2 { margin-top: 30px; font-size: 3.5rem; }.serviceDepthBody > div > p { font-size: 15px; }.serviceDepthBody ul { margin-top: 38px; }
   .emergencyHero { padding: 140px 22px 60px; }.emergencyHero h1 { font-size: 4.1rem; }.emergencySteps { padding: 90px 22px; }.steps { margin-top: 50px; }.step { grid-template-columns: 45px 1fr; }
+  .emergencyDepth { padding: 95px 22px; }.emergencyDepthIntro { margin-bottom: 60px; }.emergencyDepthIntro h2 { font-size: 3.8rem; }.emergencyCapabilityGrid { grid-template-columns: 1fr; }.emergencyCapability { min-height: 260px; padding: 26px 22px; }.flatRoofNumber { min-height: 330px; font-size: 22rem; }.flatRoofCopy { padding: 90px 22px; }.flatRoofCopy h2 { font-size: 3.8rem; }
 }
 
-@media (prefers-reduced-motion: reduce) { .rain, .liveDot { animation: none; } .heroImage,.serviceImage { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rain, .liveDot, .expertiseMarquee > div { animation: none; } .heroImage,.serviceImage { transition: none; } }

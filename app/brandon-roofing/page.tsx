@@ -102,6 +102,17 @@ const faqs = [
   },
 ];
 
+const inspectionItems = [
+  ['Popping nails', 'Raised fasteners can lift shingles and create a direct path for wind-driven rain.'],
+  ['Missing or cracked shingles', 'Small visible failures often reveal larger weathering patterns across the roof plane.'],
+  ['Mold and trapped moisture', 'Dark growth and persistent dampness can point to ventilation or drainage problems.'],
+  ['Loose ridge vents', 'The highest seam on the roof needs to stay secure while allowing the attic to breathe.'],
+  ['Ice-and-water protection', 'Valleys, eaves, and vulnerable edges are checked for the defense needed against ice damming.'],
+  ['Pipe boots and penetrations', 'Rubber collars and seals age faster than shingles and are a frequent source of hard-to-find leaks.'],
+  ['Skylights and debris', 'We inspect the frame, flashing, seals, and the areas where leaves and water collect.'],
+  ['Wall and chimney flashing', 'Cracks, gaps, counter-flashing, and failing sealant are checked where roof planes meet masonry or walls.'],
+];
+
 export default function BrandonHome() {
   return (
     <main>
@@ -138,6 +149,13 @@ export default function BrandonHome() {
       </section>
 
       <TrustRail />
+
+      <div className={styles.expertiseMarquee} aria-label="Brandon Roofing areas of expertise">
+        <div>
+          <span>Shingle roofing</span><i>◆</i><span>Flat roofing</span><i>◆</i><span>Slate roofing</span><i>◆</i><span>Chimney flashing</span><i>◆</i><span>Gutters & leaders</span><i>◆</i><span>Emergency repair</span><i>◆</i>
+          <span>Shingle roofing</span><i>◆</i><span>Flat roofing</span><i>◆</i><span>Slate roofing</span><i>◆</i><span>Chimney flashing</span><i>◆</i><span>Gutters & leaders</span><i>◆</i><span>Emergency repair</span><i>◆</i>
+        </div>
+      </div>
 
       <section className={styles.statement}>
         <div className={styles.statementGrid}>
@@ -281,10 +299,33 @@ export default function BrandonHome() {
         </div>
       </section>
 
+      <section className={styles.inspectionSection}>
+        <div className={styles.inspectionLead}>
+          <Reveal>
+            <span className={styles.sectionIndex}>07 · The inspection</span>
+            <p className={styles.inspectionKicker}>A roof rarely fails all at once.</p>
+            <h2>We look for the small things <em>before</em> they become expensive things.</h2>
+            <p>
+              Brandon’s original winter-readiness inspection is still one of the clearest
+              expressions of how the company works: look closely, maintain what can be saved,
+              and identify vulnerabilities before leaves, snow, and ice make them worse.
+            </p>
+          </Reveal>
+        </div>
+        <div className={styles.inspectionList}>
+          {inspectionItems.map(([title, text], index) => (
+            <Reveal key={title} className={styles.inspectionItem} delay={(index % 3) * 0.035}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <div><h3>{title}</h3><p>{text}</p></div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
       <section className={styles.reviews}>
         <div className={styles.sectionHead}>
           <Reveal>
-            <span className={styles.sectionIndex}>07 · Around the neighborhood</span>
+            <span className={styles.sectionIndex}>08 · Around the neighborhood</span>
             <h2>Five stars,<br />earned locally.</h2>
           </Reveal>
           <p>52 verified Google reviews from homeowners across Morris and Sussex County.</p>
@@ -312,7 +353,7 @@ export default function BrandonHome() {
       <section className={styles.faqSection}>
         <div className={styles.faqIntro}>
           <Reveal>
-            <span className={styles.sectionIndex}>08 · Before we climb the ladder</span>
+            <span className={styles.sectionIndex}>09 · Before we climb the ladder</span>
             <h2>Good questions.<br />Direct answers.</h2>
             <p>What homeowners and property managers usually want to know before scheduling an inspection.</p>
           </Reveal>
