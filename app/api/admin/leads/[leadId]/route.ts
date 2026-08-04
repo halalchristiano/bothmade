@@ -36,6 +36,33 @@ export async function GET(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
+    // The half of the deal Sales could never see. A lead that converts
+    // vanishes out of Sales into Delivery, so "did they actually pay?" — the
+    // question the whole pipeline exists to answer — was the one question a
+    // rep had to leave the lead page to answer.
+    const project = await prisma.project
+      .findFirst({
+        where: { convertedFromLeadId: leadId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          totalPrice: true,
+          instalments: {
+            orderBy: { index: 'asc' },
+            select: {
+              index: true,
+              label: true,
+              amountCents: true,
+              status: true,
+              paidAt: true,
+              dueAt: true,
+            },
+          },
+        },
+      })
+      .catch(() => null);
+
     // Fills in any new PLAYBOOK_SEED items the database doesn't have yet, so
     // adding content to the seed file is enough — nobody has to run a
     // migration script by hand for it to show up on a lead's page.
@@ -103,7 +130,7 @@ export async function GET(
       );
 
     return NextResponse.json(
-      { success: true, lead, playbook, possibleDuplicates },
+      { success: true, lead, playbook, possibleDuplicates, project },
       { status: 200 }
     );
   } catch (error) {

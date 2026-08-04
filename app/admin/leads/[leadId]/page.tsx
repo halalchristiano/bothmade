@@ -30,6 +30,18 @@ import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
+import { DealTimeline } from '@/components/admin/lead/DealTimeline';
+import { CustomLineItems } from '@/components/admin/lead/CustomLineItems';
+import {
+  FileField,
+  StepLabel,
+  PricedCard,
+  SAVE_ERROR_MESSAGE,
+  SectionNote,
+  Step,
+  type Activity,
+  type SectionNoteSharedProps,
+} from '@/components/admin/lead/primitives';
 import {
   Mail,
   Phone,
@@ -84,14 +96,6 @@ import {
   type TimelineKey,
 } from '@/lib/pricing';
 
-interface Activity {
-  id: string;
-  type: LeadActivityType;
-  content: string;
-  url: string | null;
-  createdAt: string;
-  createdBy: { name: string | null } | null;
-}
 
 interface LeadDetail {
   isConsumer?: boolean;
@@ -167,343 +171,27 @@ interface LeadDetail {
   proposalClientType: string | null;
   proposalTimeline: string | null;
   proposalDepositOnly: boolean;
+  proposalTotalPrice: number | null;
   proposalCustomItems?: Array<{ label: string; description?: string; priceCents: number }>;
 }
 
 /**
- * A URL to a stored file, with the one-click Open button that's the entire
- * point of storing it — a field you can only paste into is a place a link
- * goes to be forgotten. The button reads from what was last saved, not from
- * the input, so it never opens a half-typed URL.
+ * The project this lead became, if it did. Fetched alongside the lead so the
+ * deal timeline can show whether the money actually landed — the half of the
+ * deal that leaves Sales the moment a lead converts.
  */
-function FileField({
-  label,
-  hint,
-  value,
-  onChange,
-  saved,
-  inputClass,
-  leadId,
-}: {
-  label: string;
-  hint: string;
-  value: string;
-  onChange: (v: string) => void;
-  saved: string | null;
-  inputClass: string;
-  leadId: string;
-}) {
-  return (
-    <div>
-      <p className="text-xs text-white/50 mb-1 font-medium">{label}</p>
-      <p className="text-[11px] text-white/30 mb-1.5">{hint}</p>
-      <div className="flex gap-2">
-        {/* Either a pasted link or the PDF itself — the file is usually on
-            somebody's desktop, not already hosted somewhere. */}
-        <div className="flex-1 min-w-0">
-          <PdfOrLinkField
-            value={value}
-            onChange={onChange}
-            leadId={leadId}
-            label={label}
-            inputClass={`${inputClass} text-sm`}
-          />
-        </div>
-        {saved && (
-          <a
-            href={saved}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 transition-colors whitespace-nowrap"
-          >
-            <FileText size={13} /> Open
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// One message for every quick save on this page, because they all fail the
-// same way: the data on screen looks saved and isn't.
-const SAVE_ERROR_MESSAGE = "Couldn't save — your changes are NOT stored. Try again.";
-
-/**
- * Each step of the brief folds away so a long brief can be skimmed. Open by
- * default — nothing is hidden unless he chooses to hide it. Module-scoped
- * (like FileField above) so its identity is stable across renders and
- * toggling a fold never remounts what's below it.
- */
-function Step({
-  n,
-  title,
-  hint,
-  foldedSteps,
-  setFoldedSteps,
-}: {
-  n: number;
-  title: string;
-  hint: string;
-  foldedSteps: Set<number>;
-  setFoldedSteps: Dispatch<SetStateAction<Set<number>>>;
-}) {
-  const folded = foldedSteps.has(n);
-  return (
-    <button
-      onClick={() =>
-        setFoldedSteps((prev) => {
-          const next = new Set(prev);
-          if (next.has(n)) next.delete(n);
-          else next.add(n);
-          return next;
-        })
-      }
-      className="w-full flex items-start gap-3 mb-3 text-left"
-    >
-      <span className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-white/10 text-[11px] font-bold text-white/70">
-        {n}
-      </span>
-      <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-bold text-white/90">{title}</h3>
-        <p className="text-xs text-white/40 mt-0.5">{hint}</p>
-      </div>
-      <ChevronRight
-        size={16}
-        className={`shrink-0 mt-0.5 text-white/30 transition-transform ${folded ? '' : 'rotate-90'}`}
-      />
-    </button>
-  );
-}
-
-/**
- * Everything SectionNote needs from the page besides which section it sits
- * under. Bundled into one shape so the page can build it once and every call
- * site (including PricedCard, which forwards it) stays in sync.
- */
-interface SectionNoteSharedProps {
-  activities: Activity[];
-  drafts: Record<string, string>;
-  setDrafts: Dispatch<SetStateAction<Record<string, string>>>;
-  objection: Record<string, boolean>;
-  setObjection: Dispatch<SetStateAction<Record<string, boolean>>>;
-  saving: Record<string, boolean>;
-  justLogged: Record<string, boolean>;
-  error: Record<string, string>;
-  onLog: (sectionLabel: string) => void;
-}
-
-/**
- * One note box, shared by every card in the brief. Pain points had no way to
- * record what was said about them while the priced items did — so the same
- * conversation got written down in one place and lost in the other, depending
- * on which box prompted it. Module-scoped so a keystroke in the textarea
- * never remounts it and drops focus — all state lives on the page and
- * arrives as props.
- */
-function SectionNote({
-  pointKey,
-  activities,
-  drafts,
-  setDrafts,
-  objection,
-  setObjection,
-  saving,
-  justLogged,
-  error,
-  onLog,
-}: SectionNoteSharedProps & { pointKey: string }) {
-  return (
-    <div className="mt-4 rounded-lg border-2 border-dashed border-sky-400/40 bg-sky-400/[0.06] p-3">
-      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-300 mb-2">
-        <StickyNote size={13} /> Their feedback on this
-      </p>
-      {(() => {
-        const prefix = `[${pointKey}]`;
-        const lastNote = activities
-          .filter((a) => a.content.startsWith(prefix))
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-        if (!lastNote) return null;
-        return (
-          <p className="text-xs text-white/60 leading-relaxed mb-2 break-words">
-            <span className="font-semibold text-white/80">Last time: </span>
-            {lastNote.content.slice(prefix.length).trim()}
-            <span className="text-white/35"> · {new Date(lastNote.createdAt).toLocaleDateString()}</span>
-          </p>
-        );
-      })()}
-      <textarea
-        value={drafts[pointKey] || ''}
-        onChange={(e) => setDrafts((prev) => ({ ...prev, [pointKey]: e.target.value }))}
-        placeholder="What did they say about this?"
-        rows={2}
-        className="w-full px-2.5 py-2 rounded-md bg-black/30 border border-sky-400/25 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/60 resize-none"
-      />
-      <div className="flex items-center justify-between mt-2">
-        <label className="flex items-center gap-1.5 text-xs text-white/60 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={!!objection[pointKey]}
-            onChange={(e) => setObjection((prev) => ({ ...prev, [pointKey]: e.target.checked }))}
-          />
-          This was an objection
-        </label>
-        <button
-          onClick={() => onLog(pointKey)}
-          disabled={saving[pointKey] || !(drafts[pointKey] || '').trim()}
-          className="px-4 py-1.5 rounded-md bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-opacity"
-        >
-          {saving[pointKey] ? 'Logging...' : 'Log to timeline'}
-        </button>
-      </div>
-      {justLogged[pointKey] && (
-        <p className="text-xs font-semibold text-emerald-300 mt-1.5">Logged ✓</p>
-      )}
-      {error[pointKey] && (
-        <p className="text-xs text-red-300 mt-1.5">{error[pointKey]}</p>
-      )}
-    </div>
-  );
-}
-
-/**
- * A priced line item: their bespoke wording, then everything a rep needs if
- * the customer pushes back on it — cost, what it actually is, the words to
- * sell it, and why the price is fair. Module-scoped for the same reason as
- * SectionNote: defined inside the render it remounted on every keystroke.
- */
-function PricedCard({
-  i,
-  tone,
-  company,
-  collapsedItems,
-  setCollapsedItems,
-  sectionNote,
-}: {
-  i: PricedItem;
-  tone: 'green' | 'amber';
-  company: string;
-  collapsedItems: Set<string>;
-  setCollapsedItems: Dispatch<SetStateAction<Set<string>>>;
-  sectionNote: SectionNoteSharedProps;
-}) {
-  // Everything shows by default. Collapsing is there for scanning a
-  // long list, not a default — hiding the pitch and the note box to
-  // save scrolling removed the reason the page exists.
-  const open = !collapsedItems.has(i.point);
-  const toggle = () =>
-    setCollapsedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(i.point)) next.delete(i.point);
-      else next.add(i.point);
-      return next;
-    });
-  const c =
-    tone === 'green'
-      ? { box: 'border-emerald-400/20 bg-emerald-400/[0.05]', head: 'text-emerald-100', price: 'text-emerald-300' }
-      : { box: 'border-amber-400/20 bg-amber-400/[0.05]', head: 'text-amber-100', price: 'text-amber-300' };
-  return (
-    <div className={`rounded-xl border p-3 min-w-0 ${c.box}`}>
-      <button onClick={toggle} className="w-full text-left">
-        <div className="flex items-start justify-between gap-3">
-          <p className={`text-sm font-bold break-words ${c.head}`}>{i.point}</p>
-          <span className="shrink-0 flex items-center gap-1.5">
-            {i.priceCents !== null && i.priceCents > 0 ? (
-              <span className="flex items-center gap-1.5">
-                {/* A price we invented reads identically to one from
-                    the catalogue unless it says so. Saying so is the
-                    difference between quoting and guessing. */}
-                {i.isCustom && (
-                  <span className="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">
-                    Custom
-                  </span>
-                )}
-                <span className={`text-sm font-bold whitespace-nowrap ${c.price}`}>
-                  {tone === 'amber' ? '+' : ''}
-                  {formatCents(i.priceCents)}
-                </span>
-              </span>
-            ) : i.priceCents === 0 ? (
-              // An umbrella line for the items beneath it — "$0" would
-              // read as free, which is the opposite of what it means.
-              <span className="text-xs font-semibold whitespace-nowrap text-white/35">Priced below</span>
-            ) : (
-              // A blank where a price should be reads as an oversight,
-              // and leaves the rep with nothing to say if asked.
-              <span className="text-xs font-bold whitespace-nowrap text-white/45">Price: TBD</span>
-            )}
-            {i.entry && (
-              <ChevronRight
-                size={13}
-                className={`text-white/30 transition-transform ${open ? 'rotate-90' : ''}`}
-              />
-            )}
-          </span>
-        </div>
-        {i.explanation && (
-          <p
-            className={`text-xs text-white/60 leading-relaxed mt-1.5 break-words ${
-              open ? '' : 'line-clamp-1'
-            }`}
-          >
-            {i.explanation}
-          </p>
-        )}
-
-      </button>
-      {i.priceCents === null && open && (
-        <div className="mt-2.5 rounded-lg border-l-2 border-amber-400/50 bg-white/[0.03] px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-amber-300/80 font-semibold mb-1">
-            If they ask what this costs
-          </p>
-          <p className="text-xs text-white/80 italic leading-relaxed break-words">
-            "This one depends on how much there is to do — how many pages, how much of your data moves
-            across, that sort of thing. I'll come back to you with a figure once I know, and it's fixed
-            before we start. You won't get a surprise on the invoice."
-          </p>
-        </div>
-      )}
-
-      {i.entry && open && (
-        <>
-          <div className="mt-2.5 rounded-lg bg-white/[0.03] px-3 py-2.5">
-            <p className="text-[10px] uppercase tracking-wide text-white/40 font-semibold mb-1">
-              In plain English
-            </p>
-            <p className="text-xs text-white/70 leading-relaxed break-words">{i.entry.whatItIs}</p>
-          </div>
-          {i.entry.benefit && (
-            <div className="mt-2 rounded-lg bg-white/[0.03] px-3 py-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-sky-300/80 font-semibold mb-1">
-                How it helps {company}
-              </p>
-              <p className="text-xs text-white/70 leading-relaxed break-words">
-                {personalise(i.entry.benefit, company)}
-              </p>
-            </div>
-          )}
-          <div className="mt-2 rounded-lg border-l-2 border-emerald-400/50 bg-white/[0.03] px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-emerald-300/80 font-semibold mb-1">
-              Say something like this
-            </p>
-            <p className="text-xs text-white/80 italic leading-relaxed break-words">"{i.entry.pitch}"</p>
-          </div>
-          <p className="text-xs text-white/50 leading-relaxed mt-2.5 break-words">
-            <span className="text-amber-300/90 font-semibold">If they ask why it costs that: </span>
-            {i.entry.justification}
-          </p>
-          {i.entry.objection && (
-            <p className="text-xs text-white/45 leading-relaxed mt-2 break-words">
-              <span className="text-red-300/80 font-semibold">If they push back: </span>
-              {i.entry.objection}
-            </p>
-          )}
-        </>
-      )}
-
-      <SectionNote pointKey={i.point} {...sectionNote} />
-
-    </div>
-  );
+interface DealProject {
+  id: string;
+  name: string;
+  totalPrice: number;
+  instalments: Array<{
+    index: number;
+    label: string;
+    amountCents: number;
+    status: string;
+    paidAt: string | null;
+    dueAt: string | null;
+  }>;
 }
 
 export default function LeadDetailPage() {
@@ -536,6 +224,7 @@ export default function LeadDetailPage() {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [playbook, setPlaybook] = useState<PlaybookEntry[]>([]);
   const [duplicates, setDuplicates] = useState<Array<{ id: string; company: string; status: string }>>([]);
+  const [dealProject, setDealProject] = useState<DealProject | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [composingEmail, setComposingEmail] = useState(false);
   const [sendingColdDraft, setSendingColdDraft] = useState(false);
@@ -887,6 +576,7 @@ export default function LeadDetailPage() {
         setLead(l);
         setPlaybook(data.playbook ?? []);
         setDuplicates(data.possibleDuplicates ?? []);
+        setDealProject(data.project ?? null);
         setCompany(l.company);
         setContactName(l.contactName || '');
         setEmail(l.email || '');
@@ -1863,6 +1553,24 @@ export default function LeadDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Where this deal actually is, above the tabs, because "where is this?"
+          is the question asked of a deal more than any other and answering it
+          used to mean assembling four screens in your head. */}
+      <DealTimeline
+        className="mt-4"
+        projectId={dealProject?.id ?? null}
+        lead={{
+          status: lead.status,
+          contractStatus: lead.contractStatus,
+          coldEmailSentAt: lead.coldEmailSentAt ?? null,
+          agreementSignedAt: lead.agreementSignedAt ?? null,
+          proposalTotalPrice: lead.proposalTotalPrice ?? null,
+          latestMockupAt: lead.mockups?.[0]?.createdAt ?? lead.mockupDeliveredAt ?? null,
+          activities: lead.activities.map((a) => ({ type: a.type, createdAt: a.createdAt })),
+          project: dealProject,
+        }}
+      />
 
       <div className="sticky top-14 lg:top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 pt-3 pb-0 mt-3 bg-[#050505]/90 backdrop-blur border-b border-white/[0.06]">
         <div className="flex gap-1 overflow-x-auto">
@@ -3459,120 +3167,23 @@ export default function LeadDetailPage() {
               </div>
             </div>
 
-            <div>
-              <StepLabel n={3} label="Custom Work" hint={customItems.length ? `${customItems.length} added` : 'optional'} />
-              <p className="text-xs text-white/45 mb-3 -mt-1">
-                Anything quoted outside the catalogue. Write down what it actually covers — that description goes
-                into the contract word for word, so "custom X" can only mean one thing later.
-              </p>
-              <div className="space-y-2 mb-3">
-                {customItems.map((item, i) => {
-                  const needsScope = item.description.trim().length < MIN_CUSTOM_SCOPE_CHARS;
-                  return (
-                    <div
-                      key={i}
-                      className={`rounded-lg border-2 p-3 ${
-                        needsScope ? 'border-red-400/50 bg-red-400/10' : 'border-amber-400/40 bg-amber-400/10'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-sm font-medium">{item.label}</span>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="text-sm font-medium text-amber-200">{formatCents(item.priceCents)}</span>
-                          <button
-                            onClick={() => removeCustomItem(i)}
-                            aria-label={`Remove ${item.label}`}
-                            className="text-white/40 hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                      {/* Editable in place: items saved before descriptions
-                          were required arrive blank, and the fix belongs
-                          right where the gap is visible. */}
-                      <textarea
-                        value={item.description}
-                        onChange={(e) => setCustomItemDescription(i, e.target.value)}
-                        rows={2}
-                        maxLength={MAX_CUSTOM_SCOPE_CHARS}
-                        placeholder="What does this actually cover? e.g. Migrate the 400 existing blog posts into the new CMS, with redirects from the old URLs."
-                        aria-label={`What "${item.label}" covers`}
-                        className="mt-2 w-full rounded-lg border border-white/15 bg-black/25 px-3 py-2 text-xs leading-relaxed text-white/85 placeholder:text-white/30 focus:border-white/30 focus:outline-none resize-y"
-                      />
-                      {needsScope && (
-                        <p className="mt-1.5 text-[11px] text-red-300">
-                          Needs at least {MIN_CUSTOM_SCOPE_CHARS} characters describing this work before a contract can
-                          be generated or sent.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {lastRemovedCustomItem && (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-white/15 bg-white/5 p-2.5 mb-3 text-xs">
-                  <span className="text-white/60">Removed "{lastRemovedCustomItem.item.label}"</span>
-                  <button
-                    onClick={undoRemoveCustomItem}
-                    className="font-semibold text-sky-300 hover:text-sky-200 transition-colors"
-                  >
-                    Undo
-                  </button>
-                </div>
-              )}
-
-              <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Custom item name"
-                    value={draftCustomLabel}
-                    onChange={(e) => setDraftCustomLabel(e.target.value)}
-                    className={`${inputClass.replace('w-full', '')} flex-1 min-w-0`}
-                  />
-                  <span className="relative w-28 shrink-0">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">
-                      $
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0"
-                      value={draftCustomPrice}
-                      onChange={(e) => setDraftCustomPrice(formatCurrencyInputValue(e.target.value))}
-                      className={`${inputClass.replace('w-full', '')} w-full pl-6`}
-                    />
-                  </span>
-                </div>
-                <textarea
-                  value={draftCustomDescription}
-                  onChange={(e) => setDraftCustomDescription(e.target.value)}
-                  rows={3}
-                  maxLength={MAX_CUSTOM_SCOPE_CHARS}
-                  placeholder="What does this cover? Be specific enough that the client couldn't read it two ways — e.g. Migrate the 400 existing blog posts into the new CMS, with redirects from the old URLs. Excludes rewriting the copy."
-                  aria-label="What this custom work covers"
-                  className={`${inputClass} text-xs leading-relaxed resize-y`}
-                />
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] text-white/40">
-                    {draftCustomDescription.trim().length === 0
-                      ? 'This wording is what goes into the contract.'
-                      : draftCustomScopeShort
-                        ? `${MIN_CUSTOM_SCOPE_CHARS - draftCustomDescription.trim().length} more characters — say what's actually included.`
-                        : 'Goes into the contract as the definitive scope for this item.'}
-                  </p>
-                  <button
-                    onClick={addCustomItem}
-                    disabled={!draftCustomLabel.trim() || !draftCustomPrice || draftCustomScopeShort}
-                    className="shrink-0 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-            </div>
+            <CustomLineItems
+              customItems={customItems}
+              draftCustomLabel={draftCustomLabel}
+              setDraftCustomLabel={setDraftCustomLabel}
+              draftCustomPrice={draftCustomPrice}
+              setDraftCustomPrice={setDraftCustomPrice}
+              draftCustomDescription={draftCustomDescription}
+              setDraftCustomDescription={setDraftCustomDescription}
+              draftCustomScopeShort={draftCustomScopeShort}
+              lastRemovedCustomItem={lastRemovedCustomItem}
+              addCustomItem={addCustomItem}
+              removeCustomItem={removeCustomItem}
+              undoRemoveCustomItem={undoRemoveCustomItem}
+              setCustomItemDescription={setCustomItemDescription}
+              formatCurrencyInputValue={formatCurrencyInputValue}
+              inputClass={inputClass}
+            />
 
             <div>
               <StepLabel n={4} label="Client Details" />
@@ -3974,14 +3585,3 @@ export default function LeadDetailPage() {
   );
 }
 
-function StepLabel({ n, label, hint }: { n: number; label: string; hint?: string }) {
-  return (
-    <div className="flex items-center gap-2.5 mb-3">
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white/70">
-        {n}
-      </span>
-      <h3 className="font-semibold text-sm">{label}</h3>
-      {hint && <span className="text-xs text-white/35">{hint}</span>}
-    </div>
-  );
-}
