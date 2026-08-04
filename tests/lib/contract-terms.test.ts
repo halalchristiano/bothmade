@@ -86,11 +86,45 @@ describe('cancellation inside the 14-day window', () => {
 });
 
 describe('cancellation after the window', () => {
-  it('earns the upfront payment outright and calls the balance due', () => {
+  it('earns the upfront payment outright and accelerates the balance', () => {
     const refunds = section(BASE, '8.');
 
     expect(refunds).toContain('fully earned and non-refundable');
-    expect(refunds).toContain('becomes due according to the payment terms');
+    expect(refunds).toContain('becomes immediately due and payable');
+  });
+
+  it('overrides the completion trigger that can never fire on a cancelled project', () => {
+    const refunds = section(BASE, '8.');
+
+    // Section 7 makes the balance due on completion of Build. A cancelled
+    // project never completes Build, so without this the balance never
+    // becomes payable at all.
+    expect(refunds).toContain('notwithstanding Section 7');
+    expect(refunds).toContain('does not wait on completion of Build');
+  });
+
+  it('says in Section 7 itself that the balance can accelerate', () => {
+    expect(section(BASE, '7.')).toContain('accelerates and becomes immediately due');
+  });
+
+  it('caps the client at the Total Fee even on acceleration', () => {
+    expect(section(BASE, '8.')).toContain("total liability under this paragraph is the Total Fee of $20,000");
+  });
+
+  it('gives the client the work in exchange, so it is payment and not a forfeit', () => {
+    const refunds = section(BASE, '8.');
+
+    expect(refunds).toContain('not a charge for nothing');
+    expect(refunds).toContain('as though the Project had completed');
+  });
+
+  it('carries the legitimate-interest recital the acceleration leans on', () => {
+    const refunds = section(BASE, '8.');
+
+    expect(refunds).toContain('genuine pre-estimate');
+    expect(refunds).toContain('legitimate business interest');
+    expect(refunds).toContain('rather than punishing the Client');
+    expect(refunds).toContain('real and unpenalised opportunity to withdraw');
   });
 
   it('runs the window from the Project Start Date, which is the Kickoff Date', () => {
@@ -189,7 +223,7 @@ describe('testimonial discount', () => {
 
 describe('cross-references', () => {
   it('points Section 10 at the renumbered agency-delay clause', () => {
-    expect(section(BASE, '10.')).toContain('Section 8(i)');
+    expect(section(BASE, '10.')).toContain('Section 8(k)');
   });
 
   it('leaves no reference to the lettering the refund section used to have', () => {
@@ -199,8 +233,9 @@ describe('cross-references', () => {
 
     // The refund section has been relettered twice. A pointer at the old
     // lettering would send a client to a clause about something else.
-    expect(whole).not.toContain('Section 8(e)');
     expect(whole).not.toContain('Section 8(f)');
+    expect(whole).not.toContain('Section 8(g)');
+    expect(whole).not.toContain('Section 8(j)');
     expect(whole).not.toContain('Termination Settlement');
   });
 });
