@@ -1,0 +1,257 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { motion, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, CheckCircle2 } from 'lucide-react';
+import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
+import { formatCents } from '@/lib/pricing';
+import { SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { LostReasonModal } from '@/components/admin/LostReasonModal';
+import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
+import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
+
+interface LeadCard {
+  id: string;
+  company: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  status: LeadStatus;
+  estimatedValue: number | null;
+  hotLead: boolean;
+  qualifiedAt: string | null;
+  updatedAt: string;
+  assignedTo: { name: string | null } | null;
+}
+
+const COLUMN_STATUSES: LeadStatus[] = [...LEAD_STATUSES];
+
+const COLUMN_ACCENT: Record<LeadStatus, string> = {
+  new: 'border-t-white/30',
+  researched: 'border-t-white/40',
+  contacted: 'border-t-sky-400/60',
+  replied: 'border-t-sky-400/70',
+  qualified: 'border-t-purple-400/60',
+  discovery_scheduled: 'border-t-purple-400/70',
+  discovery_done: 'border-t-purple-400/80',
+  mockup_prep: 'border-t-pink-400/60',
+  presented: 'border-t-pink-400/70',
+  proposal_sent: 'border-t-amber-400/60',
+  verbal_yes: 'border-t-amber-400/80',
+  contract_sent: 'border-t-orange-400/70',
+  contract_signed: 'border-t-orange-400/90',
+  deposit_pending: 'border-t-teal-400/70',
+  won: 'border-t-emerald-400/60',
+  lost: 'border-t-red-400/60',
+};
+
+/**
+ * The pipeline board — a view inside /admin/sales rather than its own
+ * destination. Every lead by stage, for the moment the question is "where is
+ * everything" rather than "who do I ring next".
+ */
+export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
+  const router = useRouter();
+  const [leads, setLeads] = useState<LeadCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const [hideClosedColumns, setHideClosedColumns] = useState(false);
+  const reduceMotion = useReducedMotion();
+
+  const load = async () => {
+    try {
+      const response = await fetch('/api/admin/leads');
+      if (response.status === 401) {
+        router.push('/admin/login');
+        return;
+      }
+      const data = await response.json();
+      if (data.success) setLeads(data.leads);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // refreshToken is bumped by the shell when a lead is added from the page
+  // header, so a board sitting behind the modal picks the new row up.
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
+
+  const columns = useMemo(() => {
+    const grouped = Object.fromEntries(LEAD_STATUSES.map((s) => [s, [] as LeadCard[]])) as Record<
+      LeadStatus,
+      LeadCard[]
+    >;
+    for (const lead of leads) {
+      if (!matchesSearch(search, lead.company, lead.contactName, lead.email, lead.phone, lead.assignedTo?.name)) {
+        continue;
+      }
+      grouped[lead.status]?.push(lead);
+    }
+    return grouped;
+  }, [leads, search]);
+
+  const shownCount = useMemo(
+    () => Object.values(columns).reduce((n, col) => n + col.length, 0),
+    [columns]
+  );
+
+  // The optimistic move + rollback + "ask why" on lost is the same sequence
+  // the leads list, spreadsheet and lead page run — one implementation now.
+  const {
+    changeStatus,
+    lostTarget: pendingLostMove,
+    confirmLost,
+    cancelLost,
+    error: moveError,
+  } = useLeadStatusChange<LeadCard>({
+    applyStatus: (lead, status) =>
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, status } : l))),
+    onSavingChange: setMovingId,
+  });
+
+  const handleMove = (lead: LeadCard, direction: 1 | -1) => {
+    const idx = COLUMN_STATUSES.indexOf(lead.status);
+    const nextIdx = idx + direction;
+    if (nextIdx < 0 || nextIdx >= COLUMN_STATUSES.length) return;
+    changeStatus(lead, COLUMN_STATUSES[nextIdx]);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading the board…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-white/40 mb-4">
+        Every lead, by stage. Use the arrows to move a deal forward or back.
+      </p>
+
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-1">
+        <div className="flex-1">
+          <SearchFilter
+            value={search}
+            onChange={setSearch}
+            placeholder="Find a business on the board..."
+            count={shownCount}
+            total={leads.length}
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-white/50 whitespace-nowrap cursor-pointer">
+          <input
+            type="checkbox"
+            checked={hideClosedColumns}
+            onChange={(e) => setHideClosedColumns(e.target.checked)}
+          />
+          Hide Won/Lost
+        </label>
+      </div>
+
+      {moveError && (
+        <p className="text-sm text-red-300 mb-3" role="alert">
+          {moveError}
+        </p>
+      )}
+
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {COLUMN_STATUSES.filter((status) => !hideClosedColumns || (status !== 'won' && status !== 'lost')).map((status) => {
+          const columnLeads = columns[status];
+          const totalValue = columnLeads.reduce((s, l) => s + (l.estimatedValue || 0), 0);
+          return (
+            <div key={status} className="flex-shrink-0 w-64">
+              <div className={`rounded-2xl border-t-2 ${COLUMN_ACCENT[status]} bg-white/[0.03] border border-white/[0.07] p-3 h-full`}>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h2 className="text-sm font-semibold">{LEAD_STATUS_SHORT_LABELS[status]}</h2>
+                  <span className="text-xs text-white/40">{columnLeads.length}</span>
+                </div>
+                {totalValue > 0 && <p className="text-xs text-white/30 px-1 mb-3">{formatCents(totalValue)}</p>}
+
+                <div className="space-y-2 min-h-[100px]">
+                  {columnLeads.map((lead) => (
+                    <motion.div
+                      key={lead.id}
+                      // Cards slide between columns as leads move — the one
+                      // animation on this page that carries meaning, and the
+                      // one most worth switching off when motion is reduced.
+                      layout={!reduceMotion}
+                      initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
+                      animate={{ opacity: movingId === lead.id ? 0.5 : 1, scale: 1 }}
+                      transition={reduceMotion ? { duration: 0 } : undefined}
+                      className="rounded-xl border border-white/10 bg-white/[0.04] hover:border-white/20 p-3 transition-colors group"
+                    >
+                      <div className="flex items-start justify-between gap-1 mb-1">
+                        <Link href={`/admin/leads/${lead.id}`} className="font-medium text-sm hover:underline flex items-center gap-1 min-w-0">
+                          <span className="truncate">{lead.company}</span>
+                          <ExternalLink size={11} className="opacity-0 group-hover:opacity-50 shrink-0" />
+                        </Link>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {lead.qualifiedAt && (
+                            <CheckCircle2 size={12} className="text-emerald-400" aria-label="Qualified" />
+                          )}
+                          {lead.hotLead && <Flame size={13} className="text-amber-400" />}
+                        </div>
+                      </div>
+                      <p className="text-xs text-white/40 mb-2">
+                        {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
+                        {lead.assignedTo?.name ? ` · ${lead.assignedTo.name}` : ''}
+                      </p>
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => handleMove(lead, -1)}
+                            disabled={COLUMN_STATUSES.indexOf(status) === 0}
+                            className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Move back"
+                          >
+                            <ArrowLeft size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleMove(lead, 1)}
+                            disabled={COLUMN_STATUSES.indexOf(status) === COLUMN_STATUSES.length - 1}
+                            className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Move forward"
+                          >
+                            <ArrowRight size={13} />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          {lead.phone && (
+                            <a href={`tel:${lead.phone}`} title="Call" aria-label={`Call ${lead.company}`} className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
+                              <Phone size={12} />
+                            </a>
+                          )}
+                          {lead.email && (
+                            <a href={`mailto:${lead.email}`} title="Email" aria-label={`Email ${lead.company}`} className="p-1 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors">
+                              <Mail size={12} />
+                            </a>
+                          )}
+                          <LogTouchPopover leadId={lead.id} onLogged={load} />
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                  {columnLeads.length === 0 && (
+                    <p className="text-xs text-white/20 text-center py-6">Nothing here</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {pendingLostMove && (
+        <LostReasonModal companyName={pendingLostMove.company} onCancel={cancelLost} onConfirm={confirmLost} />
+      )}
+    </div>
+  );
+}

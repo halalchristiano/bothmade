@@ -1294,7 +1294,7 @@ export default function LeadDetailPage() {
     setDeletingLead(true);
     try {
       const response = await fetch(`/api/admin/leads/${leadId}`, { method: 'DELETE' });
-      if (response.ok) router.push('/admin/leads');
+      if (response.ok) router.push('/admin/sales?view=list');
     } finally {
       setDeletingLead(false);
     }
@@ -1706,7 +1706,7 @@ export default function LeadDetailPage() {
             Try again
           </button>
           <Link
-            href="/admin/leads"
+            href="/admin/sales?view=list"
             className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
           >
             Back to Leads
@@ -1733,7 +1733,7 @@ export default function LeadDetailPage() {
     <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10 overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          href="/admin/leads"
+          href="/admin/sales?view=list"
           className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm transition-colors"
         >
           ← Back to Leads

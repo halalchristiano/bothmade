@@ -280,7 +280,7 @@ export async function notifyAdminsStaleLeads(
   const html = wrap(
     'Leads going cold',
     `<p>These leads haven't had any activity in 5+ days:</p><ul>${rows}</ul>`,
-    `${siteUrl()}/admin/leads`,
+    `${siteUrl()}/admin/sales?view=list`,
     'View Leads'
   );
   await notifyAdmins(`${leads.length} lead${leads.length === 1 ? '' : 's'} going cold`, html);
@@ -310,7 +310,7 @@ export async function notifyUserFollowUpDigest(
     `<p>You have ${leads.length} follow-up${leads.length === 1 ? '' : 's'} due${
       overdueCount > 0 ? `, ${overdueCount} of them overdue` : ''
     }:</p><ul>${rows}</ul>`,
-    `${siteUrl()}/admin/call-list`,
+    `${siteUrl()}/admin/sales?view=queue`,
     'Open Call List'
   );
   return sendEmail({

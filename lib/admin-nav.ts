@@ -48,10 +48,15 @@ export interface NavItem {
 export const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, section: '' },
 
-  { href: '/admin/pipeline', label: 'Pipeline', icon: KanbanSquare, section: 'Sales' },
-  { href: '/admin/call-list', label: 'Who to call', icon: PhoneCall, section: 'Sales' },
+  // One Sales destination, not four. Pipeline, Who to call and Leads were
+  // separate nav items pointing at three lenses on the same set of leads, and
+  // Call HQ made a fourth. Nothing said which was the front door, so the
+  // dashboard went unopened and the phone got picked up from memory instead.
+  // The three lenses are now tabs inside /admin/sales; Call HQ keeps its own
+  // entry because it is a mode you enter with a phone in your hand, not
+  // another list to browse.
+  { href: '/admin/sales', label: 'Sales', icon: KanbanSquare, section: 'Sales' },
   { href: '/admin/call', label: 'Call HQ', icon: Headset, section: 'Sales' },
-  { href: '/admin/leads', label: 'Leads', icon: Users, section: 'Sales' },
   { href: '/admin/mockup-queue', label: 'Mockups', icon: Palette, section: 'Sales' },
 
   // Money after the sale, which is neither a lead nor a project, so it gets

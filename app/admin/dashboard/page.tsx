@@ -561,7 +561,7 @@ function CallListBanner() {
   if (counts.total === 0) {
     return (
       <Link
-        href="/admin/call-list"
+        href="/admin/sales?view=queue"
         className="block mb-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 hover:bg-white/[0.05] transition-colors"
       >
         <p className="text-sm font-semibold text-white/70">Nothing waiting on a call right now.</p>
@@ -603,7 +603,7 @@ function CallListBanner() {
             Start calling
           </Link>
           <Link
-            href="/admin/call-list"
+            href="/admin/sales?view=queue"
             className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
           >
             Full list
@@ -662,14 +662,14 @@ function SalesDashboard({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <Card className="lg:col-span-2 p-6">
-          <CardHeader icon={FolderKanban} tone="sky" title="Pipeline by Stage" action={<Link href="/admin/pipeline" className="text-xs text-sky-300/70 hover:text-sky-300">Full board →</Link>} />
+          <CardHeader icon={FolderKanban} tone="sky" title="Pipeline by Stage" action={<Link href="/admin/sales?view=board" className="text-xs text-sky-300/70 hover:text-sky-300">Full board →</Link>} />
           <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
             {stats.pipeline
               .filter((p) => p.count > 0)
               .map((p) => (
                 <Link
                   key={p.status}
-                  href="/admin/pipeline"
+                  href="/admin/sales?view=board"
                   className="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/[0.03] transition-colors"
                 >
                   <span className="w-28 shrink-0 text-xs text-white/50 truncate">
@@ -773,7 +773,7 @@ function SalesDashboard({
 
       <div className="flex flex-wrap gap-3">
         <Link
-          href="/admin/pipeline"
+          href="/admin/sales?view=board"
           className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-white/15 font-semibold hover:bg-white/5 transition-colors"
         >
           View Pipeline <ArrowRight size={16} />

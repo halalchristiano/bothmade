@@ -52,7 +52,7 @@ export default function CallHqIndex() {
             Nobody needs a call right now. New replies, overdue follow-ups and fresh leads will
             land here as they come in.
           </p>
-          <Link href="/admin/call-list" className="text-sm text-sky-300 hover:underline">
+          <Link href="/admin/sales?view=queue" className="text-sm text-sky-300 hover:underline">
             See the full call list →
           </Link>
         </div>

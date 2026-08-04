@@ -22,8 +22,8 @@ describe('the whole nav', () => {
         'Priorities',
         'Mockups',
         'Team',
-        'Leads',
-        'Pipeline',
+        'Sales',
+        'Call HQ',
         'Billing',
       ])
     );
@@ -33,6 +33,24 @@ describe('the whole nav', () => {
     // The monthly upsell lives as a band on /admin/projects/[id], because it
     // only means anything with a project in front of you.
     expect(ADMIN_NAV_ITEMS.map((i) => i.href)).not.toContain('/admin/care-plans');
+  });
+
+  /**
+   * The clutter that made the dashboard unusable. Pipeline, Who to call and
+   * Leads were three nav rows pointing at three lenses on the same set of
+   * leads, with Call HQ making a fourth entrance. Four front doors is the
+   * same as none — they are tabs inside /admin/sales now.
+   */
+  it('does not offer four separate ways to look at the same leads', () => {
+    const hrefs = ADMIN_NAV_ITEMS.map((i) => i.href);
+    expect(hrefs).toContain('/admin/sales');
+    expect(hrefs).not.toContain('/admin/pipeline');
+    expect(hrefs).not.toContain('/admin/call-list');
+    expect(hrefs).not.toContain('/admin/leads');
+  });
+
+  it('keeps Call HQ, because it is a mode rather than another list', () => {
+    expect(ADMIN_NAV_ITEMS.find((i) => i.href === '/admin/call')?.section).toBe('Sales');
   });
 });
 
