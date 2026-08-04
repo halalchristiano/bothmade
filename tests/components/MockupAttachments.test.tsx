@@ -167,6 +167,52 @@ describe('bringing in the next version', () => {
     expect(uploadMock).not.toHaveBeenCalled();
   });
 
+  it('shows bytes as well as a percentage — "0%" alone reads the same as stuck', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: { success: true, mockup: mockup(), index: 1 } });
+    // Hold the upload open at 12MB of 100MB so the progress line can be read.
+    uploadMock.mockImplementationOnce(async (..._args: unknown[]) => {
+      const options = _args[2] as { onUploadProgress?: (e: { loaded: number; percentage: number }) => void };
+      options.onUploadProgress?.({ loaded: 12 * 1024 * 1024, percentage: 12 });
+      await new Promise(() => {}); // never settles
+      return { url: '' };
+    });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
+
+    const big = new File(['x'], 'walkthrough.mp4', { type: 'video/mp4' });
+    Object.defineProperty(big, 'size', { value: 100 * 1024 * 1024 });
+
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(screen.getByLabelText(/upload the file/i), big);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('12 MB of 100 MB (12%)');
+  });
+
+  it('stops the upload when cancelled, rather than closing the panel over a live one', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: { success: true, mockup: mockup(), index: 1 } });
+    let signal: AbortSignal | undefined;
+    uploadMock.mockImplementationOnce(async (..._args: unknown[]) => {
+      signal = (_args[2] as { abortSignal?: AbortSignal }).abortSignal;
+      await new Promise((_, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+      return { url: '' };
+    });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
+
+    const big = new File(['x'], 'walkthrough.mp4', { type: 'video/mp4' });
+    Object.defineProperty(big, 'size', { value: 100 * 1024 * 1024 });
+
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(screen.getByLabelText(/upload the file/i), big);
+    await user.click(await screen.findByRole('button', { name: 'Cancel upload' }));
+
+    expect(signal?.aborted).toBe(true);
+    // A cancellation is not a failure, so it gets no red line.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('marks a stored video as one, so nobody opens a recording expecting a still', () => {
     render(
       <MockupAttachments

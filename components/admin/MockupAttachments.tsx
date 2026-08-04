@@ -11,6 +11,7 @@ import {
   VIDEO_CONTENT_TYPES,
   checkUpload,
   contentTypeForFile,
+  formatFileSize,
 } from '@/lib/uploads';
 
 /**
@@ -69,6 +70,43 @@ const MOCKUP_UPLOAD_POLICY = {
 
 /** What the picker offers — spelled out so video isn't greyed out on a phone. */
 const MOCKUP_ACCEPT = [...VIDEO_CONTENT_TYPES, 'image/*', 'application/pdf', '.mov', '.mkv'].join(',');
+
+/** No progress for this long and the connection has almost certainly gone. */
+const STALLED_AFTER_MS = 45_000;
+
+interface UploadState {
+  name: string;
+  loaded: number;
+  total: number;
+  percent: number;
+  stalled: boolean;
+}
+
+/**
+ * Holds the screen awake for the length of the upload.
+ *
+ * This is the difference between a phone upload finishing and not. A
+ * 300MB recording takes minutes; the screen locks after one, Safari
+ * suspends the tab behind it, and the upload stops where it stood. Nothing
+ * about that is reported as a failure — the tab comes back to a progress
+ * bar that hasn't moved, which is exactly what "it's not letting me upload"
+ * looks like from the outside.
+ *
+ * Not supported everywhere, and no reason to care when it isn't: the upload
+ * runs either way, it just wants the screen not to lock under it.
+ */
+async function keepScreenAwake(): Promise<{ release: () => void }> {
+  if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) {
+    return { release: () => {} };
+  }
+  try {
+    const sentinel = await navigator.wakeLock.request('screen');
+    return { release: () => void sentinel.release().catch(() => {}) };
+  } catch {
+    // Denied, or the tab wasn't visible when we asked. Upload anyway.
+    return { release: () => {} };
+  }
+}
 
 function MockupRow({
   mockup,
@@ -230,8 +268,44 @@ export function MockupAttachments({
   const [error, setError] = useState('');
   // A video takes minutes, and a button reading "Attaching..." with nothing
   // moving behind it is the same picture as a button that has hung.
-  const [uploading, setUploading] = useState<{ name: string; percent: number } | null>(null);
+  const [uploading, setUploading] = useState<UploadState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastProgressAt = useRef(0);
+
+  const isUploading = uploading !== null;
+
+  /**
+   * For as long as bytes are moving: hold the screen on, object to the tab
+   * being closed, and watch for the upload going quiet. A percentage that
+   * has stopped climbing is indistinguishable from one that never started,
+   * so the quiet gets named rather than left to be interpreted.
+   */
+  useEffect(() => {
+    if (!isUploading) return;
+
+    const warnBeforeLeaving = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+
+    let wakeLock: { release: () => void } | null = null;
+    let cancelled = false;
+    void keepScreenAwake().then((lock) => {
+      if (cancelled) lock.release();
+      else wakeLock = lock;
+    });
+
+    const stallCheck = setInterval(() => {
+      if (Date.now() - lastProgressAt.current < STALLED_AFTER_MS) return;
+      setUploading((prev) => (prev && !prev.stalled ? { ...prev, stalled: true } : prev));
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(stallCheck);
+      window.removeEventListener('beforeunload', warnBeforeLeaving);
+      wakeLock?.release();
+    };
+  }, [isUploading]);
 
   const nextIndex = mockups.length + 1;
   // Version one is a delivery from design; everything after it is the rep
@@ -290,9 +364,13 @@ export function MockupAttachments({
       return;
     }
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+    lastProgressAt.current = Date.now();
+
     setBusy(true);
     setError('');
-    setUploading({ name: file.name, percent: 0 });
+    setUploading({ name: file.name, loaded: 0, total: file.size, percent: 0, stalled: false });
     try {
       const blob = await upload(file.name, file, {
         access: 'public',
@@ -302,17 +380,34 @@ export function MockupAttachments({
         // already worked out what this is; send that.
         contentType: checked.contentType,
         multipart: file.size > MULTIPART_THRESHOLD_BYTES,
-        onUploadProgress: ({ percentage }) =>
-          setUploading({ name: file.name, percent: Math.round(percentage) }),
+        abortSignal: controller.signal,
+        onUploadProgress: ({ loaded, percentage }) => {
+          lastProgressAt.current = Date.now();
+          setUploading({
+            name: file.name,
+            loaded,
+            total: file.size,
+            percent: Math.round(percentage),
+            stalled: false,
+          });
+        },
       });
       if (await attach({ url: blob.url, fileName: file.name })) setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      // Stopping it yourself isn't a failure worth a red line.
+      if (!controller.signal.aborted) {
+        setError(err instanceof Error ? err.message : 'Upload failed');
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
       setUploading(null);
       clearInput();
     }
+  };
+
+  const cancelUpload = () => {
+    abortRef.current?.abort();
   };
 
   return (
@@ -361,7 +456,7 @@ export function MockupAttachments({
               disabled={busy || !url.trim()}
               className="shrink-0 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
-              {busy ? 'Attaching...' : 'Attach'}
+              {isUploading ? 'Uploading' : busy ? 'Attaching...' : 'Attach'}
             </button>
           </div>
 
@@ -378,30 +473,58 @@ export function MockupAttachments({
                 className="hidden"
               />
             </label>
+            {/* Closing the panel mid-upload used to leave the upload running
+                with nothing on screen to show for it. While bytes are moving
+                this stops them instead. */}
             <button
               type="button"
               onClick={() => {
+                if (isUploading) {
+                  cancelUpload();
+                  return;
+                }
                 setOpen(false);
                 setUrl('');
                 setError('');
               }}
               className="text-xs text-white/40 hover:text-white/70 transition-colors"
             >
-              Cancel
+              {isUploading ? 'Cancel upload' : 'Cancel'}
             </button>
           </div>
 
           {uploading && (
             <div className="mt-2" role="status">
+              {/* Bytes as well as a percentage: "0%" alone doesn't say
+                  whether this is starting or stuck, and on a 300MB file the
+                  first percent takes a while to arrive. */}
               <p className="text-xs text-white/50">
-                Uploading {uploading.name} — {uploading.percent}%
+                Uploading {uploading.name} — {formatFileSize(uploading.loaded)} of{' '}
+                {formatFileSize(uploading.total)} ({uploading.percent}%)
               </p>
               <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-purple-500 transition-[width] duration-200"
-                  style={{ width: `${uploading.percent}%` }}
+                  className={`h-full rounded-full transition-[width] duration-200 ${
+                    uploading.stalled
+                      ? 'bg-amber-400/60'
+                      : 'bg-gradient-to-r from-sky-400 to-purple-500'
+                  }`}
+                  style={{ width: `${Math.max(uploading.percent, 2)}%` }}
                 />
               </div>
+              {uploading.stalled ? (
+                <p className="mt-1.5 text-xs text-amber-200">
+                  Nothing has moved for a while — the connection may have dropped, or the tab was in
+                  the background. Cancel and try again on a stronger connection.
+                </p>
+              ) : (
+                uploading.total > MULTIPART_THRESHOLD_BYTES && (
+                  <p className="mt-1.5 text-xs text-white/40">
+                    A file this size takes a few minutes. Keep this tab open and in front — the
+                    upload stops if the phone locks.
+                  </p>
+                )
+              )}
             </div>
           )}
 
