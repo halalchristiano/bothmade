@@ -130,3 +130,54 @@ function drawnStrings(doc: PDFDocument): string {
     .map(([, hex]) => Buffer.from(hex, 'hex').toString('latin1'))
     .join('\n');
 }
+
+
+describe('the instalment invoice', () => {
+  it('renders one page with the schedule and the current row', async () => {
+    const { buildInstalmentInvoicePdf } = await import('@/lib/invoice-pdf');
+    const { PDFDocument } = await import('pdf-lib');
+    const bytes = await buildInstalmentInvoicePdf({
+      invoiceNumber: 'BM-2026-0042',
+      date: 'August 4, 2026',
+      company: 'Northgate Dental Group',
+      contactName: 'Priya Raman',
+      projectName: 'Northgate — Custom Website',
+      schedule: [
+        { label: 'Payment 1 of 3', amount: '$8,000', status: 'paid', triggerLabel: 'On signing' },
+        { label: 'Payment 2 of 3', amount: '$6,000', status: 'due', triggerLabel: 'On design approval' },
+        { label: 'Payment 3 of 3', amount: '$6,000', status: 'scheduled', triggerLabel: 'When ready to launch' },
+      ],
+      instalmentIndex: 2,
+      amountDue: '$6,000',
+      totalPrice: '$20,000',
+      dueDate: 'August 18, 2026',
+      gateLine: 'Due on Design Approval — approved August 4, 2026.',
+    });
+    const doc = await PDFDocument.load(bytes);
+
+    expect(doc.getPageCount()).toBe(1);
+  });
+
+  it('survives a company name the standard fonts cannot encode', async () => {
+    const { buildInstalmentInvoicePdf } = await import('@/lib/invoice-pdf');
+    const bytes = await buildInstalmentInvoicePdf({
+      invoiceNumber: 'BM-2026-0043',
+      date: 'August 4, 2026',
+      company: 'Škoda 🚗 Müller & Søn',
+      contactName: '李小龙',
+      projectName: 'Škoda — Custom Website',
+      schedule: [
+        { label: 'Payment 1 of 3', amount: '$8,000', status: 'paid', triggerLabel: 'On signing' },
+        { label: 'Payment 2 of 3', amount: '$6,000', status: 'due', triggerLabel: 'On design approval' },
+        { label: 'Payment 3 of 3', amount: '$6,000', status: 'scheduled', triggerLabel: 'When ready to launch' },
+      ],
+      instalmentIndex: 2,
+      amountDue: '$6,000',
+      totalPrice: '$20,000',
+      dueDate: 'August 18, 2026',
+      gateLine: 'Due on Design Approval.',
+    });
+
+    expect(bytes.length).toBeGreaterThan(1000);
+  });
+});

@@ -143,7 +143,11 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
    * message, and one To: header listing everyone is what put every internal
    * address one Reply-all away from a customer.
    */
-  const canDelegate = !data.attachments?.length && isDomainDelegationConfigured();
+  // Attachments used to force the fallback path because the MIME builder
+  // couldn't carry them; it can now (multipart/mixed), so the sign-and-pay
+  // email — agreement and invoice attached — rides the same delegated path
+  // as everything else that needs to land in Primary.
+  const canDelegate = isDomainDelegationConfigured();
   if (canDelegate) {
     const results = await Promise.all(
       recipients.map((recipient) =>
@@ -153,6 +157,7 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
           subject: sanitizeSubject(data.subject),
           html: data.html,
           replyTo,
+          attachments: data.attachments,
         })
       )
     );

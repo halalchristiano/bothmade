@@ -60,15 +60,17 @@ describe('sendEmailDetailed routing', () => {
     ]);
   });
 
-  it('stays on the provider when there is an attachment, which the MIME builder cannot carry', async () => {
-    const result = await sendEmailDetailed({
-      ...MAIL,
-      attachments: [{ filename: 'invoice.pdf', content: Buffer.from('%PDF-') }],
-    });
+  it('carries attachments down the delegated path now that the MIME builder can', async () => {
+    const attachments = [{ filename: 'invoice.pdf', content: Buffer.from('%PDF-') }];
+    const result = await sendEmailDetailed({ ...MAIL, attachments });
 
     expect(result).toEqual({ sent: true });
-    expect(sendAsDelegatedUser).not.toHaveBeenCalled();
-    expect(resendSend).toHaveBeenCalledOnce();
+    // This used to force the fallback sender — the sign-and-pay email, the
+    // one most needing to land in Primary, was the one email barred from
+    // the path built for that. The gate is gone; the files ride along.
+    expect(sendAsDelegatedUser).toHaveBeenCalledOnce();
+    expect(sendAsDelegatedUser.mock.calls[0][1].attachments).toEqual(attachments);
+    expect(resendSend).not.toHaveBeenCalled();
   });
 
   it('stays on the provider when delegation is not configured', async () => {

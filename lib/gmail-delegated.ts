@@ -30,6 +30,7 @@ export async function sendAsDelegatedUser(
     subject: string;
     html: string;
     replyTo?: string | null;
+    attachments?: { filename: string; content: Buffer; contentType?: string }[];
   }
 ): Promise<boolean> {
   const creds = getServiceAccountCreds();
@@ -51,6 +52,7 @@ export async function sendAsDelegatedUser(
       subject: opts.subject,
       html: opts.html,
       replyTo: opts.replyTo,
+      attachments: opts.attachments,
     });
 
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });

@@ -117,3 +117,67 @@ describe('encodeMimeMessage', () => {
     ).toThrow(/recipient/i);
   });
 });
+
+
+describe('attachments ride multipart/mixed', () => {
+  const decode = (raw: string) =>
+    Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+
+  const base = {
+    from: 'Bothmade <info@bothmade.studio>',
+    to: 'client@example.com',
+    subject: 'Your agreement',
+    html: '<p>Hi</p>',
+  };
+
+  it('wraps the alternative part and carries the file base64-encoded', () => {
+    const pdf = Buffer.from('%PDF-1.4 fake');
+    const msg = decode(
+      encodeMimeMessage({ ...base, attachments: [{ filename: 'agreement.pdf', content: pdf }] })
+    );
+
+    expect(msg).toContain('multipart/mixed');
+    expect(msg).toContain('multipart/alternative');
+    expect(msg).toContain('Content-Disposition: attachment; filename="agreement.pdf"');
+    expect(msg).toContain(pdf.toString('base64'));
+  });
+
+  it('stays plain multipart/alternative with no attachments — the old shape, byte for byte', () => {
+    const msg = decode(encodeMimeMessage(base));
+
+    expect(msg).not.toContain('multipart/mixed');
+    expect(msg).toContain('multipart/alternative');
+  });
+
+  it('a hostile filename cannot inject a header line', () => {
+    const msg = decode(
+      encodeMimeMessage({
+        ...base,
+        attachments: [
+          { filename: 'evil"\r\nBcc: victim@example.com', content: Buffer.from('x') },
+        ],
+      })
+    );
+
+    // The text may survive inside the quoted parameter; what must never
+    // happen is it landing at the start of a line, where it parses as a
+    // real header. And the quote that would close the parameter is gone.
+    for (const line of msg.split('\r\n')) {
+      expect(line.startsWith('Bcc:')).toBe(false);
+    }
+    expect(msg).not.toContain('evil"');
+  });
+
+  it('folds long base64 to 76-char lines per RFC 2045', () => {
+    const big = Buffer.alloc(300, 7);
+    const msg = decode(
+      encodeMimeMessage({ ...base, attachments: [{ filename: 'a.pdf', content: big }] })
+    );
+    const b64lines = msg
+      .split('\r\n')
+      .filter((l) => /^[A-Za-z0-9+/=]+$/.test(l) && l.length > 10);
+
+    expect(b64lines.length).toBeGreaterThan(1);
+    for (const line of b64lines) expect(line.length).toBeLessThanOrEqual(76);
+  });
+});

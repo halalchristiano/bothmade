@@ -44,6 +44,15 @@ export function encodeMimeMessage(opts: {
    * sender, which is a quieter failure than not sending at all.
    */
   replyTo?: string | null;
+  /**
+   * Attached files, wrapping the alternative part in multipart/mixed. This
+   * is what lets the sign-and-pay email — the one carrying the agreement
+   * and the invoice — travel the delegated Gmail path instead of being
+   * forced onto the fallback sender, which was the one email in the product
+   * that most needed to land in Primary and the only one structurally
+   * barred from the path built for that.
+   */
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
 }): string {
   const from = sanitizeHeaderValue(opts.from);
   const to = sanitizeEmailAddress(opts.to);
@@ -78,14 +87,10 @@ export function encodeMimeMessage(opts: {
    * tests.
    */
   const boundary = '----=_bothmade_alt_boundary';
+  const MIXED_BOUNDARY = '----=_bothmade_mixed_boundary';
   const text = htmlToPlainText(opts.html);
 
-  const message = [
-    `From: ${from}`,
-    `To: ${to}`,
-    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
-    `Subject: ${encodedSubject}`,
-    'MIME-Version: 1.0',
+  const alternativePart = [
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
     // Least-preferred part first: a client picks the last one it can render.
@@ -100,8 +105,45 @@ export function encodeMimeMessage(opts: {
     opts.html,
     '',
     `--${boundary}--`,
-    '',
-  ].join('\r\n');
+  ];
+
+  const headers = [
+    `From: ${from}`,
+    `To: ${to}`,
+    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
+    `Subject: ${encodedSubject}`,
+    'MIME-Version: 1.0',
+  ];
+
+  const attachments = opts.attachments ?? [];
+  const message =
+    attachments.length === 0
+      ? [...headers, ...alternativePart, ''].join('\r\n')
+      : [
+          ...headers,
+          `Content-Type: multipart/mixed; boundary="${MIXED_BOUNDARY}"`,
+          '',
+          `--${MIXED_BOUNDARY}`,
+          ...alternativePart,
+          ...attachments.flatMap((att) => {
+            // The filename ends up inside a quoted header parameter; strip
+            // anything that could close the quote or break the line, for the
+            // same reason every other header here is sanitized.
+            const filename = sanitizeHeaderValue(att.filename).replace(/"/g, '') || 'attachment';
+            return [
+              `--${MIXED_BOUNDARY}`,
+              `Content-Type: ${att.contentType ?? 'application/pdf'}; name="${filename}"`,
+              'Content-Transfer-Encoding: base64',
+              `Content-Disposition: attachment; filename="${filename}"`,
+              '',
+              // 76-char lines per RFC 2045 — some MTAs reject longer.
+              att.content.toString('base64').replace(/(.{76})/g, '$1\r\n'),
+              '',
+            ];
+          }),
+          `--${MIXED_BOUNDARY}--`,
+          '',
+        ].join('\r\n');
 
   return Buffer.from(message)
     .toString('base64')
