@@ -98,6 +98,9 @@ export async function POST(
         agreementSignedAt: null,
         agreementIp: null,
         agreementHash: null,
+        agreementSignerName: null,
+        agreementUserAgent: null,
+        agreementStatement: null,
       },
     });
 

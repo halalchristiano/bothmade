@@ -127,6 +127,8 @@ interface LeadDetail {
   /** Capability token for the public sign-and-pay link. */
   shareToken?: string;
   agreementIp: string | null;
+  agreementSignerName?: string | null;
+  agreementUserAgent?: string | null;
   qualNeed: string | null;
   qualAuthority: string | null;
   qualBudget: string | null;
@@ -3448,10 +3450,21 @@ export default function LeadDetailPage() {
             </div>
 
             {lead.agreementSignedAt && (
-              <p className="text-xs text-emerald-300">
-                ✓ Agreed online {new Date(lead.agreementSignedAt).toLocaleString()}
-                {lead.agreementIp ? ` from ${lead.agreementIp}` : ''}
-              </p>
+              <div className="text-xs">
+                <p className="text-emerald-300">
+                  ✓ Signed{lead.agreementSignerName ? ` by ${lead.agreementSignerName}` : ' online'}{' '}
+                  {new Date(lead.agreementSignedAt).toLocaleString()}
+                  {lead.agreementIp ? ` from ${lead.agreementIp}` : ''}
+                </p>
+                {/* The browser string is the least readable part of the
+                    evidence and the least often needed — kept on the page,
+                    but out of the way until somebody hovers for it. */}
+                {lead.agreementUserAgent && (
+                  <p className="mt-0.5 truncate text-white/30" title={lead.agreementUserAgent}>
+                    {lead.agreementUserAgent}
+                  </p>
+                )}
+              </div>
             )}
             {lead.signedContractUrl && (
               <a

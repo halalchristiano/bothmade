@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PillCTA, SectionTag } from '@/components/ui';
+import { CLICKWRAP_STATEMENT, SIGNER_NAME_MAX } from '@/lib/clickwrap';
+import { isValidName, sanitizeNameInput } from '@/lib/validation';
 
 interface Proposal {
   company: string;
@@ -16,6 +18,8 @@ interface Proposal {
   depositAmount: number;
   balanceAmount: number;
   alreadySigned: boolean;
+  signerName: string | null;
+  signedAt: string | null;
   sections: Array<{ heading: string; paragraphs: string[] }>;
 }
 
@@ -40,8 +44,13 @@ export default function SignAndPayPage() {
   const [error, setError] = useState('');
   const [closed, setClosed] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [signerName, setSignerName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  // Both halves of the affirmative act. The server checks the same two
+  // things — this only decides whether the button looks pressable.
+  const canSign = agreed && isValidName(signerName);
 
   useEffect(() => {
     if (shareToken === null) return;
@@ -68,9 +77,15 @@ export default function SignAndPayPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
+      // The consent travels with the request. Disabling the button is a
+      // courtesy to the client; this is what the signature is recorded from.
       const res = await fetch(
         `/api/public/leads/${leadId}/agree-and-pay?t=${encodeURIComponent(shareToken || '')}`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agreed, signerName: signerName.trim() }),
+        }
       );
       const data = await res.json();
       if (res.ok && data.url) {
@@ -160,30 +175,58 @@ export default function SignAndPayPage() {
 
         {proposal.alreadySigned ? (
           <>
-            <p className="text-sm text-emerald-300 mb-4">
-              ✓ You already agreed to these terms. Continue below to complete payment.
+            <p className="text-sm text-emerald-300 mb-1">
+              ✓ Signed{proposal.signerName ? ` by ${proposal.signerName}` : ''}
+              {proposal.signedAt ? ` on ${new Date(proposal.signedAt).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}` : ''}. Continue below to complete payment.
             </p>
+            <p className="text-xs text-white/30 mb-6">
+              A copy of the signed agreement is already in your inbox — nothing to re-sign.
+            </p>
+            {submitError && <p className="text-sm text-red-400 mb-4">{submitError}</p>}
             <PillCTA type="button" busy={submitting} disabled={submitting} onClick={handleAgreeAndPay} size="lg">
               {submitting ? 'Redirecting to payment…' : `Continue to Payment — ${money(proposal.chargeAmount)}`}
             </PillCTA>
           </>
         ) : (
           <>
-            <label className="flex items-start gap-3 mb-6 cursor-pointer text-sm text-white/70">
+            <label className="flex items-start gap-3 mb-5 cursor-pointer text-sm text-white/70">
               <input
                 type="checkbox"
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
                 className="mt-0.5"
               />
-              I have read and agree to the terms above, and understand that proceeding to payment
-              constitutes acceptance of this agreement.
+              {CLICKWRAP_STATEMENT}
             </label>
+
+            <label className="block mb-6">
+              <span className="block font-mono text-[11px] uppercase tracking-[0.2em] text-white/40 mb-2">
+                Type your full name to sign
+              </span>
+              <input
+                type="text"
+                value={signerName}
+                onChange={(e) => setSignerName(sanitizeNameInput(e.target.value))}
+                maxLength={SIGNER_NAME_MAX}
+                autoComplete="name"
+                placeholder="Your full name"
+                aria-label="Type your full name to sign"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-lg text-white placeholder:text-white/20 outline-none focus:border-sky-400/60 focus:bg-white/[0.05]"
+              />
+              <span className="mt-2 block text-xs text-white/30">
+                Recorded with the date, your IP address, and your browser as your electronic signature.
+              </span>
+            </label>
+
             {submitError && <p className="text-sm text-red-400 mb-4">{submitError}</p>}
             <PillCTA
               type="button"
               busy={submitting}
-              disabled={!agreed || submitting}
+              disabled={!canSign || submitting}
               onClick={handleAgreeAndPay}
               size="lg"
             >

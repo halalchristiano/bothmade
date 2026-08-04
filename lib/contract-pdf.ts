@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { LOGO_BACKGROUND, LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
 import { COMPANY_ADDRESS_INLINE, COMPANY_ADDRESS_LINES, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
+import { winAnsi } from '@/lib/pdf-text';
 import type { ContractSection } from '@/lib/contract-terms';
 
 const PAGE_WIDTH = 612;
@@ -21,10 +22,26 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
   let current = '';
 
   for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
+    let rest = word;
+    // A "word" wider than the column has nowhere to wrap — a user agent
+    // header with no spaces in it, say. Break it rather than let it run off
+    // the edge of the page.
+    while (font.widthOfTextAtSize(rest, size) > maxWidth) {
+      if (current) {
+        lines.push(current);
+        current = '';
+      }
+      let cut = rest.length;
+      while (cut > 1 && font.widthOfTextAtSize(rest.slice(0, cut), size) > maxWidth) cut -= 1;
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    if (!rest) continue;
+
+    const candidate = current ? `${current} ${rest}` : rest;
     if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
       lines.push(current);
-      current = word;
+      current = rest;
     } else {
       current = candidate;
     }
@@ -45,9 +62,11 @@ export interface ContractPdfInput {
   depositAmount: string;
   sections: ContractSection[];
   /** When set, the signature page shows this as a digitally-executed
-   * agreement (timestamp + IP) instead of blank signature lines — the
-   * saved copy of what the client actually clicked "I agree" to. */
-  signedOnline?: { at: Date; ip: string };
+   * agreement (name, timestamp, IP, browser) instead of blank signature
+   * lines — the saved copy of what the client actually clicked "I agree"
+   * to. The optional fields are optional because signatures taken before
+   * they were captured still have to render. */
+  signedOnline?: { at: Date; ip: string; signerName?: string; userAgent?: string; statement?: string };
 }
 
 /** Builds the contract PDF — shared by the admin "download contract" action
@@ -89,16 +108,19 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     if (y - needed < MARGIN + 20) newPage();
   };
 
-  const drawLine = (text: string, opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; gap?: number } = {}) => {
+  const drawLine = (raw: string, opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; gap?: number } = {}) => {
     const { size = 11, f = font, color = BLACK, gap = 16 } = opts;
     ensureSpace(gap);
-    page.drawText(text, { x: MARGIN, y, size, font: f, color });
+    page.drawText(winAnsi(raw), { x: MARGIN, y, size, font: f, color });
     y -= gap;
   };
 
-  const drawParagraph = (text: string, opts: { size?: number; color?: ReturnType<typeof rgb>; gap?: number } = {}) => {
+  const drawParagraph = (raw: string, opts: { size?: number; color?: ReturnType<typeof rgb>; gap?: number } = {}) => {
     const { size = 10, color = BLACK, gap = 13.5 } = opts;
-    const lines = wrapText(text, font, size, CONTENT_WIDTH);
+    // Sanitize before measuring: widthOfTextAtSize looks the glyphs up in
+    // the same table drawText does, so an unencodable character throws
+    // during wrapping rather than during drawing.
+    const lines = wrapText(winAnsi(raw), font, size, CONTENT_WIDTH);
     for (const line of lines) {
       ensureSpace(gap);
       page.drawText(line, { x: MARGIN, y, size, font, color });
@@ -182,7 +204,16 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
       { size: 10, gap: 20 }
     );
     y -= 10;
-    drawLine('✓ Digitally agreed', { f: bold, size: 12, color: GREEN, gap: 20 });
+    // Spelled out rather than marked with a tick: WinAnsi has no checkmark
+    // glyph, and the standard fonts throw on characters they can't encode.
+    drawLine('SIGNED ELECTRONICALLY', { f: bold, size: 12, color: GREEN, gap: 20 });
+
+    // The typed name is the signature. Set larger than the surrounding text
+    // so the page reads the way a signed page reads — a name, then the
+    // machine detail underneath it.
+    if (input.signedOnline.signerName) {
+      drawLine(`Signed by: ${input.signedOnline.signerName}`, { f: bold, size: 13, gap: 20 });
+    }
     drawParagraph(`Client: ${input.contactName || input.company} (${input.company})`, { size: 10 });
     drawParagraph(
       `Agreed: ${input.signedOnline.at.toLocaleString('en-US', {
@@ -191,10 +222,22 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
+        timeZoneName: 'short',
       })}`,
       { size: 10 }
     );
     drawParagraph(`Recorded from IP: ${input.signedOnline.ip}`, { size: 10, color: GRAY });
+    if (input.signedOnline.userAgent) {
+      drawParagraph(`Browser: ${input.signedOnline.userAgent}`, { size: 9, color: GRAY });
+    }
+
+    // Quoting the sentence they ticked is the difference between a record
+    // that says they agreed and a record that says what agreeing meant.
+    if (input.signedOnline.statement) {
+      y -= 6;
+      drawParagraph('Statement accepted:', { size: 9, color: GRAY, gap: 12 });
+      drawParagraph(`"${input.signedOnline.statement}"`, { size: 9.5 });
+    }
   } else {
     drawParagraph(
       'By signing below (or by making the deposit payment referenced in Section 6), both Parties agree to be bound by the terms of this Agreement in full.',

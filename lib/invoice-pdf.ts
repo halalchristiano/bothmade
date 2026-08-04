@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { LOGO_BACKGROUND, LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
 import { COMPANY_ADDRESS_LINES, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
+import { winAnsi } from '@/lib/pdf-text';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -85,27 +86,33 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   const page: PDFPage = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = PAGE_HEIGHT - MARGIN;
 
+  // Every string drawn below goes through winAnsi() first — a client name
+  // the standard fonts can't encode would otherwise throw, and every caller
+  // of this builder catches and logs, so the failure is invisible. See
+  // lib/pdf-text.ts.
   const drawText = (
-    text: string,
+    raw: string,
     x: number,
     opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb> } = {}
   ) => {
     const { size = 11, f = font, color = BLACK } = opts;
-    page.drawText(text, { x, y, size, font: f, color });
+    page.drawText(winAnsi(raw), { x, y, size, font: f, color });
   };
 
   /** Same as drawText, but measured so the text ends at the right margin. */
   const drawTextRight = (
-    text: string,
+    raw: string,
     opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; at?: number } = {}
   ) => {
     const { size = 11, f = font, color = BLACK, at = y } = opts;
+    const text = winAnsi(raw);
     page.drawText(text, { x: PAGE_WIDTH - MARGIN - f.widthOfTextAtSize(text, size), y: at, size, font: f, color });
   };
 
-  const drawRow = (label: string, amount: string, opts: { f?: PDFFont; color?: ReturnType<typeof rgb>; size?: number } = {}) => {
+  const drawRow = (label: string, rawAmount: string, opts: { f?: PDFFont; color?: ReturnType<typeof rgb>; size?: number } = {}) => {
     const { f = font, color = BLACK, size = 11 } = opts;
-    const wrapped = wrapText(label, f, size, CONTENT_WIDTH - 140);
+    const amount = winAnsi(rawAmount);
+    const wrapped = wrapText(winAnsi(label), f, size, CONTENT_WIDTH - 140);
     page.drawText(wrapped[0] ?? '', { x: MARGIN, y, size, font: f, color });
     const amountWidth = f.widthOfTextAtSize(amount, size);
     page.drawText(amount, { x: PAGE_WIDTH - MARGIN - amountWidth, y, size, font: f, color });

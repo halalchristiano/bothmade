@@ -433,13 +433,15 @@ export async function sendSignedContractCopyEmail(
   toEmails: string[],
   company: string,
   contractUrl: string,
-  totalPriceLabel: string
+  totalPriceLabel: string,
+  signerName?: string
 ): Promise<boolean> {
   // A signed agreement is the one document every one of the three needs a
   // copy of no matter who else is on the thread.
   const recipients = Array.from(new Set([...toEmails, ...studioInbox()]));
+  const who = signerName ? `<strong style="color:#fff;">${esc(signerName)}</strong> at ` : '';
   const bodyHtml = `
-    <p><strong style="color:#fff;">${esc(company)}</strong> just agreed to their project agreement online (total: ${esc(totalPriceLabel)}).</p>
+    <p>${who}<strong style="color:#fff;">${esc(company)}</strong> just signed their project agreement online (total: ${esc(totalPriceLabel)}).</p>
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">A copy is saved below and will also show up on the project once payment clears.</p>
   `;
 
@@ -448,10 +450,56 @@ export async function sendSignedContractCopyEmail(
     subject: `Signed: ${company}'s project agreement`,
     html: renderShell({
       eyebrow: 'Contract signed',
-      title: `${company} agreed online`,
+      title: `${company} signed online`,
       bodyHtml,
       ctaLabel: 'View signed copy',
       ctaUrl: contractUrl,
+    }),
+  });
+}
+
+/**
+ * The client's own copy of what they just signed, sent at the moment of
+ * signing rather than after payment.
+ *
+ * Two reasons it can't wait for the Stripe webhook. It's the courtesy half
+ * of a clickwrap — the signer is meant to leave with the document, not with
+ * a promise of one. And the signature is recorded before checkout, so
+ * somebody who agrees and then abandons payment is bound by an agreement
+ * they'd otherwise have no copy of.
+ */
+export async function sendClientSignedContractEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  contractUrl: string;
+  totalPriceLabel: string;
+  signedAt: Date;
+}): Promise<boolean> {
+  const when = input.signedAt.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Here's your copy of the project agreement for <strong style="color:#fff;">${esc(input.company)}</strong>, signed on ${esc(when)}. Nothing further to sign — this is for your records.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Project total: ${esc(input.totalPriceLabel)}. Keep this email, or download the PDF below and save it somewhere you'll find it later.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">If you didn't sign this, reply to this email straight away and we'll void it.</p>
+  `;
+
+  return sendEmail({
+    to: input.toEmail,
+    subject: `Your signed agreement — ${input.company}`,
+    html: renderShell({
+      eyebrow: 'Signed agreement',
+      title: 'Your copy, for the record',
+      bodyHtml,
+      ctaLabel: 'Download signed agreement',
+      ctaUrl: input.contractUrl,
     }),
   });
 }

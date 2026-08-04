@@ -122,6 +122,10 @@ export async function GET(
           depositAmount: deposit,
           balanceAmount: totalPrice - deposit,
           alreadySigned: !!lead.agreementSignedAt,
+          // Shown back to a returning client so the page can say who signed
+          // and when, rather than an unattributed "you already agreed".
+          signerName: lead.agreementSignerName,
+          signedAt: lead.agreementSignedAt,
           sections,
         },
       },

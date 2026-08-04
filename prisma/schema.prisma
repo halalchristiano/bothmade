@@ -432,11 +432,24 @@ model Lead {
   proposalCustomItems Json    @default("[]")
 
   // Clickwrap agreement captured at the moment the client agrees to the
-  // contract on the sign-and-pay page, right before checkout.
+  // contract on the sign-and-pay page, right before checkout. Between them
+  // these answer the four questions anyone disputing a clickwrap asks: who
+  // agreed, to what, when, and from where.
   agreementSignedAt DateTime?
   agreementIp       String?
-  agreementHash     String? // sha256 of the exact contract text shown at signing
+  agreementHash     String? // sha256 of the exact contract text + statement shown at signing
   signedContractUrl String? // saved PDF copy of what they actually agreed to
+  // The name the client typed to sign. The checkbox alone is a click; a
+  // typed name is the affirmative act, and it's the only part of the record
+  // that says who was at the keyboard rather than which link was opened.
+  agreementSignerName String?
+  // Browser and device the signature came from, alongside the IP. Two weak
+  // identifiers that agree are worth more than either on its own.
+  agreementUserAgent  String?
+  // The exact sentence they ticked, stored rather than assumed, so a later
+  // reword of the consent copy can't retroactively change what an existing
+  // signature claims the client accepted.
+  agreementStatement  String?
 
   // Capability token for the public sign-and-pay page (/sign/[id]?t=…).
   // The link is both "read the proposal" and "agree to the contract", so it

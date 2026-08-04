@@ -8,7 +8,8 @@ import { buildContractPdf } from '@/lib/contract-pdf';
 import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
 import { isFurtherAlong } from '@/lib/leads';
 import { getAdminEmails } from '@/lib/notify';
-import { sendSignedContractCopyEmail } from '@/lib/email';
+import { sendClientSignedContractEmail, sendSignedContractCopyEmail } from '@/lib/email';
+import { CLICKWRAP_STATEMENT, USER_AGENT_MAX, normalizeSignerName } from '@/lib/clickwrap';
 import { buildSignUrl, readShareToken, shareTokenMatches } from '@/lib/share-links';
 import { RATE_LIMITS, checkRateLimit, enforceRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import {
@@ -53,6 +54,12 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
  *    the link last became the signature of record, and the original
  *    evidence — the thing that makes a clickwrap enforceable — was gone.
  *    A second POST now leaves the recorded signature exactly as it was.
+ *  - **The consent itself.** The tick box lived entirely in the browser: it
+ *    disabled a button and was never sent. Every signature this route wrote
+ *    therefore recorded a request arriving, not a client agreeing — and the
+ *    difference between those two is the whole case for enforceability. A
+ *    first-time POST now has to carry `agreed: true` and a typed name, and
+ *    the sentence they agreed to is the server's, not the caller's.
  */
 export async function POST(
   request: NextRequest,
@@ -90,6 +97,33 @@ export async function POST(
     }
     if (!lead.email) {
       return NextResponse.json({ error: 'This lead has no email on file — contact us directly to proceed' }, { status: 400 });
+    }
+
+    // A signature is recorded once, so consent is only demanded once. A
+    // client coming back to a proposal they already signed is here to pay,
+    // and the page shows them a "Continue to payment" button with no box to
+    // tick — asking them to sign again would be asking for a second
+    // signature to the same agreement.
+    const alreadySigned = Boolean(lead.agreementSignedAt);
+
+    // An empty or malformed body is a caller that never showed anybody the
+    // terms. Treat it as no consent rather than as a server error.
+    const body = await request.json().catch(() => null);
+    const signerName = normalizeSignerName((body as { signerName?: unknown } | null)?.signerName);
+
+    if (!alreadySigned) {
+      if ((body as { agreed?: unknown } | null)?.agreed !== true) {
+        return NextResponse.json(
+          { error: 'Please tick the box to confirm you agree to the terms.' },
+          { status: 400 }
+        );
+      }
+      if (!signerName) {
+        return NextResponse.json(
+          { error: 'Please type your full name to sign.' },
+          { status: 400 }
+        );
+      }
     }
 
     const baseService = lead.proposalBaseService;
@@ -133,11 +167,18 @@ export async function POST(
       effectiveDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     });
 
-    const contractHash = crypto.createHash('sha256').update(JSON.stringify(sections)).digest('hex');
+    // Covers the statement as well as the terms: the document is what they
+    // agreed to, the statement is what agreeing meant, and a signature is
+    // only as good as both being pinned.
+    const contractHash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify({ sections, statement: CLICKWRAP_STATEMENT }))
+      .digest('hex');
     const ip =
       request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
       request.headers.get('x-real-ip') ||
       'unknown';
+    const userAgent = request.headers.get('user-agent')?.slice(0, USER_AGENT_MAX) || null;
 
     // A signature is recorded once. Coming back to this page after
     // abandoning checkout — or refreshing it, or being sent the link a
@@ -145,8 +186,6 @@ export async function POST(
     // to which version of the contract. (Changing the scope clears these
     // fields on the admin proposal route, which is the one path that
     // legitimately requires a fresh agreement.)
-    const alreadySigned = Boolean(lead.agreementSignedAt);
-
     if (!alreadySigned) {
       // Save a PDF copy of exactly what they agreed to — same sections that
       // were hashed above — so there's a real document backing the
@@ -166,7 +205,13 @@ export async function POST(
           totalPrice: formatCents(totalPrice),
           depositAmount: formatCents(deposit),
           sections,
-          signedOnline: { at: signedAt, ip },
+          signedOnline: {
+            at: signedAt,
+            ip,
+            signerName: signerName || undefined,
+            userAgent: userAgent || undefined,
+            statement: CLICKWRAP_STATEMENT,
+          },
         });
         // addRandomSuffix, because the path was otherwise derivable from a
         // lead ID plus a timestamp, and these blobs are public URLs holding
@@ -221,6 +266,9 @@ export async function POST(
           agreementSignedAt: signedAt,
           agreementIp: ip,
           agreementHash: contractHash,
+          agreementSignerName: signerName,
+          agreementUserAgent: userAgent,
+          agreementStatement: CLICKWRAP_STATEMENT,
           contractStatus: 'signed',
           status: wasFurtherAlong ? 'contract_signed' : undefined,
           signedContractUrl: signedContractUrl || undefined,
@@ -233,16 +281,34 @@ export async function POST(
         data: {
           leadId,
           type: 'proposal',
-          content: `Contract agreed to online (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
+          content: `Contract signed online by ${signerName} (IP ${ip}) — proceeding to payment for ${formatCents(chargeAmount)}.`,
           url: signedContractUrl || undefined,
         },
       });
 
       if (signedContractUrl) {
         const teamEmails = await getAdminEmails();
-        await sendSignedContractCopyEmail(teamEmails, lead.company, signedContractUrl, formatCents(totalPrice)).catch(
-          (e) => console.error('Failed to email signed contract copy:', e)
-        );
+        await sendSignedContractCopyEmail(
+          teamEmails,
+          lead.company,
+          signedContractUrl,
+          formatCents(totalPrice),
+          signerName || undefined
+        ).catch((e) => console.error('Failed to email signed contract copy:', e));
+
+        // The signer gets their own copy, at the moment of signing rather
+        // than once payment clears. Someone who agrees and then abandons
+        // checkout is still bound by what they agreed to, and "we have a
+        // signed agreement you were never sent" is not a position to
+        // negotiate from. Failure here must not block the payment either.
+        await sendClientSignedContractEmail({
+          toEmail: lead.email,
+          contactName: signerName || lead.contactName,
+          company: lead.company,
+          contractUrl: signedContractUrl,
+          totalPriceLabel: formatCents(totalPrice),
+          signedAt,
+        }).catch((e) => console.error('Failed to email the client their signed copy:', e));
       }
     } else {
       // Still worth a line on the timeline — "they came back to pay" is
