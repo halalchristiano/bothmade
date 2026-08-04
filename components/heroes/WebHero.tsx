@@ -39,6 +39,15 @@ export function WebHero() {
 
   return (
     <div ref={containerRef} className="relative h-[400vh] bg-[#02060d]">
+      {/* Same reasoning as SplitHero: the visible type here is three
+          scroll-driven words — FAST, FLUID, CONVERTS — set in spans, because
+          they animate per-letter. That left /web the one service page with no
+          h1 at all, where /ios and /visionpro both have one, so it read as
+          untitled to assistive tech and to search. */}
+      <h1 className="sr-only">
+        Web development — fast, fluid marketing sites, SaaS platforms and dashboards,
+        built on React and Next.js.
+      </h1>
       <div className="sticky top-0 h-screen overflow-hidden">
         {/* structural grid, receding slightly as you travel */}
         <motion.div
@@ -233,6 +242,13 @@ function StaticHero() {
       <p className="mb-8 font-mono text-[10px] uppercase tracking-[0.45em] text-sky-300/60">
         web development
       </p>
+      {/* The reduced-motion path renders the same three words as real
+          headings, so it needs the h1 too — and only here, or the two paths
+          would disagree about the page's title. */}
+      <h1 className="sr-only">
+        Web development — fast, fluid marketing sites, SaaS platforms and dashboards,
+        built on React and Next.js.
+      </h1>
       {ACTS.map((act) => (
         <h2
           key={act.word}
