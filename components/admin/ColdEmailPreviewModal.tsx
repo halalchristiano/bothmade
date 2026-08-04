@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Send, Loader2, UserX, AlertTriangle } from 'lucide-react';
+import { Send, Loader2, UserX, Undo2, AlertTriangle } from 'lucide-react';
 import { buildFallbackColdEmailDraft } from '@/lib/leads';
 import { FALLBACK_SENDER_NAME, renderColdEmail } from '@/lib/cold-email';
 import { Modal, ModalCloseButton } from './Modal';
@@ -103,12 +103,14 @@ export function ColdEmailPreviewModal({
             return (
               <div
                 key={lead.id}
-                className={`rounded-xl border p-4 transition-opacity ${
-                  isExcluded ? 'border-white/[0.06] bg-white/[0.01] opacity-40' : 'border-white/10 bg-white/[0.03]'
+                className={`rounded-xl border p-4 transition-colors ${
+                  isExcluded ? 'border-white/[0.06] bg-white/[0.01]' : 'border-white/10 bg-white/[0.03]'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="min-w-0">
+                  {/* Only the preview dims when skipped — the button that undoes it
+                      has to stay legible, or the card looks broken rather than off. */}
+                  <div className={`min-w-0 transition-opacity ${isExcluded ? 'opacity-40' : ''}`}>
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-semibold truncate">{lead.company}</p>
                       {isGeneric && (
@@ -121,20 +123,30 @@ export function ColdEmailPreviewModal({
                   </div>
                   <button
                     onClick={() => toggleExclude(lead.id)}
+                    aria-pressed={isExcluded}
                     title={isExcluded ? 'Include in this send' : 'Skip this one'}
-                    className={`shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    // Fixed width: the label swaps on click, and a resizing button
+                    // shoves the row around under the cursor.
+                    className={`shrink-0 w-24 whitespace-nowrap flex items-center justify-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors ${
                       isExcluded
-                        ? 'border-white/15 text-white/40 hover:text-white hover:border-white/30'
+                        ? 'border-white/20 text-white/70 hover:bg-white/5 hover:text-white hover:border-white/35'
                         : 'border-red-400/20 text-red-300/70 hover:bg-red-400/10 hover:text-red-300'
                     }`}
                   >
-                    <UserX size={11} aria-hidden="true" /> {isExcluded ? 'Skipped' : 'Skip'}
+                    {isExcluded ? <Undo2 size={11} aria-hidden="true" /> : <UserX size={11} aria-hidden="true" />}
+                    {isExcluded ? 'Undo skip' : 'Skip'}
                   </button>
                 </div>
-                <p className="text-sm font-medium text-white/80 mb-1">{subject}</p>
-                <p className="text-xs text-white/50 whitespace-pre-line leading-relaxed max-h-32 overflow-y-auto">
-                  {body}
-                </p>
+                <div className={`transition-opacity ${isExcluded ? 'opacity-40' : ''}`}>
+                  <p
+                    className={`text-sm font-medium text-white/80 mb-1 ${isExcluded ? 'line-through decoration-white/30' : ''}`}
+                  >
+                    {subject}
+                  </p>
+                  <p className="text-xs text-white/50 whitespace-pre-line leading-relaxed max-h-32 overflow-y-auto">
+                    {body}
+                  </p>
+                </div>
               </div>
             );
           })}

@@ -11,6 +11,7 @@ interface Proposal {
   contactName: string | null;
   serviceLabel: string;
   addOnLabels: string[];
+  customItems: Array<{ label: string; description: string; price: string }>;
   timelineLabel: string;
   totalPrice: number;
   chargeAmount: number;
@@ -124,6 +125,10 @@ export default function SignAndPayPage() {
     );
   }
 
+  // Links prepared before custom work needed describing carry items with no
+  // scope to show; they stay in the fee, out of a panel with nothing in it.
+  const describedCustom = (proposal.customItems ?? []).filter((i) => i.description.trim().length > 0);
+
   return (
     <main className="min-h-screen bg-[#05030a] text-white px-6 py-16 md:py-24">
       <div className="max-w-2xl mx-auto">
@@ -158,6 +163,30 @@ export default function SignAndPayPage() {
             </div>
           )}
         </div>
+
+        {/* Custom work, spelled out above the fold rather than buried in the
+            terms — the point of writing it down is that the client reads it
+            before they agree, not after something arrives they didn't expect. */}
+        {describedCustom.length > 0 && (
+          <>
+            <SectionTag className="mb-4">Custom work included</SectionTag>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 mb-8 space-y-4">
+              {describedCustom.map((item, i) => (
+                <div key={i}>
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="font-semibold">{item.label}</span>
+                    <span className="text-sm text-white/60 shrink-0">{item.price}</span>
+                  </div>
+                  <p className="text-sm text-white/60 leading-relaxed mt-1">{item.description}</p>
+                </div>
+              ))}
+              <p className="text-xs text-white/35 pt-1">
+                These descriptions are the agreed scope for this work. If anything here doesn't match what you
+                expected, tell us before signing rather than after.
+              </p>
+            </div>
+          </>
+        )}
 
         <SectionTag className="mb-4">Terms &amp; conditions</SectionTag>
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-8 max-h-96 overflow-y-auto text-sm text-white/60 leading-relaxed space-y-6">

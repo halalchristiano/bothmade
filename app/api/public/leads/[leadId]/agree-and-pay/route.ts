@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import Stripe from 'stripe';
 import { put } from '@vercel/blob';
 import { prisma } from '@/lib/prisma';
-import { buildContractSections } from '@/lib/contract-terms';
+import { buildContractSections, toContractCustomItems } from '@/lib/contract-terms';
 import { buildContractPdf } from '@/lib/contract-pdf';
 import { buildInvoiceForProposal } from '@/lib/invoice-pdf';
 import { isFurtherAlong } from '@/lib/leads';
@@ -153,6 +153,7 @@ export async function POST(
       serviceDescription: BASE_SERVICES[baseService].description,
       addOnLabels,
       addOnKeys,
+      customItems: toContractCustomItems(customItems),
       baseServiceKey: baseService,
       clientTypeKey: clientType,
       timelineKey: timeline,
@@ -199,6 +200,7 @@ export async function POST(
           contactName: lead.contactName,
           serviceLabel,
           addOnLabels,
+          customItems: toContractCustomItems(customItems),
           timelineLabel,
           basePrice: formatCents(breakdown.basePrice),
           addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),

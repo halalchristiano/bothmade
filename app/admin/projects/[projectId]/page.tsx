@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
 import { Mail } from 'lucide-react';
 import { EmailComposer } from '@/components/admin/EmailComposer';
+import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -30,7 +31,7 @@ interface ProjectDetail {
   statusStage: number;
   baseService: string;
   addOns: string[];
-  customItems?: Array<{ label: string; priceCents: number }>;
+  customItems?: Array<{ label: string; description?: string; priceCents: number }>;
   timeline: string | null;
   basePrice: number;
   totalPrice: number;
@@ -524,10 +525,18 @@ export default function AdminProjectDetailPage() {
                   </p>
                   <div className="space-y-1">
                     {project.customItems.map((item, i) => (
-                      <p key={i} className="font-medium flex justify-between">
-                        <span>{item.label}</span>
-                        <span className="text-white/60">{formatCents(item.priceCents)}</span>
-                      </p>
+                      <div key={i}>
+                        <p className="font-medium flex justify-between">
+                          <span>{item.label}</span>
+                          <span className="text-white/60">{formatCents(item.priceCents)}</span>
+                        </p>
+                        {/* What was actually agreed, verbatim from the
+                            contract — this is the page someone opens when
+                            they're about to build the thing. */}
+                        {item.description && (
+                          <p className="mt-0.5 text-xs leading-relaxed text-white/60">{item.description}</p>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -741,6 +750,10 @@ export default function AdminProjectDetailPage() {
               </button>
             </div>
           </div>
+
+          {/* The upsell that belongs at this end of the job: the monthly plan
+              that keeps the thing we just built looked after. */}
+          <RecurringCarePanel projectId={projectId} />
         </div>
 
         {/* CENTER: Messages & Updates */}

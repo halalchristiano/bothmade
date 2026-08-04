@@ -523,6 +523,199 @@ export async function sendInvoiceOnlyEmail(
   });
 }
 
+/** One phase of a care plan's pricing, as shown to the client. */
+export interface CarePlanScheduleLine {
+  period: string;
+  detail: string;
+}
+
+/**
+ * The schedule table shared by the offer and the confirmation, so what a
+ * client was invited onto and what they're told they joined are rendered from
+ * the same rows rather than written twice.
+ */
+function renderScheduleTable(lines: CarePlanScheduleLine[]): string {
+  const rows = lines
+    .map(
+      (line) => `
+      <tr>
+        <td style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.08); color:#ffffff; font-size:14px; font-weight:700; white-space:nowrap; vertical-align:top;">${esc(line.period)}</td>
+        <td style="padding:10px 0 10px 16px; border-bottom:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.7); font-size:14px;">${esc(line.detail)}</td>
+      </tr>`
+    )
+    .join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;">${rows}</table>`;
+}
+
+/**
+ * The upsell itself: an invitation to put an existing client onto a monthly
+ * care plan, with the introductory rate spelled out phase by phase.
+ *
+ * The schedule is in the email rather than only behind the link because the
+ * thing a client is being asked to accept is a charge that changes twice — a
+ * plan whose price silently goes up in a year is the complaint this is written
+ * to avoid, so it says so before they click anything.
+ */
+export async function sendCarePlanOfferEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  offerUrl: string;
+  scheduleLines: CarePlanScheduleLine[];
+  /** What the introductory year saves them, already formatted. */
+  savingsLabel: string | null;
+  /** Whoever is selling it, in their own words. */
+  note?: string | null;
+  /** True when they took these services in the original scope. */
+  alreadyInScope: boolean;
+}): Promise<SendResult> {
+  const opener = params.alreadyInScope
+    ? `The months of ${esc(params.planLabel)} included with ${esc(params.company)}'s project are nearly up. Here's what it looks like to keep it running.`
+    : `Now that ${esc(params.company)}'s project is nearly done, here's what it takes to keep it looked after — at a rate we're only offering while we're still working together.`;
+
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>${opener}</p>
+    ${params.note ? `<p style="border-left:3px solid #38bdf8; padding-left:14px; color:rgba(255,255,255,0.75);">${escMultiline(params.note)}</p>` : ''}
+    <p style="margin-bottom:0;"><strong style="color:#fff;">${esc(params.planLabel)}</strong></p>
+    ${renderScheduleTable(params.scheduleLines)}
+    ${
+      params.savingsLabel
+        ? `<p style="color:#7dd3fc; font-weight:700; margin:0 0 16px 0;">That's ${esc(params.savingsLabel)} saved over the first year.</p>`
+        : ''
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Monthly, cancel any time — reply to this email and we'll stop it at the end of whatever month you've paid for. Billing is handled securely by Stripe; we never see or store your card details.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: params.toEmail,
+    subject: `Keep ${params.company} looked after — ${params.planLabel}`,
+    html: renderShell({
+      eyebrow: 'Ongoing care',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+      ctaLabel: 'See the plan',
+      ctaUrl: params.offerUrl,
+    }),
+  });
+}
+
+/**
+ * Sent the moment a care plan starts, so the first thing they have in writing
+ * is when the free months end and when the standard rate begins — not a
+ * surprise line on a statement three months later.
+ */
+export async function sendCarePlanStartedEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  scheduleLines: CarePlanScheduleLine[];
+  firstChargeLabel: string;
+}): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p><strong style="color:#fff;">${esc(params.planLabel)}</strong> is now running for ${esc(params.company)}. Here's the schedule you signed up to, for your records.</p>
+    ${renderScheduleTable(params.scheduleLines)}
+    <p>${esc(params.firstChargeLabel)}</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">You'll get an itemized invoice by email every month. Cancel any time by replying to this email — you keep the month you've already paid for.</p>
+  `;
+
+  return sendEmail({
+    to: params.toEmail,
+    subject: `Your care plan is active — ${params.company}`,
+    html: renderShell({
+      eyebrow: 'Care plan active',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+    }),
+  });
+}
+
+/**
+ * The monthly invoice, with the itemized PDF attached.
+ *
+ * The card statement says our name and a number and nothing else, so this is
+ * the only document that says which months it covered and that the
+ * introductory rate is still being applied. It goes out automatically on the
+ * payment succeeding rather than being something anyone has to remember.
+ */
+export async function sendCarePlanInvoiceEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  amountLabel: string;
+  periodLabel: string | null;
+  /** Set while the introductory rate is running, e.g. "First-year rate (15% off)". */
+  discountLabel: string | null;
+  savedLabel: string | null;
+  invoicePdf: Buffer;
+  fileName: string;
+}): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>We've taken this month's payment of <strong style="color:#fff;">${esc(params.amountLabel)}</strong> for ${esc(params.planLabel)}${
+      params.periodLabel ? `, covering ${esc(params.periodLabel)}` : ''
+    }. The itemized invoice is attached as a PDF.</p>
+    ${
+      params.discountLabel && params.savedLabel
+        ? `<p style="color:#7dd3fc;">${esc(params.discountLabel)} is still applied — ${esc(params.savedLabel)} off this month.</p>`
+        : ''
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Nothing to do — this is a receipt, not a request for payment.</p>
+  `;
+
+  return sendEmail({
+    to: params.toEmail,
+    subject: `${params.company} — ${params.planLabel} invoice`,
+    html: renderShell({
+      eyebrow: 'Monthly invoice',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+    }),
+    attachments: [{ filename: params.fileName, content: params.invoicePdf }],
+  });
+}
+
+/**
+ * A declined monthly charge. Stripe retries on its own schedule, so this says
+ * what will happen rather than demanding anything — the useful action is
+ * updating the card, and Stripe's own hosted invoice page is where that
+ * happens.
+ */
+export async function sendCarePlanPaymentFailedEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  amountLabel: string;
+  hostedInvoiceUrl: string | null;
+}): Promise<boolean> {
+  const bodyHtml = `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>This month's payment of <strong style="color:#fff;">${esc(params.amountLabel)}</strong> for ${esc(params.planLabel)} didn't go through — usually an expired card rather than anything wrong on your end.</p>
+    <p>We'll try again automatically over the next few days. ${
+      params.hostedInvoiceUrl ? 'Updating the card below will settle it straight away.' : 'Reply to this email and we\'ll send you a new payment link.'
+    }</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Your plan stays active in the meantime.</p>
+  `;
+
+  return sendEmail({
+    to: params.toEmail,
+    subject: `Payment didn't go through — ${params.company}`,
+    html: renderShell({
+      eyebrow: 'Payment issue',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+      ...(params.hostedInvoiceUrl
+        ? { ctaLabel: 'Update payment details', ctaUrl: params.hostedInvoiceUrl }
+        : {}),
+    }),
+  });
+}
+
 /**
  * The client's copy of a one-off charge: what it's for, what it costs, the
  * invoice as a PDF, and a link that pays it.

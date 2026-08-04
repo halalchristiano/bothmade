@@ -8,6 +8,7 @@ import {
   MAX_DISCOUNT_PERCENT,
   TIMELINES,
   calculatePrice,
+  customItemsMissingScope,
   customItemsTotal,
   dependentsOf,
   depositAmount,
@@ -21,6 +22,9 @@ import {
   isTimelineKey,
   minAllowedPrice,
   sanitizeCustomItems,
+  MAX_CUSTOM_SCOPE_CHARS,
+  MIN_CUSTOM_SCOPE_CHARS,
+  missingScopeMessage,
   withBaseIncludes,
   type AddOnKey,
 } from '@/lib/pricing';
@@ -222,9 +226,34 @@ describe('deposit and discount floors', () => {
 
 describe('sanitizeCustomItems', () => {
   it('keeps a well-formed item', () => {
-    expect(sanitizeCustomItems([{ label: 'Photography day', priceCents: 45000 }])).toEqual([
-      { label: 'Photography day', priceCents: 45000 },
+    expect(
+      sanitizeCustomItems([
+        { label: 'Photography day', description: 'A full day on site shooting the team and premises.', priceCents: 45000 },
+      ])
+    ).toEqual([
+      { label: 'Photography day', description: 'A full day on site shooting the team and premises.', priceCents: 45000 },
     ]);
+  });
+
+  it('keeps an item saved before descriptions existed, with an empty scope', () => {
+    // Dropping it would break the pricing on every proposal already sent.
+    // Blocking the contract it can't describe is customItemsMissingScope's
+    // job, not this function's.
+    expect(sanitizeCustomItems([{ label: 'Photography day', priceCents: 45000 }])).toEqual([
+      { label: 'Photography day', description: '', priceCents: 45000 },
+    ]);
+  });
+
+  it('trims the description and caps a runaway one', () => {
+    const [item] = sanitizeCustomItems([
+      { label: 'Migration', description: `  ${'x'.repeat(5000)}  `, priceCents: 100 },
+    ]);
+    expect(item.description).toHaveLength(MAX_CUSTOM_SCOPE_CHARS);
+  });
+
+  it('ignores a description that is not a string', () => {
+    const [item] = sanitizeCustomItems([{ label: 'Migration', description: { a: 1 }, priceCents: 100 }]);
+    expect(item.description).toBe('');
   });
 
   it('refuses anything that is not an array', () => {
@@ -244,8 +273,8 @@ describe('sanitizeCustomItems', () => {
     ]);
 
     expect(items).toEqual([
-      { label: 'Good', priceCents: 1000 },
-      { label: 'Also good', priceCents: 2000 },
+      { label: 'Good', description: '', priceCents: 1000 },
+      { label: 'Also good', description: '', priceCents: 2000 },
     ]);
   });
 
@@ -262,7 +291,7 @@ describe('sanitizeCustomItems', () => {
 
   it('rounds a fractional price to whole cents', () => {
     expect(sanitizeCustomItems([{ label: 'Odd', priceCents: 1000.6 }])).toEqual([
-      { label: 'Odd', priceCents: 1001 },
+      { label: 'Odd', description: '', priceCents: 1001 },
     ]);
   });
 
@@ -277,9 +306,53 @@ describe('sanitizeCustomItems', () => {
   });
 });
 
+describe('customItemsMissingScope', () => {
+  const scoped = (label: string) => ({
+    label,
+    description: 'Migrate the 400 existing blog posts into the new CMS, with redirects.',
+    priceCents: 1000,
+  });
+
+  it('finds nothing wrong with a properly described item', () => {
+    expect(customItemsMissingScope([scoped('Content migration')])).toEqual([]);
+  });
+
+  it('flags an item saved before descriptions were required', () => {
+    const legacy = { label: 'Custom integration', description: '', priceCents: 400000 };
+    expect(customItemsMissingScope([scoped('Fine'), legacy])).toEqual([legacy]);
+  });
+
+  it('flags a description too short to mean anything', () => {
+    // "custom work" and "TBD" are exactly the answers this exists to reject:
+    // they name the ambiguity rather than resolving it.
+    const vague = { label: 'Custom integration', description: 'custom work', priceCents: 400000 };
+    expect(customItemsMissingScope([vague])).toEqual([vague]);
+  });
+
+  it('does not count whitespace toward the minimum', () => {
+    const padded = { label: 'Custom', description: `   ${' '.repeat(MIN_CUSTOM_SCOPE_CHARS)}  `, priceCents: 100 };
+    expect(customItemsMissingScope([padded])).toEqual([padded]);
+  });
+
+  it('names the offending items in the message Evan sees', () => {
+    const message = missingScopeMessage([
+      { label: 'Custom integration', description: '', priceCents: 100 },
+      { label: 'Data cleanup', description: '', priceCents: 100 },
+    ]);
+    expect(message).toContain('"Custom integration"');
+    expect(message).toContain('"Data cleanup"');
+    expect(message).toContain(String(MIN_CUSTOM_SCOPE_CHARS));
+  });
+});
+
 describe('customItemsTotal', () => {
   it('sums the items', () => {
-    expect(customItemsTotal([{ label: 'a', priceCents: 1500 }, { label: 'b', priceCents: 2500 }])).toBe(4000);
+    expect(
+      customItemsTotal([
+        { label: 'a', description: '', priceCents: 1500 },
+        { label: 'b', description: '', priceCents: 2500 },
+      ])
+    ).toBe(4000);
   });
 
   it('is zero for an empty list', () => {

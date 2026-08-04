@@ -191,6 +191,58 @@ export async function notifyAdminsPaymentReceived(params: {
   await notifyAdmins(`Payment received: ${params.projectName}`, html, { alsoStudioInbox: true });
 }
 
+/**
+ * A care plan just started. Worth the studio inbox for the same reason a
+ * project payment is: it's revenue, and it's the one event that turns an
+ * offer someone sent into money arriving every month.
+ */
+export async function notifyAdminsCarePlanStarted(params: {
+  projectId: string;
+  projectName: string;
+  clientCompany: string;
+  planLabel: string;
+  monthlyLabel: string;
+  standardLabel: string;
+  freeMonths: number;
+}): Promise<void> {
+  const html = wrap(
+    'Care plan signed',
+    `<p><strong>${escapeHtml(params.clientCompany)}</strong> signed up for
+      <strong>${escapeHtml(params.planLabel)}</strong> at
+      <strong>${escapeHtml(params.monthlyLabel)}/month</strong>.</p>
+     <p style="color:#555;">${
+       params.freeMonths > 0
+         ? `First ${params.freeMonths} month${params.freeMonths === 1 ? '' : 's'} at no charge, then the introductory rate, then `
+         : 'Introductory rate for the first year, then '
+     }${escapeHtml(params.standardLabel)}/month.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'View Project'
+  );
+  await notifyAdmins(`Care plan signed: ${params.clientCompany}`, html, { alsoStudioInbox: true });
+}
+
+/**
+ * A monthly charge was declined. Stripe retries on its own, so this is a
+ * heads-up rather than a task — but a silently lapsing plan is revenue nobody
+ * notices leaving.
+ */
+export async function notifyAdminsCarePlanPaymentFailed(params: {
+  projectId: string;
+  clientCompany: string;
+  planLabel: string;
+  amountLabel: string;
+}): Promise<void> {
+  const html = wrap(
+    'Care plan payment failed',
+    `<p><strong>${escapeHtml(params.clientCompany)}</strong>'s ${escapeHtml(params.amountLabel)} payment for
+      <strong>${escapeHtml(params.planLabel)}</strong> was declined. Stripe will retry automatically; the
+      client has been emailed a link to update their card.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'View Project'
+  );
+  await notifyAdmins(`Payment failed: ${params.clientCompany}`, html, { alsoStudioInbox: true });
+}
+
 export async function notifyAdminsStaleLeads(
   leads: Array<{ id: string; company: string; daysSinceActivity: number }>
 ): Promise<void> {
