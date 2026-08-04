@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
-import { ExternalLink, ImageIcon, Paperclip, StickyNote, Upload, Clock } from 'lucide-react';
+import { ExternalLink, ImageIcon, Paperclip, PlayCircle, StickyNote, Upload, Clock } from 'lucide-react';
+import {
+  DELIVERABLE_CONTENT_TYPES,
+  DELIVERABLE_MAX_BYTES,
+  MULTIPART_THRESHOLD_BYTES,
+  VIDEO_CONTENT_TYPES,
+  checkUpload,
+  contentTypeForFile,
+} from '@/lib/uploads';
 
 /**
  * Every mockup sent to one lead, as a row of buttons — "Mockup 1", the date
@@ -42,6 +50,25 @@ export function formatUploadedAt(iso: string): string {
 function isOpenable(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
+
+/**
+ * A walkthrough recording and a flat PNG are both "mockup 2", and the row
+ * gives no clue which is which — worth knowing before clicking it on a call
+ * with the client on the line.
+ */
+function isVideo(fileName: string | null, url: string): boolean {
+  const type = contentTypeForFile(fileName || url.split('?')[0] || '', '');
+  return type !== null && VIDEO_CONTENT_TYPES.includes(type);
+}
+
+/** The policy the token route enforces, applied here so it's known up front. */
+const MOCKUP_UPLOAD_POLICY = {
+  allowed: DELIVERABLE_CONTENT_TYPES,
+  maxBytes: DELIVERABLE_MAX_BYTES,
+};
+
+/** What the picker offers — spelled out so video isn't greyed out on a phone. */
+const MOCKUP_ACCEPT = [...VIDEO_CONTENT_TYPES, 'image/*', 'application/pdf', '.mov', '.mkv'].join(',');
 
 function MockupRow({
   mockup,
@@ -91,6 +118,8 @@ function MockupRow({
 
   const label = `Mockup ${index}`;
   const uploadedAt = formatUploadedAt(mockup.uploadedAt);
+  const video = isVideo(mockup.fileName, mockup.url);
+  const RowIcon = video ? PlayCircle : ImageIcon;
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] p-2.5">
@@ -102,13 +131,13 @@ function MockupRow({
             rel="noopener noreferrer"
             className="inline-flex min-w-0 items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-sm font-semibold text-sky-200 hover:bg-sky-400/20 transition-colors"
           >
-            <ImageIcon size={14} className="shrink-0" />
-            <span className="truncate">{label}</span>
+            <RowIcon size={14} className="shrink-0" />
+            <span className="truncate">{video ? `${label} (video)` : label}</span>
             <ExternalLink size={11} className="shrink-0 opacity-60" />
           </a>
         ) : (
           <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-white/50">
-            <ImageIcon size={14} /> {label} — link can&apos;t be opened
+            <RowIcon size={14} /> {label} — link can&apos;t be opened
           </span>
         )}
 
@@ -199,6 +228,9 @@ export function MockupAttachments({
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // A video takes minutes, and a button reading "Attaching..." with nothing
+  // moving behind it is the same picture as a button that has hung.
+  const [uploading, setUploading] = useState<{ name: string; percent: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const nextIndex = mockups.length + 1;
@@ -245,19 +277,41 @@ export function MockupAttachments({
   const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const clearInput = () => {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    // Answered here rather than after the upload finishes — see checkUpload.
+    const checked = checkUpload(file, MOCKUP_UPLOAD_POLICY);
+    if ('error' in checked) {
+      setError(checked.error);
+      clearInput();
+      return;
+    }
+
     setBusy(true);
     setError('');
+    setUploading({ name: file.name, percent: 0 });
     try {
       const blob = await upload(file.name, file, {
         access: 'public',
         handleUploadUrl: `/api/admin/leads/${leadId}/mockups/upload`,
+        // Blob otherwise infers the type from the file name, which is how a
+        // video the browser didn't label ends up refused. checkUpload has
+        // already worked out what this is; send that.
+        contentType: checked.contentType,
+        multipart: file.size > MULTIPART_THRESHOLD_BYTES,
+        onUploadProgress: ({ percentage }) =>
+          setUploading({ name: file.name, percent: Math.round(percentage) }),
       });
       if (await attach({ url: blob.url, fileName: file.name })) setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setBusy(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setUploading(null);
+      clearInput();
     }
   };
 
@@ -314,10 +368,11 @@ export function MockupAttachments({
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors">
               <Upload size={12} />
-              or upload the file
+              or upload the file — image, PDF or video
               <input
                 ref={fileInputRef}
                 type="file"
+                accept={MOCKUP_ACCEPT}
                 onChange={handleUploadFile}
                 disabled={busy}
                 className="hidden"
@@ -335,6 +390,20 @@ export function MockupAttachments({
               Cancel
             </button>
           </div>
+
+          {uploading && (
+            <div className="mt-2" role="status">
+              <p className="text-xs text-white/50">
+                Uploading {uploading.name} — {uploading.percent}%
+              </p>
+              <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-purple-500 transition-[width] duration-200"
+                  style={{ width: `${uploading.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {error && (
             <p role="alert" className="mt-2 text-xs text-red-300">

@@ -132,6 +132,53 @@ describe('bringing in the next version', () => {
     });
   });
 
+  it('uploads a video walkthrough — the type Blob is told is the one that gets it through', async () => {
+    const user = userEvent.setup();
+    const attached = mockup({ id: 'mk_2', url: 'https://blob.test/walkthrough.mov', fileName: 'walkthrough.MOV' });
+    mockFetch({ post: { success: true, mockup: attached, index: 2 } });
+    render(<MockupAttachments leadId="lead_1" mockups={[mockup()]} onChanged={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /Import mockup 2/ }));
+    // A clip shared out of the iOS Photos app often arrives with no type at all.
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      new File(['mov'], 'walkthrough.MOV', { type: '' })
+    );
+
+    expect(uploadMock).toHaveBeenCalledWith(
+      'walkthrough.MOV',
+      expect.anything(),
+      expect.objectContaining({ contentType: 'video/quicktime' })
+    );
+  });
+
+  it('refuses an oversized file up front instead of after the upload', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: {} });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
+
+    const huge = new File(['x'], 'four-k.mp4', { type: 'video/mp4' });
+    Object.defineProperty(huge, 'size', { value: 900 * 1024 * 1024 });
+
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(screen.getByLabelText(/upload the file/i), huge);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/900 MB.*limit is 512 MB/i);
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it('marks a stored video as one, so nobody opens a recording expecting a still', () => {
+    render(
+      <MockupAttachments
+        leadId="lead_1"
+        mockups={[mockup({ url: 'https://blob.test/walkthrough.mp4', fileName: 'walkthrough.mp4' })]}
+        onChanged={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('link', { name: /Mockup 1 \(video\)/ })).toBeInTheDocument();
+  });
+
   it('says what went wrong instead of quietly dropping the link', async () => {
     const user = userEvent.setup();
     mockFetch({ ok: false, post: { error: "That doesn't look like a link — it needs to start with https://" } });
