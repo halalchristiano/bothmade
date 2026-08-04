@@ -24,7 +24,10 @@ import {
  */
 
 /** Same inputs the invoice needs; the contract needs nothing more. */
-export type ProposalDocumentInput = InvoiceForProposalInput;
+export type ProposalDocumentInput = InvoiceForProposalInput & {
+  /** Consumer clients get the consumer form of the agreement. */
+  isConsumer?: boolean;
+};
 
 export async function buildContractForProposal(
   input: ProposalDocumentInput
@@ -62,6 +65,7 @@ export async function buildContractForProposal(
     addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
     totalPrice: formatCents(totalPrice),
     totalPriceCents: totalPrice,
+    isConsumer: input.isConsumer === true,
     effectiveDate: new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',

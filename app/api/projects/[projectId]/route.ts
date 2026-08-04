@@ -17,6 +17,7 @@ export async function GET(
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
+        instalments: { orderBy: { index: 'asc' } },
         client: true,
         messages: {
           orderBy: { createdAt: 'asc' },

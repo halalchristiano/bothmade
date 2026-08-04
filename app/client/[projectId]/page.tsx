@@ -37,7 +37,21 @@ const stagger: Variants = {
   show: { transition: { staggerChildren: 0.09, delayChildren: 0.05 } },
 };
 
+interface ClientInstalment {
+  id: string;
+  index: number;
+  count: number;
+  label: string;
+  amountCents: number;
+  trigger: string;
+  status: 'scheduled' | 'due' | 'paid' | 'void';
+  invoiceNumber: string | null;
+  dueAt: string | null;
+  paidAt: string | null;
+}
+
 interface Project {
+  instalments?: ClientInstalment[];
   id: string;
   name: string;
   status: string;
@@ -798,7 +812,51 @@ export default function ClientDashboard() {
                 />
               </div>
 
-              {project.balanceDue > 0 && (
+              {(project.instalments?.length ?? 0) > 0 && (
+                <div className="mb-6 space-y-2">
+                  {project.instalments!.map((inst) => (
+                    <div
+                      key={inst.id}
+                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
+                        inst.status === 'due' ? 'border-sky-400/30 bg-sky-400/[0.06]' : 'border-white/10'
+                      }`}
+                    >
+                      <span
+                        className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                          inst.status === 'paid'
+                            ? 'bg-emerald-400/20 text-emerald-300'
+                            : inst.status === 'due'
+                            ? 'bg-sky-400/20 text-sky-300'
+                            : 'bg-white/10 text-white/40'
+                        }`}
+                      >
+                        {inst.status === 'paid' ? '✓' : inst.index}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm truncate">
+                          {inst.label}
+                          <span className="text-white/40"> · ${(inst.amountCents / 100).toLocaleString()}</span>
+                        </p>
+                        <p className="text-[11px] text-white/35 truncate">
+                          {inst.status === 'paid'
+                            ? `Paid${inst.paidAt ? ` ${new Date(inst.paidAt).toLocaleDateString()}` : ''}`
+                            : inst.status === 'due'
+                            ? `Due now${inst.dueAt ? ` — by ${new Date(inst.dueAt).toLocaleDateString()}` : ''}${inst.invoiceNumber ? ` · invoice ${inst.invoiceNumber}` : ''}`
+                            : inst.trigger === 'design-approval'
+                            ? 'Falls due when you approve the design'
+                            : inst.trigger === 'ready-for-launch'
+                            ? 'Falls due when your project is ready to launch'
+                            : 'Due on signing'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(project.instalments?.length
+                ? project.instalments.some((i) => i.status === 'due')
+                : project.balanceDue > 0) && (
                 <div className="mb-6">
                   <motion.button
                     onClick={handlePayBalance}
@@ -809,7 +867,14 @@ export default function ClientDashboard() {
                     className="relative w-full py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold disabled:opacity-50 overflow-hidden shadow-[0_0_30px_-10px_rgba(56,189,248,0.6)]"
                   >
                     <span className="relative z-10">
-                      {payingBalance ? 'Redirecting to checkout…' : `Pay Balance — $${(project.balanceDue / 100).toLocaleString()}`}
+                      {payingBalance
+                        ? 'Redirecting to checkout…'
+                        : (() => {
+                            const due = project.instalments?.find((i) => i.status === 'due');
+                            return due
+                              ? `Pay ${due.label} — $${(due.amountCents / 100).toLocaleString()}`
+                              : `Pay Balance — $${(project.balanceDue / 100).toLocaleString()}`;
+                          })()}
                     </span>
                     {!payingBalance && !reduceMotion && (
                       <motion.span

@@ -193,6 +193,7 @@ model Project {
   teamNotes           TeamNote[]
   onboardingQuestions OnboardingQuestion[]
   payments            Payment[]
+  instalments Instalment[]
   invoices            Invoice[]
   recurringOffers     RecurringOffer[]
 
@@ -431,6 +432,13 @@ model Lead {
   proposalTimeline    String?
   proposalTotalPrice  Int? // cents, overrides the computed total if set
   proposalDepositOnly Boolean @default(false)
+
+  // True where the person signing is an individual acting outside a
+  // business. Routes the consumer form of the agreement — statutory 14-day
+  // cancellation, pro-rata charging — instead of the B2B form. A checkbox on
+  // the proposal, because by the time anyone is reading the contract it is
+  // too late for the contract to change shape.
+  isConsumer Boolean @default(false)
   // Ad-hoc items Evan adds beyond the fixed catalogue — a name and a price he
   // sets himself. Stored as-is (not looked up against ADD_ONS) since these
   // don't correspond to any catalogue key. [{ label: string, priceCents: int }]
@@ -630,6 +638,47 @@ model OnboardingQuestion {
 // A single Stripe payment against a project — a project's total price may be
 // collected as one full payment, or split into a deposit followed by a
 // balance payment. Amount paid so far = sum of these rows.
+// One scheduled slice of a project's contracted price, labelled the way the
+// client reads it: "Payment 1 of 3". The schedule is seeded in full when the
+// project is created — 50/25/25 under $20k, 40/30/30 at and above — so the
+// dashboard, the invoices, and the contract are all reading the same three
+// rows rather than each recomputing a schedule that might have changed
+// since. Money stays on Payment; these rows are the *plan*, and paidAt is
+// the reconciliation mark the webhook sets when Stripe confirms.
+model Instalment {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  index       Int // 1-based, so label and index never disagree
+  count       Int
+  label       String // "Payment 1 of 3" — the exact phrase on the invoice and email
+  percent     Int
+  amountCents Int
+  trigger     String // "signing", "design-approval", "ready-for-launch"
+
+  // "scheduled" — gate not reached, nothing owed. "due" — invoiced, payable.
+  // "paid" — settled. "void" — cancelled schedule (project ended early).
+  status String @default("scheduled")
+
+  // Set when the instalment is invoiced: the sequential BM- number ties the
+  // instalment to the invoice ledger, and paymentUrl is the live Stripe
+  // checkout for it.
+  invoiceNumber   String?   @unique
+  stripeSessionId String?   @unique
+  paymentUrl      String?
+  invoicedAt      DateTime?
+  dueAt           DateTime?
+  emailSentAt     DateTime?
+  paidAt          DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, index])
+  @@index([projectId])
+  @@map("instalments")
+}
+
 model Payment {
   id        String  @id @default(cuid())
   projectId String

@@ -44,6 +44,7 @@ export async function POST(
       clientType,
       timeline,
       depositOnly = false,
+      isConsumer = false,
       totalPriceOverride,
       sendEmail = false,
       customItems: rawCustomItems = [],
@@ -105,6 +106,7 @@ export async function POST(
         proposalTimeline: timeline,
         proposalTotalPrice: totalPrice,
         proposalDepositOnly: Boolean(depositOnly),
+        isConsumer: Boolean(isConsumer),
         proposalCustomItems: customItems as unknown as Prisma.InputJsonValue,
         // A new proposal supersedes any prior agreement — the client needs
         // to re-agree if Evan changes the scope or price after they signed.
@@ -149,6 +151,7 @@ export async function POST(
         customItems,
         totalPrice,
         depositOnly: Boolean(depositOnly),
+        isConsumer: Boolean(isConsumer),
       });
 
       const attachments = [

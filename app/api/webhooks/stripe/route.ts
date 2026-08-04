@@ -19,6 +19,7 @@ import {
   notifyAdminsPaymentReceived,
 } from '@/lib/notify';
 import { buildCarePlanInvoicePdf } from '@/lib/invoice-pdf';
+import { seedInstalments } from '@/lib/instalments';
 import { discountLabel, scheduleForOffer } from '@/lib/care-offers';
 import { planLabel, scheduleLines } from '@/lib/recurring';
 import { formatCents, formatCentsExact } from '@/lib/pricing';
@@ -243,6 +244,14 @@ async function handleCheckoutSessionCompleted(
       type: metadata.paymentType === 'deposit' ? 'deposit' : 'full',
       stripeSessionId: session.id,
     },
+  });
+
+  // Seed the three-instalment schedule the contract promised, marking as
+  // paid whatever this checkout covered — the first instalment on a normal
+  // signing, all three on pay-in-full. From here on, every surface reads
+  // these rows instead of re-deriving "what's owed" from payment arithmetic.
+  await seedInstalments(prisma, project, amountPaid, session.id).catch((error) => {
+    console.error(`Webhook: instalment seeding failed for project ${project.id}:`, error);
   });
 
   await notifyAdminsPaymentReceived({
@@ -583,6 +592,22 @@ async function handleExistingProjectPayment(
       invoiceId,
     },
   });
+
+  // An instalment checkout carries its row's id; settle that exact row so
+  // the schedule the client sees ("Payment 2 of 3 — paid") moves the moment
+  // the money does. Scoped to not-yet-paid so a redelivered event can't
+  // rewrite paidAt.
+  if (metadata.instalmentId) {
+    await prisma.instalment
+      .updateMany({
+        where: { id: metadata.instalmentId, projectId, status: { not: 'paid' } },
+        data: { status: 'paid', paidAt: new Date() },
+      })
+      .catch((error) => {
+        console.error(`Payment webhook: could not mark instalment ${metadata.instalmentId} paid:`, error);
+        return null;
+      });
+  }
 
   // Settling the invoice is what takes "Pay now" off the client's dashboard
   // and off ours. Scoped to a still-open invoice so a redelivered event

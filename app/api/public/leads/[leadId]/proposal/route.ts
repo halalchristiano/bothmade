@@ -102,6 +102,7 @@ export async function GET(
       addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
       totalPrice: formatCents(totalPrice),
       totalPriceCents: totalPrice,
+      isConsumer: lead.isConsumer,
       effectiveDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     });
 

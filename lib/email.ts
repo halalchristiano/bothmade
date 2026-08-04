@@ -998,3 +998,35 @@ export async function sendWeeklyDigestEmail(
 }
 
 export { renderShell };
+
+
+/**
+ * One instalment's email — the personalised send behind "Payment 2 of 3".
+ *
+ * The copy comes from lib/instalments so the subject line, the invoice PDF,
+ * and the dashboard all describe the same moment in the same words. The
+ * invoice rides as an attachment and the CTA is the live Stripe checkout.
+ */
+export async function sendInstalmentEmail(params: {
+  toEmail: string;
+  copy: { subject: string; title: string; eyebrow: string; bodyHtml: string; ctaLabel: string };
+  paymentUrl: string;
+  invoicePdf: Buffer | null;
+  invoiceFilename: string;
+}): Promise<SendResult> {
+  return sendEmailDetailed({
+    to: params.toEmail,
+    subject: params.copy.subject,
+    html: renderShell({
+      eyebrow: params.copy.eyebrow,
+      title: params.copy.title,
+      bodyHtml: params.copy.bodyHtml,
+      ctaLabel: params.copy.ctaLabel,
+      ctaUrl: params.paymentUrl,
+      footerNote: 'Payments are processed securely by Stripe. The invoice is attached for your records.',
+    }),
+    ...(params.invoicePdf
+      ? { attachments: [{ filename: params.invoiceFilename, content: params.invoicePdf }] }
+      : {}),
+  });
+}

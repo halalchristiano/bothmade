@@ -443,3 +443,162 @@ export async function buildInvoiceForProposal(input: InvoiceForProposalInput): P
     balanceRemaining: depositOnly ? formatCents(totalPrice - chargeAmount) : undefined,
   });
 }
+
+
+export interface InstalmentInvoiceInput {
+  invoiceNumber: string;
+  date: string;
+  company: string;
+  contactName: string | null;
+  projectName: string;
+  /** The full three-row schedule, in order, with live statuses. */
+  schedule: Array<{
+    label: string;
+    amount: string;
+    status: 'paid' | 'due' | 'scheduled';
+    triggerLabel: string;
+  }>;
+  /** Which row this invoice bills, 1-based. */
+  instalmentIndex: number;
+  amountDue: string;
+  totalPrice: string;
+  dueDate: string;
+  /** One sentence of gate context: "Due on Design Approval — approved August 4, 2026." */
+  gateLine: string;
+}
+
+// The purple half of the wordmark gradient, print-strength. Paired with
+// ACCENT (sky) as a two-segment rule under headings — the closest a printed
+// page gets to the site's sky-to-purple sweep without dithering a gradient.
+const ACCENT_PURPLE = rgb(0.55, 0.36, 0.96);
+
+/**
+ * The instalment invoice: one of exactly three per project, and it says so.
+ *
+ * The design goal is that a client holding this page can answer, without
+ * reading a single paragraph: which payment this is, what it costs, why it
+ * fell due now, and where they stand across the whole schedule. Hence the
+ * oversized "PAYMENT 2 OF 3", the gate line under it, and the full schedule
+ * table with the current row picked out — an invoice that shows its own
+ * past and future is one nobody has to reconcile against an email thread.
+ */
+export async function buildInstalmentInvoicePdf(input: InstalmentInvoiceInput): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const page: PDFPage = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = PAGE_HEIGHT - MARGIN;
+
+  const text = (raw: string, x: number, opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; at?: number } = {}) => {
+    const { size = 11, f = font, color = BLACK, at = y } = opts;
+    page.drawText(winAnsi(raw), { x, y: at, size, font: f, color });
+  };
+  const textRight = (raw: string, opts: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; at?: number } = {}) => {
+    const { size = 11, f = font, color = BLACK, at = y } = opts;
+    const t = winAnsi(raw);
+    page.drawText(t, { x: PAGE_WIDTH - MARGIN - f.widthOfTextAtSize(t, size), y: at, size, font: f, color });
+  };
+  /** The sky-then-purple rule that stands in for the brand gradient. */
+  const brandRule = (atY: number, width = CONTENT_WIDTH) => {
+    page.drawLine({ start: { x: MARGIN, y: atY }, end: { x: MARGIN + width * 0.55, y: atY }, thickness: 2, color: ACCENT });
+    page.drawLine({ start: { x: MARGIN + width * 0.55, y: atY }, end: { x: MARGIN + width, y: atY }, thickness: 2, color: ACCENT_PURPLE });
+  };
+
+  // Brand band with the wordmark on its own field.
+  const logo = await doc.embedJpg(logoJpegBytes());
+  const logoWidth = 140;
+  const logoHeight = (logoWidth * LOGO_HEIGHT) / LOGO_WIDTH;
+  page.drawRectangle({ x: 0, y: PAGE_HEIGHT - BAND_HEIGHT, width: PAGE_WIDTH, height: BAND_HEIGHT, color: BRAND_FIELD });
+  page.drawImage(logo, { x: MARGIN, y: PAGE_HEIGHT - BAND_HEIGHT / 2 - logoHeight / 2, width: logoWidth, height: logoHeight });
+  textRight('INVOICE', { size: 16, f: bold, color: WHITE, at: PAGE_HEIGHT - BAND_HEIGHT / 2 - 6 });
+
+  // The headline is the instalment position, not the word "invoice" — that
+  // is the one fact the whole payment structure hangs on.
+  y = PAGE_HEIGHT - BAND_HEIGHT - 54;
+  const row = input.schedule[input.instalmentIndex - 1];
+  text((row?.label ?? 'Payment').toUpperCase(), MARGIN, { size: 26, f: bold });
+  textRight(input.amountDue, { size: 26, f: bold, color: ACCENT });
+  y -= 12;
+  brandRule(y);
+  y -= 18;
+  text(input.gateLine, MARGIN, { size: 10.5, color: GRAY });
+  y -= 26;
+
+  text(`Invoice ${input.invoiceNumber}`, MARGIN, { size: 10, color: GRAY });
+  textRight(`Issued ${input.date}  ·  Due ${input.dueDate}`, { size: 10, color: GRAY });
+  y -= 28;
+
+  // From / For columns.
+  const colTop = y;
+  text('From', MARGIN, { size: 9, f: bold, color: GRAY });
+  y -= 15;
+  text(COMPANY_NAME, MARGIN, { size: 11, f: bold });
+  y -= 14;
+  for (const line of COMPANY_ADDRESS_LINES) {
+    text(line, MARGIN, { size: 10, color: GRAY });
+    y -= 13;
+  }
+  text(COMPANY_EMAIL, MARGIN, { size: 10, color: GRAY });
+  const leftBottom = y;
+  y = colTop;
+  const col2 = MARGIN + CONTENT_WIDTH / 2;
+  text('For', col2, { size: 9, f: bold, color: GRAY });
+  y -= 15;
+  text(input.company, col2, { size: 11, f: bold });
+  y -= 14;
+  if (input.contactName) {
+    text(input.contactName, col2, { size: 10, color: GRAY });
+    y -= 13;
+  }
+  text(input.projectName, col2, { size: 10, color: GRAY });
+  y = Math.min(leftBottom, y) - 30;
+
+  // The schedule table: all three payments with live status, current row on
+  // a tinted band. Three rows, fixed height — no pagination risk.
+  text('PAYMENT SCHEDULE', MARGIN, { size: 9, f: bold, color: GRAY });
+  textRight(`Project total ${input.totalPrice}`, { size: 9, f: bold, color: GRAY });
+  y -= 10;
+  const ROW_H = 34;
+  for (const inst of input.schedule) {
+    const isCurrent = inst === row;
+    if (isCurrent) {
+      page.drawRectangle({ x: MARGIN - 8, y: y - ROW_H + 10, width: CONTENT_WIDTH + 16, height: ROW_H, color: rgb(0.93, 0.97, 1) });
+      page.drawRectangle({ x: MARGIN - 8, y: y - ROW_H + 10, width: 3, height: ROW_H, color: ACCENT });
+    }
+    y -= 14;
+    text(inst.label, MARGIN, { size: 11, f: isCurrent ? bold : font });
+    const statusLabel = inst.status === 'paid' ? 'PAID' : inst.status === 'due' ? 'DUE NOW' : 'UPCOMING';
+    const statusColor = inst.status === 'paid' ? rgb(0.09, 0.55, 0.35) : inst.status === 'due' ? ACCENT : GRAY;
+    text(statusLabel, MARGIN + 150, { size: 9, f: bold, color: statusColor });
+    text(inst.triggerLabel, MARGIN + 230, { size: 9, color: GRAY });
+    textRight(inst.amount, { size: 11, f: isCurrent ? bold : font });
+    y -= ROW_H - 14;
+  }
+  y -= 6;
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 1, color: LIGHT_GRAY });
+  y -= 24;
+
+  // Amount-due block.
+  text('Amount due', MARGIN, { size: 12, f: bold });
+  textRight(input.amountDue, { size: 18, f: bold, color: ACCENT });
+  y -= 18;
+  text(`Payable within 14 days, by ${input.dueDate}.`, MARGIN, { size: 10, color: GRAY });
+  y -= 34;
+
+  const note =
+    input.instalmentIndex >= input.schedule.length
+      ? 'This is the final payment on your project. Once it clears, your site goes live and all files, credentials, and intellectual property transfer to you in full, as set out in your agreement.'
+      : 'Per your agreement, work on the next phase begins once this payment is received. Payments are processed securely by Stripe; Bothmade never sees your card details.';
+  for (const line of wrapText(note, font, 9.5, CONTENT_WIDTH)) {
+    text(line, MARGIN, { size: 9.5, color: GRAY });
+    y -= 13;
+  }
+
+  // Footer strip anchored to the page bottom, echoing the band.
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: 36, color: BRAND_FIELD });
+  page.drawText(winAnsi(`${COMPANY_NAME} — ${COMPANY_EMAIL}`), { x: MARGIN, y: 14, size: 8.5, font, color: rgb(0.75, 0.78, 0.85) });
+  const fr = winAnsi(input.invoiceNumber);
+  page.drawText(fr, { x: PAGE_WIDTH - MARGIN - font.widthOfTextAtSize(fr, 8.5), y: 14, size: 8.5, font, color: rgb(0.75, 0.78, 0.85) });
+
+  return doc.save();
+}

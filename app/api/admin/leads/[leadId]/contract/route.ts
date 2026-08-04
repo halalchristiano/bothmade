@@ -84,6 +84,7 @@ export async function POST(
       addOnsPrice: formatCents(breakdown.addOnsPrice + customTotal),
       totalPrice: formatCents(totalWithCustom),
       totalPriceCents: totalWithCustom,
+      isConsumer: lead.isConsumer,
       effectiveDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',

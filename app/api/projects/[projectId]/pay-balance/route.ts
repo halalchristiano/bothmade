@@ -33,13 +33,67 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return forbiddenResponse();
     }
 
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+    // Projects on the instalment schedule pay the next instalment that has
+    // actually been invoiced — a client can't leapfrog a gate and pay for
+    // work whose invoice hasn't been raised. If a live checkout link already
+    // exists for it, reuse it rather than minting a second session that
+    // races the first.
+    const instalments = await prisma.instalment.findMany({
+      where: { projectId: project.id },
+      orderBy: { index: 'asc' },
+    });
+    if (instalments.length > 0) {
+      const due = instalments.find((i) => i.status === 'due');
+      if (!due) {
+        const upcoming = instalments.find((i) => i.status === 'scheduled');
+        return NextResponse.json(
+          {
+            error: upcoming
+              ? `${upcoming.label} hasn't been invoiced yet — it falls due at its milestone, and we'll email it to you then.`
+              : 'Nothing is currently owed on this project.',
+          },
+          { status: 400 }
+        );
+      }
+      if (due.paymentUrl) {
+        return NextResponse.json({ success: true, url: due.paymentUrl }, { status: 200 });
+      }
+      const instalmentCheckout = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        customer_email: project.client.email,
+        success_url: `${siteUrl}/client/${project.id}?paid=1&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${siteUrl}/client/${project.id}`,
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: { name: `${project.name} — ${due.label}` },
+              unit_amount: due.amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          existingProjectId: project.id,
+          instalmentId: due.id,
+          paymentType: due.index === 1 ? 'deposit' : 'balance',
+        },
+      });
+      await prisma.instalment.update({
+        where: { id: due.id },
+        data: { paymentUrl: instalmentCheckout.url, stripeSessionId: instalmentCheckout.id },
+      });
+      return NextResponse.json({ success: true, url: instalmentCheckout.url }, { status: 201 });
+    }
+
+    // Legacy projects (no instalment rows) keep the lump-balance flow.
     const amountPaid = amountPaidTowardProject(project.payments);
     const balanceDue = project.totalPrice - amountPaid;
     if (balanceDue <= 0) {
       return NextResponse.json({ error: 'No balance remaining on this project' }, { status: 400 });
     }
-
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'payment',

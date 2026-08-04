@@ -7,6 +7,7 @@ import { upload } from '@vercel/blob/client';
 import { Mail } from 'lucide-react';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
+import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -558,6 +559,9 @@ export default function AdminProjectDetailPage() {
             </div>
 
             <div className="mt-6 pt-6 border-t border-white/10">
+              <div className="mb-4">
+                <InstalmentPanel projectId={projectId} />
+              </div>
               <p className="text-sm font-semibold mb-3">Payment Status</p>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-white/40">Paid</span>
