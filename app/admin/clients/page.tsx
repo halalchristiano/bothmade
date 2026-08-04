@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2 } from 'lucide-react';
-import { Card, PageIn, PageTitle } from '@/components/admin/ui';
+import { Badge, Card, Kicker, PageIn, PageTitle } from '@/components/admin/ui';
 
 interface ClientRow {
   id: string;
@@ -19,19 +19,14 @@ interface ClientRow {
 
 function HealthBadge({ lastActivityAt }: { lastActivityAt: string | null }) {
   if (!lastActivityAt) {
-    return <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/40 whitespace-nowrap">No activity yet</span>;
+    return <Badge tone="neutral" solid>No activity yet</Badge>;
   }
   const days = Math.floor((Date.now() - new Date(lastActivityAt).getTime()) / (24 * 60 * 60 * 1000));
-  const color =
-    days <= 3
-      ? 'bg-emerald-400/20 text-emerald-300'
-      : days <= 10
-      ? 'bg-amber-400/20 text-amber-300'
-      : 'bg-red-400/20 text-red-300';
+  const tone: 'emerald' | 'amber' | 'red' = days <= 3 ? 'emerald' : days <= 10 ? 'amber' : 'red';
   return (
-    <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${color}`}>
+    <Badge tone={tone} solid>
       {days === 0 ? 'Active today' : `${days}d quiet`}
-    </span>
+    </Badge>
   );
 }
 
@@ -72,16 +67,19 @@ export default function AdminClientsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading clients…</p>
       </div>
     );
   }
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
-        <PageTitle icon={Building2} title="Clients" tone="purple" />
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-6 md:mb-8">
+        <div>
+          <Kicker className="mb-2">Delivery</Kicker>
+          <PageTitle icon={Building2} title="Clients" tone="purple" />
+        </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <input
             type="text"
@@ -116,7 +114,7 @@ export default function AdminClientsPage() {
                 <div className="flex justify-between items-start mb-1">
                   <p className={`font-semibold ${client.archivedAt ? 'text-white/40 line-through' : ''}`}>{client.company}</p>
                   {client.archivedAt ? (
-                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/40 whitespace-nowrap">Decommissioned</span>
+                    <Badge tone="neutral" solid>Decommissioned</Badge>
                   ) : (
                     <HealthBadge lastActivityAt={client.lastActivityAt} />
                   )}
@@ -151,7 +149,7 @@ export default function AdminClientsPage() {
                       <td className="px-6 py-4 text-white/50">{client.email}</td>
                       <td className="px-6 py-4">
                         {client.archivedAt ? (
-                          <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/40 whitespace-nowrap">Decommissioned</span>
+                          <Badge tone="neutral" solid>Decommissioned</Badge>
                         ) : (
                           <HealthBadge lastActivityAt={client.lastActivityAt} />
                         )}

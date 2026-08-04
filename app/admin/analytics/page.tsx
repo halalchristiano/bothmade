@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DollarSign, TrendingUp, Percent, Target, BarChart3, Users } from 'lucide-react';
 import { formatCents } from '@/lib/pricing';
-import { Card, CardHeader, StatRow, PageIn, PageTitle, MiniBarChart } from '@/components/admin/ui';
+import { Card, CardHeader, StatRow, PageIn, PageTitle, MiniBarChart, Kicker } from '@/components/admin/ui';
 
 interface Analytics {
   revenueByMonth: Record<string, number>;
@@ -26,6 +26,7 @@ export default function AdminAnalyticsPage() {
   const router = useRouter();
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -37,6 +38,9 @@ export default function AdminAnalyticsPage() {
         }
         const json = await response.json();
         if (json.success) setData(json.analytics);
+        else setFailed(true);
+      } catch {
+        setFailed(true);
       } finally {
         setLoading(false);
       }
@@ -44,10 +48,18 @@ export default function AdminAnalyticsPage() {
     load();
   }, [router]);
 
+  if (failed) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <p className="text-amber-300 text-sm">Couldn&apos;t load analytics — refresh to retry.</p>
+      </div>
+    );
+  }
+
   if (loading || !data) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading analytics…</p>
       </div>
     );
   }
@@ -61,6 +73,7 @@ export default function AdminAnalyticsPage() {
   return (
     <PageIn className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="mb-8">
+        <Kicker className="mb-2">Studio</Kicker>
         <PageTitle icon={BarChart3} title="Analytics" />
       </div>
 

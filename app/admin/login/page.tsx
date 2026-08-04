@@ -3,21 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GridBackdrop } from '@/components/ui';
-
-function Logo() {
-  return (
-    <span className="text-2xl font-bold tracking-tight">
-      <span
-        aria-hidden="true"
-        className="text-transparent"
-        style={{ WebkitTextStroke: '1px rgba(125,211,252,0.9)' }}
-      >
-        both
-      </span>
-      <span aria-hidden="true">made</span>
-    </span>
-  );
-}
+import { Wordmark } from '@/components/Wordmark';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -93,7 +79,7 @@ export default function AdminLoginPage() {
     'w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-purple-400/60 focus:border-transparent transition-colors';
 
   return (
-    <main className="relative min-h-screen bg-[#05030a] text-white flex items-center justify-center px-4 overflow-hidden">
+    <main className="relative min-h-screen bg-ink text-white flex items-center justify-center px-4 overflow-hidden">
       <GridBackdrop rgb="147,51,234" className="opacity-60" />
       <div
         className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full blur-[120px] opacity-30"
@@ -102,7 +88,7 @@ export default function AdminLoginPage() {
 
       <div className="relative w-full max-w-md">
         <div className="mb-8 text-center">
-          <Logo />
+          <Wordmark className="text-2xl" />
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl">
@@ -150,7 +136,7 @@ export default function AdminLoginPage() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full rounded-lg bg-gradient-to-r from-purple-500 to-sky-400 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                      className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
                     >
                       {loading ? 'Sending…' : 'Send reset link'}
                     </button>
@@ -202,7 +188,7 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-gradient-to-r from-purple-500 to-sky-400 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {loading ? 'Logging in...' : 'Login'}
             </button>

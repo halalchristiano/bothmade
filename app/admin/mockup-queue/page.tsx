@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ImageIcon, ExternalLink, Compass, Clock } from 'lucide-react';
-import { PageIn, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { ImageIcon, ExternalLink, Compass, Clock, Flame } from 'lucide-react';
+import { Badge, Card, EmptyState, Kicker, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { PAIN_POINTS, parseSalesPoints, type PainPointKey } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
@@ -165,8 +165,8 @@ export default function MockupQueuePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400" />
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading the mockup queue…</p>
       </div>
     );
   }
@@ -180,9 +180,8 @@ export default function MockupQueuePage() {
   return (
     <PageIn className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="mb-1">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ImageIcon size={22} /> Mockup Queue
-        </h1>
+        <Kicker className="mb-2">Sales</Kicker>
+        <PageTitle icon={ImageIcon} title="Mockup Queue" />
         <p className="text-sm text-white/45 mt-1">
           {leads.length === 0
             ? 'Nothing waiting on a mockup right now.'
@@ -201,9 +200,9 @@ export default function MockupQueuePage() {
       </div>
 
       {sortedByWait.length === 0 && !search && (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center text-white/40 text-sm">
-          Nothing waiting on a mockup right now.
-        </div>
+        <Card className="p-4">
+          <EmptyState icon={ImageIcon} text="Nothing waiting on a mockup right now." tone="clear" />
+        </Card>
       )}
 
       <div className="space-y-3">
@@ -222,7 +221,7 @@ export default function MockupQueuePage() {
                     href={`/admin/leads/${lead.id}`}
                     className="text-sm font-bold text-white/90 hover:underline break-words inline-flex items-center gap-1.5"
                   >
-                    {lead.hotLead && '🔥'} {lead.company}
+                    {lead.hotLead && <Flame size={13} className="text-amber-300 shrink-0" aria-label="Hot lead" />} {lead.company}
                     <ExternalLink size={11} className="opacity-40" />
                   </Link>
                   <p className="text-xs text-white/40 mt-0.5">
@@ -235,8 +234,11 @@ export default function MockupQueuePage() {
                   </p>
                 </div>
                 {days !== null && days >= 3 && (
-                  <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-red-400/15 border border-red-400/30 px-2.5 py-1 text-[11px] font-bold text-red-200">
-                    <Clock size={11} /> {days} days — sales is blocked
+                  <span className="shrink-0">
+                    <Badge tone="red" solid>
+                      <Clock size={11} className="inline align-[-1px] mr-1" aria-hidden="true" />
+                      {days} days — sales is blocked
+                    </Badge>
                   </span>
                 )}
               </div>

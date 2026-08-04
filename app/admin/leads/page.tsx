@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UserPlus, Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock, CalendarRange } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
-import { Card, PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch, clickableRowProps } from '@/components/admin/ui';
+import { Card, PageIn, PageTitle, ViewTabs, SearchFilter, matchesSearch, clickableRowProps, Kicker, BrandButton, Badge, EmptyState, inputClass } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
@@ -51,7 +51,7 @@ function StatusSelect({
       className={`text-xs px-2 py-1 rounded-full border-none cursor-pointer ${LEAD_STATUS_COLORS[lead.status]}`}
     >
       {LEAD_STATUSES.map((s) => (
-        <option key={s} value={s} className="bg-[#05030a] text-white">
+        <option key={s} value={s} className="bg-raised text-white">
           {LEAD_STATUS_LABELS[s]}
         </option>
       ))}
@@ -385,9 +385,6 @@ export default function AdminLeadsPage() {
     }
   };
 
-  const inputClass =
-    'w-full px-4 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
-
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="mb-5">
@@ -400,7 +397,10 @@ export default function AdminLeadsPage() {
       </div>
 
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
-        <PageTitle icon={Users} title="Leads" />
+        <div>
+          <Kicker className="mb-2">Sales</Kicker>
+          <PageTitle icon={Users} title="Leads" />
+        </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <select
             value={statusFilter}
@@ -408,7 +408,7 @@ export default function AdminLeadsPage() {
             className={`${inputClass} w-full sm:w-52`}
           >
             {FILTERS.map((f) => (
-              <option key={f} value={f} className="bg-[#05030a]">
+              <option key={f} value={f} className="bg-raised">
                 {FILTER_LABELS[f]}
                 {f === 'needs-contact' && needsContactCount > 0 ? ` (${needsContactCount})` : ''}
                 {f === 'email-failed' && emailFailedLeads.length > 0 ? ` (${emailFailedLeads.length})` : ''}
@@ -428,13 +428,14 @@ export default function AdminLeadsPage() {
           >
             <CalendarRange size={16} />
           </button>
-          <button
+          <BrandButton
+            variant="quiet"
             onClick={() => setShowImport(true)}
-            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-2 font-semibold hover:bg-white/5 transition-colors whitespace-nowrap"
+            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap"
           >
             <Upload size={16} />
             Import CSV
-          </button>
+          </BrandButton>
           <button
             onClick={() => setShowImportHistory(true)}
             title="View past CSV imports"
@@ -443,13 +444,14 @@ export default function AdminLeadsPage() {
           >
             <FileClock size={16} />
           </button>
-          <button
+          {/* The one sky-to-purple gradient on this screen. */}
+          <BrandButton
             onClick={() => setShowAdd(true)}
-            className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-2 whitespace-nowrap"
           >
             <UserPlus size={16} />
             Add Companies
-          </button>
+          </BrandButton>
         </div>
       </div>
 
@@ -480,14 +482,12 @@ export default function AdminLeadsPage() {
               inputMode="numeric"
               className={`${inputClass} w-36 font-mono text-sm`}
             />
-            <button
-              onClick={load}
-              className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
-            >
+            <BrandButton variant="quiet" onClick={load}>
               Apply
-            </button>
+            </BrandButton>
             {(addedFrom || addedTo) && (
-              <button
+              <BrandButton
+                variant="quiet"
                 onClick={() => {
                   setAddedFrom('');
                   setAddedTo('');
@@ -495,10 +495,9 @@ export default function AdminLeadsPage() {
                   // tick rather than re-sending the range we just dropped.
                   setTimeout(load, 0);
                 }}
-                className="rounded-lg border border-white/15 px-3 py-2 text-sm text-white/60 hover:bg-white/5 transition-colors"
               >
                 Clear
-              </button>
+              </BrandButton>
             )}
           </div>
           {(addedFrom || addedTo) && !loading && (
@@ -625,35 +624,37 @@ export default function AdminLeadsPage() {
                   {sendingColdDrafts ? 'Sending...' : `Send prepared cold emails (${selectedReadyToSend.length})`}
                 </button>
               )}
-              <button
+              <BrandButton
+                variant="quiet"
                 onClick={() => setShowBulkEmail(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-2"
               >
                 <Send size={14} />
                 Compose cold email
-              </button>
+              </BrandButton>
               <div className="flex items-center gap-2">
                 <select
                   value={reassignTargetId}
                   onChange={(e) => setReassignTargetId(e.target.value)}
                   className="text-sm bg-white/5 border border-white/15 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-400/60"
                 >
-                  <option value="" className="bg-[#05030a]">
+                  <option value="" className="bg-raised">
                     Unassign
                   </option>
                   {teamUsers.map((u) => (
-                    <option key={u.id} value={u.id} className="bg-[#05030a]">
+                    <option key={u.id} value={u.id} className="bg-raised">
                       {u.name || u.email}
                     </option>
                   ))}
                 </select>
-                <button
+                <BrandButton
+                  variant="quiet"
                   onClick={handleBulkReassign}
                   disabled={reassigning}
-                  className="px-3 py-2 rounded-xl border border-white/15 text-sm font-medium hover:bg-white/5 transition-colors disabled:opacity-50 whitespace-nowrap"
+                  className="whitespace-nowrap"
                 >
                   {reassigning ? 'Reassigning...' : 'Reassign'}
-                </button>
+                </BrandButton>
               </div>
               {confirmingBulkDelete ? (
                 <div className="flex items-center gap-2">
@@ -665,21 +666,19 @@ export default function AdminLeadsPage() {
                   >
                     {bulkDeleting ? 'Deleting...' : 'Confirm'}
                   </button>
-                  <button
-                    onClick={() => setConfirmingBulkDelete(false)}
-                    className="px-3 py-2 rounded-xl border border-white/15 text-sm hover:bg-white/5 transition-colors"
-                  >
+                  <BrandButton variant="quiet" onClick={() => setConfirmingBulkDelete(false)}>
                     Cancel
-                  </button>
+                  </BrandButton>
                 </div>
               ) : (
-                <button
+                <BrandButton
+                  variant="danger"
                   onClick={() => setConfirmingBulkDelete(true)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-red-400/25 text-red-300/80 px-4 py-2 text-sm font-semibold hover:bg-red-400/10 hover:text-red-300 transition-colors"
+                  className="inline-flex items-center gap-2"
                 >
                   <Trash2 size={14} />
                   Delete
-                </button>
+                </BrandButton>
               )}
             </div>
           </div>
@@ -727,12 +726,20 @@ export default function AdminLeadsPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <p className="text-sm text-white/40">Loading leads…</p>
         </div>
       ) : filtered.length === 0 ? (
-        <Card className="p-12 text-center text-white/40">
-          {statusFilter === 'needs-contact' ? "You're all caught up — nothing waiting on a first touch." : 'No leads yet.'}
+        <Card className="p-6">
+          {statusFilter === 'needs-contact' ? (
+            <EmptyState
+              icon={CheckCircle2}
+              tone="clear"
+              text="You're all caught up — nothing waiting on a first touch."
+            />
+          ) : (
+            <EmptyState icon={Users} text="No leads yet." />
+          )}
         </Card>
       ) : (
         <>
@@ -860,8 +867,10 @@ export default function AdminLeadsPage() {
                       <td className="px-6 py-4 text-white/50">
                         {lead.contactName || lead.email || '—'}
                         {lead.emailDeliveryFailedAt && (
-                          <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold text-red-300 bg-red-400/10 border border-red-400/20 rounded-full px-2 py-0.5 whitespace-nowrap">
-                            <MailX size={10} /> Email failed
+                          <span className="ml-2">
+                            <Badge tone="red" solid>
+                              Email failed
+                            </Badge>
                           </span>
                         )}
                       </td>

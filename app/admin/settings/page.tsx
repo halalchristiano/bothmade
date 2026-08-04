@@ -16,7 +16,7 @@ import {
   ChevronDown,
   AlertTriangle,
 } from 'lucide-react';
-import { Card, CardHeader, PageIn, PageTitle, Badge } from '@/components/admin/ui';
+import { Card, CardHeader, PageIn, PageTitle, Badge, Kicker, BrandButton, inputClass } from '@/components/admin/ui';
 
 interface GmailStatus {
   connected: boolean;
@@ -61,7 +61,7 @@ function ToggleRow({
       </div>
       <span
         className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          checked ? 'bg-gradient-to-r from-sky-400 to-purple-500' : 'bg-white/15'
+          checked ? 'bg-sky-400' : 'bg-white/15'
         }`}
       >
         <span
@@ -314,15 +314,18 @@ export default function AdminSettingsPage() {
 
   if (!status) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading settings…</p>
       </div>
     );
   }
 
   return (
     <PageIn className="max-w-2xl mx-auto px-4 md:px-8 py-6 md:py-10 space-y-6">
-      <PageTitle icon={Mail} title="Settings" />
+      <div>
+        <Kicker className="mb-2">Studio</Kicker>
+        <PageTitle icon={Mail} title="Settings" />
+      </div>
 
       <Card className="p-6">
         <CardHeader
@@ -359,25 +362,26 @@ export default function AdminSettingsPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your full name"
-              className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+              className={inputClass}
             />
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Your title (e.g. Director of Sales)"
-              className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+              className={inputClass}
             />
           </div>
         </div>
         <div className="flex items-center justify-between mt-3">
           {profileError ? <p className="text-xs text-red-400">{profileError}</p> : <span />}
-          <button
+          <BrandButton
+            variant="primary"
             onClick={handleSaveProfile}
             disabled={savingProfile || !name.trim()}
-            className="shrink-0 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+            className="shrink-0"
           >
             {savingProfile ? 'Saving...' : 'Save'}
-          </button>
+          </BrandButton>
         </div>
       </Card>
 
@@ -640,7 +644,7 @@ export default function AdminSettingsPage() {
                     value={gmailAddress}
                     onChange={(e) => setGmailAddress(e.target.value)}
                     placeholder="evan@bothmade.studio"
-                    className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+                    className={inputClass}
                   />
                 </div>
                 <div>
@@ -650,7 +654,7 @@ export default function AdminSettingsPage() {
                     value={appPassword}
                     onChange={(e) => setAppPassword(e.target.value)}
                     placeholder="16-character app password"
-                    className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+                    className={inputClass}
                   />
                 </div>
 
@@ -660,14 +664,15 @@ export default function AdminSettingsPage() {
                   </div>
                 )}
 
-                <button
+                <BrandButton
+                  variant="quiet"
                   onClick={handleConnect}
                   disabled={connecting || !gmailAddress || !appPassword}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  className="w-full flex items-center justify-center gap-2"
                 >
                   {connecting ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
                   {connecting ? 'Connecting...' : 'Connect Gmail'}
-                </button>
+                </BrandButton>
               </div>
             )}
           </div>
@@ -702,21 +707,21 @@ export default function AdminSettingsPage() {
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             placeholder="Current password"
-            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            className={inputClass}
           />
           <input
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder={`New password (min. ${MIN_PASSWORD_LENGTH} characters)`}
-            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            className={inputClass}
           />
           <input
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm new password"
-            className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            className={inputClass}
           />
           {passwordError && <p className="text-xs text-red-400">{passwordError}</p>}
           {passwordChanged && (
@@ -724,14 +729,15 @@ export default function AdminSettingsPage() {
               <CheckCircle2 size={13} /> Password updated.
             </p>
           )}
-          <button
+          <BrandButton
+            variant="quiet"
             onClick={handleChangePassword}
             disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
-            className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/15 py-2.5 text-sm font-semibold hover:bg-white/5 disabled:opacity-40 transition-colors"
+            className="w-full flex items-center justify-center gap-2"
           >
             {changingPassword ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />}
             {changingPassword ? 'Updating...' : 'Change password'}
-          </button>
+          </BrandButton>
         </div>
       </Card>
     </PageIn>

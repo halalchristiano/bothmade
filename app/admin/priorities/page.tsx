@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ListChecks, Inbox, MessageCircle, AlertTriangle, DollarSign, Rocket } from 'lucide-react';
-import { PageIn, PageTitle, Card } from '@/components/admin/ui';
+import { PageIn, PageTitle, Card, Kicker } from '@/components/admin/ui';
 
 interface OpsStats {
   newHandoffs: Array<{ id: string; company: string; handoffAcknowledgedAt: string | null; daysWaiting: number }>;
@@ -135,8 +135,8 @@ export default function PrioritiesPage() {
 
   if (rows === null) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400" />
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading priorities…</p>
       </div>
     );
   }
@@ -147,6 +147,7 @@ export default function PrioritiesPage() {
 
   return (
     <PageIn className="max-w-4xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <Kicker className="mb-2">Delivery</Kicker>
       <PageTitle icon={ListChecks} title="Priorities" />
       <p className="text-sm text-white/45 mt-1 mb-6">
         {rows.length === 0

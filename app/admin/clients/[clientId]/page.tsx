@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare, Archive, ArchiveRestore, Trash2, AlertTriangle, Mail, ShieldCheck } from 'lucide-react';
-import { Card, CardHeader, PageIn, EmptyState, Badge } from '@/components/admin/ui';
+import { Card, CardHeader, PageIn, EmptyState, Badge, BrandButton, Kicker, inputClass } from '@/components/admin/ui';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { GenerateCertificateButton, type SignatureRecord } from '@/components/admin/SignatureCertificates';
@@ -46,9 +46,6 @@ export default function AdminClientDetailPage() {
   const [confirmDeleteText, setConfirmDeleteText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [composingEmail, setComposingEmail] = useState(false);
-
-  const inputClass =
-    'w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all';
 
   const loadClient = async () => {
     try {
@@ -119,8 +116,8 @@ export default function AdminClientDetailPage() {
 
   if (loading || !client) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-white/40">Loading client…</p>
       </div>
     );
   }
@@ -156,38 +153,42 @@ export default function AdminClientDetailPage() {
             <Archive size={14} className="inline mr-1.5 -mt-0.5" />
             Decommissioned {new Date(client.archivedAt).toLocaleDateString()} — hidden from active lists, login blocked.
           </p>
-          <button
+          <BrandButton
+            variant="quiet"
             onClick={handleToggleArchive}
             disabled={archiving}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/15 text-sm hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap"
           >
             <ArchiveRestore size={14} />
             {archiving ? 'Restoring...' : 'Reactivate'}
-          </button>
+          </BrandButton>
         </Card>
       )}
 
       <Card className="p-6 md:p-8">
+        <Kicker className="mb-3">Client</Kicker>
         <div className="flex justify-between items-start mb-6">
-          <CardHeader icon={Building2} tone="purple" title={client.company} subtitle="Client" />
+          <CardHeader icon={Building2} tone="purple" title={client.company} />
           <div className="flex items-center gap-2">
             {!client.archivedAt && (
-              <button
+              <BrandButton
+                variant="quiet"
                 onClick={handleToggleArchive}
                 disabled={archiving}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 font-medium text-sm hover:bg-white/5 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5"
               >
                 <Archive size={14} />
                 {archiving ? 'Decommissioning...' : 'Decommission'}
-              </button>
+              </BrandButton>
             )}
-            <button
+            <BrandButton
+              variant="quiet"
               onClick={() => setEditing(!editing)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/15 font-medium text-sm hover:bg-white/5 transition-colors"
+              className="inline-flex items-center gap-1.5"
             >
               <Pencil size={14} />
               {editing ? 'Cancel' : 'Edit'}
-            </button>
+            </BrandButton>
           </div>
         </div>
 
@@ -205,13 +206,9 @@ export default function AdminClientDetailPage() {
               <label className="block text-sm font-medium mb-2 text-white/70">Phone</label>
               <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
             </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-            >
+            <BrandButton variant="primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving...' : 'Save Changes'}
-            </button>
+            </BrandButton>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
@@ -314,14 +311,15 @@ export default function AdminClientDetailPage() {
             placeholder={client.company}
             className="flex-1 px-4 py-2 rounded-xl bg-white/[0.04] border border-red-400/20 text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-red-400/40 focus:border-transparent transition-all"
           />
-          <button
+          <BrandButton
+            variant="danger"
             onClick={handleDelete}
             disabled={deleting || confirmDeleteText !== client.company}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500/90 text-white font-semibold text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:bg-red-500 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap"
           >
             <Trash2 size={14} />
             {deleting ? 'Deleting...' : 'Delete Permanently'}
-          </button>
+          </BrandButton>
         </div>
       </Card>
     </PageIn>

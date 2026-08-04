@@ -4,8 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { amountPaidTowardProject } from '@/lib/billing';
-import { FolderKanban, Plus } from 'lucide-react';
-import { Card, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { AlertTriangle, FolderKanban, MessageSquare, Plus } from 'lucide-react';
+import { Badge, Card, Kicker, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
 
 interface ProjectRow {
   id: string;
@@ -48,9 +48,10 @@ function AtRiskBadge({ project }: { project: ProjectRow }) {
   if (!isAtRisk(project)) return null;
   const days = Math.floor((Date.now() - new Date(project.updatedAt).getTime()) / (24 * 60 * 60 * 1000));
   return (
-    <span className="text-xs px-2 py-1 rounded-full bg-red-400/20 text-red-300 whitespace-nowrap">
-      ⚠ {days}d quiet
-    </span>
+    <Badge tone="red" solid>
+      <AlertTriangle size={11} className="inline -mt-0.5 mr-1" />
+      {days}d quiet
+    </Badge>
   );
 }
 
@@ -60,20 +61,21 @@ function HealthBadges({ project }: { project: ProjectRow }) {
   if (isAtRisk(project)) badges.push(<AtRiskBadge key="risk" project={project} />);
   if (isAwaitingReply(project)) {
     badges.push(
-      <span key="reply" className="text-xs px-2 py-1 rounded-full bg-sky-400/20 text-sky-300 whitespace-nowrap">
-        💬 Awaiting reply
-      </span>
+      <Badge key="reply" tone="sky" solid>
+        <MessageSquare size={11} className="inline -mt-0.5 mr-1" />
+        Awaiting reply
+      </Badge>
     );
   }
   if (project.status !== 'complete' && due > 0) {
     badges.push(
-      <span key="balance" className="text-xs px-2 py-1 rounded-full bg-amber-400/20 text-amber-300 whitespace-nowrap">
+      <Badge key="balance" tone="amber" solid>
         ${(due / 100).toLocaleString()} due
-      </span>
+      </Badge>
     );
   }
   if (badges.length === 0) {
-    return <span className="text-xs text-emerald-300/70">On track</span>;
+    return <Badge tone="emerald">On track</Badge>;
   }
   return <div className="flex flex-wrap gap-1.5">{badges}</div>;
 }
@@ -125,8 +127,11 @@ export default function AdminProjectsPage() {
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 md:mb-8">
-        <PageTitle icon={FolderKanban} title="Projects" />
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-6 md:mb-8">
+        <div>
+          <Kicker className="mb-2">Delivery</Kicker>
+          <PageTitle icon={FolderKanban} title="Projects" />
+        </div>
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}
@@ -134,14 +139,14 @@ export default function AdminProjectsPage() {
             className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent capitalize transition-all"
           >
             {STATUSES.map((s) => (
-              <option key={s} value={s} className="capitalize bg-[#05030a]">
+              <option key={s} value={s} className="capitalize bg-raised text-white">
                 {s === 'all' ? 'All Statuses' : s}
               </option>
             ))}
           </select>
           <Link
             href="/admin/projects/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
           >
             <Plus size={16} />
             New Project
@@ -173,15 +178,15 @@ export default function AdminProjectsPage() {
           onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
           className="text-sm px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/70 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
         >
-          <option value="attention" className="bg-[#05030a]">Sort: Needs attention first</option>
-          <option value="stalest" className="bg-[#05030a]">Sort: Quietest first</option>
-          <option value="newest" className="bg-[#05030a]">Sort: Newest first</option>
+          <option value="attention" className="bg-raised text-white">Sort: Needs attention first</option>
+          <option value="stalest" className="bg-raised text-white">Sort: Quietest first</option>
+          <option value="newest" className="bg-raised text-white">Sort: Newest first</option>
         </select>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <p className="text-sm text-white/40">Loading projects…</p>
         </div>
       ) : shown.length === 0 ? (
         <Card className="p-12 text-center text-white/40">
@@ -201,9 +206,9 @@ export default function AdminProjectsPage() {
               >
                 <div className="flex justify-between items-start mb-1 gap-2">
                   <p className="font-semibold">{project.name}</p>
-                  <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize whitespace-nowrap">
-                    {project.status}
-                  </span>
+                  <Badge tone="neutral" solid>
+                    <span className="capitalize">{project.status}</span>
+                  </Badge>
                 </div>
                 <p className="text-sm text-white/50 mb-2">{project.client.company}</p>
                 <div className="mb-2">
@@ -238,9 +243,9 @@ export default function AdminProjectsPage() {
                       <td className="px-6 py-4 font-medium">{project.name}</td>
                       <td className="px-6 py-4 text-white/50">{project.client.company}</td>
                       <td className="px-6 py-4">
-                        <span className="text-xs px-2 py-1 rounded-full bg-white/10 capitalize">
-                          {project.status}
-                        </span>
+                        <Badge tone="neutral" solid>
+                          <span className="capitalize">{project.status}</span>
+                        </Badge>
                       </td>
                       <td className="px-6 py-4">
                         <HealthBadges project={project} />

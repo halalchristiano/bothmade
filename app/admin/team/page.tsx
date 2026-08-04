@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Copy, Trash2, UserCog, UserPlus } from 'lucide-react';
-import { Card, CardHeader } from '@/components/admin/ui';
+import { Badge, BrandButton, Card, CardHeader, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
 import {
   USER_ROLES,
   USER_ROLE_DESCRIPTIONS,
@@ -20,13 +20,10 @@ interface TeamMember {
   createdAt: string;
 }
 
-const input =
-  'w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:border-white/30 transition-colors';
-
-function roleTone(role: string): string {
-  if (role === 'owner') return 'text-purple-300 bg-purple-400/10';
-  if (role === 'sales') return 'text-sky-300 bg-sky-400/10';
-  return 'text-white/60 bg-white/5';
+function roleTone(role: string): 'purple' | 'sky' | 'neutral' {
+  if (role === 'owner') return 'purple';
+  if (role === 'sales') return 'sky';
+  return 'neutral';
 }
 
 /**
@@ -187,10 +184,11 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="max-w-3xl">
+    <PageIn className="max-w-3xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-white">Team</h1>
-        <p className="text-[13px] text-white/40 mt-1">
+        <Kicker className="mb-2">Studio</Kicker>
+        <PageTitle icon={UserCog} title="Team" tone="purple" />
+        <p className="text-[13px] text-white/40 mt-2">
           Who can sign in, and what each of them can reach.
         </p>
       </div>
@@ -248,13 +246,13 @@ export default function TeamPage() {
           <div className="rounded-lg border border-white/10 p-4 mb-5 space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
               <input
-                className={input}
+                className={inputClass}
                 placeholder="Name"
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
               <input
-                className={input}
+                className={inputClass}
                 type="email"
                 placeholder="name@bothmade.studio"
                 value={draft.email}
@@ -263,12 +261,12 @@ export default function TeamPage() {
             </div>
             <div>
               <select
-                className={`${input} cursor-pointer`}
+                className={`${inputClass} cursor-pointer`}
                 value={draft.role}
                 onChange={(e) => setDraft({ ...draft, role: e.target.value as UserRole })}
               >
                 {USER_ROLES.map((role) => (
-                  <option key={role} value={role} className="bg-[#0b0b0b]">
+                  <option key={role} value={role} className="bg-raised">
                     {USER_ROLE_LABELS[role]}
                   </option>
                 ))}
@@ -278,22 +276,18 @@ export default function TeamPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={add}
-                disabled={!draft.email.trim() || busyId === 'new'}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-              >
+              <BrandButton variant="primary" onClick={add} disabled={!draft.email.trim() || busyId === 'new'}>
                 {busyId === 'new' ? 'Adding…' : 'Add'}
-              </button>
-              <button
+              </BrandButton>
+              <BrandButton
+                variant="quiet"
                 onClick={() => {
                   setAdding(false);
                   setError('');
                 }}
-                className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/70 hover:text-white transition-colors"
               >
                 Cancel
-              </button>
+              </BrandButton>
             </div>
           </div>
         )}
@@ -327,16 +321,16 @@ export default function TeamPage() {
                     className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[13px] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:border-white/30"
                   >
                     {USER_ROLES.map((role) => (
-                      <option key={role} value={role} className="bg-[#0b0b0b]">
+                      <option key={role} value={role} className="bg-raised">
                         {USER_ROLE_LABELS[role]}
                       </option>
                     ))}
                   </select>
                 ) : (
-                  <span
-                    className={`shrink-0 rounded-md px-2 py-1 text-[12px] font-medium ${roleTone(member.role)}`}
-                  >
-                    {USER_ROLE_LABELS[member.role as UserRole] ?? member.role}
+                  <span className="shrink-0">
+                    <Badge solid tone={roleTone(member.role)}>
+                      {USER_ROLE_LABELS[member.role as UserRole] ?? member.role}
+                    </Badge>
                   </span>
                 )}
 
@@ -362,6 +356,6 @@ export default function TeamPage() {
           </p>
         )}
       </Card>
-    </div>
+    </PageIn>
   );
 }

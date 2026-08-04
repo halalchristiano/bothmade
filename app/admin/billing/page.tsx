@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Receipt, Plus, X } from 'lucide-react';
-import { Badge, Card, CardHeader, EmptyState, PageIn, PageTitle } from '@/components/admin/ui';
+import { Badge, BrandButton, Card, CardHeader, EmptyState, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
 import { MAX_CHARGE_CENTS, MIN_CHARGE_CENTS, dollarsToCents } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
 
@@ -54,12 +54,15 @@ interface LineDraft {
   amount: string;
 }
 
-const inputClass =
-  'w-full px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors';
-
 export default function BillingPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <p className="text-sm text-white/40">Loading billing…</p>
+        </div>
+      }
+    >
       <BillingWorkspace />
     </Suspense>
   );
@@ -222,6 +225,7 @@ function BillingWorkspace() {
   return (
     <PageIn className="max-w-[1400px] mx-auto px-4 md:px-8 py-6 md:py-8">
       <div className="mb-6">
+        <Kicker className="mb-2">One-off charges</Kicker>
         <PageTitle icon={Receipt} title="Billing" tone="emerald" />
         <p className="text-sm text-white/40 mt-2">
           Charge an existing customer any amount. The invoice is raised, filed, emailed to them and copied to
@@ -261,7 +265,7 @@ function BillingWorkspace() {
                     className={`${inputClass} mt-3`}
                   >
                     {customer.projects.map((project) => (
-                      <option key={project.id} value={project.id} className="bg-neutral-900">
+                      <option key={project.id} value={project.id} className="bg-raised">
                         {project.name}
                       </option>
                     ))}
@@ -385,17 +389,18 @@ function BillingWorkspace() {
             </span>
           </label>
 
-          <button
+          <BrandButton
+            variant="primary"
             onClick={() => submit(needsConfirmation)}
             disabled={!canSubmit}
-            className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black py-2.5 text-sm font-semibold disabled:opacity-40 transition-opacity"
+            className="w-full"
           >
             {submitting
               ? 'Raising the invoice…'
               : needsConfirmation
               ? `Yes — charge ${formatCentsExact(total)} again`
               : `Charge ${formatCentsExact(total)}`}
-          </button>
+          </BrandButton>
 
           {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
 
