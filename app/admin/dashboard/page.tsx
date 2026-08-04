@@ -43,6 +43,7 @@ import { MockupsCard } from '@/components/admin/MockupAttachments';
 import { SignatureCertificatesCard } from '@/components/admin/SignatureCertificates';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart, Kicker, BrandButton } from '@/components/admin/ui';
+import { Today } from '@/components/admin/dashboard/Today';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 import { USER_ROLE_LABELS, type UserRole } from '@/lib/roles';
@@ -535,84 +536,6 @@ function WonDealsCard({ stats }: { stats: SalesStats }) {
  * owner, and not an answer to "what do I do now". Reads the same endpoint the
  * call list does, so the numbers here and the list there can't disagree.
  */
-function CallListBanner() {
-  const [counts, setCounts] = useState<{ bounced: number; overdue: number; today: number; total: number } | null>(
-    null
-  );
-
-  useEffect(() => {
-    fetch('/api/admin/leads/call-list')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!d?.success) return;
-        const rows: Array<{ reason: string }> = d.callable ?? [];
-        setCounts({
-          bounced: rows.filter((r) => r.reason === 'bounced').length,
-          overdue: rows.filter((r) => r.reason === 'overdue').length,
-          today: rows.filter((r) => r.reason === 'today').length,
-          total: rows.length,
-        });
-      })
-      .catch(() => {});
-  }, []);
-
-  if (!counts) return null;
-
-  if (counts.total === 0) {
-    return (
-      <Link
-        href="/admin/sales?view=queue"
-        className="block mb-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 hover:bg-white/[0.05] transition-colors"
-      >
-        <p className="text-sm font-semibold text-white/70">Nothing waiting on a call right now.</p>
-        <p className="text-xs text-white/40 mt-0.5">Every lead is booked for later, won, or closed off.</p>
-      </Link>
-    );
-  }
-
-  const urgent = counts.bounced + counts.overdue;
-
-  return (
-    <div
-      className={`mb-6 rounded-2xl border px-5 py-4 ${
-        urgent > 0 ? 'border-amber-400/30 bg-amber-400/[0.08]' : 'border-sky-400/25 bg-sky-400/[0.07]'
-      }`}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-sm font-bold text-white/90">
-            <Phone size={14} />
-            {counts.total} {counts.total === 1 ? 'business' : 'businesses'} to call
-          </p>
-          <p className="text-xs text-white/50 mt-1 leading-relaxed">
-            {[
-              counts.bounced > 0 && `${counts.bounced} whose email bounced — phone is the only way in`,
-              counts.overdue > 0 && `${counts.overdue} overdue`,
-              counts.today > 0 && `${counts.today} due today`,
-            ]
-              .filter(Boolean)
-              .join(' · ') || 'Nothing urgent — work down the list when you can.'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {/* The screen's one gradient: straight into Call HQ, the live-call cockpit. */}
-          <Link
-            href="/admin/call"
-            className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
-          >
-            Start calling
-          </Link>
-          <Link
-            href="/admin/sales?view=queue"
-            className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
-          >
-            Full list
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function SalesDashboard({
   stats,
@@ -639,7 +562,7 @@ function SalesDashboard({
         <div>
           <Kicker className="mb-2">Sales</Kicker>
           <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
-          <p className="text-white/40">Here's where your pipeline stands.</p>
+          <p className="text-white/40">Sell it, get paid for it, ship it — in that order.</p>
         </div>
         <RangePicker range={range} onChange={onRangeChange} />
       </div>
@@ -647,7 +570,10 @@ function SalesDashboard({
         <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
       </div>
 
-      <CallListBanner />
+      {/* The whole point of the page, before any of the detail below it. */}
+      <div className="mb-6">
+        <Today />
+      </div>
 
       <div className="mb-6">
         <StatRow
@@ -716,54 +642,6 @@ function SalesDashboard({
       <div className="mb-5">
         <MockupsCard />
       </div>
-
-      {stats.awaitingSignature.length > 0 && (
-        <div className="mb-5">
-          <Card className="p-6" glow="amber">
-            <CardHeader
-              icon={FileSignature}
-              tone="amber"
-              title="Awaiting Signature"
-              subtitle="Contracts sitting with the client, unsigned"
-              action={<Badge tone="amber">{stats.awaitingSignature.length}</Badge>}
-            />
-            <div className="space-y-0.5">
-              {stats.awaitingSignature.map((l) => (
-                <ListRow
-                  key={l.id}
-                  href={`/admin/leads/${l.id}`}
-                  title={l.company}
-                  subtitle={`Waiting ${l.daysWaiting}d`}
-                  trailing={
-                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      {l.phone && (
-                        <a
-                          href={`tel:${l.phone}`}
-                          title={`Call ${l.phone}`}
-                          aria-label={`Call ${l.company}`}
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-amber-300 transition-colors"
-                        >
-                          <Phone size={13} />
-                        </a>
-                      )}
-                      {l.email && (
-                        <a
-                          href={`mailto:${l.email}`}
-                          title={`Email ${l.email}`}
-                          aria-label={`Email ${l.company}`}
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-300 transition-colors"
-                        >
-                          <Mail size={13} />
-                        </a>
-                      )}
-                    </div>
-                  }
-                />
-              ))}
-            </div>
-          </Card>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
         <InsightsCard stats={stats} />
@@ -1035,162 +913,6 @@ function RevenueChartCard({ revenueHistory }: { revenueHistory: OpsStats['revenu
   );
 }
 
-type OverdueSort = 'amount' | 'name';
-
-// Reminders sent under this long ago don't need a second confirmation — long
-// enough that a same-session double-click is still caught, short enough that
-// legitimately reminding again tomorrow doesn't feel like fighting the UI.
-const REMINDER_COOLDOWN_HOURS = 24;
-
-function RemindButton({
-  projectId,
-  lastSentAt,
-}: {
-  projectId: string;
-  lastSentAt: string | null;
-}) {
-  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [confirming, setConfirming] = useState(false);
-  const [sentAt, setSentAt] = useState<string | null>(lastSentAt);
-
-  const hoursSinceSent = sentAt ? (Date.now() - new Date(sentAt).getTime()) / (1000 * 60 * 60) : Infinity;
-  const recentlyReminded = hoursSinceSent < REMINDER_COOLDOWN_HOURS;
-
-  const send = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setConfirming(false);
-    setState('sending');
-    try {
-      const res = await fetch(`/api/admin/projects/${projectId}/payment-reminder`, { method: 'POST' });
-      if (res.ok) {
-        setState('sent');
-        setSentAt(new Date().toISOString());
-      } else {
-        setState('error');
-      }
-    } catch {
-      setState('error');
-    }
-  };
-
-  if (state === 'sent') return <span className="text-[11px] text-emerald-300/80 whitespace-nowrap">Reminder sent</span>;
-
-  if (confirming) {
-    return (
-      <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <span className="text-[11px] text-amber-200/70 whitespace-nowrap">Already reminded — again?</span>
-        <button
-          onClick={send}
-          className="text-[11px] px-2 py-1 rounded-md border border-amber-400/40 text-amber-200 hover:bg-amber-400/10 transition-colors"
-        >
-          Yes
-        </button>
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setConfirming(false);
-          }}
-          className="text-[11px] px-2 py-1 rounded-md border border-white/15 text-white/50 hover:bg-white/5 transition-colors"
-        >
-          No
-        </button>
-      </span>
-    );
-  }
-
-  return (
-    <button
-      onClick={(e) => {
-        if (recentlyReminded) {
-          e.preventDefault();
-          e.stopPropagation();
-          setConfirming(true);
-          return;
-        }
-        send(e);
-      }}
-      disabled={state === 'sending'}
-      title={recentlyReminded ? `Reminded ${formatRelativeTime(new Date(sentAt!))}` : undefined}
-      className={`text-[11px] px-2 py-1 rounded-md border font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
-        state === 'error'
-          ? 'border-red-400/30 text-red-300 hover:bg-red-400/10'
-          : 'border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-400/30 hover:bg-amber-400/10'
-      }`}
-    >
-      {state === 'sending'
-        ? 'Sending…'
-        : state === 'error'
-          ? 'Failed — retry'
-          : recentlyReminded
-            ? `Reminded ${formatRelativeTime(new Date(sentAt!))}`
-            : 'Remind'}
-    </button>
-  );
-}
-
-function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<OverdueSort>('amount');
-
-  const filtered = balances
-    .filter((p) => p.company.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a, b) => (sort === 'amount' ? b.balanceDue - a.balanceDue : a.company.localeCompare(b.company)));
-
-  return (
-    <Card className="p-6">
-      <CardHeader icon={Wallet} tone="amber" title="Overdue Balances" />
-      {balances.length === 0 ? (
-        <EmptyState icon={Wallet} text="Nothing outstanding." tone="clear" />
-      ) : (
-        <>
-          <div className="flex flex-col sm:flex-row gap-2 mb-3">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search company..."
-              className="flex-1 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-            />
-            <div className="flex gap-1 rounded-lg border border-white/10 p-1 bg-white/[0.02] shrink-0">
-              {(['amount', 'name'] as OverdueSort[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSort(s)}
-                  className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-colors ${
-                    sort === s ? 'bg-amber-500/25 text-amber-200 ring-1 ring-amber-400/40' : 'text-white/40 hover:text-white/70'
-                  }`}
-                >
-                  {s === 'amount' ? 'Amount' : 'Name'}
-                </button>
-              ))}
-            </div>
-          </div>
-          {filtered.length === 0 ? (
-            <p className="text-sm text-white/30 py-4 text-center">No matches for "{query}".</p>
-          ) : (
-            <div className="space-y-0.5">
-              {filtered.map((p) => (
-                <ListRow
-                  key={p.id}
-                  href={`/admin/projects/${p.id}`}
-                  title={p.company}
-                  trailing={
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Badge tone="amber">{formatCents(p.balanceDue)}</Badge>
-                      <RemindButton projectId={p.id} lastSentAt={p.lastPaymentReminderSentAt} />
-                      <OpenStatusButton projectId={p.id} />
-                    </div>
-                  }
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
 
 const PAGE_SIZE = 10;
 
@@ -1540,7 +1262,6 @@ function OpsDashboard({
         <AtRiskProjectsCard projects={stats.atRiskProjects} />
         <WaitingOnClientCard projects={stats.waitingOnClient ?? []} />
 
-        <OverdueBalancesCard balances={stats.overdueBalances} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
@@ -1572,24 +1293,6 @@ function OpsDashboard({
         </Card>
       )}
 
-      {stats.awaitingSignature.length > 0 && (
-        <Card className="p-6 mb-8" glow="purple">
-          <CardHeader icon={FileSignature} tone="purple" title="Contracts Awaiting Signature" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-            {stats.awaitingSignature.map((l) => (
-              <ListRow
-                key={l.id}
-                href={`/admin/leads/${l.id}`}
-                title={l.company}
-                trailing={<span className="text-white/40 text-xs">{new Date(l.updatedAt).toLocaleDateString()}</span>}
-              />
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Sits directly under "awaiting signature", because it is the other
-          end of the same story: these ones signed, and this is the proof. */}
       <div className="mb-8">
         <SignatureCertificatesCard />
       </div>
