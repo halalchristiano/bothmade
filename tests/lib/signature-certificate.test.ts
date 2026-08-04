@@ -17,7 +17,7 @@ vi.mock('@/lib/middleware', () => ({
 
 const requireRole = vi.fn();
 vi.mock('@/lib/authz', () => ({
-  OPS: ['owner', 'admin', 'ops'],
+  ANY_STAFF: ['owner', 'admin', 'sales'],
   requireRole: (...args: unknown[]) => requireRole(...args),
 }));
 
@@ -94,7 +94,7 @@ describe('who can ask for one', () => {
     expect((await GET(req(), { params })).status).toBe(401);
   });
 
-  it('turns away a role that has no business seeing client money', async () => {
+  it('turns away a role the authz layer refuses', async () => {
     requireRole.mockReturnValue(new Response(null, { status: 403 }));
     const res = await GET(req(), { params });
     expect(res.status).toBe(403);

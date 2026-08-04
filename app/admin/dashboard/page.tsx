@@ -1407,6 +1407,7 @@ function OpsDashboard({
   lastUpdated,
   refreshing,
   onRefresh,
+  embedded = false,
 }: {
   stats: OpsStats;
   name: string;
@@ -1416,6 +1417,13 @@ function OpsDashboard({
   lastUpdated: Date | null;
   refreshing: boolean;
   onRefresh: () => void;
+  /**
+   * Rendered below the sales half rather than on its own. The greeting, the
+   * range picker and the refresh control are shared and already on screen, so
+   * repeating them here would be three duplicate controls arguing over the
+   * same piece of state.
+   */
+  embedded?: boolean;
 }) {
   const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
   const [newHandoffs, setNewHandoffs] = useState(stats.newHandoffs);
@@ -1424,22 +1432,36 @@ function OpsDashboard({
       ? Math.round(((stats.revenueThisMonth - stats.revenueLastMonth) / stats.revenueLastMonth) * 100)
       : undefined;
 
+  const Shell = embedded ? 'div' : PageIn;
+
   return (
-    <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
-        <div>
-          <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
-          <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
-          <p className="text-white/40">Here's what needs you today.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <RangePicker range={range} onChange={onRangeChange} />
+    <Shell className={embedded ? 'max-w-7xl mx-auto px-4 md:px-8 pb-6 md:pb-10' : 'max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10'}>
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-12 mb-6 pt-8 border-t border-white/10">
+          <div>
+            <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
+            <p className="text-white/40 text-sm">Delivery, clients and money.</p>
+          </div>
           <BroadcastComposer />
         </div>
-      </div>
-      <div className="flex justify-end mb-6">
-        <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
-      </div>
+      ) : (
+        <>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
+            <div>
+              <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
+              <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
+              <p className="text-white/40">Here's what needs you today.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <RangePicker range={range} onChange={onRangeChange} />
+              <BroadcastComposer />
+            </div>
+          </div>
+          <div className="flex justify-end mb-6">
+            <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
+          </div>
+        </>
+      )}
 
       {pendingMockups.length > 0 && (
         <Card className="p-6 mb-6" glow="amber">
@@ -1607,7 +1629,7 @@ function OpsDashboard({
           <LeadsSpreadsheet />
         </div>
       )}
-    </PageIn>
+    </Shell>
   );
 }
 
@@ -1645,20 +1667,25 @@ export default function AdminDashboardPage() {
         const me = await meResponse.json();
         const userRole = me.user?.role || 'admin';
 
-        const statsUrl = userRole === 'sales' ? '/api/admin/sales-stats' : '/api/admin/ops-stats';
-        const res = await fetch(`${statsUrl}?range=${range}`);
-        if (!res.ok) throw new Error(`Failed to load dashboard data (${res.status}).`);
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Failed to load dashboard data.');
+        // Both halves, for everyone. This used to fetch one or the other off
+        // the signed-in role, which is what made two people in the same studio
+        // unable to see the same screen — the rep couldn't see what was at
+        // risk in delivery, and ops couldn't see what was about to land.
+        const [salesRes, opsRes] = await Promise.all([
+          fetch(`/api/admin/sales-stats?range=${range}`),
+          fetch(`/api/admin/ops-stats?range=${range}`),
+        ]);
+        if (!salesRes.ok) throw new Error(`Failed to load sales data (${salesRes.status}).`);
+        if (!opsRes.ok) throw new Error(`Failed to load operations data (${opsRes.status}).`);
+        const [salesData, opsData] = await Promise.all([salesRes.json(), opsRes.json()]);
+        if (!salesData.success) throw new Error(salesData.error || 'Failed to load sales data.');
+        if (!opsData.success) throw new Error(opsData.error || 'Failed to load operations data.');
 
         if (cancelled) return;
         setRole(userRole);
         setName(me.user?.name || '');
-        if (userRole === 'sales') {
-          setSalesStats(data.stats);
-        } else {
-          setOpsStats(data.stats);
-        }
+        setSalesStats(salesData.stats);
+        setOpsStats(opsData.stats);
         setLastUpdated(new Date());
         setHasLoadedOnce(true);
       } catch (err) {
@@ -1702,34 +1729,35 @@ export default function AdminDashboardPage() {
 
   const onRefresh = () => setRetryCount((c) => c + 1);
 
-  if (role === 'sales' && salesStats) {
-    return (
-      <SalesDashboard
-        stats={salesStats}
-        name={name}
-        range={range}
-        onRangeChange={setRange}
-        lastUpdated={lastUpdated}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-      />
-    );
-  }
-
-  if (opsStats) {
-    return (
-      <OpsDashboard
-        stats={opsStats}
-        name={name}
-        showLeadsSpreadsheet={role !== 'sales'}
-        range={range}
-        onRangeChange={setRange}
-        lastUpdated={lastUpdated}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-      />
-    );
-  }
-
-  return null;
+  // One screen, both halves, whoever is looking at it. Sales first because
+  // that is the order the work happens in — a lead becomes a project — and
+  // because the pipeline is what either of them checks first thing.
+  return (
+    <>
+      {salesStats && (
+        <SalesDashboard
+          stats={salesStats}
+          name={name}
+          range={range}
+          onRangeChange={setRange}
+          lastUpdated={lastUpdated}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        />
+      )}
+      {opsStats && (
+        <OpsDashboard
+          stats={opsStats}
+          name={name}
+          showLeadsSpreadsheet
+          range={range}
+          onRangeChange={setRange}
+          lastUpdated={lastUpdated}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          embedded={!!salesStats}
+        />
+      )}
+    </>
+  );
 }

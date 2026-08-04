@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Search, Bell, LogOut, Menu, X } from 'lucide-react';
-import { groupSections, visibleNavItems, type NavItem } from '@/lib/admin-nav';
+import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
 
 function NavLinks({
   items,
@@ -372,7 +372,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     .slice(0, 2)
     .toUpperCase();
 
-  const navItems = visibleNavItems(userRole);
 
   return (
     <div className="min-h-screen bg-[#050505] text-white">
@@ -387,7 +386,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="flex-1 px-3 pb-4 overflow-y-auto">
-          <NavLinks items={navItems} pathname={pathname} unreadCount={unreadCount} compact />
+          <NavLinks items={ADMIN_NAV_ITEMS} pathname={pathname} unreadCount={unreadCount} compact />
         </nav>
 
         <div className="p-3 border-t border-white/10">
@@ -477,7 +476,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {/* No onNavigate here: the effect keyed on `pathname` already
                     closes this sheet on every route change. */}
                 <nav>
-                  <NavLinks items={navItems} pathname={pathname} unreadCount={unreadCount} />
+                  <NavLinks items={ADMIN_NAV_ITEMS} pathname={pathname} unreadCount={unreadCount} />
                 </nav>
                 <div className="flex items-center justify-between pt-3 border-t border-white/10">
                   <div className="flex items-center gap-2.5">

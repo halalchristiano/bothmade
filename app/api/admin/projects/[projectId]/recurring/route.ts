@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { ANY_STAFF, OPS, hasRole, requireRole } from '@/lib/authz';
+import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { recurringCatalogue, sendOfferInvitation, serializeOffer } from '@/lib/care-offers';
 import {
   DISCOUNT_MONTHS,
@@ -23,11 +23,10 @@ import type { AddOnKey } from '@/lib/pricing';
  * time it's worth having, the deal is long since won and the client is a
  * project in flight.
  *
- * Open to all staff, unlike the money endpoints beside it (collect-balance is
- * OPS-only). Selling the ongoing plan at the end of a build is sales work —
- * it's the one thing on a project page that belongs to whoever closed it. What
- * stays OPS is stopping a plan that's already billing, which lives in
- * ../../recurring/[offerId].
+ * Open to all staff, like every other endpoint on this page now — the second
+ * role tier that used to withhold project money from a sales account came
+ * down at the owner's request. See lib/authz.ts for what that traded away and
+ * what is still enforced by role.
  */
 export async function GET(
   request: NextRequest,
@@ -74,10 +73,6 @@ export async function GET(
         // months default the way they do.
         alreadyInScope: inScope,
         catalogue: recurringCatalogue(RECURRING_ADD_ON_KEYS),
-        // Stopping billing is ops, same as collecting a balance. Told to the
-        // browser so the button isn't offered and then refused — the check
-        // that matters is on the cancel route itself.
-        canCancel: hasRole(session, OPS),
         defaults: {
           addOns: inScope,
           discountMonths: DISCOUNT_MONTHS,
