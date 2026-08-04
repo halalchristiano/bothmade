@@ -17,6 +17,15 @@ import {
   isTimelineKey,
   type AddOnKey,
 } from '@/lib/pricing';
+import {
+  FIELD_ERRORS,
+  FIELD_LIMITS,
+  isValidCompany,
+  isValidEmail,
+  isValidName,
+  isValidPhone,
+  normalizePhone,
+} from '@/lib/validation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,12 +48,47 @@ export async function POST(request: NextRequest) {
       timeline,
     } = await request.json();
 
-    if (!contactName || !email || !company) {
+    if (
+      typeof contactName !== 'string' ||
+      typeof email !== 'string' ||
+      typeof company !== 'string' ||
+      !contactName.trim() ||
+      !email.trim() ||
+      !company.trim()
+    ) {
       return NextResponse.json(
         { error: 'Name, email, and company are required' },
         { status: 400 }
       );
     }
+
+    const cleanName = contactName.trim().slice(0, FIELD_LIMITS.name);
+    const cleanEmail = email.trim().slice(0, FIELD_LIMITS.email);
+    const cleanCompany = company.trim().slice(0, FIELD_LIMITS.company);
+    const rawPhone = typeof phone === 'string' ? phone.trim().slice(0, FIELD_LIMITS.phone) : '';
+
+    // The same predicates /api/contact runs. Both routes write to the same
+    // Lead row from the same site, so a rule enforced on one door and not the
+    // other just means what the CRM holds depends on which door a lead came
+    // through — and a rep finds out on the call that fails.
+    //
+    // Phone stays optional: someone who has configured a whole project is not
+    // worth losing over a number. But a number that *is* given has to dial.
+    const invalid = (
+      [
+        [!isValidName(cleanName), FIELD_ERRORS.name],
+        [!isValidEmail(cleanEmail), FIELD_ERRORS.email],
+        [Boolean(rawPhone) && !isValidPhone(rawPhone), FIELD_ERRORS.phone],
+        [!isValidCompany(cleanCompany), FIELD_ERRORS.company],
+      ] as [boolean, string][]
+    ).find(([failed]) => failed);
+
+    if (invalid) {
+      return NextResponse.json({ error: invalid[1] }, { status: 400 });
+    }
+
+    const cleanPhone = rawPhone ? normalizePhone(rawPhone) : '';
+
     if (!isBaseService(baseService) || !isClientType(clientType) || !isTimelineKey(timeline)) {
       return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
     }
@@ -59,10 +103,10 @@ export async function POST(request: NextRequest) {
 <html>
   <body style="font-family: -apple-system, sans-serif; color: #111;">
     <h2>New pricing calculator interest</h2>
-    <p><strong>${escapeHtml(contactName)}</strong> at <strong>${escapeHtml(company)}</strong> configured a project and wants to talk before paying.</p>
+    <p><strong>${escapeHtml(cleanName)}</strong> at <strong>${escapeHtml(cleanCompany)}</strong> configured a project and wants to talk before paying.</p>
     <table cellpadding="6" style="border-collapse: collapse;">
-      <tr><td><strong>Email</strong></td><td>${escapeHtml(email)}</td></tr>
-      ${phone ? `<tr><td><strong>Phone</strong></td><td>${escapeHtml(phone)}</td></tr>` : ''}
+      <tr><td><strong>Email</strong></td><td>${escapeHtml(cleanEmail)}</td></tr>
+      ${cleanPhone ? `<tr><td><strong>Phone</strong></td><td>${escapeHtml(cleanPhone)}</td></tr>` : ''}
       <tr><td><strong>Service</strong></td><td>${escapeHtml(BASE_SERVICES[baseService].label)}</td></tr>
       <tr><td><strong>Add-ons</strong></td><td>${addOnRows ? `<ul>${addOnRows}</ul>` : 'None'}</td></tr>
       <tr><td><strong>Client type</strong></td><td>${escapeHtml(CLIENT_TYPES[clientType].label)}</td></tr>
@@ -91,7 +135,7 @@ export async function POST(request: NextRequest) {
       rep = await findSalesRep();
 
       const existing = await prisma.lead.findFirst({
-        where: { email },
+        where: { email: cleanEmail },
         select: { id: true },
       });
 
@@ -108,10 +152,10 @@ export async function POST(request: NextRequest) {
       } else {
         const lead = await prisma.lead.create({
           data: {
-            company,
-            contactName,
-            email,
-            phone: phone || null,
+            company: cleanCompany,
+            contactName: cleanName,
+            email: cleanEmail,
+            phone: cleanPhone || null,
             status: 'new',
             source: 'inbound-pricing',
             estimatedValue: breakdown.totalPrice,
@@ -130,7 +174,7 @@ export async function POST(request: NextRequest) {
 
     await sendEmail({
       to: studioInbox(),
-      subject: `Pricing interest: ${company} — ${BASE_SERVICES[baseService].label}`,
+      subject: `Pricing interest: ${cleanCompany} — ${BASE_SERVICES[baseService].label}`,
       html,
     });
 
@@ -141,9 +185,10 @@ export async function POST(request: NextRequest) {
         toEmail: rep.email,
         repName: rep.name,
         leadId,
-        contactName,
-        company,
-        email,
+        contactName: cleanName,
+        company: cleanCompany,
+        email: cleanEmail,
+        phone: cleanPhone,
         serviceLabel: `${BASE_SERVICES[baseService].label} — ${formatCents(breakdown.totalPrice)}`,
         message: summary,
         returning,

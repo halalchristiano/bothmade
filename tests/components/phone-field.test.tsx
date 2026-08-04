@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { PhoneField } from '@/components/admin/PhoneField';
+import { PhoneField } from '@/components/PhoneField';
 
 /**
  * The public contact form learned to ask which country a number is in; the

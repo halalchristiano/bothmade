@@ -400,6 +400,7 @@ export async function POST(request: NextRequest) {
         contactName: cleanName,
         company: cleanCompany || cleanName,
         email: cleanEmail,
+        phone: cleanPhone,
         serviceLabel: SERVICE_LABELS[cleanService],
         message: cleanMessage,
         returning: recorded.returning,

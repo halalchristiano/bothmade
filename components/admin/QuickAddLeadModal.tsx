@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { QUICK_ADD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { Modal } from './Modal';
-import { PhoneField } from './PhoneField';
+import { PhoneField } from '@/components/PhoneField';
 
 /**
  * Adding a company isn't always "brand new lead" — Evan is often backfilling

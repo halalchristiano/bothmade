@@ -108,6 +108,23 @@ async function notifyAdmins(
 }
 
 /**
+ * The dialable form of a stored number, for a `tel:` href — digits only, with
+ * the leading `+` kept because that is what says which country to dial.
+ *
+ * The link text keeps the grouping the visitor typed; a rep reads that back
+ * down the line, and a bare run of digits is harder to say. Returns '' for
+ * anything without enough digits to be a number, so the alert falls back to
+ * naming no phone at all rather than offering a link that dials nothing.
+ */
+function telHref(value: string | null | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  if (digits.length < 7) return '';
+  return `${trimmed.startsWith('+') ? '+' : ''}${digits}`;
+}
+
+/**
  * "This client reached out." Sent to the sales rep alone, separately from the
  * shared studio notification, because the two say different things: the group
  * mail is news, this one is an assignment with the lead's page one click away.
@@ -122,6 +139,8 @@ export async function notifyRepInboundEnquiry(params: {
   contactName: string;
   company: string;
   email: string;
+  /** As stored, dial code included. Blank when they didn't leave one. */
+  phone?: string | null;
   serviceLabel: string;
   message: string;
   /** True when this address already existed in the pipeline. */
@@ -141,7 +160,11 @@ export async function notifyRepInboundEnquiry(params: {
        params.message
      )}</blockquote>
      <p>Reply to them directly at
-       <a href="mailto:${encodeURI(params.email)}">${escapeHtml(params.email)}</a>.</p>
+       <a href="mailto:${encodeURI(params.email)}">${escapeHtml(params.email)}</a>${
+         telHref(params.phone)
+           ? `, or call <a href="tel:${telHref(params.phone)}">${escapeHtml(params.phone!.trim())}</a>`
+           : ''
+       }.</p>
      ${
        params.returning
          ? '<p style="color:#555;">This address was already in the pipeline — the message is on their existing lead rather than a new one.</p>'
