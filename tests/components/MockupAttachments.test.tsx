@@ -18,6 +18,19 @@ import {
 const uploadMock = vi.fn(async (..._args: unknown[]) => ({ url: 'https://blob.test/version-two.png' }));
 vi.mock('@vercel/blob/client', () => ({ upload: (...args: unknown[]) => uploadMock(...args) }));
 
+/** Exercised on its own in tests/lib/chunked-upload.test.ts. */
+const uploadInPartsMock = vi.fn(async (..._args: unknown[]) => ({ url: 'https://blob.test/big.mov' }));
+vi.mock('@/lib/chunked-upload', () => ({
+  uploadFileInParts: (...args: unknown[]) => uploadInPartsMock(...args),
+}));
+
+/** A File of a given size without allocating one. */
+function sizedFile(name: string, type: string, size: number): File {
+  const file = new File(['x'], name, { type });
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
+}
+
 function mockup(overrides: Partial<LeadMockupItem> = {}): LeadMockupItem {
   return {
     id: 'mk_1',
@@ -43,6 +56,7 @@ function mockFetch(responses: { post?: unknown; patch?: unknown; ok?: boolean })
 beforeEach(() => {
   vi.unstubAllGlobals();
   uploadMock.mockClear();
+  uploadInPartsMock.mockClear();
 });
 
 describe('the versions already on the lead', () => {
@@ -170,22 +184,39 @@ describe('bringing in the next version', () => {
   it('shows bytes as well as a percentage — "0%" alone reads the same as stuck', async () => {
     const user = userEvent.setup();
     mockFetch({ post: { success: true, mockup: mockup(), index: 1 } });
-    // Hold the upload open at 12MB of 100MB so the progress line can be read.
+    // Hold the upload open at 12MB of 20MB so the progress line can be read.
     uploadMock.mockImplementationOnce(async (..._args: unknown[]) => {
-      const options = _args[2] as { onUploadProgress?: (e: { loaded: number; percentage: number }) => void };
-      options.onUploadProgress?.({ loaded: 12 * 1024 * 1024, percentage: 12 });
+      const options = _args[2] as { onUploadProgress?: (e: { loaded: number }) => void };
+      options.onUploadProgress?.({ loaded: 12 * 1024 * 1024 });
       await new Promise(() => {}); // never settles
       return { url: '' };
     });
     render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
 
-    const big = new File(['x'], 'walkthrough.mp4', { type: 'video/mp4' });
-    Object.defineProperty(big, 'size', { value: 100 * 1024 * 1024 });
+    await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      sizedFile('walkthrough.mp4', 'video/mp4', 20 * 1024 * 1024)
+    );
+
+    expect(await screen.findByRole('status')).toHaveTextContent('12 MB of 20 MB (60%)');
+  });
+
+  it('sends a phone-sized recording through the chunked uploader, not one long request', async () => {
+    const user = userEvent.setup();
+    mockFetch({ post: { success: true, mockup: mockup(), index: 1 } });
+    render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
-    await user.upload(screen.getByLabelText(/upload the file/i), big);
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      sizedFile('screen-recording.mov', 'video/quicktime', 334 * 1024 * 1024)
+    );
 
-    expect(await screen.findByRole('status')).toHaveTextContent('12 MB of 100 MB (12%)');
+    expect(uploadInPartsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ contentType: 'video/quicktime' })
+    );
+    expect(uploadMock).not.toHaveBeenCalled();
   });
 
   it('stops the upload when cancelled, rather than closing the panel over a live one', async () => {
@@ -201,11 +232,11 @@ describe('bringing in the next version', () => {
     });
     render(<MockupAttachments leadId="lead_1" mockups={[]} onChanged={vi.fn()} />);
 
-    const big = new File(['x'], 'walkthrough.mp4', { type: 'video/mp4' });
-    Object.defineProperty(big, 'size', { value: 100 * 1024 * 1024 });
-
     await user.click(screen.getByRole('button', { name: /Attach mockup 1/ }));
-    await user.upload(screen.getByLabelText(/upload the file/i), big);
+    await user.upload(
+      screen.getByLabelText(/upload the file/i),
+      sizedFile('walkthrough.mp4', 'video/mp4', 20 * 1024 * 1024)
+    );
     await user.click(await screen.findByRole('button', { name: 'Cancel upload' }));
 
     expect(signal?.aborted).toBe(true);

@@ -13,6 +13,7 @@ import {
   contentTypeForFile,
   formatFileSize,
 } from '@/lib/uploads';
+import { uploadFileInParts } from '@/lib/chunked-upload';
 
 /**
  * Every mockup sent to one lead, as a row of buttons — "Mockup 1", the date
@@ -372,26 +373,41 @@ export function MockupAttachments({
     setError('');
     setUploading({ name: file.name, loaded: 0, total: file.size, percent: 0, stalled: false });
     try {
-      const blob = await upload(file.name, file, {
-        access: 'public',
-        handleUploadUrl: `/api/admin/leads/${leadId}/mockups/upload`,
-        // Blob otherwise infers the type from the file name, which is how a
-        // video the browser didn't label ends up refused. checkUpload has
-        // already worked out what this is; send that.
-        contentType: checked.contentType,
-        multipart: file.size > MULTIPART_THRESHOLD_BYTES,
-        abortSignal: controller.signal,
-        onUploadProgress: ({ loaded, percentage }) => {
-          lastProgressAt.current = Date.now();
-          setUploading({
-            name: file.name,
-            loaded,
-            total: file.size,
-            percent: Math.round(percentage),
-            stalled: false,
-          });
-        },
-      });
+      const handleUploadUrl = `/api/admin/leads/${leadId}/mockups/upload`;
+      const onProgress = (loaded: number) => {
+        lastProgressAt.current = Date.now();
+        setUploading({
+          name: file.name,
+          loaded,
+          total: file.size,
+          percent: file.size > 0 ? Math.round((loaded / file.size) * 100) : 0,
+          stalled: false,
+        });
+      };
+
+      // Anything big enough to be worth chunking goes through our own
+      // uploader, which keeps the file on disk and re-sends a part that
+      // stops moving. Below that a single request is simpler and fine.
+      const blob =
+        file.size > MULTIPART_THRESHOLD_BYTES
+          ? await uploadFileInParts({
+              file,
+              contentType: checked.contentType,
+              handleUploadUrl,
+              abortSignal: controller.signal,
+              onProgress,
+            })
+          : await upload(file.name, file, {
+              access: 'public',
+              handleUploadUrl,
+              // Blob otherwise infers the type from the file name, which is
+              // how a video the browser didn't label ends up refused.
+              // checkUpload has already worked out what this is; send that.
+              contentType: checked.contentType,
+              abortSignal: controller.signal,
+              onUploadProgress: ({ loaded }) => onProgress(loaded),
+            });
+
       if (await attach({ url: blob.url, fileName: file.name })) setOpen(false);
     } catch (err) {
       // Stopping it yourself isn't a failure worth a red line.
@@ -514,8 +530,9 @@ export function MockupAttachments({
               </div>
               {uploading.stalled ? (
                 <p className="mt-1.5 text-xs text-amber-200">
-                  Nothing has moved for a while — the connection may have dropped, or the tab was in
-                  the background. Cancel and try again on a stronger connection.
+                  Nothing has moved for a while. Parts that stop are re-sent automatically, so give
+                  it a moment — if the bar still doesn&apos;t climb, cancel and send this one from a
+                  computer.
                 </p>
               ) : (
                 uploading.total > MULTIPART_THRESHOLD_BYTES && (
