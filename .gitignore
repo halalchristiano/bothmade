@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local working files — lead CSVs, import sheets, one-off exports. Untracked
+# but not ignored is the dangerous combination: the directory holds real
+# names, emails and phone numbers, and it was one `git add -A` away from
+# being public on a repository that anyone can read.
+/scratchpad
