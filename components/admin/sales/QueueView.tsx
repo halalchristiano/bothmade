@@ -179,6 +179,35 @@ export function QueueView() {
   const [pendingCall, setPendingCall] = useState<{ id: string; company: string; at: number } | null>(null);
   const [savingQuick, setSavingQuick] = useState(false);
   const [quickOutcomeError, setQuickOutcomeError] = useState('');
+  const [snoozingId, setSnoozingId] = useState<string | null>(null);
+
+  /**
+   * Push a lead's follow-up out and drop it off today's list.
+   *
+   * The queue's whole promise is "work down it until it's empty", and until
+   * now the only way to deal with a row you had decided not to ring was to
+   * ring it anyway or leave it there. So it stayed at the top, every day,
+   * until the list stopped meaning anything. Deciding "not today" is a real
+   * outcome and it needs one click.
+   */
+  const snooze = async (row: CallRow, days: number) => {
+    setSnoozingId(row.id);
+    try {
+      const res = await fetch(`/api/admin/leads/${row.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nextFollowUpAt: new Date(Date.now() + days * 86_400_000).toISOString(),
+        }),
+      });
+      if (!res.ok) return;
+      // Off the list immediately rather than after a refetch — the queue is
+      // worked at speed and a row that lingers gets actioned twice.
+      setCallable((prev) => prev.filter((r) => r.id !== row.id));
+    } finally {
+      setSnoozingId(null);
+    }
+  };
 
   const load = async () => {
     try {
@@ -738,6 +767,27 @@ export function QueueView() {
                         >
                           Brief
                         </Link>
+                      </div>
+
+                      {/* "Not today." The only outcome the queue had no button
+                          for, which is how a list you are meant to empty ends
+                          up with the same names on it every morning. */}
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <span className="text-[11px] text-white/25">Not today —</span>
+                        {[
+                          [1, 'tomorrow'],
+                          [3, '3 days'],
+                          [7, 'a week'],
+                        ].map(([days, label]) => (
+                          <button
+                            key={label}
+                            onClick={() => snooze(row, days as number)}
+                            disabled={snoozingId === row.id}
+                            className="rounded-md px-1.5 py-0.5 text-[11px] text-white/45 hover:text-white hover:bg-white/[0.07] disabled:opacity-40 transition-colors"
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   );

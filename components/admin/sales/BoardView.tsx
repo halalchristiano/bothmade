@@ -5,7 +5,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Flame, ExternalLink, Phone, Mail, CheckCircle2 } from 'lucide-react';
-import { LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS, type LeadStatus } from '@/lib/leads';
+import {
+  LEAD_STAGES,
+  LEAD_STATUSES,
+  LEAD_STATUS_SHORT_LABELS,
+  stageForStatus,
+  type LeadStatus,
+} from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
@@ -29,25 +35,16 @@ interface LeadCard {
   assignedTo: { name: string | null } | null;
 }
 
+/** The full status order, which is still what a move steps through. */
 const COLUMN_STATUSES: LeadStatus[] = [...LEAD_STATUSES];
 
-const COLUMN_ACCENT: Record<LeadStatus, string> = {
-  new: 'border-t-white/30',
-  researched: 'border-t-white/40',
-  contacted: 'border-t-sky-400/60',
-  replied: 'border-t-sky-400/70',
-  qualified: 'border-t-purple-400/60',
-  discovery_scheduled: 'border-t-purple-400/70',
-  discovery_done: 'border-t-purple-400/80',
-  mockup_prep: 'border-t-pink-400/60',
-  presented: 'border-t-pink-400/70',
-  proposal_sent: 'border-t-amber-400/60',
-  verbal_yes: 'border-t-amber-400/80',
-  contract_sent: 'border-t-orange-400/70',
-  contract_signed: 'border-t-orange-400/90',
-  deposit_pending: 'border-t-teal-400/70',
-  won: 'border-t-emerald-400/60',
-  lost: 'border-t-red-400/60',
+const STAGE_ACCENT: Record<string, string> = {
+  prospect: 'border-t-white/30',
+  talking: 'border-t-sky-400/70',
+  discovery: 'border-t-purple-400/70',
+  pitching: 'border-t-pink-400/70',
+  closing: 'border-t-amber-400/70',
+  closed: 'border-t-emerald-400/60',
 };
 
 /**
@@ -85,16 +82,23 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken]);
 
+  // Grouped by stage, and within a stage still ordered by exact status, so a
+  // column reads front-to-back like the pipeline it represents.
   const columns = useMemo(() => {
-    const grouped = Object.fromEntries(LEAD_STATUSES.map((s) => [s, [] as LeadCard[]])) as Record<
-      LeadStatus,
+    const grouped = Object.fromEntries(LEAD_STAGES.map((s) => [s.key, [] as LeadCard[]])) as Record<
+      string,
       LeadCard[]
     >;
     for (const lead of leads) {
       if (!matchesSearch(search, lead.company, lead.contactName, lead.email, lead.phone, lead.assignedTo?.name)) {
         continue;
       }
-      grouped[lead.status]?.push(lead);
+      grouped[stageForStatus(lead.status).key]?.push(lead);
+    }
+    for (const key of Object.keys(grouped)) {
+      grouped[key].sort(
+        (a, b) => COLUMN_STATUSES.indexOf(a.status) - COLUMN_STATUSES.indexOf(b.status)
+      );
     }
     return grouped;
   }, [leads, search]);
@@ -165,20 +169,27 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
         </p>
       )}
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {COLUMN_STATUSES.filter((status) => !hideClosedColumns || (status !== 'won' && status !== 'lost')).map((status) => {
-          const columnLeads = columns[status];
+      {/* Columns on a desktop, stacked sections on a phone. Six columns is
+          two and a half screens wide on a laptop and simply the wrong shape
+          on a handset — a board read sideways with one card visible is worse
+          than a list. Same markup, different axis. */}
+      <div className="flex flex-col md:flex-row gap-4 md:overflow-x-auto pb-4">
+        {LEAD_STAGES.filter((stage) => !hideClosedColumns || stage.key !== 'closed').map((stage) => {
+          const columnLeads = columns[stage.key];
           const totalValue = columnLeads.reduce((s, l) => s + (l.dealValue || 0), 0);
           return (
-            <div key={status} className="flex-shrink-0 w-64">
-              <div className={`rounded-2xl border-t-2 ${COLUMN_ACCENT[status]} bg-white/[0.03] border border-white/[0.07] p-3 h-full`}>
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <h2 className="text-sm font-semibold">{LEAD_STATUS_SHORT_LABELS[status]}</h2>
+            <div key={stage.key} className="w-full md:w-[17rem] md:flex-shrink-0">
+              <div className={`rounded-2xl border-t-2 ${STAGE_ACCENT[stage.key]} bg-white/[0.03] border border-white/[0.07] p-3 h-full`}>
+                <div className="flex items-baseline justify-between gap-2 px-1">
+                  <h2 className="text-sm font-semibold">{stage.label}</h2>
                   <span className="text-xs text-white/40">{columnLeads.length}</span>
                 </div>
-                {totalValue > 0 && <p className="text-xs text-white/30 px-1 mb-3">{formatCents(totalValue)}</p>}
+                <p className="text-[11px] text-white/25 px-1 leading-snug">{stage.hint}</p>
+                <p className="text-xs text-white/40 px-1 mt-1 mb-3">
+                  {totalValue > 0 ? formatCents(totalValue) : '\u00a0'}
+                </p>
 
-                <div className="space-y-2 min-h-[100px]">
+                <div className="space-y-2 md:min-h-[100px]">
                   {columnLeads.map((lead) => (
                     <motion.div
                       key={lead.id}
@@ -203,15 +214,25 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
                           {lead.hotLead && <Flame size={13} className="text-amber-400" />}
                         </div>
                       </div>
+                      {/* The column names the stage, so the card names the
+                          exact status. Grouping the view must not cost anyone
+                          the detail it was grouping. */}
+                      <p className="text-[11px] text-white/50 mb-1">
+                        {LEAD_STATUS_SHORT_LABELS[lead.status]}
+                      </p>
                       <p className="text-xs text-white/40 mb-2">
                         {lead.dealValue ? formatCents(lead.dealValue) : '—'}
                         {lead.assignedTo?.name ? ` · ${lead.assignedTo.name}` : ''}
                       </p>
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-0.5">
+                          {/* Bounded by the card's own status, not the
+                              column's — a stage holds several statuses now, so
+                              the column can no longer say where a given lead
+                              sits in the sequence. */}
                           <button
                             onClick={() => handleMove(lead, -1)}
-                            disabled={COLUMN_STATUSES.indexOf(status) === 0}
+                            disabled={COLUMN_STATUSES.indexOf(lead.status) === 0}
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                             aria-label="Move back"
                           >
@@ -219,7 +240,7 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
                           </button>
                           <button
                             onClick={() => handleMove(lead, 1)}
-                            disabled={COLUMN_STATUSES.indexOf(status) === COLUMN_STATUSES.length - 1}
+                            disabled={COLUMN_STATUSES.indexOf(lead.status) === COLUMN_STATUSES.length - 1}
                             className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                             aria-label="Move forward"
                           >

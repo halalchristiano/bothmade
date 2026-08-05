@@ -92,6 +92,74 @@ export const ACTIVE_LEAD_STATUSES = LEAD_STATUSES.filter(
   (s) => s !== 'won' && s !== 'lost'
 ) as Exclude<LeadStatus, 'won' | 'lost'>[];
 
+/**
+ * The board's columns.
+ *
+ * Sixteen statuses is the right granularity for *describing* a deal and the
+ * wrong granularity for *looking* at a pipeline: one column per status made
+ * the board a sixteen-wide horizontal scroll, which is a lot of dragging on a
+ * laptop and completely unusable on a phone. Grouped, the same sixteen become
+ * six columns you can see at once.
+ *
+ * The statuses themselves are untouched, and moving a card still steps one
+ * status at a time — a card simply re-homes to a different column when it
+ * crosses a boundary, and carries its exact status on its face. Collapsing
+ * the view must not coarsen the data underneath it.
+ */
+export interface LeadStage {
+  key: string;
+  label: string;
+  /** One line explaining what this stage means, for the column header. */
+  hint: string;
+  statuses: readonly LeadStatus[];
+}
+
+export const LEAD_STAGES: readonly LeadStage[] = [
+  {
+    key: 'prospect',
+    label: 'Prospects',
+    hint: 'Found, not yet spoken to',
+    statuses: ['new', 'researched'],
+  },
+  {
+    key: 'talking',
+    label: 'Talking',
+    hint: 'Contact made, working out if it is real',
+    statuses: ['contacted', 'replied', 'qualified'],
+  },
+  {
+    key: 'discovery',
+    label: 'Discovery',
+    hint: 'A call is booked or has happened',
+    statuses: ['discovery_scheduled', 'discovery_done'],
+  },
+  {
+    key: 'pitching',
+    label: 'Pitching',
+    hint: 'Building or showing them something',
+    statuses: ['mockup_prep', 'presented'],
+  },
+  {
+    key: 'closing',
+    label: 'Closing',
+    hint: 'Price is out, waiting on signature or payment',
+    statuses: ['proposal_sent', 'verbal_yes', 'contract_sent', 'contract_signed', 'deposit_pending'],
+  },
+  {
+    key: 'closed',
+    label: 'Closed',
+    hint: 'Won or lost',
+    statuses: ['won', 'lost'],
+  },
+] as const;
+
+/** Which column a status belongs in. */
+export function stageForStatus(status: LeadStatus): LeadStage {
+  // Falls back to the first stage rather than throwing: an unrecognised status
+  // is a row that should still appear on the board somewhere, not a crash.
+  return LEAD_STAGES.find((stage) => stage.statuses.includes(status)) ?? LEAD_STAGES[0];
+}
+
 /** Realistic starting points when quick-adding a lead — early-pipeline stages only.
  * Deeper stages (discovery/mockup/proposal/contract) get set as things actually progress. */
 export const QUICK_ADD_STATUSES = [

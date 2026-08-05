@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock, CalendarRange } from 'lucide-react';
+import { Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Clock, Download, Upload, Send, PhoneCall, MailCheck, MailX, Trash2, FileClock, CalendarRange, Star } from 'lucide-react';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, SearchFilter, matchesSearch, clickableRowProps, BrandButton, Badge, EmptyState, inputClass } from '@/components/admin/ui';
@@ -11,6 +11,7 @@ import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { ImportLeadsModal } from '@/components/admin/ImportLeadsModal';
 import { ImportHistoryModal } from '@/components/admin/ImportHistoryModal';
 import { BulkEmailComposer } from '@/components/admin/BulkEmailComposer';
+import { leadCsv, leadCsvFilename } from '@/lib/lead-export';
 import { ColdEmailPreviewModal } from '@/components/admin/ColdEmailPreviewModal';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 
@@ -139,6 +140,18 @@ const FILTER_LABELS: Record<Filter, string> = {
  */
 type SortKey = 'company' | 'contact' | 'status' | 'value' | 'assigned' | 'activity';
 
+/** A named search + sort. Stored per browser; see the state comment below. */
+interface SavedView {
+  id: string;
+  name: string;
+  search: string;
+  statusFilter: string;
+  sortKey: SortKey | null;
+  sortDir: 'asc' | 'desc';
+}
+
+const SAVED_VIEWS_KEY = 'bothmade_leads_saved_views';
+
 /** Header label and sort key, in table order. */
 const SORTABLE_COLUMNS: Array<[SortKey, string]> = [
   ['company', 'Company'],
@@ -167,6 +180,12 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
   const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
   const [reassignTargetId, setReassignTargetId] = useState('');
   const [reassigning, setReassigning] = useState(false);
+  const [snoozing, setSnoozing] = useState(false);
+  // Saved views: a search plus a sort, under a name. Local to the browser on
+  // purpose — "my cold-call list" is a personal habit, not shared config.
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [namingView, setNamingView] = useState(false);
+  const [viewName, setViewName] = useState('');
   const [previewBeforeBulkSend, setPreviewBeforeBulkSend] = useState<boolean | null>(null);
   const [previewingBatch, setPreviewingBatch] = useState<LeadRow[] | null>(null);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
@@ -219,6 +238,42 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
     if (refreshToken > 0) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SAVED_VIEWS_KEY);
+      if (stored) setSavedViews(JSON.parse(stored));
+    } catch {
+      /* corrupt or unavailable — an empty list is a fine starting point */
+    }
+  }, []);
+
+  const persistViews = (views: SavedView[]) => {
+    setSavedViews(views);
+    try {
+      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(views));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const saveCurrentView = () => {
+    const name = viewName.trim();
+    if (!name) return;
+    persistViews([
+      ...savedViews,
+      { id: `${Date.now()}`, name, search, statusFilter, sortKey, sortDir },
+    ]);
+    setViewName('');
+    setNamingView(false);
+  };
+
+  const applyView = (view: SavedView) => {
+    setSearch(view.search);
+    setStatusFilter(view.statusFilter as Filter);
+    setSortKey(view.sortKey);
+    setSortDir(view.sortDir);
+  };
 
   const byStatus = useMemo(() => {
     if (statusFilter === 'all') return leads;
@@ -398,6 +453,47 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
     }
   };
 
+  /**
+   * Push a batch of follow-ups out by N days.
+   *
+   * The one bulk action that keeps a call list honest: without it, deciding
+   * "not this week" for twenty leads means opening twenty leads, so nobody
+   * does it and the queue rots into something you scroll past.
+   */
+  const handleBulkSnooze = async (days: number) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setSnoozing(true);
+    const nextFollowUpAt = new Date(Date.now() + days * 86_400_000).toISOString();
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/admin/leads/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nextFollowUpAt }),
+          })
+        )
+      );
+      setSelected(new Set());
+      await load();
+    } finally {
+      setSnoozing(false);
+    }
+  };
+
+  const handleExportCsv = () => {
+    // What is on screen, not the whole book — an export should match the
+    // filters you just spent time setting.
+    const blob = new Blob([leadCsv(filtered)], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = leadCsvFilename();
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleBulkDelete = async () => {
     if (selected.size === 0) return;
     setBulkDeleting(true);
@@ -489,6 +585,15 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
             <Upload size={16} />
             Import CSV
           </BrandButton>
+          <BrandButton
+            variant="quiet"
+            onClick={handleExportCsv}
+            title="Download what's on screen as a CSV"
+            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 whitespace-nowrap"
+          >
+            <Download size={16} />
+            Export CSV
+          </BrandButton>
           <button
             onClick={() => setShowImportHistory(true)}
             title="View past CSV imports"
@@ -554,6 +659,74 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
       )}
 
       <SearchFilter value={search} onChange={setSearch} count={searched.length} total={byStatus.length} />
+
+      {/* Saved views: a filter, a search and a sort under a name you chose.
+          "My cold-call list" is a habit, not shared configuration, so these
+          live in the browser rather than the database. */}
+      <div className="flex flex-wrap items-center gap-1.5 mt-3 mb-1">
+        <Star size={12} className="text-white/25" />
+        {savedViews.length === 0 && !namingView && (
+          <span className="text-xs text-white/30">
+            No saved views — set up a filter and search you use often, then save it.
+          </span>
+        )}
+        {savedViews.map((v) => (
+          <span
+            key={v.id}
+            className="inline-flex items-center rounded-lg border border-white/12 bg-white/[0.03] text-xs"
+          >
+            <button
+              onClick={() => applyView(v)}
+              className="px-2.5 py-1 text-white/70 hover:text-white transition-colors"
+            >
+              {v.name}
+            </button>
+            <button
+              onClick={() => persistViews(savedViews.filter((x) => x.id !== v.id))}
+              aria-label={`Delete the ${v.name} view`}
+              className="px-1.5 py-1 text-white/25 hover:text-red-300 transition-colors"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {namingView ? (
+          <span className="inline-flex items-center gap-1">
+            <input
+              value={viewName}
+              onChange={(e) => setViewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveCurrentView();
+                if (e.key === 'Escape') setNamingView(false);
+              }}
+              autoFocus
+              maxLength={40}
+              placeholder="Name this view…"
+              className="rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1 text-xs text-white placeholder:text-white/25 outline-none focus:border-sky-400/50"
+            />
+            <button
+              onClick={saveCurrentView}
+              disabled={!viewName.trim()}
+              className="rounded-lg bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-40 hover:bg-white/[0.14] transition-colors"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setNamingView(false)}
+              className="px-1.5 py-1 text-xs text-white/35 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setNamingView(true)}
+            className="rounded-lg border border-dashed border-white/15 px-2.5 py-1 text-xs text-white/40 hover:text-white hover:border-white/30 transition-colors"
+          >
+            + Save this view
+          </button>
+        )}
+      </div>
 
       {(coldReadyLeads.length > 0 || needsCallLeads.length > 0) && (
         <Card className="p-5 mb-6" glow="emerald">
@@ -677,6 +850,25 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                 <Send size={14} />
                 Compose cold email
               </BrandButton>
+              {/* "Not this week, all of you." Without it, pushing twenty
+                  follow-ups back means opening twenty leads, so nobody does
+                  it and the call list rots into something you scroll past. */}
+              <div className="inline-flex items-center gap-1">
+                <button
+                  onClick={() => handleBulkSnooze(3)}
+                  disabled={snoozing}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  <Clock size={13} /> Snooze 3d
+                </button>
+                <button
+                  onClick={() => handleBulkSnooze(7)}
+                  disabled={snoozing}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  <Clock size={13} /> 1 week
+                </button>
+              </div>
               <div className="flex items-center gap-2">
                 <select
                   value={reassignTargetId}
