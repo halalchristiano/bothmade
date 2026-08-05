@@ -9,6 +9,7 @@ import { MAX_CHARGE_CENTS, MIN_CHARGE_CENTS, dollarsToCents } from '@/lib/billin
 import { formatCentsExact } from '@/lib/pricing';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
+import { RefundEstimate } from '@/components/admin/RefundEstimate';
 
 /**
  * Charge a customer an amount that never came out of the catalogue.
@@ -440,6 +441,10 @@ function BillingWorkspace() {
             </div>
           )}
         </Card>
+
+        {/* Between raising a charge and the ledger, because it belongs to
+            neither: it is the thinking you do before you touch either one. */}
+        <RefundEstimate projectId={projectId} />
 
         <Card className="p-6">
           <CardHeader
