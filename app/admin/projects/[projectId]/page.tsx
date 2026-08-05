@@ -9,6 +9,8 @@ import { EmailComposer } from '@/components/admin/EmailComposer';
 import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
 import { Linkify } from '@/components/Linkify';
+import { InvoiceActions } from '@/components/admin/InvoiceActions';
+import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
 import { Paperclip, X as XIcon } from 'lucide-react';
 import {
   ADD_ONS,
@@ -53,6 +55,10 @@ interface ProjectDetail {
     paymentUrl: string | null;
     createdAt: string;
     paidAt: string | null;
+    refundedCents?: number;
+    refundMethod?: string | null;
+    refundReason?: string | null;
+    voidReason?: string | null;
     issuedBy?: string | null;
     sentToEmail?: string | null;
   }>;
@@ -671,18 +677,27 @@ export default function AdminProjectDetailPage() {
                           </p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-semibold">{formatCentsExact(invoice.amountCents)}</p>
-                          <span
-                            className={`text-[10px] uppercase tracking-wider font-semibold ${
-                              invoice.status === 'paid'
-                                ? 'text-emerald-300'
-                                : invoice.status === 'void'
-                                ? 'text-white/30'
-                                : 'text-amber-300'
-                            }`}
-                          >
-                            {invoice.status === 'paid' ? 'Paid' : invoice.status === 'void' ? 'Void' : 'Open'}
-                          </span>
+                          <p className={`text-sm font-semibold ${invoice.status === 'void' ? 'text-white/40 line-through' : ''}`}>
+                            {formatCentsExact(invoice.amountCents)}
+                          </p>
+                          {(() => {
+                            const state = displayState({ ...invoice, refundedCents: invoice.refundedCents ?? 0 });
+                            return (
+                              <span
+                                className={`text-[10px] uppercase tracking-wider font-semibold ${
+                                  state === 'paid'
+                                    ? 'text-emerald-300'
+                                    : state === 'void'
+                                      ? 'text-white/30'
+                                      : state === 'open'
+                                        ? 'text-amber-300'
+                                        : 'text-purple-300'
+                                }`}
+                              >
+                                {DISPLAY_STATE_LABELS[state]}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px]">
@@ -704,6 +719,14 @@ export default function AdminProjectDetailPage() {
                             Copy pay link
                           </button>
                         )}
+                        <InvoiceActions
+                          invoice={{
+                            ...invoice,
+                            refundedCents: invoice.refundedCents ?? 0,
+                            sentToEmail: invoice.sentToEmail ?? null,
+                          }}
+                          onDone={loadProject}
+                        />
                         {invoice.sentToEmail ? (
                           <span className="text-white/30">Sent to {invoice.sentToEmail}</span>
                         ) : (

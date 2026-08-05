@@ -1,0 +1,255 @@
+import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
+import { prisma } from '@/lib/prisma';
+import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { readRefundRequest, settlement, type SettlementLine } from '@/lib/invoice-lifecycle';
+import { sendInvoiceRefundedEmail } from '@/lib/email';
+import { formatCentsExact } from '@/lib/pricing';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2025-08-27.basil',
+});
+
+/**
+ * Give money back.
+ *
+ * Section 8(l) of the contract: "A refund due under this Section is processed
+ * to the original payment method." So a card refund runs through Stripe for
+ * real, and the two other methods exist because the contract's world is
+ * bigger than Stripe's — a payment that arrived by transfer goes back by
+ * transfer, and a credit is value held rather than money moved. All three are
+ * recorded identically; what differs is whether anything actually left the
+ * account, and the books say which.
+ *
+ * The ordering is the whole design. Stripe moves the money FIRST, and only a
+ * confirmed refund is written down. The other order — record it, then call
+ * Stripe — produces the failure that cannot be cleaned up: books saying the
+ * client was refunded while the money is still sitting here, and nobody
+ * looking because the screen says it is done.
+ *
+ * A refund cannot be undone. Neither can this route.
+ */
+
+/** Deductions the contract allows to come off a refund. Free-form label + amount. */
+function readDeductions(value: unknown): SettlementLine[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return null;
+  if (value.length > 10) return null;
+
+  const out: SettlementLine[] = [];
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null) return null;
+    const { label, amountCents } = raw as { label?: unknown; amountCents?: unknown };
+    if (typeof label !== 'string' || !label.trim()) return null;
+    if (typeof amountCents !== 'number' || !Number.isFinite(amountCents) || amountCents < 0) return null;
+    out.push({ label: label.trim().slice(0, 120), amountCents: Math.round(amountCents) });
+  }
+  return out;
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ invoiceId: string }> }
+) {
+  try {
+    const session = await requireStaff();
+    if (!session) return unauthorizedResponse();
+
+    const { invoiceId } = await params;
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        client: { select: { company: true, email: true, contactName: true } },
+        project: { select: { id: true, name: true, status: true } },
+        payments: { select: { id: true, stripeSessionId: true, amount: true, type: true } },
+      },
+    });
+    if (!invoice) {
+      return NextResponse.json({ error: 'That invoice no longer exists.' }, { status: 404 });
+    }
+
+    const parsed = readRefundRequest(invoice, {
+      amountCents: body?.amountCents,
+      method: body?.method,
+      reason: body?.reason,
+    });
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const { amountCents, method, reason } = parsed.draft;
+
+    const deductions = readDeductions(body?.deductions);
+    if (deductions === null) {
+      return NextResponse.json(
+        { error: 'Every deduction needs a description and an amount of zero or more.' },
+        { status: 400 }
+      );
+    }
+
+    const statement = settlement({ refundCents: amountCents, deductions });
+
+    let stripeRefundId: string | null = null;
+    if (method === 'stripe') {
+      // The Payment row stores the Checkout Session, not the charge. The
+      // session is what knows which PaymentIntent actually took the money.
+      const payment = invoice.payments.find((p) => p.stripeSessionId);
+      if (!payment?.stripeSessionId) {
+        return NextResponse.json(
+          {
+            error:
+              "There's no Stripe payment recorded against this invoice, so there's nothing to refund a card from. If the money came in another way, record it as a manual refund.",
+          },
+          { status: 409 }
+        );
+      }
+
+      let paymentIntentId: string | null = null;
+      try {
+        const checkout = await stripe.checkout.sessions.retrieve(payment.stripeSessionId);
+        paymentIntentId =
+          typeof checkout.payment_intent === 'string'
+            ? checkout.payment_intent
+            : checkout.payment_intent?.id ?? null;
+      } catch (error) {
+        console.error(`Refund ${invoice.number}: could not read the checkout session:`, error);
+        return NextResponse.json(
+          { error: "Couldn't reach Stripe to find the original payment. Nothing has been changed." },
+          { status: 502 }
+        );
+      }
+
+      if (!paymentIntentId) {
+        return NextResponse.json(
+          {
+            error:
+              "Stripe has no payment against that checkout — it may never have completed. Record this as a manual refund if the money went back another way.",
+          },
+          { status: 409 }
+        );
+      }
+
+      try {
+        // The net is what actually leaves the account: deductions the contract
+        // allows us to withhold are withheld, not refunded and re-invoiced.
+        const refund = await stripe.refunds.create(
+          {
+            payment_intent: paymentIntentId,
+            amount: statement.returnedToClientCents,
+            reason: 'requested_by_customer',
+            metadata: { invoiceId: invoice.id, invoiceNumber: invoice.number },
+          },
+          // Stripe's own guard against a double-click becoming two refunds.
+          { idempotencyKey: `refund-${invoice.id}-${invoice.refundedCents}-${amountCents}` }
+        );
+        stripeRefundId = refund.id;
+      } catch (error) {
+        console.error(`Refund ${invoice.number}: Stripe refused the refund:`, error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return NextResponse.json(
+          { error: `Stripe refused the refund: ${message}. Nothing has been changed.`, staffOnly: true },
+          { status: 502 }
+        );
+      }
+    }
+
+    // Money has moved (or deliberately hasn't). Only now is it written down.
+    //
+    // The refund is also a ledger entry, not just a flag on the invoice. Every
+    // balance calculation in the system reads Payment rows — see
+    // amountPaidTowardProject() — so without a negative row a refunded deposit
+    // goes on reading as money received, and the project it belongs to reads
+    // as paid down by an amount that is back in the client's account.
+    //
+    // The negative row carries the *original* payment's type, which makes it
+    // net out in exactly the right place: a refunded `custom` charge leaves
+    // the project balance alone (it was never counted toward it), while a
+    // refunded deposit correctly reopens it.
+    //
+    // A credit moves no money and so writes no ledger row. That is the whole
+    // distinction: the client is owed value, the studio still holds the cash.
+    const original = invoice.payments[0];
+    const writeLedgerRow = method !== 'credit' && Boolean(original);
+
+    const [updated] = await prisma.$transaction([
+      prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          refundedCents: invoice.refundedCents + amountCents,
+          refundedAt: new Date(),
+          refundReason: reason,
+          refundMethod: method,
+          stripeRefundId: stripeRefundId ?? invoice.stripeRefundId,
+          refundedById: session.userId,
+        },
+      }),
+      ...(writeLedgerRow
+        ? [
+            prisma.payment.create({
+              data: {
+                projectId: invoice.projectId,
+                // Negative: this is the same ledger the payments live in, and
+                // a refund is a payment going the other way.
+                amount: -statement.returnedToClientCents,
+                type: original!.type,
+                invoiceId: invoice.id,
+              },
+            }),
+          ]
+        : []),
+    ]);
+
+    const clientEmail = invoice.sentToEmail || invoice.client.email;
+    const notifyClient = body?.notifyClient !== false && Boolean(clientEmail);
+    let clientNotified = false;
+    if (notifyClient && clientEmail) {
+      const sent = await sendInvoiceRefundedEmail({
+        to: clientEmail,
+        contactName: invoice.client.contactName,
+        company: invoice.client.company,
+        invoiceNumber: invoice.number,
+        description: invoice.description,
+        method,
+        reason,
+        refundLabel: formatCentsExact(amountCents),
+        deductions: statement.deductions.map((d) => ({
+          label: d.label,
+          amountLabel: formatCentsExact(d.amountCents),
+        })),
+        dueFromClientLabel: formatCentsExact(statement.dueFromClientCents),
+        returnedToClientLabel: formatCentsExact(statement.returnedToClientCents),
+      }).catch((error) => {
+        console.error(`Refund ${invoice.number}: client email failed:`, error);
+        return { sent: false };
+      });
+      clientNotified = Boolean(sent?.sent);
+    }
+
+    await prisma.projectUpdate.create({
+      data: {
+        projectId: invoice.projectId,
+        title:
+          method === 'credit'
+            ? `Credit of ${formatCentsExact(amountCents)} applied`
+            : `Refund of ${formatCentsExact(statement.returnedToClientCents)} issued`,
+        description:
+          method === 'credit'
+            ? `${formatCentsExact(amountCents)} from invoice ${invoice.number} is held as a credit against future work. ${reason}`
+            : `${formatCentsExact(statement.returnedToClientCents)} from invoice ${invoice.number} is on its way back to you${
+                method === 'stripe' ? ' via the original card, usually within 5–10 days' : ''
+              }. ${reason}`,
+        statusStage: invoice.project.status,
+        userId: session.userId,
+      },
+    }).catch((error) => console.error(`Refund ${invoice.number}: timeline entry failed:`, error));
+
+    return NextResponse.json(
+      { success: true, invoice: updated, settlement: statement, clientNotified },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Refund invoice error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

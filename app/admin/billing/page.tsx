@@ -7,6 +7,8 @@ import { Receipt, Plus, X } from 'lucide-react';
 import { Badge, BrandButton, Card, CardHeader, EmptyState, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
 import { MAX_CHARGE_CENTS, MIN_CHARGE_CENTS, dollarsToCents } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
+import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
+import { InvoiceActions } from '@/components/admin/InvoiceActions';
 
 /**
  * Charge a customer an amount that never came out of the catalogue.
@@ -42,6 +44,10 @@ interface InvoiceRow {
   pdfUrl: string | null;
   paymentUrl: string | null;
   sentToEmail: string | null;
+  refundedCents: number;
+  refundMethod: string | null;
+  refundReason: string | null;
+  voidReason: string | null;
   createdAt: string;
   client: { id: string; company: string; email: string };
   project: { id: string; name: string };
@@ -466,11 +472,37 @@ function BillingWorkspace() {
                         {new Date(invoice.createdAt).toLocaleDateString()}
                       </p>
                     </div>
+                    {/* An invoice is no longer just open/paid/void: it can be
+                        part refunded, fully refunded, or credited, and those
+                        are different enough to a client asking about their
+                        money that one badge has to say which. */}
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold tabular-nums">{formatCentsExact(invoice.amountCents)}</p>
-                      <Badge tone={invoice.status === 'paid' ? 'emerald' : invoice.status === 'void' ? 'neutral' : 'amber'} solid>
-                        {invoice.status === 'paid' ? 'Paid' : invoice.status === 'void' ? 'Void' : 'Open'}
-                      </Badge>
+                      <p className={`text-sm font-semibold tabular-nums ${
+                        invoice.status === 'void' ? 'text-white/40 line-through' : ''
+                      }`}>
+                        {formatCentsExact(invoice.amountCents)}
+                      </p>
+                      {(() => {
+                        const state = displayState(invoice);
+                        const tone =
+                          state === 'paid'
+                            ? 'emerald'
+                            : state === 'void'
+                              ? 'neutral'
+                              : state === 'refunded' || state === 'part-refunded' || state === 'credited'
+                                ? 'purple'
+                                : 'amber';
+                        return (
+                          <Badge tone={tone} solid>
+                            {DISPLAY_STATE_LABELS[state]}
+                          </Badge>
+                        );
+                      })()}
+                      {invoice.refundedCents > 0 && (
+                        <p className="mt-0.5 text-[10px] text-white/35 tabular-nums">
+                          {formatCentsExact(invoice.refundedCents)} back
+                        </p>
+                      )}
                     </div>
                   </div>
                   </Link>
@@ -496,7 +528,18 @@ function BillingWorkspace() {
                     <span className="text-white/30">
                       {invoice.sentToEmail ? `Sent to ${invoice.sentToEmail}` : 'Not emailed'}
                     </span>
+                    <InvoiceActions invoice={invoice} onDone={loadInvoices} />
                   </div>
+                  {/* The reason is the whole value of the record. An invoice
+                      that changed and doesn't say why is the hardest thing to
+                      explain a year later. */}
+                  {(invoice.voidReason || invoice.refundReason) && (
+                    <p className="mt-1 text-[11px] text-white/30">
+                      {invoice.voidReason
+                        ? `Cancelled: ${invoice.voidReason}`
+                        : `${invoice.refundMethod === 'credit' ? 'Credited' : 'Refunded'}: ${invoice.refundReason}`}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

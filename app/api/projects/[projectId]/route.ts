@@ -149,6 +149,16 @@ export async function GET(
             paymentUrl: invoice.paymentUrl,
             createdAt: invoice.createdAt,
             paidAt: invoice.paidAt,
+            // A client whose money came back must be able to see that here.
+            // Both sides read this list precisely so the two of us can never
+            // be looking at two different stories about the same number.
+            refundedCents: invoice.refundedCents,
+            refundMethod: invoice.refundMethod,
+            refundedAt: invoice.refundedAt,
+            // The reasons are written for the client — they are what goes in
+            // their email — so there is nothing here to withhold.
+            refundReason: invoice.refundReason,
+            voidReason: invoice.voidReason,
             issuedBy: session.type === 'user' ? invoice.issuedBy?.name || invoice.issuedBy?.email || null : undefined,
             sentToEmail: session.type === 'user' ? invoice.sentToEmail : undefined,
           })),

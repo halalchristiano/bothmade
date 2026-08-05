@@ -313,12 +313,18 @@ export async function GET(request: Request) {
               preview: m.content.slice(0, 120),
               createdAt: m.createdAt,
             })),
+            // A refund is a Payment row with a negative amount — the same
+            // ledger, running the other way. Saying "paid $-2,500" would be
+            // arithmetically true and unreadable.
             ...recentPayments.map((p) => ({
               type: 'payment' as const,
               id: p.id,
               projectId: p.project.id,
-              label: `${p.project.client.company} paid on ${p.project.name}`,
-              preview: `$${(p.amount / 100).toLocaleString()} (${p.type})`,
+              label:
+                p.amount < 0
+                  ? `${p.project.client.company} refunded on ${p.project.name}`
+                  : `${p.project.client.company} paid on ${p.project.name}`,
+              preview: `$${(Math.abs(p.amount) / 100).toLocaleString()} (${p.type})`,
               createdAt: p.createdAt,
             })),
             ...recentLeadWins.map((a) => ({

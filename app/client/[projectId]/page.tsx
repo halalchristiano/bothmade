@@ -77,6 +77,10 @@ interface Project {
     paymentUrl: string | null;
     createdAt: string;
     paidAt: string | null;
+    refundedCents?: number;
+    refundMethod?: string | null;
+    refundReason?: string | null;
+    voidReason?: string | null;
   }>;
   estimatedCompletionDate: string | null;
   liveUrl: string | null;
@@ -952,6 +956,23 @@ export default function ClientDashboard() {
                   {invoices.map((invoice) => {
                     const paid = invoice.status === 'paid';
                     const voided = invoice.status === 'void';
+                    // Money that came back has to say so here. A client
+                    // looking at "Paid" on an invoice they were refunded
+                    // against has no way to reconcile their own bank
+                    // statement, and asks us instead.
+                    const refunded = invoice.refundedCents ?? 0;
+                    const credited = invoice.refundMethod === 'credit';
+                    const label = voided
+                      ? 'Cancelled'
+                      : refunded <= 0
+                        ? paid
+                          ? 'Paid'
+                          : 'Due'
+                        : credited
+                          ? 'Credited'
+                          : refunded >= invoice.amountCents
+                            ? 'Refunded'
+                            : 'Part refunded';
                     return (
                       <div key={invoice.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                         <div className="flex items-start justify-between gap-4">
@@ -965,13 +986,30 @@ export default function ClientDashboard() {
                             <p className="text-sm font-semibold">{formatCentsExact(invoice.amountCents)}</p>
                             <span
                               className={`inline-block mt-1 text-[10px] uppercase tracking-wider font-semibold ${
-                                paid ? 'text-emerald-300' : voided ? 'text-white/30' : 'text-amber-300'
+                                refunded > 0
+                                  ? 'text-purple-300'
+                                  : paid
+                                    ? 'text-emerald-300'
+                                    : voided
+                                      ? 'text-white/30'
+                                      : 'text-amber-300'
                               }`}
                             >
-                              {paid ? 'Paid' : voided ? 'Cancelled' : 'Due'}
+                              {label}
                             </span>
+                            {refunded > 0 && refunded < invoice.amountCents && (
+                              <p className="mt-0.5 text-[10px] text-white/35">
+                                {formatCentsExact(refunded)} back
+                              </p>
+                            )}
                           </div>
                         </div>
+
+                        {(invoice.voidReason || invoice.refundReason) && (
+                          <p className="mt-2 text-xs text-white/45">
+                            {invoice.voidReason || invoice.refundReason}
+                          </p>
+                        )}
 
                         <div className="flex flex-wrap items-center gap-2 mt-3">
                           {!paid && !voided && invoice.paymentUrl && (

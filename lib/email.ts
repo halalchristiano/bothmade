@@ -1175,3 +1175,124 @@ export async function sendMockupEmail(opts: {
     }),
   });
 }
+
+/**
+ * "That invoice is cancelled — there's nothing to pay."
+ *
+ * Sent only when the client was told about the invoice in the first place; an
+ * invoice raised and voided before anyone saw it needs no apology. The tone is
+ * deliberately not apologetic beyond the facts: a client who receives a
+ * grovelling email about a billing error starts wondering what else is wrong.
+ * State it, give the reason, and get out of their inbox.
+ */
+export async function sendInvoiceVoidedEmail(input: {
+  to: string;
+  contactName: string | null;
+  company: string;
+  invoiceNumber: string;
+  description: string;
+  amountLabel: string;
+  reason: string;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>We've cancelled invoice <strong style="color:#fff;">${esc(input.invoiceNumber)}</strong> — there's nothing to pay, and any payment link we sent you no longer works.</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">Cancelled</span> <span style="color:#fff;">${esc(input.invoiceNumber)}</span></p>
+      <p style="margin:0 0 10px 0; font-size:20px; font-weight:700; color:rgba(255,255,255,0.55); text-decoration:line-through;">${esc(input.amountLabel)}</p>
+      <p style="margin:0; font-size:13px; color:rgba(255,255,255,0.6);">${esc(input.description)}</p>
+    </div>
+    <p><span style="color:rgba(255,255,255,0.4);">Why:</span> ${esc(input.reason)}</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">If you'd already paid this one, tell us and we'll put it right the same day. Otherwise there's nothing you need to do.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `Cancelled — invoice ${input.invoiceNumber}`,
+    html: renderShell({
+      eyebrow: 'Invoice cancelled',
+      title: `Invoice ${input.invoiceNumber} has been cancelled`,
+      bodyHtml,
+    }),
+  });
+}
+
+/**
+ * A refund, stated the way Section 8(l) of the contract requires it to be.
+ *
+ * "Every settlement under this Section is stated as two lines — amount due
+ * from the Client, and amount returned to the Client — at least one of which
+ * is always zero." Both lines are printed even when one is zero, because the
+ * point of the clause is that the client can see there is no third number
+ * hiding somewhere. Deductions are itemised above them, which Section 8(f)
+ * separately requires in writing.
+ */
+export async function sendInvoiceRefundedEmail(input: {
+  to: string;
+  contactName: string | null;
+  company: string;
+  invoiceNumber: string;
+  description: string;
+  method: 'stripe' | 'manual' | 'credit';
+  reason: string;
+  refundLabel: string;
+  deductions: Array<{ label: string; amountLabel: string }>;
+  dueFromClientLabel: string;
+  returnedToClientLabel: string;
+}): Promise<SendResult> {
+  const isCredit = input.method === 'credit';
+
+  const settlementRow = (label: string, value: string, strong: boolean) => `
+    <tr>
+      <td style="padding:7px 0; color:rgba(255,255,255,${strong ? '0.75' : '0.45'}); font-size:14px;">${esc(label)}</td>
+      <td style="padding:7px 0; text-align:right; color:${strong ? '#fff' : 'rgba(255,255,255,0.45)'}; font-size:14px; font-weight:${strong ? '700' : '400'};">${esc(value)}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>${
+      isCredit
+        ? `We've applied a credit of <strong style="color:#fff;">${esc(input.refundLabel)}</strong> against invoice ${esc(input.invoiceNumber)}. It comes off your next invoice rather than going back to your card.`
+        : `We've refunded <strong style="color:#fff;">${esc(input.returnedToClientLabel)}</strong> against invoice ${esc(input.invoiceNumber)}.`
+    }</p>
+    <p><span style="color:rgba(255,255,255,0.4);">Why:</span> ${esc(input.reason)}</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 12px 0; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.35);">Settlement</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${settlementRow(`Invoice ${input.invoiceNumber} — ${input.description}`, input.refundLabel, false)}
+        ${input.deductions
+          .map((d) => settlementRow(`Less: ${d.label}`, `−${d.amountLabel}`, false))
+          .join('')}
+        <tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,0.12); padding-top:4px;"></td></tr>
+        ${settlementRow('Amount due from you', input.dueFromClientLabel, input.dueFromClientLabel !== '$0')}
+        ${settlementRow(
+          isCredit ? 'Amount credited to you' : 'Amount returned to you',
+          input.returnedToClientLabel,
+          input.returnedToClientLabel !== '$0'
+        )}
+      </table>
+    </div>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">${
+      input.method === 'stripe'
+        ? 'This goes back to the card you paid with. Stripe usually takes 5–10 days to show it, depending on your bank.'
+        : isCredit
+          ? "Nothing has left our account and nothing needs to leave yours — the credit is held against your next invoice."
+          : "We're sending this back outside Stripe. If it hasn't reached you within a few days, reply and we'll chase it."
+    }</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Questions about any of this? Just reply — it comes straight to us.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.to,
+    subject: isCredit
+      ? `Credit applied — invoice ${input.invoiceNumber}`
+      : `Refunded ${input.returnedToClientLabel} — invoice ${input.invoiceNumber}`,
+    html: renderShell({
+      eyebrow: isCredit ? 'Credit applied' : 'Refund issued',
+      title: isCredit
+        ? `${input.refundLabel} credited to your account`
+        : `${input.returnedToClientLabel} on its way back to you`,
+      bodyHtml,
+    }),
+  });
+}

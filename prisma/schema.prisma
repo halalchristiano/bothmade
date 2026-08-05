@@ -81,6 +81,8 @@ model User {
   csvImportLogs        CsvImportLog[]
   uploadedMockups      LeadMockup[]     @relation("MockupUploader")
   issuedInvoices       Invoice[]        @relation("InvoiceIssuer")
+  voidedInvoices       Invoice[]        @relation("InvoiceVoider")
+  refundedInvoices     Invoice[]        @relation("InvoiceRefunder")
   recurringOffers      RecurringOffer[] @relation("RecurringOfferAuthor")
 
   @@map("users")
@@ -797,6 +799,32 @@ model Invoice {
 
   paidAt    DateTime?
   voidedAt  DateTime?
+
+  // --- Life after issue ---------------------------------------------------
+  // Why an invoice changed, and who changed it. Required by the routes, not
+  // by the column: an invoice that moved for no recorded reason is the
+  // hardest thing to explain a year later, and the person who could explain
+  // it is never in the room.
+  voidReason  String?
+  voidedById  String?
+  voidedBy    User?   @relation("InvoiceVoider", fields: [voidedById], references: [id], onDelete: SetNull)
+
+  // Cumulative, because refunds can be partial and can happen more than once.
+  // The ceiling is amountCents, checked against this rather than against the
+  // invoice total — two partial refunds are each fine on their own and can
+  // still add up to more than the client ever paid.
+  refundedCents  Int       @default(0)
+  refundedAt     DateTime?
+  refundReason   String?
+  // "stripe" — money went back to the card. "manual" — sent by transfer, and
+  // recorded here so the books don't claim Stripe did it. "credit" — nothing
+  // moved; the value is held against future work. Kept apart because "we
+  // refunded you" and "we owe you" are different sentences to a client.
+  refundMethod   String?
+  stripeRefundId String?
+  refundedById   String?
+  refundedBy     User?     @relation("InvoiceRefunder", fields: [refundedById], references: [id], onDelete: SetNull)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
