@@ -355,3 +355,76 @@ export async function notifyAdminsChangeOrderSigned(params: {
   );
   await notifyAdmins(`${params.number} signed: ${params.company}`, html, { alsoStudioInbox: true });
 }
+
+/**
+ * A design review period lapsed without the client responding.
+ *
+ * Section 4 says that approves the design and makes Payment 2 due. It is the
+ * one moment in the whole agreement where money becomes payable because of
+ * something a client DIDN'T do — so nothing in the ordinary run of a day
+ * would ever surface it, and it goes to the studio inbox as well.
+ */
+export async function notifyAdminsDesignDeemedApproved(params: {
+  projectId: string;
+  projectName: string;
+  company: string;
+  presentedAt: Date;
+  paymentLabel: string | null;
+  amountLabel: string | null;
+}): Promise<void> {
+  const html = wrap(
+    'Design deemed approved',
+    `<p><strong>${escapeHtml(params.company)}</strong> never responded to the design on
+      ${escapeHtml(params.projectName)}, presented ${escapeHtml(
+        params.presentedAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+      )}.</p>
+     <p style="color:#555;">The Section 4 review period has lapsed, so the design is approved and
+      Build can start.${
+        params.paymentLabel
+          ? ` <strong>${escapeHtml(params.paymentLabel)}${
+              params.amountLabel ? ` (${escapeHtml(params.amountLabel)})` : ''
+            }</strong> is now due and has not been invoiced.`
+          : ''
+      }</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'Open Project'
+  );
+  await notifyAdmins(`Design deemed approved: ${params.company}`, html, { alsoStudioInbox: true });
+}
+
+/**
+ * A payment is a week past due. Time to pick up the phone.
+ *
+ * The single most valuable thing the chase schedule produces. Most late B2B
+ * payments are administrative — the invoice reached the wrong person, they
+ * need a PO number, whoever signs is away — and a call fixes all three in
+ * four minutes where another email fixes none of them.
+ */
+export async function notifyAdminsPaymentNeedsCall(params: {
+  projectId: string;
+  company: string;
+  contactName: string | null;
+  phone: string | null;
+  label: string;
+  amountLabel: string;
+  daysPastDue: number;
+  chaseCount: number;
+}): Promise<void> {
+  const html = wrap(
+    'Ring them about this one',
+    `<p><strong>${escapeHtml(params.company)}</strong> is
+      ${params.daysPastDue} days past due on
+      <strong>${escapeHtml(params.label)} (${escapeHtml(params.amountLabel)})</strong>, after
+      ${params.chaseCount} email${params.chaseCount === 1 ? '' : 's'}.</p>
+     <p style="color:#555;">${
+       params.phone
+         ? `Call ${escapeHtml(params.contactName || params.company)} on <strong>${escapeHtml(params.phone)}</strong>.`
+         : 'No phone number on file for them.'
+     } Late payments are usually admin rather than refusal — wrong contact, a PO number, somebody away — and a call sorts all of those far faster than another reminder.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'Open Project'
+  );
+  await notifyAdmins(`Ring ${params.company} — ${params.amountLabel} overdue`, html, {
+    alsoStudioInbox: true,
+  });
+}

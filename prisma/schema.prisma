@@ -180,6 +180,25 @@ model Project {
   // by accident after a page reload forgets the button was already used.
   lastPaymentReminderSentAt DateTime?
 
+  // --- The Section 4 review clock -----------------------------------------
+  // Payment 2 is due on Design Approval, "including deemed approval under
+  // Section 4" — five Business Days of client silence after a design is
+  // presented approves it. That is the clause that most protects the studio,
+  // and it was the one thing in the contract nothing tracked: approval was
+  // inferred from somebody moving a dropdown to Build, so a client who simply
+  // never replied left the payment gate closed forever.
+  //
+  // designReviewEndsAt is computed once, when the design is presented, and
+  // stored rather than derived on read. A deadline the client has been told
+  // must not move because the business-day helper changed later.
+  designPresentedAt    DateTime?
+  designReviewEndsAt   DateTime?
+  designApprovedAt     DateTime?
+  /// True when approval came from silence rather than from the client saying
+  /// yes. Worth keeping apart: one is a decision, the other is a default, and
+  /// only one of them is worth quoting back to somebody who disputes it.
+  designApprovalDeemed Boolean   @default(false)
+
   // Hides this project from the Priorities list until the given date.
   //
   // A list of things needing attention with no way to say "seen it, not this
@@ -212,6 +231,7 @@ model Project {
   changeOrders        ChangeOrder[]
 
   @@index([prioritySnoozedUntil])
+  @@index([designReviewEndsAt])
   @@map("projects")
 }
 
@@ -713,10 +733,18 @@ model Instalment {
   emailSentAt     DateTime?
   paidAt          DateTime?
 
+  // Automated chasing. An invoice that went out and was never paid used to
+  // sit silently: the studio had to remember, and the Stripe link expired
+  // after 24 hours so a client returning to an old email found a dead button.
+  // The daily job re-sends with a freshly minted link and kills the old one.
+  lastChasedAt DateTime?
+  chaseCount   Int       @default(0)
+
   createdAt DateTime @default(now())
 
   @@unique([projectId, index])
   @@index([projectId])
+  @@index([status, lastChasedAt])
   @@map("instalments")
 }
 

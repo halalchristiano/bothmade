@@ -131,6 +131,8 @@ export function uninvoicedPayments(
     id: string;
     name: string;
     statusStage: number;
+    /** Set once the Section 4 review period is answered or has lapsed. */
+    designApprovedAt?: Date | null;
     client: { company: string };
     instalments: GateInstalment[];
   }>
@@ -139,7 +141,12 @@ export function uninvoicedPayments(
   for (const project of projects) {
     for (const inst of project.instalments) {
       if (inst.status !== 'scheduled') continue;
-      if (!gateReached(inst.trigger, project.statusStage)) continue;
+      // A recorded design approval opens the second gate on its own, whatever
+      // the stage says. That is the whole point of the review clock: a client
+      // who never replied has approved the design under Section 4, and the
+      // payment falls due without anybody moving a dropdown on their behalf.
+      const openedByApproval = inst.trigger === 'design-approval' && Boolean(project.designApprovedAt);
+      if (!openedByApproval && !gateReached(inst.trigger, project.statusStage)) continue;
       out.push({
         projectId: project.id,
         projectName: project.name,

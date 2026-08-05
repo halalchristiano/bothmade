@@ -166,6 +166,15 @@ export async function GET(
             ? JSON.parse(project.deliverables)
             : [],
           contractUrl: project.contractUrl,
+          // The Section 4 review clock. Both dashboards read it: the client
+          // needs to see the deadline they were given, and deemed approval
+          // is only defensible if they could.
+          designReview: {
+            presentedAt: project.designPresentedAt,
+            reviewEndsAt: project.designReviewEndsAt,
+            approvedAt: project.designApprovedAt,
+            deemed: project.designApprovalDeemed,
+          },
           // Capability token for the public /status link. Only handed to
           // people already authorized to see the project — it's the secret
           // that makes the shared link work, so it travels no further than

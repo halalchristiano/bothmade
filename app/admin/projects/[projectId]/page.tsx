@@ -11,6 +11,7 @@ import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
 import { ChangeOrderPanel } from '@/components/admin/ChangeOrderPanel';
 import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
+import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
 import { stageMessage } from '@/lib/stage-gates';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
@@ -87,6 +88,12 @@ interface ProjectDetail {
   }>;
   sourcedLead?: { id: string; company: string } | null;
   handoffAcknowledgedAt?: string | null;
+  designReview?: {
+    presentedAt: string | null;
+    reviewEndsAt: string | null;
+    approvedAt: string | null;
+    deemed: boolean;
+  };
   contractUrl?: string | null;
 }
 
@@ -795,6 +802,23 @@ export default function AdminProjectDetailPage() {
             </div>
 
             <div className="mt-6 pt-6 border-t border-white/10">
+              {/* Directly above the stage control, because presenting the
+                  design is the act that makes moving to Build legitimate. */}
+              <div className="mb-4">
+                <DesignReviewPanel
+                  projectId={projectId}
+                  review={
+                    project.designReview ?? {
+                      presentedAt: null,
+                      reviewEndsAt: null,
+                      approvedAt: null,
+                      deemed: false,
+                    }
+                  }
+                  onChanged={loadProject}
+                />
+              </div>
+
               <p className="text-sm font-semibold mb-3">Current Status</p>
               <span className="inline-block px-3 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold capitalize mb-4">
                 {project.status}

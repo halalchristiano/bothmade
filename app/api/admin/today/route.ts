@@ -127,6 +127,7 @@ export async function GET() {
             id: true,
             name: true,
             statusStage: true,
+            designApprovedAt: true,
             client: { select: { company: true } },
             instalments: {
               where: { status: 'scheduled' },

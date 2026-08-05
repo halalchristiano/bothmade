@@ -1361,3 +1361,100 @@ export async function sendChangeOrderEmail(input: {
     }),
   });
 }
+
+/**
+ * A chase for a payment that has been invoiced and not paid.
+ *
+ * The link is always freshly minted, and the previous one is dead by the time
+ * this arrives — a Stripe Checkout Session expires after 24 hours, so a
+ * client returning to an older email would otherwise find a button that does
+ * nothing, which is a payment lost to friction rather than to unwillingness.
+ *
+ * Nothing in this shape is sent before the due date: the contract gives a
+ * client fourteen days, and a supplier who starts reminding on day two has
+ * not given them fourteen days.
+ */
+export async function sendPaymentChaseEmail(input: {
+  to: string;
+  contactName: string | null;
+  projectName: string;
+  label: string;
+  invoiceNumber: string | null;
+  amountLabel: string;
+  subject: string;
+  line: string;
+  dueLabel: string;
+  paymentUrl: string;
+  seriouslyLate: boolean;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>${esc(input.line)}</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0;"><span style="color:rgba(255,255,255,0.4);">${esc(input.label)}</span>${
+        input.invoiceNumber ? ` <span style="color:rgba(255,255,255,0.35);">· ${esc(input.invoiceNumber)}</span>` : ''
+      }</p>
+      <p style="margin:0 0 6px 0; font-size:22px; font-weight:700; color:#fff;">${esc(input.amountLabel)}</p>
+      <p style="margin:0; font-size:13px; color:rgba(255,255,255,0.45);">${esc(input.projectName)} · due ${esc(input.dueLabel)}</p>
+    </div>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">The button below is a fresh payment link — any earlier link we sent has expired, so please use this one. Payment is handled securely by Stripe and we never see or store your card details.</p>
+    ${
+      input.seriouslyLate
+        ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">If there's a problem with the work or with this invoice, tell us — we'd far rather fix it than keep sending reminders.</p>`
+        : `<p style="font-size:13px; color:rgba(255,255,255,0.5);">Already paid? Ignore this — it stops on its own once the payment clears.</p>`
+    }
+  `;
+
+  return sendEmailDetailed({
+    to: input.to,
+    subject: input.subject,
+    html: renderShell({
+      eyebrow: input.seriouslyLate ? 'Overdue' : 'Payment due',
+      title: `${input.amountLabel} — ${input.label}`,
+      bodyHtml,
+      ctaLabel: `Pay ${input.amountLabel}`,
+      ctaUrl: input.paymentUrl,
+    }),
+  });
+}
+
+/**
+ * "Here's the design — tell us by Friday, or we'll take it as a yes."
+ *
+ * The deadline is stated up front rather than buried, because deemed approval
+ * under Section 4 is only fair if the client knew the terms before their
+ * silence started counting against them. A client told the date has been
+ * treated properly; one who discovers the rule in an invoice has not.
+ */
+export async function sendDesignPresentedEmail(input: {
+  to: string;
+  contactName: string | null;
+  projectName: string;
+  noticeLine: string;
+  reviewEndsLabel: string;
+  dashboardUrl: string;
+  note: string | null;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>The design for <strong style="color:#fff;">${esc(input.projectName)}</strong> is ready for you to look at.</p>
+    ${input.note ? `<p style="border-left:2px solid rgba(125,211,252,0.6); padding-left:16px; color:rgba(255,255,255,0.75);">${esc(input.note)}</p>` : ''}
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 4px 0; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.35);">Please review by</p>
+      <p style="margin:0; font-size:18px; font-weight:700; color:#fff;">${esc(input.reviewEndsLabel)}</p>
+    </div>
+    <p style="font-size:13px; color:rgba(255,255,255,0.6);">${esc(input.noticeLine)}</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `Your design is ready — please review by ${input.reviewEndsLabel}`,
+    html: renderShell({
+      eyebrow: 'Design review',
+      title: `${input.projectName} — ready for your review`,
+      bodyHtml,
+      ctaLabel: 'See the design',
+      ctaUrl: input.dashboardUrl,
+    }),
+  });
+}

@@ -166,3 +166,41 @@ describe('what the client is told', () => {
     expect(message.title).toContain('archaeology');
   });
 });
+
+describe('a design approved without the stage moving', () => {
+  /**
+   * The whole point of the Section 4 review clock. A client who never replied
+   * has approved the design, and Payment 2 falls due — without anybody having
+   * moved a dropdown on their behalf, which is exactly what nobody was going
+   * to do for a client who had gone quiet.
+   */
+  it('opens payment 2 on a recorded approval, whatever the stage says', () => {
+    const found = uninvoicedPayments([
+      {
+        id: 'p1',
+        name: 'Ridgeline site',
+        statusStage: 1, // still sitting at Design
+        designApprovedAt: new Date(2026, 7, 12),
+        client: { company: 'Ridgeline Dental' },
+        instalments: schedule,
+      },
+    ]);
+
+    expect(found.map((f) => f.label)).toEqual(['Payment 2 of 3']);
+  });
+
+  it('still finds nothing when the design has not been approved', () => {
+    const found = uninvoicedPayments([
+      {
+        id: 'p1',
+        name: 'Ridgeline site',
+        statusStage: 1,
+        designApprovedAt: null,
+        client: { company: 'Ridgeline Dental' },
+        instalments: schedule,
+      },
+    ]);
+
+    expect(found).toEqual([]);
+  });
+});
