@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Phone, ExternalLink, ChevronRight, Clock } from 'lucide-react';
+import { Phone, ExternalLink, ChevronRight, Clock, Sparkles } from 'lucide-react';
 import { buildLeadBrief } from '@/lib/call-brief';
 import { CALL_OUTCOMES, type CallOutcome } from '@/lib/call-outcomes';
 import { OBJECTIONS } from '@/lib/objections';
@@ -83,6 +83,14 @@ export default function CallCockpit() {
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Tidying the note. `noteBeforeTidy` exists so the rep can put their own
+  // words back with one tap — a rewrite you can't undo is one you have to
+  // read carefully every time, which costs more than it saves.
+  const [tidying, setTidying] = useState(false);
+  const [tidyError, setTidyError] = useState<string | null>(null);
+  const [noteBeforeTidy, setNoteBeforeTidy] = useState<string | null>(null);
+  const [nextStep, setNextStep] = useState('');
+
   // Post-outcome follow-up
   const [draft, setDraft] = useState<FollowUpDraft | null>(null);
   const [draftSubject, setDraftSubject] = useState('');
@@ -127,17 +135,53 @@ export default function CallCockpit() {
   const positionInQueue = queue.findIndex((q) => q.id === leadId);
   const nextInQueue = positionInQueue >= 0 ? queue[positionInQueue + 1] : queue[0];
 
+  /**
+   * Hands the scribbled note over to be tidied and fills the fields with
+   * what comes back. Nothing is saved — the rep still presses Log it, and
+   * can undo, edit, or ignore any of it first.
+   */
+  async function tidyNote() {
+    if (!lead || !note.trim()) return;
+    setTidying(true);
+    setTidyError(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${lead.id}/tidy-note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note, outcome: pendingOutcome?.key }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTidyError(data.error || "Couldn't tidy that up — log the note as you wrote it.");
+        return;
+      }
+      setNoteBeforeTidy(note);
+      if (data.note) setNote(data.note);
+      setNextStep(data.nextStep || '');
+      // Only ever fills a date the rep hasn't already set themselves.
+      if (data.followUpDate && !outcomeDate) setOutcomeDate(data.followUpDate);
+    } catch {
+      setTidyError("Couldn't tidy that up — log the note as you wrote it.");
+    } finally {
+      setTidying(false);
+    }
+  }
+
   async function logOutcome(outcome: CallOutcome) {
     if (!lead) return;
     setSaving(true);
     setActionError(null);
     try {
+      // The next step is part of the record, not a separate note to lose.
+      const body = [note.trim(), nextStep.trim() ? `Next: ${nextStep.trim()}` : '']
+        .filter(Boolean)
+        .join('\n\n');
       const res = await fetch(`/api/admin/leads/${lead.id}/call-outcome`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           outcome: outcome.key,
-          note: note.trim() || undefined,
+          note: body || undefined,
           followUpAt: outcomeDate || undefined,
           // The route always took a reason; the old UI never sent one, so
           // every phone loss was recorded as a generic shrug.
@@ -151,6 +195,9 @@ export default function CallCockpit() {
       }
       setPendingOutcome(null);
       setNote('');
+      setNextStep('');
+      setNoteBeforeTidy(null);
+      setTidyError(null);
       setOutcomeDate('');
       setLostReason('');
       const followUp = buildFollowUpDraft(outcome.key, {
@@ -402,13 +449,62 @@ export default function CallCockpit() {
                     </div>
                   )}
 
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Anything worth remembering from the call (optional)"
-                    rows={2}
-                    className={inputClass}
-                  />
+                  <div className="space-y-2">
+                    <textarea
+                      value={note}
+                      onChange={(e) => {
+                        setNote(e.target.value);
+                        setNoteBeforeTidy(null);
+                      }}
+                      placeholder="Anything worth remembering from the call — shorthand is fine"
+                      rows={3}
+                      className={inputClass}
+                      aria-label="Call note"
+                    />
+
+                    {note.trim() && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={tidyNote}
+                          disabled={tidying}
+                          className="flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-[11.5px] text-white/60 transition-colors hover:border-white/30 hover:text-white disabled:opacity-40"
+                        >
+                          <Sparkles size={11} aria-hidden="true" />
+                          {tidying ? 'Tidying…' : 'Tidy it up'}
+                        </button>
+                        {noteBeforeTidy !== null && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNote(noteBeforeTidy);
+                              setNoteBeforeTidy(null);
+                              setNextStep('');
+                            }}
+                            className="rounded-full border border-white/10 px-3 py-1 text-[11.5px] text-white/40 transition-colors hover:text-white"
+                          >
+                            Put mine back
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {tidyError && <p className="text-[11px] text-amber-300">{tidyError}</p>}
+
+                    {nextStep && (
+                      <div>
+                        <p className="mb-1 text-[11px] uppercase tracking-wide text-white/40">
+                          Next step — goes on the record with the note
+                        </p>
+                        <input
+                          value={nextStep}
+                          onChange={(e) => setNextStep(e.target.value)}
+                          className={inputClass}
+                          aria-label="Next step"
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   <BrandButton
                     onClick={() => logOutcome(pendingOutcome)}

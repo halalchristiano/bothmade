@@ -45,6 +45,7 @@ export async function POST(
         status: true,
         designPresentedAt: true,
         designApprovedAt: true,
+        designRound: true,
         client: { select: { email: true, contactName: true, company: true } },
       },
     });
@@ -62,9 +63,27 @@ export async function POST(
     const { presentedAt, endsAt } = startReview(now);
     const note = typeof body?.note === 'string' && body.note.trim() ? body.note.trim().slice(0, 1000) : null;
 
+    /**
+     * A second presentation is a new round.
+     *
+     * Round 1 is the original concept under Exhibit A; each one after it is a
+     * revision the client asked for. The number is what their feedback gets
+     * filed against, so "they asked for this on round 2" stays answerable
+     * however many versions the project ends up going through.
+     *
+     * The round advances on PRESENTING, not on their feedback — the feedback
+     * belongs to the version they were looking at when they wrote it, and
+     * bumping it any earlier would file it against a design that did not
+     * exist yet.
+     */
+    const isRepresentation = Boolean(project.designPresentedAt);
     await prisma.project.update({
       where: { id: projectId },
-      data: { designPresentedAt: presentedAt, designReviewEndsAt: endsAt },
+      data: {
+        designPresentedAt: presentedAt,
+        designReviewEndsAt: endsAt,
+        ...(isRepresentation ? { designRound: { increment: 1 } } : {}),
+      },
     });
 
     const reviewEndsLabel = endsAt.toLocaleDateString('en-US', {

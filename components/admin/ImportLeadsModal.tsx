@@ -42,7 +42,11 @@ const COLUMN_GROUPS: Array<{ title: string; blurb?: string; columns: Column[] }>
     blurb:
       'Used to size the quote. Any line item with no price in our catalogue gets a suggested one scaled from these, so the more you fill in, the better that suggestion is.',
     columns: [
-      { header: 'companySize', description: 'solo, small, medium, large or enterprise', example: 'small' },
+      {
+        header: 'companySize',
+        description: 'solo (just them), small (2-10), medium (11-50), large (51-250) or enterprise (250+)',
+        example: 'small',
+      },
       { header: 'employeeCount', description: 'Headcount', example: '8' },
       { header: 'locationCount', description: 'Number of sites / branches', example: '2' },
       { header: 'annualRevenue', description: 'Annual revenue in dollars', example: '1200000' },
@@ -54,7 +58,12 @@ const COLUMN_GROUPS: Array<{ title: string; blurb?: string; columns: Column[] }>
     blurb: 'Raw material for a personalised opening line.',
     columns: [
       { header: 'originalWebsite', description: 'Their existing site — a one-click link on the lead page', example: 'https://example.com' },
-      { header: 'currentWebsite', description: 'A written verdict on the site they have today (put a URL here instead and it lands in originalWebsite)', example: 'Template site, no booking, last updated 2019.' },
+      {
+        header: 'siteVerdict',
+        description:
+          'Your written verdict on the site they have today — sentences, not a link. The link goes in originalWebsite above.',
+        example: 'Template site, no booking, last updated 2019.',
+      },
       { header: 'googleRating', description: 'Google star rating', example: '4.8' },
       { header: 'googleReviewCount', description: 'Number of Google reviews', example: '212' },
       { header: 'googleMapsURL', description: 'Link to their Maps listing', example: 'https://maps.app.goo.gl/xyz' },
@@ -129,6 +138,12 @@ const COLUMN_GROUPS: Array<{ title: string; blurb?: string; columns: Column[] }>
         example: '$900',
         template: ['Essential point 1 price', 'Essential point 2 price', 'Essential point 3 price'],
       },
+      {
+        header: 'painPointTags',
+        description:
+          'A different thing from the written "Pain point" columns above — this is the fixed checklist, semicolon-separated, used for filtering and for the automatic guesses. Pick from: no-website; outdated-design; not-mobile-friendly; slow-site; poor-seo; no-analytics; no-app; manual-processes; no-booking; no-ecommerce; weak-branding; security-concerns; scaling-issues; disconnected-tools',
+        example: 'outdated-design;slow-site',
+      },
     ],
   },
   {
@@ -138,12 +153,6 @@ const COLUMN_GROUPS: Array<{ title: string; blurb?: string; columns: Column[] }>
       { header: 'lowestEstimate', description: 'Bottom of the quotable range — the figure the rep says out loud', example: '$8,000' },
       { header: 'highestEstimate', description: 'Top of the quotable range', example: '$21,000' },
       { header: 'range', description: 'Only if you did not give the two columns above — one cell holding both ends', example: '$8,000 - $21,000' },
-      {
-        header: 'painPoints',
-        description:
-          'The tag checklist, semicolon-separated: no-website; outdated-design; not-mobile-friendly; slow-site; poor-seo; no-analytics; no-app; manual-processes; no-booking; no-ecommerce; weak-branding; security-concerns; scaling-issues; disconnected-tools',
-        example: 'outdated-design;slow-site',
-      },
     ],
   },
   {
@@ -164,6 +173,105 @@ const TEMPLATE_HEADERS = COLUMN_GROUPS.flatMap((g) =>
   g.columns.flatMap((c) => c.template ?? [c.header])
 );
 
+/**
+ * The columns that actually make the product work.
+ *
+ * Everything below reads as equally important, and it isn't: a sheet with
+ * these five filled in properly produces a usable call brief and a quotable
+ * range, and a sheet with forty columns but a vague observation produces an
+ * email nobody answers. Named up front so a researcher knows where the
+ * effort belongs.
+ */
+const START_HERE: Array<{ header: string; why: string }> = [
+  { header: 'company', why: 'the only column that is actually required' },
+  { header: 'email', why: 'no address, no outreach — the lead can only be called' },
+  { header: 'personalizedObservation', why: 'the one line the whole cold email hangs on' },
+  { header: 'Pain point 1, 2, 3 …', why: 'what is wrong today — the top of the rep’s brief' },
+  { header: 'Essential point 1, 2, 3 …', why: 'what they need, and what the quote is built from' },
+];
+
+/**
+ * How to write the four fields where the wording decides whether it works.
+ *
+ * Shown rather than described: the difference between a good observation and
+ * a bad one is not a rule anyone can follow from a definition, but it is
+ * obvious the moment you see the pair side by side.
+ */
+const WRITING_GUIDE: Array<{
+  header: string;
+  shape: string;
+  good: string;
+  bad: string;
+  why: string;
+}> = [
+  {
+    header: 'personalizedObservation',
+    shape: 'One sentence. Something you could only say about this business.',
+    good: 'Your Google reviews are exceptional, but they are barely visible on the homepage.',
+    bad: 'Your website could be improved and is not very modern.',
+    why: 'The second one could be sent to anybody, and reads like it was.',
+  },
+  {
+    header: 'personalisedColdEmail',
+    shape: 'First line "Subject: …", a blank line, then three short paragraphs. Use [First Name] and it fills in.',
+    good: 'Subject: Thoughts on Linpotia\n\nHi [First Name], I came across Linpotia while …',
+    bad: 'Hi there, I hope this email finds you well. We are a web design agency …',
+    why: 'No subject line means it cannot be sent in one click, and a generic opener gets deleted.',
+  },
+  {
+    header: 'Pain point 1, 2, 3 …',
+    shape: '"Thing: what it costs them." A colon, then the consequence in plain words.',
+    good: 'No online booking: they take every appointment by phone and lose the after-hours ones.',
+    bad: 'Bad booking',
+    why: 'The part after the colon is what the rep says out loud. Without it there is nothing to say.',
+  },
+  {
+    header: 'Essential point 1, 2, 3 …',
+    shape: 'Same shape, plus " | $900" on the end if you already know the price.',
+    good: 'Booking system: lets customers book at 9pm without anyone answering the phone. | $900',
+    bad: 'Booking system',
+    why: 'Anything with no price is priced from our catalogue, or flagged for you to approve.',
+  },
+];
+
+/**
+ * One filled row, built from the same examples shown in the reference below,
+ * so the two can never disagree.
+ *
+ * This is the part people actually use. Nobody reads a column reference and
+ * then writes a correct sheet; they open an example, see the shape, and edit
+ * it. The blank template gets the headers right — this gets the *content*
+ * right, which is where sheets go wrong.
+ */
+const EXAMPLE_ROW: Record<string, string> = Object.fromEntries(
+  COLUMN_GROUPS.flatMap((g) =>
+    g.columns.flatMap((c) =>
+      // A family of columns ("Pain point 1, 2, 3 …") fills only its first
+      // member — a row with five identical pain points teaches the wrong
+      // lesson.
+      (c.template ?? [c.header]).map((header, i) => [header, i === 0 ? c.example : ''])
+    )
+  )
+);
+
+function toCsv(headers: string[], rows: Array<Record<string, string>>): string {
+  const cell = (value: string) =>
+    /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  return [
+    headers.map(cell).join(','),
+    ...rows.map((row) => headers.map((h) => cell(row[h] ?? '')).join(',')),
+  ].join('\n');
+}
+
+function downloadCsv(name: string, csv: string): void {
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [csvText, setCsvText] = useState('');
@@ -181,15 +289,13 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
 
   // A blank sheet with every column already headed, so nobody has to
   // transcribe the list below by hand and misspell one of them.
-  const downloadTemplate = () => {
-    const csv = `${TEMPLATE_HEADERS.map((h) => (h.includes(',') ? `"${h}"` : h)).join(',')}\n`;
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'bothmade-leads-template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const downloadTemplate = () =>
+    downloadCsv('bothmade-leads-template.csv', `${toCsv(TEMPLATE_HEADERS, [])}\n`);
+
+  // The same sheet with one business filled in properly — open it, see the
+  // shape, replace the contents.
+  const downloadExample = () =>
+    downloadCsv('bothmade-leads-example.csv', toCsv(TEMPLATE_HEADERS, [EXAMPLE_ROW]));
 
   const handleText = (text: string) => {
     setCsvText(text);
@@ -304,21 +410,89 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
           </div>
         ) : (
           <>
-            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 mb-4">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-xs font-semibold text-white/70">Columns (header row required)</p>
-                  <p className="text-[11px] text-white/35 mt-0.5">
-                    Only <code className="text-sky-300">company</code> is required — leave out anything you don't
-                    have. Header wording is matched loosely, so "Business name" and "Public email" land correctly.
+            {/* Start here — the shortest path to a sheet that works */}
+            <div className="rounded-xl border border-sky-400/25 bg-sky-400/[0.05] p-4 mb-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-white">Start with the example</p>
+                  <p className="text-[11px] leading-relaxed text-white/45 mt-0.5">
+                    One business filled in properly, in every column. Open it, see the shape, replace the
+                    contents. Quicker than reading the reference below, and harder to get wrong.
                   </p>
                 </div>
-                <button
-                  onClick={downloadTemplate}
-                  className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] font-medium text-white/70 hover:bg-white/5 hover:text-white transition-colors"
-                >
-                  <Download size={12} /> Blank template
-                </button>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    onClick={downloadExample}
+                    className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-white/15 transition-colors"
+                  >
+                    <Download size={12} /> Filled example
+                  </button>
+                  <button
+                    onClick={downloadTemplate}
+                    className="flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] font-medium text-white/70 hover:bg-white/5 hover:text-white transition-colors"
+                  >
+                    <Download size={12} /> Blank
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                  If you fill in nothing else, fill in these
+                </p>
+                <div className="mt-1.5 space-y-1">
+                  {START_HERE.map((c) => (
+                    <p key={c.header} className="text-xs text-white/40">
+                      <code className="text-sky-300">{c.header}</code> — {c.why}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* The four fields where the wording is the whole job */}
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 mb-3">
+              <p className="text-xs font-semibold text-white/70">How to word the ones that matter</p>
+              <p className="text-[11px] text-white/35 mt-0.5">
+                Everything else is a fact you either have or don't. These four are written, and the wording is
+                what decides whether they work.
+              </p>
+              <div className="mt-3 space-y-3">
+                {WRITING_GUIDE.map((g) => (
+                  <div key={g.header} className="rounded-lg border border-white/[0.07] bg-white/[0.02] p-3">
+                    <p className="text-xs">
+                      <code className="text-sky-300">{g.header}</code>
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-white/45">{g.shape}</p>
+                    <div className="mt-2 space-y-1.5">
+                      <p className="flex gap-2 text-[11px] leading-relaxed">
+                        <span className="shrink-0 text-emerald-400" aria-hidden="true">
+                          ✓
+                        </span>
+                        <span className="whitespace-pre-line text-white/70">{g.good}</span>
+                      </p>
+                      <p className="flex gap-2 text-[11px] leading-relaxed">
+                        <span className="shrink-0 text-red-400" aria-hidden="true">
+                          ✕
+                        </span>
+                        <span className="whitespace-pre-line text-white/35 line-through decoration-white/20">
+                          {g.bad}
+                        </span>
+                      </p>
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-white/30">{g.why}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 mb-4">
+              <div className="mb-3">
+                <p className="text-xs font-semibold text-white/70">Every column</p>
+                <p className="text-[11px] text-white/35 mt-0.5">
+                  Only <code className="text-sky-300">company</code> is required — leave out anything you don't
+                  have. Header wording is matched loosely, so "Business name" and "Public email" land correctly.
+                </p>
               </div>
 
               <div className="space-y-3.5">

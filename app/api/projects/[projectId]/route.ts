@@ -4,6 +4,8 @@ import { getCurrentSession } from '@/lib/auth';
 import { forbiddenResponse, requirePrincipal, unauthorizedResponse } from '@/lib/middleware';
 import { amountPaidTowardProject } from '@/lib/billing';
 import { ensureInstalments } from '@/lib/instalments';
+import { revisionState } from '@/lib/design-feedback';
+import { DIRECTION_STATEMENT, directionStatus } from '@/lib/design-direction';
 
 export async function GET(
   request: NextRequest,
@@ -19,6 +21,7 @@ export async function GET(
       where: { id: projectId },
       include: {
         instalments: { orderBy: { index: 'asc' } },
+        designDirection: true,
         client: true,
         messages: {
           orderBy: { createdAt: 'asc' },
@@ -174,7 +177,21 @@ export async function GET(
             reviewEndsAt: project.designReviewEndsAt,
             approvedAt: project.designApprovedAt,
             deemed: project.designApprovalDeemed,
+            // Which version they are looking at, and where they stand in the
+            // two rounds Exhibit A includes. Shown to them rather than
+            // tracked quietly: it makes people gather their thoughts into one
+            // considered list instead of firing off three emails, and the day
+            // a round becomes billable is never a surprise.
+            round: project.designRound,
+            revisions: revisionState(project.designRevisionsUsed),
           },
+          // The brief they wrote and signed before we designed anything, and
+          // the sentence they signed. Sent to the client because a brief they
+          // cannot re-read is not much of an agreement — and because seeing
+          // it beside the design is how they judge whether we hit it.
+          designDirection: project.designDirection,
+          designDirectionStatus: directionStatus(project.designDirection),
+          designDirectionStatement: DIRECTION_STATEMENT,
           // Capability token for the public /status link. Only handed to
           // people already authorized to see the project — it's the secret
           // that makes the shared link work, so it travels no further than

@@ -109,6 +109,13 @@ interface TodayData {
       client: { company: string };
     }>;
     mockupRequests: number;
+    unreadDesignFeedback: Array<{
+      id: string;
+      round: number;
+      createdAt: string;
+      consumedRound: boolean;
+      project: { id: string; name: string; client: { company: string } };
+    }>;
   };
 }
 
@@ -236,6 +243,27 @@ export function Today() {
   // a client who has said yes and is waiting, then money already invoiced,
   // then a warm prospect going cold.
   const headline = (() => {
+    /**
+     * Top of the list, above the money.
+     *
+     * Everything below this is something WE can act on whenever we get to it.
+     * This is a client who has stopped and is waiting on us — their review
+     * clock stopped when they sent it, so nothing moves and no gate opens
+     * until somebody reads it. It is also the one item here with a person on
+     * the other end wondering whether we received it.
+     */
+    if (deliver.unreadDesignFeedback.length > 0) {
+      const f = deliver.unreadDesignFeedback[0];
+      const waiting = daysSince(f.createdAt);
+      return {
+        text:
+          deliver.unreadDesignFeedback.length === 1
+            ? `${f.project.client.company} sent design feedback${waiting > 0 ? ` ${waiting} day${waiting === 1 ? '' : 's'} ago` : ''} and nobody has read it.`
+            : `${deliver.unreadDesignFeedback.length} clients have sent design feedback nobody has read.`,
+        href: `/admin/projects/${f.project.id}`,
+        cta: 'Read it',
+      };
+    }
     if (sell.approvedMockups.length > 0) {
       return {
         text: `${sell.approvedMockups[0].lead.company} approved their mockup. Send the proposal.`,
@@ -513,6 +541,20 @@ export function Today() {
           icon={Wrench}
           accent="bg-purple-400/15 text-purple-300"
         >
+          {/* Above the stalled list, because it is the only genuinely
+              blocking thing in this lane: the client has stopped, told us
+              exactly what they want, and their review clock has stopped with
+              them. Every day it sits unread the project doesn't move and the
+              next payment gate stays shut. */}
+          {deliver.unreadDesignFeedback.map((f) => (
+            <Row
+              key={f.id}
+              href={`/admin/projects/${f.project.id}`}
+              title={`${f.project.client.company} — design feedback`}
+              detail={`Round ${f.round} · sent ${daysSince(f.createdAt)}d ago · unread`}
+              tone="warn"
+            />
+          ))}
           {deliver.stalledProjects.map((p) => (
             <Row
               key={p.id}
@@ -522,7 +564,9 @@ export function Today() {
               tone="warn"
             />
           ))}
-          {deliver.stalledProjects.length === 0 && <Quiet text="Every project moved this week." />}
+          {deliver.stalledProjects.length === 0 && deliver.unreadDesignFeedback.length === 0 && (
+            <Quiet text="Every project moved this week." />
+          )}
 
           <div className="flex flex-wrap gap-1.5 pt-1">
             <Link

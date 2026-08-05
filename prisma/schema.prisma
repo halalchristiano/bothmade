@@ -199,6 +199,24 @@ model Project {
   /// only one of them is worth quoting back to somebody who disputes it.
   designApprovalDeemed Boolean   @default(false)
 
+  // --- The revision allowance ----------------------------------------------
+  // Exhibit A gives the Design milestone "an original visual design concept
+  // for review; up to two (2) rounds of revisions", and Section 4 says
+  // anything beyond that — or materially different from it — is a Change
+  // Order. Nothing counted, so the allowance existed on paper and never in
+  // practice: a client could ask for a fourth version and the studio's only
+  // record of the first three was in somebody's memory.
+  //
+  // Counts ONLY in-scope change requests. A round where every note says the
+  // design does not match what was signed off is a non-conformance under
+  // Exhibit C, "corrected at no charge and without counting against the
+  // revision allowance" — charging a round for our own miss would be
+  // indefensible. New-scope requests do not count either; they are not
+  // revisions of the presented design at all.
+  designRevisionsUsed Int @default(0)
+  /// Bumped each time a design is presented. Round 1 is the original concept.
+  designRound         Int @default(1)
+
   // Hides this project from the Priorities list until the given date.
   //
   // A list of things needing attention with no way to say "seen it, not this
@@ -229,6 +247,8 @@ model Project {
   invoices            Invoice[]
   recurringOffers     RecurringOffer[]
   changeOrders        ChangeOrder[]
+  designFeedback      DesignFeedback[]
+  designDirection     DesignDirection?
 
   @@index([prioritySnoozedUntil])
   @@index([designReviewEndsAt])
@@ -979,6 +999,118 @@ model ChangeOrder {
   @@unique([projectId, number])
   @@index([projectId, createdAt])
   @@map("change_orders")
+}
+
+// What the client said when the answer to a design was "not yet".
+//
+// Approval had a button; rejection had nothing. A client who did not like the
+// design wrote a paragraph in the message box or said it on a call, and
+// either way the studio got an undifferentiated pile of opinions with no
+// record of which of them it actually owed them — which matters, because the
+// agreement prices the three kinds of feedback completely differently.
+//
+// Section 4 gives two rounds of revisions for changes "consistent with the
+// originally agreed scope"; Exhibit C makes a genuine non-conformance free
+// AND outside that allowance; Section 9 makes anything materially different a
+// Change Order. The form makes the client sort each note into one of those
+// three as they write it, which is the whole point: an argument about which
+// bucket something belongs in is far cheaper before the work than after it.
+//
+// See lib/design-feedback.ts.
+model DesignFeedback {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// Which presented design this is feedback on. Round 1 is the original
+  /// concept under Exhibit A; 2 and 3 are the included revisions.
+  round Int
+
+  /// [{ area, kind, detail }] where kind is one of not-as-agreed | change |
+  /// new. Stored as submitted rather than split into columns: this is a
+  /// record of what a client said on a date, and it should not change shape
+  /// because the form later grows a field.
+  items Json @default("[]")
+
+  /// What they liked. Asked for on purpose — the next version is better for
+  /// knowing what NOT to throw away, and a form that only collects complaints
+  /// makes people write more of them.
+  liked String?
+  /// Anything that did not fit the itemised list.
+  note  String?
+
+  /// True when this submission spent one of the two included rounds. Recorded
+  /// rather than recomputed: it is the answer to "why does this project say
+  /// one revision left", and re-deriving it from items would silently change
+  /// history if the counting rule ever moved.
+  consumedRound Boolean @default(false)
+
+  /// When somebody here actually read it. An unread pile of client feedback
+  /// is the failure this feature would have if nothing surfaced it.
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@map("design_feedback")
+}
+
+// What "good" looks like, agreed in writing before anyone designs anything.
+//
+// Requirements Sign-off under Section 5 fixes WHAT gets built. Nothing fixed
+// how it should LOOK — and Section 4 excludes "subjective preferences not
+// reflected in agreed specifications" as grounds for rejecting a Deliverable.
+// With no visual direction on record, every aesthetic disagreement is by
+// definition a preference: a win on paper and a loss in practice, because
+// when the studio genuinely misread the client it still spends one of their
+// two rounds.
+//
+// A signed direction closes that with machinery the agreement already has.
+// A concept that departs from it is a Section 4 non-conformance, which
+// Exhibit C makes free AND outside the revision allowance. A client who
+// simply changes their mind about the direction is spending a round. Same
+// facts, opposite outcomes, and now something to tell them apart by.
+//
+// One per project. See lib/design-direction.ts.
+model DesignDirection {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// [{ url, why }]. The `why` is the half that matters: two clients can send
+  /// the same reference meaning opposite things by it.
+  likes    Json @default("[]")
+  dislikes Json @default("[]")
+
+  /// Three words for how it should feel. They settle it when two references
+  /// disagree, which is most of the time.
+  adjectives Json @default("[]")
+
+  /// Already fixed and has to be designed around — logo, brand colours, a
+  /// typeface, an existing photo library.
+  untouchable String?
+  /// Off the table entirely.
+  hardNos     String?
+  notes       String?
+
+  sentAt   DateTime?
+  signedAt DateTime?
+
+  /// Clickwrap evidence, same four questions as the contract and change order
+  /// signatures: who agreed, to what, when, and from where. signedHash is a
+  /// sha256 of the exact statement served, so a later reword of the page
+  /// cannot retroactively change what an existing signature claims.
+  signerName      String?
+  signerEmail     String?
+  signerIp        String?
+  signerUserAgent String?
+  signedHash      String?
+  signedStatement String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("design_directions")
 }
 
 // An offer to put a client onto one of the recurring "ongoing care" services

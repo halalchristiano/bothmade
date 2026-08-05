@@ -148,6 +148,36 @@ export async function GET(request: Request) {
       include: { client: { select: { company: true } } },
     });
 
+    /**
+     * Design feedback nobody here has opened.
+     *
+     * Top of the priority list, above the money, because it is the only row
+     * where a client has already done their part and stopped. Their Section 4
+     * review clock stopped when they hit send, so the project cannot move,
+     * the next payment gate cannot open, and somebody is sitting there
+     * wondering whether we received it.
+     *
+     * Deliberately NOT snooze-aware, unlike everything around it. A snooze
+     * says "seen it, not this week", which is a defensible answer to an
+     * unpaid balance and not a defensible answer to a client waiting for a
+     * reply they were promised.
+     */
+    const unreadDesignFeedback = await prisma.designFeedback.findMany({
+      where: { reviewedAt: null },
+      // Newest first. Priorities keeps one row per project, and the row that
+      // wins should name the round we have to build to — pointing at the
+      // oldest unread one sends you off to satisfy a brief the client has
+      // already replaced.
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        round: true,
+        createdAt: true,
+        project: { select: { id: true, name: true, client: { select: { company: true } } } },
+      },
+    });
+
     // "Nothing has happened for a week" covers two opposite situations: work
     // that's been dropped, and work that can't move until the client comes
     // back. One needs doing, the other needs chasing — and mixing them makes
@@ -288,6 +318,16 @@ export async function GET(request: Request) {
             .sort((a, b) => b.unbilledCents - a.unbilledCents)
             .map((p) => ({ id: p.id, name: p.name, company: p.company, unbilledCents: p.unbilledCents })),
           projectsAwaitingReply,
+          // A client who has stopped and is waiting on us to read something
+          // they were asked to write. Nothing moves until somebody does.
+          unreadDesignFeedback: unreadDesignFeedback.map((f) => ({
+            id: f.id,
+            projectId: f.project.id,
+            name: f.project.name,
+            company: f.project.client.company,
+            round: f.round,
+            daysWaiting: Math.floor((now.getTime() - f.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
+          })),
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
           pendingMockups: pendingMockups.map((l) => ({ id: l.id, company: l.company, mockupRequestedAt: l.mockupRequestedAt })),
           readyToDeliver: readyToDeliver.map((p) => ({ id: p.id, name: p.name, company: p.client.company, updatedAt: p.updatedAt })),

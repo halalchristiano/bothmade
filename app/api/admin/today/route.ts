@@ -43,6 +43,7 @@ export async function GET() {
       activeProjects,
       stalledProjects,
       mockupRequests,
+      unreadDesignFeedback,
     ] = await Promise.all([
       prisma.lead.findMany({
         where: { status: { notIn: ['won', 'lost'] }, nextFollowUpAt: { lt: now } },
@@ -183,6 +184,29 @@ export async function GET() {
       }),
 
       prisma.lead.count({ where: { mockupRequested: true, mockupUrl: null } }),
+
+      /**
+       * Design feedback nobody here has read yet.
+       *
+       * The one thing in the delivery lane that is genuinely blocking: the
+       * client has stopped, told us in detail what they want, and their
+       * review clock has stopped with them. Every day this sits unread is a
+       * day the project does not move and the next payment gate stays shut.
+       */
+      prisma.designFeedback
+        .findMany({
+          where: { reviewedAt: null },
+          orderBy: { createdAt: 'asc' },
+          take: 5,
+          select: {
+            id: true,
+            round: true,
+            createdAt: true,
+            consumedRound: true,
+            project: { select: { id: true, name: true, client: { select: { company: true } } } },
+          },
+        })
+        .catch(() => []),
     ]);
 
     const callsToday = await prisma.leadActivity.count({
@@ -216,6 +240,9 @@ export async function GET() {
           activeProjects,
           stalledProjects,
           mockupRequests,
+          // Blocking, and silent until now: their clock has stopped and the
+          // project cannot move until somebody here reads this.
+          unreadDesignFeedback,
         },
       },
       { status: 200 }

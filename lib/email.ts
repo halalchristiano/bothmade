@@ -1493,6 +1493,26 @@ export async function sendDesignPresentedEmail(input: {
       <p style="margin:0; font-size:18px; font-weight:700; color:#fff;">${esc(input.reviewEndsLabel)}</p>
     </div>
     <p style="font-size:13px; color:rgba(255,255,255,0.6);">${esc(input.noticeLine)}</p>
+    <!--
+      The form, named in the email rather than left to be discovered.
+
+      "Tell us what you think" invites a paragraph, and a paragraph is the
+      thing we cannot act on — it arrives as an undifferentiated list of
+      opinions with no way to tell what genuinely isn't what we agreed from
+      what is simply a preference. Saying up front that there is a proper form
+      waiting sets the expectation that this is a considered exercise rather
+      than a reply-all, and people who know a form exists use it.
+    -->
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">Two buttons, whichever way you feel</p>
+      <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.7);">
+        If it's right, approve it and we'll start building. If it isn't, there's a detailed
+        form on your dashboard — it asks what's working, what you'd like changed, and, for each
+        note, whether it's something we agreed and got wrong or simply a preference. It takes a
+        few minutes and it means the next version answers what you actually said, rather than
+        our best guess at it.
+      </p>
+    </div>
   `;
 
   return sendEmailDetailed({
@@ -1504,6 +1524,42 @@ export async function sendDesignPresentedEmail(input: {
       bodyHtml,
       ctaLabel: 'See the design',
       ctaUrl: input.dashboardUrl,
+    }),
+  });
+}
+
+/**
+ * "We've got it, here's what happens now."
+ *
+ * Sent the moment a client submits the feedback form. A carefully written
+ * list that disappears into silence teaches people to phone instead, and the
+ * body is generated from what they actually said — which of their notes we
+ * are fixing free, which spent a revision round, and what we are coming back
+ * to them on separately. See acknowledgement() in lib/design-feedback.
+ */
+export async function sendDesignFeedbackAckEmail(input: {
+  to: string;
+  contactName: string | null;
+  projectName: string;
+  body: string;
+  dashboardUrl: string;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Your notes on <strong style="color:#fff;">${esc(input.projectName)}</strong> came through and the design team has them.</p>
+    <p>${escMultiline(input.body)}</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Everything you wrote is saved on your dashboard, so you can check what you asked for at any point — and you&rsquo;ll get an email the moment the next version is ready.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `We've got your notes on ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Design feedback',
+      title: `${input.projectName} — thanks, we're on it`,
+      bodyHtml,
+      ctaLabel: 'See your notes',
+      ctaUrl: `${SITE_URL}${input.dashboardUrl}`,
     }),
   });
 }

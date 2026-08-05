@@ -84,6 +84,19 @@ export const NOTIFICATION_GUIDE: NotificationGroup[] = [
     title: 'The design review clock',
     rules: [
       {
+        trigger: 'The client signs their design direction',
+        tells: 'We email you the brief — their references, their reasons, their three words — and it sits on the project beside anything they say later',
+        where: ['email', 'dashboard'],
+        timing: 'The moment they sign it',
+        basis: 'Section 4 — a departure from a signed brief is a non-conformance, not a preference',
+      },
+      {
+        trigger: 'You go to present a design with no signed direction',
+        tells: 'The project says so before you send, and says what it costs you if they argue',
+        where: ['screen'],
+        timing: "Whenever you open a project that hasn't got one",
+      },
+      {
         trigger: 'You send a design for review',
         tells: 'The client is emailed the deadline; the countdown appears on the project',
         where: ['email', 'screen'],
@@ -102,6 +115,20 @@ export const NOTIFICATION_GUIDE: NotificationGroup[] = [
         tells: 'Recorded as their approval rather than deemed, and the gate opens the same way',
         where: ['dashboard'],
         timing: 'The moment they press it',
+      },
+      {
+        trigger: 'The client sends design feedback instead of approving',
+        tells: 'We email you their notes, split into what we got wrong, what they simply want different, and what is new scope — and it takes over the dashboard headline until somebody reads it',
+        where: ['email', 'dashboard'],
+        timing: 'The moment they submit it',
+        basis: 'Section 4 — two included rounds; Exhibit C — non-conformance is free and outside them',
+      },
+      {
+        trigger: 'They use up both included revision rounds',
+        tells: 'The project says so, and the client is told plainly on their own form before they write anything',
+        where: ['screen'],
+        timing: 'As soon as the second round is spent',
+        basis: 'Section 9 — beyond the allowance is a Change Order',
       },
     ],
   },
