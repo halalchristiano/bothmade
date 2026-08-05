@@ -227,16 +227,24 @@ export async function recordLeadMockup({
  * nothing to expire.
  */
 export async function markMockupSent(mockupId: string, at: Date = new Date()) {
+  const current = await prisma.leadMockup.findUnique({
+    where: { id: mockupId },
+    select: { status: true },
+  });
+
+  // Re-sending *this* mockup reopens a link that expired. It is not a new
+  // version — that would be a new row — so it must not erase what the client
+  // already said about it. Setting status back to 'sent' on an approved
+  // mockup would delete the only record of them saying yes, and an approval
+  // is the single most valuable thing this table holds.
+  const settled = current?.status === 'approved' || current?.status === 'changes_requested';
+
   return prisma.leadMockup.update({
     where: { id: mockupId },
     data: {
-      status: 'sent',
+      ...(settled ? {} : { status: 'sent' }),
       sentAt: at,
       expiresAt: mockupExpiryFrom(at),
-      // A re-send reopens a link that had expired and clears a stale
-      // response — the client is being asked again, about a new version.
-      respondedAt: null,
-      responseNote: null,
     },
   });
 }
