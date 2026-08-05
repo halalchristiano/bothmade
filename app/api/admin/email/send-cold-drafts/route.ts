@@ -64,6 +64,18 @@ export async function POST(request: NextRequest) {
         : undefined;
 
     for (const lead of leads) {
+      // A hard stop, not a preference. The mockup-send route already refused
+      // these; this one did not, so a business that asked to be left alone was
+      // still emailed by a batch send — and the record showed we knew.
+      if (lead.doNotContact) {
+        results.push({
+          leadId: lead.id,
+          company: lead.company,
+          ok: false,
+          reason: 'Marked do-not-contact — nothing sent',
+        });
+        continue;
+      }
       if (!lead.email) {
         results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'No email on file — call instead' });
         continue;

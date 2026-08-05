@@ -39,6 +39,21 @@ export async function POST(request: NextRequest) {
 
     const results: Array<{ leadId: string; company?: string; ok: boolean; error?: string }> = [];
 
+    // The composer sends whatever the page selected, so the block has to be
+    // enforced here rather than trusted from the caller. One query for the
+    // whole batch, not one per recipient.
+    const blockedLeadIds = new Set(
+      (
+        await prisma.lead.findMany({
+          where: {
+            id: { in: (recipients as Recipient[]).map((r) => r.leadId).filter(Boolean) },
+            doNotContact: true,
+          },
+          select: { id: true },
+        })
+      ).map((lead) => lead.id)
+    );
+
     // One pooled connection for the whole batch — sending each recipient
     // through its own fresh SMTP login is what makes Gmail throttle a batch
     // this size partway through, silently falling the rest back to Resend.
@@ -58,6 +73,15 @@ export async function POST(request: NextRequest) {
     for (const recipient of recipients as Recipient[]) {
       if (!recipient.to || !recipient.leadId) {
         results.push({ leadId: recipient.leadId, company: recipient.company, ok: false, error: 'Missing recipient email' });
+        continue;
+      }
+      if (blockedLeadIds.has(recipient.leadId)) {
+        results.push({
+          leadId: recipient.leadId,
+          company: recipient.company,
+          ok: false,
+          error: 'Marked do-not-contact — nothing sent',
+        });
         continue;
       }
       const result = await sendTemplatedEmail({

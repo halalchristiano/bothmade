@@ -35,8 +35,21 @@ interface LeadRow {
   painPoints: string;
   emailDeliveryFailedAt: string | null;
   emailDeliveryFailedReason: string | null;
+  doNotContact: boolean;
   assignedTo: { name: string | null } | null;
   activities: Array<{ createdAt: string }>;
+}
+
+/**
+ * Who a first-contact cold email may go to.
+ *
+ * Two separate reasons to leave someone out, and both were being missed: they
+ * asked not to be heard from, and they are no longer a prospect. A won lead is
+ * a paying client and a lost one has already said no — a cold pitch to either
+ * is a mistake the recipient notices.
+ */
+function isColdSendable(lead: { doNotContact: boolean; status: LeadStatus }): boolean {
+  return !lead.doNotContact && lead.status !== 'won' && lead.status !== 'lost';
 }
 
 function StatusSelect({
@@ -350,7 +363,10 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
   // powers the big "send them all" banner so Evan doesn't have to hunt for
   // small icons or manually select anything for the common case.
   const coldReadyLeads = useMemo(
-    () => leads.filter((l) => l.email && !l.coldEmailSentAt && !l.emailDeliveryFailedAt),
+    () =>
+      leads.filter(
+        (l) => l.email && !l.coldEmailSentAt && !l.emailDeliveryFailedAt && isColdSendable(l)
+      ),
     [leads]
   );
   const needsCallLeads = useMemo(() => leads.filter((l) => !l.email && l.coldEmailDraft), [leads]);
@@ -411,7 +427,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
 
   const selectedLeads = useMemo(() => leads.filter((l) => selected.has(l.id)), [leads, selected]);
   const selectedReadyToSend = useMemo(
-    () => selectedLeads.filter((l) => l.email),
+    () => selectedLeads.filter((l) => l.email && isColdSendable(l)),
     [selectedLeads]
   );
   const selectedNeedingCall = useMemo(() => selectedLeads.filter((l) => !l.email), [selectedLeads]);
