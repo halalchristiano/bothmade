@@ -4,6 +4,7 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isFurtherAlong } from '@/lib/leads';
 import { sendMockupEmail } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { isValidEmail } from '@/lib/validation';
 import {
   clientMockupLink,
   markMockupSent,
@@ -36,6 +37,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
 
+    /*
+     * Where it goes, and what that does to the record.
+     *
+     * The address on file is usually info@ off their website. A rep who has
+     * been on the phone often has the owner's own address, and sending the
+     * work to a shared inbox that a receptionist triages is how a mockup
+     * gets seen by nobody. So an override is offered — and once it is used
+     * it becomes the lead's address, replacing the generic one, because
+     * every follow-up after this should go where this one went. Sending
+     * somewhere the record does not reflect is how the next email lands
+     * back in the inbox this one was routed around.
+     */
+    const body = await request.json().catch(() => ({}));
+    const override = typeof body?.email === 'string' ? body.email.trim() : '';
+    if (override && !isValidEmail(override)) {
+      return NextResponse.json({ error: `"${override}" is not an email address.` }, { status: 400 });
+    }
+    const toEmail = override || lead.email;
+
     const link = clientMockupLink(lead);
     if (!link) {
       return NextResponse.json(
@@ -46,9 +66,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { status: 400 }
       );
     }
-    if (!lead.email) {
+    if (!toEmail) {
       return NextResponse.json(
-        { error: 'This lead has no email on file — add one, or copy the link and send it yourself.' },
+        { error: 'This lead has no email on file — add one, or send it to a different address below.' },
         { status: 400 }
       );
     }
@@ -76,8 +96,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const updated = await markMockupSent(mockupId, sentAt);
     const viewUrl = `${resolveSiteUrl()}/m/${updated.shareToken}`;
 
+    // Written before the send, so a mail that goes out is always against a
+    // record saying where it went. The old address is not kept: a lead with
+    // two addresses is a lead somebody eventually mails on the wrong one.
+    if (override && override !== lead.email) {
+      const previous = lead.email;
+      await prisma.lead.update({ where: { id: leadId }, data: { email: override } });
+      await prisma.leadActivity
+        .create({
+          data: {
+            leadId,
+            type: 'note',
+            content: previous
+              ? `Email changed to ${override} (was ${previous}) — sending the mockup there, and everything after it.`
+              : `Email set to ${override} while sending the mockup.`,
+            createdById: session.userId,
+          },
+        })
+        .catch((e) => console.error('Email-change activity not written:', e));
+    }
+
     const result = await sendMockupEmail({
-      toEmail: lead.email,
+      toEmail,
       contactName: lead.contactName,
       company: lead.company,
       viewUrl,
@@ -90,8 +130,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           leadId,
           type: 'email',
           content: result.sent
-            ? `Mockup sent to ${lead.email} — tracked link, expires in 30 days.`
-            : `Mockup link generated for ${lead.email} but the email did not send${
+            ? `Mockup sent to ${toEmail} — tracked link, expires in 30 days.`
+            : `Mockup link generated for ${toEmail} but the email did not send${
                 result.reason ? ` (${result.reason})` : ''
               }.`,
           url: viewUrl,
@@ -110,6 +150,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       {
         success: true,
         sent: result.sent,
+        sentTo: toEmail,
+        emailUpdated: Boolean(override && override !== lead.email),
         reason: result.sent ? null : result.reason,
         viewUrl,
         mockup: toMockupDTO({ ...updated, uploadedBy: existing?.uploadedBy ?? null }),

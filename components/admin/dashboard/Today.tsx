@@ -12,6 +12,7 @@ import {
   FileSignature,
   Headset,
   Palette,
+  Send,
   PhoneCall,
   Wrench,
 } from 'lucide-react';
@@ -109,6 +110,13 @@ interface TodayData {
       client: { company: string };
     }>;
     mockupRequests: number;
+    /** Folder attached, nothing sent. Finished work nobody is chasing. */
+    mockupsBuiltNotSent: Array<{
+      id: string;
+      company: string;
+      email: string | null;
+      updatedAt: string;
+    }>;
     unreadDesignFeedback: Array<{
       id: string;
       round: number;
@@ -566,9 +574,29 @@ export function Today() {
               tone="warn"
             />
           ))}
-          {deliver.stalledProjects.length === 0 && deliver.unreadDesignFeedback.length === 0 && (
-            <Quiet text="Every project moved this week." />
-          )}
+          {/* Finished and undelivered. Nothing blocks it, nobody is chasing
+              it, and it is the cheapest thing in the pipeline to fix — which
+              is exactly why it goes unnoticed. */}
+          {deliver.mockupsBuiltNotSent.map((lead) => (
+            <Link
+              key={lead.id}
+              href={`/admin/leads/${lead.id}`}
+              className="block rounded-xl border border-purple-400/25 bg-purple-400/[0.06] p-3 hover:bg-purple-400/[0.11] transition-colors"
+            >
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-purple-200">
+                <Send size={13} /> {lead.company}
+              </p>
+              <p className="text-xs text-white/45 mt-0.5">
+                Mockup ready, never sent{lead.email ? '' : ' — and no email on file yet'}.
+              </p>
+            </Link>
+          ))}
+
+          {deliver.stalledProjects.length === 0 &&
+            deliver.unreadDesignFeedback.length === 0 &&
+            deliver.mockupsBuiltNotSent.length === 0 && (
+              <Quiet text="Every project moved this week." />
+            )}
 
           <div className="flex flex-wrap gap-1.5 pt-1">
             <Link

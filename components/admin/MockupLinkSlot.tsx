@@ -5,6 +5,63 @@ import { Check, Eye, FolderOpen, Pencil } from 'lucide-react';
 import { describeUrlProblem } from '@/lib/html';
 
 /**
+ * One of the two mockup links as a header button, drawn whether or not there
+ * is a link behind it.
+ *
+ * A button that only appears once its field is filled in teaches nobody that
+ * the field exists — the rep who has never seen it has no reason to look for
+ * it. Greyed, unclickable, and carrying the reason it is greyed says what to
+ * go and add, which is the whole job.
+ */
+export function MockupLinkButton({
+  href,
+  icon,
+  label,
+  note,
+  missing,
+  tone,
+}: {
+  href: string | null;
+  icon: React.ReactNode;
+  label: string;
+  /** The half-sentence that keeps the two apart at a glance. */
+  note: string;
+  /** Shown on hover when there is nothing to open. */
+  missing: string;
+  tone: 'preview' | 'folder';
+}) {
+  const live =
+    tone === 'preview'
+      ? 'border-purple-400/30 bg-purple-400/10 text-purple-300 hover:bg-purple-400/20'
+      : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20';
+  const noteTone = tone === 'preview' ? 'text-purple-300/60' : 'text-emerald-300/60';
+
+  if (!href) {
+    return (
+      <span
+        title={missing}
+        aria-disabled="true"
+        className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.02] px-3.5 py-2 text-xs font-semibold text-white/25"
+      >
+        {icon} {label}
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${live}`}
+    >
+      {icon} {label}
+      <span className={`font-normal ${noteTone}`}>&middot; {note}</span>
+    </a>
+  );
+}
+
+/**
  * One of the two mockup links, with what it is for written next to it.
  *
  * A lead used to have a single mockup field, and both links went into it —

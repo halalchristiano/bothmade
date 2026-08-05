@@ -28,7 +28,8 @@ import { PhoneField } from '@/components/PhoneField';
 import { PdfOrLinkField } from '@/components/admin/PdfOrLinkField';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
-import { MockupLinkSlot } from '@/components/admin/MockupLinkSlot';
+import { MockupLinkButton, MockupLinkSlot } from '@/components/admin/MockupLinkSlot';
+import { SendMockupPanel } from '@/components/admin/SendMockupPanel';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 import { DealTimeline } from '@/components/admin/lead/DealTimeline';
@@ -946,11 +947,15 @@ export default function LeadDetailPage() {
    * send the preview build — the route refuses, because that link is behind
    * a Vercel password and the client would hit a wall.
    */
-  const handleSendMockup = async () => {
+  const handleSendMockup = async (email?: string) => {
     setSendingMockup(true);
     setMockupSendNotice(null);
     try {
-      const res = await fetch(`/api/admin/leads/${leadId}/send-mockup`, { method: 'POST' });
+      const res = await fetch(`/api/admin/leads/${leadId}/send-mockup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(email ? { email } : {}),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setMockupSendNotice({ tone: 'warn', text: data.error || 'Could not send it.' });
@@ -958,7 +963,12 @@ export default function LeadDetailPage() {
       }
       setMockupSendNotice(
         data.sent
-          ? { tone: 'ok', text: `Sent to ${lead?.email}. You'll see here when they open it.` }
+          ? {
+              tone: 'ok',
+              text: `Sent to ${data.sentTo}.${
+                data.emailUpdated ? ' That is now this lead\u2019s address.' : ''
+              } You'll see here when they open it.`,
+            }
           : {
               tone: 'warn',
               text: `Link is ready but the email did not send${
@@ -2009,9 +2019,8 @@ export default function LeadDetailPage() {
                 link and a PDF because the link needs signal and a password
                 and the PDF needs neither — the PDF is simply the newest
                 version in the list that came in as a file. */}
-            {(lead.originalWebsite || lead.mockupFolderUrl || lead.mockupUrl || latestMockupPdf || lead.invoicePdfUrl) && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {lead.originalWebsite && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {lead.originalWebsite && (
                   <a
                     href={lead.originalWebsite}
                     target="_blank"
@@ -2022,34 +2031,32 @@ export default function LeadDetailPage() {
                   </a>
                 )}
                 {/* Two links, two buttons, and they are not interchangeable.
-                    The folder is the deliverable — it is what the email
-                    carries. The preview deploys behind a Vercel password, so
-                    sending it hands the client a password wall; it is here to
-                    navigate to quickly and for nothing else. They used to be
-                    one field under one button reading "open the mockup we
-                    sent", on leads nothing had been sent to. */}
-                {lead.mockupFolderUrl && (
-                  <a
-                    href={lead.mockupFolderUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 bg-purple-400/10 px-3.5 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-400/20 transition-colors"
-                  >
-                    <FolderOpen size={13} /> Mockup folder
-                    <span className="text-purple-300/60 font-normal">· what they get</span>
-                  </a>
-                )}
-                {lead.mockupUrl && (
-                  <a
-                    href={lead.mockupUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-2 text-xs font-semibold text-white/70 hover:bg-white/10 transition-colors"
-                  >
-                    <Eye size={13} /> Preview build
-                    <span className="text-white/35 font-normal">· ours only</span>
-                  </a>
-                )}
+                    The preview deploys behind a Vercel password, so sending
+                    it hands the client a password wall — it is here to
+                    navigate to quickly and for nothing else. The folder is
+                    the deliverable: the brochure and the video, and the only
+                    thing an email carries.
+
+                    Both are always drawn, greyed when there is nothing behind
+                    them. A button that vanishes teaches nobody it exists;
+                    a greyed one with the reason on it says what to go and
+                    add. */}
+                <MockupLinkButton
+                  href={lead.mockupUrl}
+                  icon={<Eye size={13} />}
+                  label="Open the preview build"
+                  note="ours only"
+                  missing="Add the preview link in Mockups to enable this"
+                  tone="preview"
+                />
+                <MockupLinkButton
+                  href={lead.mockupFolderUrl}
+                  icon={<FolderOpen size={13} />}
+                  label="Open the client folder"
+                  note="brochure + video"
+                  missing="Add the folder link in Mockups to enable this"
+                  tone="folder"
+                />
                 {latestMockupPdf && (
                   <a
                     href={latestMockupPdf}
@@ -2070,8 +2077,7 @@ export default function LeadDetailPage() {
                     <FileText size={13} /> Invoice PDF
                   </a>
                 )}
-              </div>
-            )}
+            </div>
 
             {/* The mockup deploys password-protected so their competitors
                 can't stumble across an unannounced redesign. That password is
@@ -2979,35 +2985,14 @@ export default function LeadDetailPage() {
             </div>
 
             {lead.mockupFolderUrl && (
-              <div className="mb-4 rounded-xl border border-purple-400/25 bg-purple-400/[0.06] p-4">
-                <p className="text-sm font-semibold mb-1">Send it to {lead.contactName || lead.company}</p>
-                <p className="text-xs text-white/50 mb-3">
-                  Mails the folder from your inbox on a tracked link, records that it went, and moves the stage.
-                  You will see here when they open it.
-                </p>
-                <button
-                  onClick={handleSendMockup}
-                  disabled={sendingMockup || !lead.email}
-                  className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-                >
-                  <Send size={14} />
-                  {sendingMockup ? 'Sending…' : 'Send mockup to client'}
-                </button>
-                {!lead.email && (
-                  <p className="mt-2 text-xs text-amber-300">
-                    No email on this lead yet — add one above and this will work.
-                  </p>
-                )}
-                {mockupSendNotice && (
-                  <p
-                    className={`mt-2 text-xs ${
-                      mockupSendNotice.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'
-                    }`}
-                  >
-                    {mockupSendNotice.text}
-                  </p>
-                )}
-              </div>
+              <SendMockupPanel
+                recipientName={lead.contactName}
+                company={lead.company}
+                emailOnFile={lead.email}
+                sending={sendingMockup}
+                notice={mockupSendNotice}
+                onSend={handleSendMockup}
+              />
             )}
 
             <LeadMockupsPanel leadId={leadId} onChanged={load} />

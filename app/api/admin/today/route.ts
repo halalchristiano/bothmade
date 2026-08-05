@@ -43,6 +43,7 @@ export async function GET() {
       activeProjects,
       stalledProjects,
       mockupRequests,
+      mockupsBuiltNotSent,
       unreadDesignFeedback,
     ] = await Promise.all([
       prisma.lead.findMany({
@@ -186,6 +187,30 @@ export async function GET() {
       prisma.lead.count({ where: { mockupRequested: true, mockupUrl: null, mockupFolderUrl: null } }),
 
       /**
+       * Work that is finished and sitting there.
+       *
+       * The folder is put together, the link goes on the lead, and then the
+       * send waits on somebody remembering to do it. It is the cheapest
+       * thing in the pipeline to fix and the easiest to lose: nothing is
+       * blocked, nobody is chasing, and the lead just quietly ages with its
+       * mockup undelivered. Counted on the folder rather than the preview
+       * build, because the preview is never sent to anyone.
+       */
+      prisma.lead
+        .findMany({
+          where: {
+            mockupFolderUrl: { not: null },
+            doNotContact: false,
+            status: { notIn: ['won', 'lost'] },
+            mockups: { none: { sentAt: { not: null } } },
+          },
+          orderBy: { updatedAt: 'asc' },
+          take: 5,
+          select: { id: true, company: true, email: true, updatedAt: true },
+        })
+        .catch(() => []),
+
+      /**
        * Design feedback nobody here has read yet.
        *
        * The one thing in the delivery lane that is genuinely blocking: the
@@ -240,6 +265,7 @@ export async function GET() {
           activeProjects,
           stalledProjects,
           mockupRequests,
+          mockupsBuiltNotSent,
           // Blocking, and silent until now: their clock has stopped and the
           // project cannot move until somebody here reads this.
           unreadDesignFeedback,
