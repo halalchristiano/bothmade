@@ -27,7 +27,7 @@ describe('delivering a mockup', () => {
     render(<MockupDeliveryForm leadId="lead_1" onDelivered={onDelivered} />);
 
     await user.type(screen.getByLabelText('Mockup link'), 'https://figma.test/abc');
-    await user.click(screen.getByRole('button', { name: 'Mark Delivered' }));
+    await user.click(screen.getByRole('button', { name: 'Attach mockup' }));
 
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/leads/lead_1', {
       method: 'PATCH',
@@ -53,7 +53,7 @@ describe('delivering a mockup', () => {
     render(<MockupDeliveryForm leadId="lead_1" onDelivered={vi.fn()} />);
 
     await user.type(screen.getByLabelText('Mockup link'), '   https://figma.test/abc   ');
-    await user.click(screen.getByRole('button', { name: 'Mark Delivered' }));
+    await user.click(screen.getByRole('button', { name: 'Attach mockup' }));
 
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body).mockupUrl).toBe('https://figma.test/abc');
   });
@@ -65,7 +65,7 @@ describe('delivering a mockup', () => {
 
     const field = screen.getByLabelText('Mockup link');
     await user.type(field, 'https://figma.test/abc');
-    await user.click(screen.getByRole('button', { name: 'Mark Delivered' }));
+    await user.click(screen.getByRole('button', { name: 'Attach mockup' }));
 
     expect(field).toHaveValue('');
   });
@@ -77,7 +77,7 @@ describe('refusing to deliver nothing', () => {
     mockFetch(async () => ({ ok: true }));
     render(<MockupDeliveryForm leadId="lead_1" onDelivered={vi.fn()} />);
 
-    const button = screen.getByRole('button', { name: 'Mark Delivered' });
+    const button = screen.getByRole('button', { name: 'Attach mockup' });
     expect(button).toBeDisabled();
 
     await user.type(screen.getByLabelText('Mockup link'), 'x');
@@ -92,7 +92,7 @@ describe('refusing to deliver nothing', () => {
     await user.type(screen.getByLabelText('Mockup link'), '   {Enter}');
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Mark Delivered' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Attach mockup' })).toBeDisabled();
   });
 });
 
@@ -105,7 +105,7 @@ describe('when the save fails', () => {
 
     const field = screen.getByLabelText('Mockup link');
     await user.type(field, 'https://figma.test/abc');
-    await user.click(screen.getByRole('button', { name: 'Mark Delivered' }));
+    await user.click(screen.getByRole('button', { name: 'Attach mockup' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't save that link/i);
     expect(onDelivered).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe('when the save fails', () => {
     await user.type(screen.getByLabelText('Mockup link'), 'https://figma.test/abc{Enter}');
     await screen.findByRole('alert');
 
-    expect(screen.getByRole('button', { name: 'Mark Delivered' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Attach mockup' })).toBeEnabled();
   });
 });
 
@@ -158,5 +158,27 @@ describe('presentation', () => {
     render(<MockupDeliveryForm leadId="lead_1" onDelivered={vi.fn()} />);
 
     expect(screen.getByRole('textbox', { name: 'Mockup link' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The button used to say "Mark Delivered", which reads as "the client now
+ * has it". It does not send the client anything — it stores the link and
+ * tells the team — and somebody pressing it and believing otherwise is
+ * exactly what happened.
+ */
+describe('what the control promises', () => {
+  it('does not claim to have delivered anything to the client', () => {
+    render(<MockupDeliveryForm leadId="lead_1" onDelivered={() => {}} />);
+
+    expect(screen.queryByRole('button', { name: /deliver/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /attach mockup/i })).toBeTruthy();
+  });
+
+  it('says the client has not been emailed, and where sending lives', () => {
+    render(<MockupDeliveryForm leadId="lead_1" onDelivered={() => {}} />);
+
+    expect(screen.getByText(/isn't emailed yet/i)).toBeTruthy();
+    expect(screen.getByText(/Mockups panel/i)).toBeTruthy();
   });
 });

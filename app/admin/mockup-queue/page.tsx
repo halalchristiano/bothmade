@@ -151,6 +151,7 @@ interface LiveMockup {
 }
 
 const LIVE_TONE: Record<string, string> = {
+  draft: 'border-amber-400/30 bg-amber-400/[0.06]',
   sent: 'border-sky-400/25 bg-sky-400/[0.05]',
   viewed: 'border-purple-400/30 bg-purple-400/[0.06]',
   approved: 'border-emerald-400/30 bg-emerald-400/[0.06]',
@@ -162,6 +163,8 @@ export default function MockupQueuePage() {
   const [leads, setLeads] = useState<QueueRow[]>([]);
   const [live, setLive] = useState<LiveMockup[]>([]);
   const [tab, setTab] = useState<'build' | 'out'>('build');
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sendNotice, setSendNotice] = useState<{ id: string; tone: 'ok' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const load = async () => {
@@ -186,6 +189,31 @@ export default function MockupQueuePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const sendMockup = async (m: LiveMockup) => {
+    setSendingId(m.id);
+    setSendNotice(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${m.lead.id}/mockups/${m.id}/send`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setSendNotice({ id: m.id, tone: 'error', text: data.error || 'Could not send it.' });
+        return;
+      }
+      setSendNotice({
+        id: m.id,
+        tone: data.sent ? 'ok' : 'error',
+        text: data.sent
+          ? 'Sent — you will see it here when they open it.'
+          : `Link is ready but the email did not send${data.reason ? ` — ${data.reason}` : ''}. Copy it from the lead and send it by hand.`,
+      });
+      await load();
+    } catch {
+      setSendNotice({ id: m.id, tone: 'error', text: 'Could not reach the server — try again.' });
+    } finally {
+      setSendingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -200,7 +228,8 @@ export default function MockupQueuePage() {
   const liveVisible = [...live]
     .filter((m) => matchesSearch(search, m.lead.company, m.lead.contactName))
     .sort((a, b) => {
-      const rank = (s: string) => (s === 'approved' ? 0 : s === 'changes_requested' ? 1 : s === 'viewed' ? 2 : 3);
+      const rank = (s: string) =>
+        s === 'draft' ? 0 : s === 'approved' ? 1 : s === 'changes_requested' ? 2 : s === 'viewed' ? 3 : 4;
       return rank(a.status) - rank(b.status);
     });
   const sortedByWait = [...visible].sort((a, b) => {
@@ -219,8 +248,8 @@ export default function MockupQueuePage() {
               ? 'Nothing waiting on a mockup right now.'
               : `${leads.length} ${leads.length === 1 ? 'lead is' : 'leads are'} waiting on a mockup, longest-waiting and hot leads first.`
             : liveVisible.length === 0
-              ? 'Nothing out with a client yet. Send one from a lead and it appears here.'
-              : `${liveVisible.length} out with clients. Anything opened is warm — ring it.`}
+              ? 'Nothing built yet. Attach a mockup above and it lands here ready to send.'
+              : `${liveVisible.length} built. Unsent first, then anything the client has opened — those are warm, ring them.`}
         </p>
       </div>
 
@@ -236,7 +265,7 @@ export default function MockupQueuePage() {
         {(
           [
             ['build', 'To build', leads.length],
-            ['out', 'Out with clients', live.length],
+            ['out', 'Built', live.length],
           ] as Array<['build' | 'out', string, number]>
         ).map(([key, label, count]) => (
           <button
@@ -268,7 +297,7 @@ export default function MockupQueuePage() {
         <div className="space-y-2">
           {liveVisible.length === 0 && (
             <Card className="p-4">
-              <EmptyState icon={Eye} text="Nothing out with a client yet." tone="clear" />
+              <EmptyState icon={Eye} text="Nothing built yet." tone="clear" />
             </Card>
           )}
           {liveVisible.map((m) => (
@@ -289,6 +318,15 @@ export default function MockupQueuePage() {
                   {m.responseNote && (
                     <p className="mt-2 text-xs italic text-white/60">&ldquo;{m.responseNote}&rdquo;</p>
                   )}
+                  {sendNotice?.id === m.id && (
+                    <p
+                      className={`mt-1.5 text-xs ${
+                        sendNotice.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'
+                      }`}
+                    >
+                      {sendNotice.text}
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {m.lead.estimatedValue ? (
@@ -302,6 +340,20 @@ export default function MockupQueuePage() {
                   >
                     Open
                   </a>
+                  {/* Sendable from here, because this is the screen you are
+                      on when you finish building one. Bouncing out to the
+                      lead page to press a second button is how a built
+                      mockup sits unsent for three days. */}
+                  {(m.status === 'draft' || m.expired) && (
+                    <button
+                      type="button"
+                      onClick={() => sendMockup(m)}
+                      disabled={sendingId === m.id}
+                      className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+                    >
+                      {sendingId === m.id ? 'Sending…' : m.expired ? 'Re-send' : 'Send to client'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

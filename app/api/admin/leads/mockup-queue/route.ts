@@ -49,8 +49,11 @@ export async function GET() {
     // whether anyone had opened it was nobody's screen.
     const live = await prisma.leadMockup
       .findMany({
-        where: { status: { not: 'draft' } },
-        orderBy: [{ sentAt: 'desc' }],
+        // Drafts included deliberately. Attaching a mockup takes the lead off
+        // the build queue, and filtering drafts out of this list too meant a
+        // built-but-unsent mockup appeared on neither tab — it left the page
+        // named after it at the exact moment somebody needed to send it.
+        orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
         take: 60,
         include: {
           ...mockupInclude,

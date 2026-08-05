@@ -734,7 +734,7 @@ function MockupRequestRow({
               setOpen(false);
               onDelivered();
             }}
-            submitLabel="Deliver"
+            submitLabel="Attach"
             size="sm"
             autoFocus
           />

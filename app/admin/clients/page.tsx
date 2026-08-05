@@ -79,6 +79,13 @@ export default function AdminClientsPage() {
         <div>
           <Kicker className="mb-2">Delivery</Kicker>
           <PageTitle icon={Building2} title="Clients" tone="purple" />
+          {/* The rule for what lands on this page, stated. Signing and paying
+              are different events and a lead can do the first without ever
+              doing the second — which is exactly the thing that was worth
+              asking about and was written down nowhere. */}
+          <p className="text-white/40 mt-1 text-sm">
+            Everyone who has actually paid. A signed lead who never paid stays a lead.
+          </p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <input
@@ -122,7 +129,7 @@ export default function AdminClientsPage() {
                 <p className="text-sm text-white/50 mb-2">{client.email}</p>
                 <div className="flex justify-between text-xs text-white/30">
                   <span>{client.projects.length} project{client.projects.length === 1 ? '' : 's'}</span>
-                  <span>Joined {new Date(client.createdAt).toLocaleDateString()}</span>
+                  <span>First paid {new Date(client.createdAt).toLocaleDateString()}</span>
                 </div>
               </Link>
             ))}
@@ -138,7 +145,16 @@ export default function AdminClientsPage() {
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Email</th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Health</th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Projects</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Joined</th>
+                    {/* "Joined" was ambiguous enough to be asked about
+                        directly — it is not the signature date, and someone
+                        can sign and never pay. A client row exists because
+                        money cleared, so the column says so. */}
+                    <th
+                      className="px-6 py-3 text-sm font-semibold text-white/40"
+                      title="A client appears here when their first payment clears — not when they sign."
+                    >
+                      First paid
+                    </th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Actions</th>
                   </tr>
                 </thead>

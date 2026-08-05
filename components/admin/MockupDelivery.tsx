@@ -23,7 +23,13 @@ export function MockupDeliveryForm({
   leadId,
   onDelivered,
   placeholder = 'yourcompany.bothmade.studio',
-  submitLabel = 'Mark Delivered',
+  /**
+   * "Mark Delivered" was a lie by implication. It stores the link against
+   * the lead and tells the team; it sends the client nothing. Somebody
+   * pressing it and believing the prospect now had the mockup is exactly
+   * what happened, so the button says what it does.
+   */
+  submitLabel = 'Attach mockup',
   autoFocus = false,
   /** The three call sites sit in different-sized boxes, so the control scales. */
   size = 'md',
@@ -86,6 +92,13 @@ export function MockupDeliveryForm({
           {saving ? 'Saving...' : submitLabel}
         </button>
       </div>
+      {/* The half this control does not do. Sending is a separate, tracked
+          action on the lead — and it is the one that decides whether anybody
+          can later answer "have they even looked at it?". */}
+      <p className="text-[11px] text-white/30 mt-1.5">
+        Saves it against the lead — the client isn&apos;t emailed yet. Send it from the lead&apos;s
+        Mockups panel to get a tracked link.
+      </p>
       {error && (
         <p role="alert" className="text-xs text-red-300 mt-1.5">
           {error}

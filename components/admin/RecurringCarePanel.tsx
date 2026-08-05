@@ -286,11 +286,44 @@ export function RecurringCarePanel({ projectId }: { projectId: string }) {
 
       {!expanded ? null : (
       <div className="border-t border-white/10 p-5">
-        <p className="text-xs text-white/40 mb-5">
+        <p className="text-xs text-white/40 mb-3">
           The ongoing services they can sign onto — hosting, maintenance, a growth plan. Best raised
           towards the end of the build, at an introductory rate that runs for {DISCOUNT_MONTHS} months
           and then reverts on its own.
         </p>
+
+        {/* What accepting actually does.
+            All of this was already true and none of it was written down, so
+            the only way to find out whether the money and the paperwork were
+            handled was to read the webhook. A panel that takes a recurring
+            payment should say how it takes it. */}
+        <div className="mb-5 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+          <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-white/35 mb-2">
+            What happens when they accept
+          </p>
+          <ul className="space-y-1.5 text-xs text-white/50">
+            <li className="flex gap-2">
+              <span className="text-emerald-400/70">✓</span>
+              Opens a <span className="text-white/75">Stripe subscription</span> — card details go
+              straight to Stripe, and it bills itself every month from then on.
+            </li>
+            <li className="flex gap-2">
+              <span className="text-emerald-400/70">✓</span>
+              An <span className="text-white/75">itemised invoice PDF is emailed automatically</span>{' '}
+              on every successful charge, with that month&apos;s service period on it. Nobody sends
+              these by hand.
+            </li>
+            <li className="flex gap-2">
+              <span className="text-emerald-400/70">✓</span>
+              The introductory rate reverts to standard on its own at month{' '}
+              {DISCOUNT_MONTHS + 1}, and the invoice shows the discount until it does.
+            </li>
+            <li className="flex gap-2">
+              <span className="text-white/25">·</span>
+              A failed charge emails the client and flags it to you — it does not cancel silently.
+            </li>
+          </ul>
+        </div>
 
         {/* Existing offers */}
         {data.offers.length > 0 && (
