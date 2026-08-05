@@ -55,6 +55,11 @@ export async function GET(request: Request) {
       prisma.project.findMany({
         where: {
           OR: [{ handoffAcknowledgedAt: null }, { createdAt: { gte: periodStart } }],
+          // An archived client is one somebody deliberately put away. Their
+          // projects were still turning up here as work waiting to be picked
+          // up, which is how a list of things to do fills with things nobody
+          // is going to do.
+          client: { archivedAt: null },
         },
         include: {
           client: { select: { company: true, contactName: true, email: true } },

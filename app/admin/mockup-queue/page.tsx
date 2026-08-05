@@ -359,7 +359,7 @@ export default function MockupQueuePage() {
                 <MockupDeliveryForm
                   leadId={lead.id}
                   onDelivered={() => setLeads((prev) => prev.filter((l) => l.id !== lead.id))}
-                  placeholder="Paste the mockup link..."
+                  placeholder="yourcompany.bothmade.studio"
                 />
               </div>
             </div>

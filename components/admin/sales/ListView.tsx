@@ -22,6 +22,9 @@ interface LeadRow {
   phone: string | null;
   status: LeadStatus;
   estimatedValue: number | null;
+  /** Sold price if known, else the quote, else the estimate. See the leads route. */
+  dealValue: number | null;
+  dealValueIsFirm: boolean;
   updatedAt: string;
   hotLead: boolean;
   qualifiedAt: string | null;
@@ -134,6 +137,18 @@ const FILTER_LABELS: Record<Filter, string> = {
  * CSV import live here because they are list work; who-to-call-next does not,
  * because that is the queue's job and having both answer it was the problem.
  */
+type SortKey = 'company' | 'contact' | 'status' | 'value' | 'assigned' | 'activity';
+
+/** Header label and sort key, in table order. */
+const SORTABLE_COLUMNS: Array<[SortKey, string]> = [
+  ['company', 'Company'],
+  ['contact', 'Contact'],
+  ['status', 'Status'],
+  ['value', 'Value'],
+  ['assigned', 'Assigned'],
+  ['activity', 'Last Activity'],
+];
+
 export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
   const router = useRouter();
   const [leads, setLeads] = useState<LeadRow[]>([]);
@@ -224,13 +239,52 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
 
   // Search narrows whatever the status tabs already selected, so the two
   // compose instead of one silently overriding the other.
-  const filtered = useMemo(
+  const searched = useMemo(
     () =>
       byStatus.filter((l) =>
         matchesSearch(search, l.company, l.contactName, l.email, l.phone, l.assignedTo?.name)
       ),
     [byStatus, search]
   );
+
+  // Column sorting. The table had none, so the only way to answer "which of
+  // these is worth the most" was to read every row.
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      // Value and dates open on biggest/most-recent first, names A–Z, because
+      // that is what someone means when they click each of them.
+      setSortDir(key === 'company' || key === 'contact' ? 'asc' : 'desc');
+    }
+  };
+
+  const filtered = useMemo(() => {
+    if (!sortKey) return searched;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const text = (v: string | null | undefined) => (v || '').toLowerCase();
+    const lastActivity = (l: LeadRow) =>
+      l.activities[0] ? new Date(l.activities[0].createdAt).getTime() : 0;
+    return [...searched].sort((a, b) => {
+      switch (sortKey) {
+        case 'company':
+          return text(a.company).localeCompare(text(b.company)) * dir;
+        case 'contact':
+          return text(a.contactName || a.email).localeCompare(text(b.contactName || b.email)) * dir;
+        case 'status':
+          return (LEAD_STATUSES.indexOf(a.status) - LEAD_STATUSES.indexOf(b.status)) * dir;
+        case 'value':
+          return ((a.dealValue || 0) - (b.dealValue || 0)) * dir;
+        case 'assigned':
+          return text(a.assignedTo?.name).localeCompare(text(b.assignedTo?.name)) * dir;
+        case 'activity':
+          return (lastActivity(a) - lastActivity(b)) * dir;
+      }
+    });
+  }, [searched, sortKey, sortDir]);
 
   const needsContactCount = useMemo(
     () => leads.filter((l) => l.status === 'new' && l.activities.length === 0).length,
@@ -499,7 +553,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
         </Card>
       )}
 
-      <SearchFilter value={search} onChange={setSearch} count={filtered.length} total={byStatus.length} />
+      <SearchFilter value={search} onChange={setSearch} count={searched.length} total={byStatus.length} />
 
       {(coldReadyLeads.length > 0 || needsCallLeads.length > 0) && (
         <Card className="p-5 mb-6" glow="emerald">
@@ -790,7 +844,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                   </p>
                 )}
                 <div className="flex justify-between items-center text-xs text-white/40">
-                  <span>{lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}</span>
+                  <span>{lead.dealValue ? formatCents(lead.dealValue) : '—'}</span>
                   <QuickActions lead={lead} />
                 </div>
               </div>
@@ -821,12 +875,28 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                         className="accent-sky-400"
                       />
                     </th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Company</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Contact</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Status</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Est. Value</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Assigned</th>
-                    <th className="px-6 py-3 text-sm font-semibold text-white/40">Last Activity</th>
+                    {SORTABLE_COLUMNS.map(([key, label]) => (
+                      <th
+                        key={key}
+                        aria-sort={
+                          sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined
+                        }
+                        className="px-6 py-3 text-sm font-semibold text-white/40"
+                      >
+                        {/* A real button, not a clickable <th> — the latter is
+                            mouse-only and invisible to a keyboard. */}
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(key)}
+                          className="inline-flex items-center gap-1 hover:text-white transition-colors select-none"
+                        >
+                          {label}
+                          <span className="text-[10px] text-sky-300">
+                            {sortKey === key ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+                          </span>
+                        </button>
+                      </th>
+                    ))}
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Quick Actions</th>
                   </tr>
                 </thead>
@@ -869,7 +939,13 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                         <StatusSelect lead={lead} onChange={handleStatusChange} />
                       </td>
                       <td className="px-6 py-4 text-white/50">
-                        {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
+                        {lead.dealValue ? (
+                          <span className={lead.dealValueIsFirm ? 'text-white/80' : undefined}>
+                            {formatCents(lead.dealValue)}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="px-6 py-4 text-white/50">{lead.assignedTo?.name || '—'}</td>
                       <td className="px-6 py-4 text-white/50">

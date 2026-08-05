@@ -20,6 +20,9 @@ interface LeadCard {
   phone: string | null;
   status: LeadStatus;
   estimatedValue: number | null;
+  /** What the deal is actually worth — sold price, else quote, else the guess. */
+  dealValue: number | null;
+  dealValueIsFirm: boolean;
   hotLead: boolean;
   qualifiedAt: string | null;
   updatedAt: string;
@@ -165,7 +168,7 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
       <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMN_STATUSES.filter((status) => !hideClosedColumns || (status !== 'won' && status !== 'lost')).map((status) => {
           const columnLeads = columns[status];
-          const totalValue = columnLeads.reduce((s, l) => s + (l.estimatedValue || 0), 0);
+          const totalValue = columnLeads.reduce((s, l) => s + (l.dealValue || 0), 0);
           return (
             <div key={status} className="flex-shrink-0 w-64">
               <div className={`rounded-2xl border-t-2 ${COLUMN_ACCENT[status]} bg-white/[0.03] border border-white/[0.07] p-3 h-full`}>
@@ -201,7 +204,7 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
                         </div>
                       </div>
                       <p className="text-xs text-white/40 mb-2">
-                        {lead.estimatedValue ? formatCents(lead.estimatedValue) : '—'}
+                        {lead.dealValue ? formatCents(lead.dealValue) : '—'}
                         {lead.assignedTo?.name ? ` · ${lead.assignedTo.name}` : ''}
                       </p>
                       <div className="flex justify-between items-center">

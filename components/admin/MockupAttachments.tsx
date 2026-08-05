@@ -604,7 +604,7 @@ export function MockupAttachments({
                 if (e.key === 'Enter') handleAttachLink();
               }}
               autoFocus
-              placeholder="Paste the mockup link..."
+              placeholder="yourcompany.bothmade.studio"
               aria-label={`Link for mockup ${nextIndex}`}
               className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
             />

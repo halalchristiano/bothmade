@@ -1923,7 +1923,39 @@ export default function LeadDetailPage() {
           <div className="mt-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-4 sm:p-6 min-w-0">
             <div className="mb-5">
               <h2 className="text-base font-bold">Your brief for {lead.company}</h2>
-              <p className="text-xs text-white/45 mt-1 leading-relaxed">
+
+              {/* Who you are actually calling, and on what number, at the top
+                  where you look — not buried in a card further down the tab.
+                  Every one of these is a live link because the moment you
+                  need them is the moment you are already dialling. */}
+              {(lead.contactName || lead.phone || lead.email) && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+                  {lead.contactName && (
+                    <span className="font-semibold text-white/85">{lead.contactName}</span>
+                  )}
+                  {lead.contactRole && <span className="text-white/35">{lead.contactRole}</span>}
+                  {lead.phone && (
+                    <a
+                      href={`tel:${lead.phone}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 px-2.5 py-1 text-white/70 hover:border-sky-400/40 hover:text-sky-300 transition-colors"
+                    >
+                      <Phone size={11} />
+                      {lead.phone}
+                    </a>
+                  )}
+                  {lead.email && (
+                    <a
+                      href={`mailto:${lead.email}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 px-2.5 py-1 text-white/70 hover:border-sky-400/40 hover:text-sky-300 transition-colors"
+                    >
+                      <Mail size={11} />
+                      {lead.email}
+                    </a>
+                  )}
+                </div>
+              )}
+
+              <p className="text-xs text-white/45 mt-2.5 leading-relaxed">
                 Everything below is about <em>this</em> business. Read it top to bottom before you call — it goes
                 problem → what to sell → what it costs.
               </p>

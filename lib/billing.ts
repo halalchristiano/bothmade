@@ -44,6 +44,21 @@ export const MAX_CHARGE_CENTS = 25_000_000; // $250,000
 
 export const MAX_DESCRIPTION_LENGTH = 200;
 
+/**
+ * Capitalises the first letter, and only the first letter.
+ *
+ * This description becomes the heading on a client's invoice and the subject
+ * of the email carrying it, so "extra page" typed at speed should not be how
+ * they receive it. Title-casing every word was the obvious alternative and is
+ * wrong: it turns "SEO audit" into "Seo Audit" and "iOS app" into "Ios App",
+ * which is a worse failure than a lowercase first letter because it looks
+ * deliberate. A line already carrying capitals is left exactly as typed.
+ */
+export function openingCapital(text: string): string {
+  if (!text) return text;
+  return text[0].toUpperCase() + text.slice(1);
+}
+
 /** Matches the cap inside sanitizeCustomItems, so nothing is dropped in silence. */
 export const MAX_LINE_ITEMS = 20;
 
@@ -68,7 +83,9 @@ export function readChargeDraft(input: {
   lineItems?: unknown;
 }): ChargeDraftResult {
   const description =
-    typeof input.description === 'string' ? input.description.trim().slice(0, MAX_DESCRIPTION_LENGTH) : '';
+    typeof input.description === 'string'
+      ? openingCapital(input.description.trim().slice(0, MAX_DESCRIPTION_LENGTH))
+      : '';
   if (!description) {
     return { ok: false, error: 'Say what the charge is for — it goes on the invoice.' };
   }
@@ -153,4 +170,67 @@ export function dollarsToCents(input: string): number | null {
 /** The filename a client sees on the attachment, not a path we control. */
 export function invoiceFilename(number: string): string {
   return `${number.replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
+}
+
+/**
+ * Claim the next invoice number and write the ledger row in one go.
+ *
+ * The ledger's unique constraint on `number` is the lock: a P2002 means
+ * somebody else took it, and the next attempt counts again and gets the one
+ * after. Three call sites were carrying their own copy of this loop — the
+ * custom-charge allocator, the instalment sender, and the webhook — which is
+ * three places for the retry to be subtly different in.
+ *
+ * Returns null after five collisions rather than throwing, because every
+ * caller would rather report "couldn't allocate a number, try again" than
+ * lose the thing it was raising an invoice for.
+ */
+export async function createInvoiceRow(
+  db: {
+    invoice: {
+      count(args: unknown): Promise<number>;
+      create(args: unknown): Promise<{ id: string; number: string; createdAt: Date }>;
+    };
+  },
+  input: {
+    clientId: string;
+    projectId: string;
+    description: string;
+    lineItems: Array<{ label: string; priceCents: number }>;
+    amountCents: number;
+    issuedById?: string | null;
+    sentToEmail?: string | null;
+    /** A payment already taken is recorded as settled, not as owed. */
+    status?: 'open' | 'paid';
+    paidAt?: Date | null;
+  },
+  now: Date = new Date()
+): Promise<{ id: string; number: string; createdAt: Date } | null> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const year = now.getUTCFullYear();
+    const issued = await db.invoice.count({
+      where: { number: { startsWith: invoiceNumberPrefix(year) } },
+    });
+    const number = formatInvoiceNumber(year, issued + 1);
+    try {
+      return await db.invoice.create({
+        data: {
+          number,
+          clientId: input.clientId,
+          projectId: input.projectId,
+          description: input.description,
+          lineItems: input.lineItems,
+          amountCents: input.amountCents,
+          status: input.status ?? 'open',
+          paidAt: input.paidAt ?? null,
+          issuedById: input.issuedById ?? null,
+          sentToEmail: input.sentToEmail ?? null,
+        },
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code !== 'P2002') throw error;
+      console.warn(`Invoice number ${number} was taken — retrying (attempt ${attempt + 1}).`);
+    }
+  }
+  return null;
 }

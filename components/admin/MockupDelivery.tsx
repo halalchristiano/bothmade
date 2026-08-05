@@ -22,7 +22,7 @@ async function deliverMockup(leadId: string, mockupUrl: string): Promise<boolean
 export function MockupDeliveryForm({
   leadId,
   onDelivered,
-  placeholder = 'Paste the mockup link...',
+  placeholder = 'yourcompany.bothmade.studio',
   submitLabel = 'Mark Delivered',
   autoFocus = false,
   /** The three call sites sit in different-sized boxes, so the control scales. */

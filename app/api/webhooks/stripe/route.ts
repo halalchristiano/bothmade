@@ -20,6 +20,7 @@ import {
 } from '@/lib/notify';
 import { buildCarePlanInvoicePdf } from '@/lib/invoice-pdf';
 import { seedInstalments } from '@/lib/instalments';
+import { createInvoiceRow } from '@/lib/billing';
 import { discountLabel, scheduleForOffer } from '@/lib/care-offers';
 import { planLabel, scheduleLines } from '@/lib/recurring';
 import { formatCents, formatCentsExact } from '@/lib/pricing';
@@ -287,6 +288,48 @@ async function handleCheckoutSessionCompleted(
     session.amount_total ??
     (metadata.paymentType === 'deposit' ? Number(metadata.depositAmount) || 0 : totalPrice);
   await prisma.$transaction((tx) => seedInstalments(tx, project, seedAmount, session.id));
+
+  /**
+   * Put the signing payment in the ledger.
+   *
+   * Payments 2 and 3 raise an Invoice row when they are sent, so they appear
+   * under "Invoices raised" with a number. Payment 1 never did: the
+   * sign-and-pay flow rendered its PDF onto the lead and took the money, and
+   * the ledger simply had no record of it. That made the invoice list a lie
+   * by omission — the one payment every client makes was the one missing
+   * from the list of invoices, and the numbering skipped it too.
+   *
+   * Recorded as already paid, because it is. Best-effort: the money has
+   * cleared and the project exists, so failing to number the paperwork must
+   * not throw away the event.
+   */
+  try {
+    const paidRows = await prisma.instalment.findMany({
+      where: { projectId: project.id, status: 'paid' },
+      orderBy: { index: 'asc' },
+    });
+    for (const row of paidRows) {
+      if (row.invoiceNumber) continue;
+      const invoice = await createInvoiceRow(prisma, {
+        clientId: client.id,
+        projectId: project.id,
+        description: `${row.label} — ${projectName}`,
+        lineItems: [{ label: `${row.label} (${row.percent}% of project total)`, priceCents: row.amountCents }],
+        amountCents: row.amountCents,
+        sentToEmail: email,
+        status: 'paid',
+        paidAt: new Date(),
+      });
+      if (invoice) {
+        await prisma.instalment.update({
+          where: { id: row.id },
+          data: { invoiceNumber: invoice.number },
+        });
+      }
+    }
+  } catch (ledgerError) {
+    console.error(`Signing payment for project ${project.id} was not written to the ledger:`, ledgerError);
+  }
 
   await notifyAdminsPaymentReceived({
     projectId: project.id,

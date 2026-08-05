@@ -285,7 +285,15 @@ export default function TeamChatPage() {
     if ((!content && pendingFiles.length === 0) || uploading) return;
     const toUserId = view.type === 'dm' ? view.userId : null;
     const files = pendingFiles;
-    const wasUrgent = urgent;
+    // Anything sent from the Flags board is a flag.
+    //
+    // It used to be whatever the toggle happened to say, which meant a
+    // message typed here saved perfectly and then vanished — the view filters
+    // on `urgent`, so an unflagged message is written to the database and
+    // immediately filtered out of the only screen you were looking at. It
+    // reads exactly like "the message didn't save", and the second one
+    // always vanished because the toggle resets after every send.
+    const wasUrgent = view.type === 'flags' ? true : urgent;
 
     // Optimistic append, rolled back on failure — the poll appends by id,
     // so the temp row is swapped for the real one on success.
@@ -650,20 +658,27 @@ export default function TeamChatPage() {
               placeholder={
                 view.type === 'dm'
                   ? `Message ${viewTitle} privately… (Shift+Enter for a new line)`
-                  : 'Message the team… (Shift+Enter for a new line)'
+                  : view.type === 'flags'
+                    ? 'Ask something that needs an answer… (it stays flagged until resolved)'
+                    : 'Message the team… (Shift+Enter for a new line)'
               }
               className={`${inputClass} resize-none min-h-[40px] max-h-40 leading-relaxed`}
             />
             <button
               onClick={() => setUrgent((v) => !v)}
+              disabled={view.type === 'flags'}
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
-                urgent
+                urgent || view.type === 'flags'
                   ? 'border-amber-400/50 bg-amber-400/10 text-amber-300'
                   : 'border-white/15 text-white/40 hover:text-amber-300'
-              }`}
+              } ${view.type === 'flags' ? 'cursor-default opacity-80' : ''}`}
               aria-label="Flag as needing an answer"
-              aria-pressed={urgent}
-              title="Flag it — stays on the board until someone resolves it"
+              aria-pressed={urgent || view.type === 'flags'}
+              title={
+                view.type === 'flags'
+                  ? 'Anything sent from the Flags board is flagged'
+                  : 'Flag it — stays on the board until someone resolves it'
+              }
             >
               <AlertTriangle size={15} />
             </button>

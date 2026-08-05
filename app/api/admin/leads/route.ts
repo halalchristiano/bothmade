@@ -72,7 +72,36 @@ export async function GET(request: NextRequest) {
       orderBy: { updatedAt: 'desc' },
     });
 
-    return NextResponse.json({ success: true, leads, count: leads.length }, { status: 200 });
+    /**
+     * What each deal is actually worth, as opposed to what somebody guessed
+     * it might be worth.
+     *
+     * `estimatedValue` is a number typed into a box early on, and it is
+     * routinely left blank. Summing it made the board's Won column read
+     * $3,000 across three won deals when one of them alone had sold for
+     * $12,700 — a column that under-reports revenue by 4x is worse than no
+     * column, because it looks like an answer.
+     *
+     * So: what the client is actually being billed, if that is known; then
+     * what was quoted; and only then the guess.
+     */
+    const converted = await prisma.project.findMany({
+      where: { convertedFromLeadId: { in: leads.map((l) => l.id) } },
+      select: { convertedFromLeadId: true, totalPrice: true },
+    });
+    const soldFor = new Map<string, number>();
+    for (const p of converted) {
+      if (p.convertedFromLeadId) soldFor.set(p.convertedFromLeadId, p.totalPrice);
+    }
+
+    const withValue = leads.map((lead) => ({
+      ...lead,
+      dealValue: soldFor.get(lead.id) ?? lead.proposalTotalPrice ?? lead.estimatedValue ?? null,
+      /** True when dealValue is a real figure rather than somebody's estimate. */
+      dealValueIsFirm: soldFor.has(lead.id) || Boolean(lead.proposalTotalPrice),
+    }));
+
+    return NextResponse.json({ success: true, leads: withValue, count: withValue.length }, { status: 200 });
   } catch (error) {
     console.error('Get leads error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

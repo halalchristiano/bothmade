@@ -282,12 +282,23 @@ function BillingWorkspace() {
                   placeholder="Search by company, contact or email"
                   className={inputClass}
                 />
+                {/* Say what this field can find before someone types into it
+                    and gets nothing back. A charge hangs off a project, so a
+                    lead who has not bought yet is genuinely not billable
+                    here — but silence made that look like a broken box. */}
+                {query.trim().length < 2 && (
+                  <p className="mt-2 text-xs text-white/35">
+                    Type at least two characters. Only paying customers appear here — a lead who
+                    hasn&apos;t bought yet has no project to bill against.
+                  </p>
+                )}
                 {query.trim().length >= 2 && (
                   <div className="mt-2 rounded-lg border border-white/10 divide-y divide-white/[0.06] overflow-hidden">
                     {searching && <p className="px-3 py-2 text-xs text-white/40">Searching…</p>}
                     {!searching && results.length === 0 && (
                       <p className="px-3 py-2 text-xs text-white/40">
-                        No customer matches that. Only customers with a project can be billed here.
+                        No customer matches that. Only customers with a project can be billed here —
+                        if they&apos;re still a lead, send them a sign-and-pay link instead.
                       </p>
                     )}
                     {results.map((found) => (
@@ -426,22 +437,27 @@ function BillingWorkspace() {
           <CardHeader
             icon={Receipt}
             title="Invoices raised"
-            subtitle="Every custom charge, newest first"
+            subtitle="Every invoice raised — instalments and one-off charges, newest first"
             tone="sky"
           />
           {invoices.length === 0 ? (
-            <EmptyState icon={Receipt} text="No custom charges have been raised yet." />
+            <EmptyState icon={Receipt} text="No invoices have been raised yet." />
           ) : (
             <div className="divide-y divide-white/[0.06]">
               {invoices.map((invoice) => (
                 <div key={invoice.id} className="py-3 first:pt-0 last:pb-0">
+                  {/* The whole row opens the project. Only the company name
+                      was a link before, which is a two-millimetre target for
+                      the thing everybody is actually trying to reach. */}
+                  <Link
+                    href={`/admin/projects/${invoice.project.id}`}
+                    className="block -mx-2 rounded-lg px-2 py-1 hover:bg-white/[0.03] transition-colors"
+                  >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{invoice.description}</p>
                       <p className="text-xs text-white/40 truncate">
-                        <Link href={`/admin/projects/${invoice.project.id}`} className="hover:text-white transition-colors">
-                          {invoice.client.company}
-                        </Link>
+                        {invoice.client.company}
                         {' · '}
                         {invoice.number}
                         {' · '}
@@ -455,6 +471,7 @@ function BillingWorkspace() {
                       </Badge>
                     </div>
                   </div>
+                  </Link>
                   <div className="flex flex-wrap items-center gap-3 mt-1.5 text-[11px]">
                     {invoice.pdfUrl && (
                       <a

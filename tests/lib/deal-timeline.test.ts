@@ -167,3 +167,66 @@ describe('progress', () => {
     expect(nextAction(finished)).toBe('Nothing outstanding — this one is done.');
   });
 });
+
+/**
+ * The one Kiana caught on a live deal: a signed, twice-paid project whose
+ * timeline read "Next: show them a mockup". That ship had sailed three
+ * stages earlier — the gap is history, not a to-do.
+ */
+describe('a deal that has overtaken its own gaps', () => {
+  const SIGNED_NO_MOCKUP: DealTimelineInput = {
+    ...BLANK,
+    status: 'won',
+    contractStatus: 'signed',
+    agreementSignedAt: '2026-08-04T10:00:00Z',
+    latestMockupAt: null,
+    activities: [
+      { type: 'call', createdAt: '2026-08-02T10:00:00Z' },
+      { type: 'proposal', createdAt: '2026-08-03T12:00:00Z' },
+    ],
+    project: {
+      instalments: [
+        inst(1, 'paid', 635_000, '2026-08-04T11:00:00Z'),
+        inst(2, 'paid', 317_500, '2026-08-05T11:00:00Z'),
+        inst(3, 'scheduled', 317_500),
+      ],
+    },
+  };
+
+  it('does not send a rep back to a stage the client already bought past', () => {
+    const steps = buildDealTimeline(SIGNED_NO_MOCKUP);
+
+    expect(steps.find((s) => s.key === 'mockup')?.state).toBe('todo');
+    expect(steps.find((s) => s.state === 'current')?.key).not.toBe('mockup');
+    expect(nextAction(steps)).not.toContain('mockup');
+  });
+
+  it('still shows the gap, because it is a true fact about the deal', () => {
+    const steps = buildDealTimeline(SIGNED_NO_MOCKUP);
+
+    expect(steps.find((s) => s.key === 'mockup')?.detail).toBe('No mockup attached');
+  });
+
+  it('points at the only thing left that can be acted on', () => {
+    // Payment 3 is gated, so there is nothing to do — and saying so is more
+    // use than inventing a task.
+    expect(nextAction(buildDealTimeline(SIGNED_NO_MOCKUP))).toBe(
+      'Waiting on a milestone. Nothing to send yet.'
+    );
+  });
+
+  it('names the payment once it has actually been invoiced', () => {
+    const steps = buildDealTimeline({
+      ...SIGNED_NO_MOCKUP,
+      project: {
+        instalments: [
+          inst(1, 'paid', 635_000, '2026-08-04T11:00:00Z'),
+          inst(2, 'paid', 317_500, '2026-08-05T11:00:00Z'),
+          inst(3, 'due', 317_500),
+        ],
+      },
+    });
+
+    expect(nextAction(steps)).toBe('Next: collect Payment 3 of 3.');
+  });
+});

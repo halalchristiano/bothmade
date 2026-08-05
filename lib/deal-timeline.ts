@@ -167,10 +167,21 @@ export function buildDealTimeline(lead: DealTimelineInput): DealStep[] {
     }
   }
 
-  // Exactly one current step: the first thing not yet done. A blocked step
-  // can't be current — you cannot act on it — so the pointer passes over it.
+  /**
+   * Exactly one current step: the first thing not yet done that is still
+   * worth doing. A blocked step can't be current — you cannot act on it — so
+   * the pointer passes over it.
+   *
+   * And it never points backwards past work the deal has already overtaken.
+   * A signed, part-paid deal that never had a mockup attached was being told
+   * "Next: show them a mockup", which is advice from three stages ago about
+   * a gap that can no longer be filled — the client has already bought.
+   * Once a deal is signed, the pre-sale steps are history, not a to-do list.
+   */
   if (!lost) {
-    const next = steps.find((s) => s.state === 'todo');
+    const settled = steps.findLastIndex((s) => s.state === 'done');
+    const candidates = steps.filter((s, i) => s.state === 'todo' && i > settled);
+    const next = candidates[0] ?? null;
     if (next) next.state = 'current';
   }
 

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendEmail, studioInbox } from '@/lib/email';
+import { renderShell, sendEmail, studioInbox } from '@/lib/email';
+import { sendAsUser } from '@/lib/mailer';
+import { COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 import { escapeHtml } from '@/lib/html';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { prisma } from '@/lib/prisma';
@@ -177,6 +179,61 @@ export async function POST(request: NextRequest) {
       subject: `Pricing interest: ${cleanCompany} — ${BASE_SERVICES[baseService].label}`,
       html,
     });
+
+    /**
+     * Acknowledge the person who filled it in.
+     *
+     * The contact form has done this since it was written; this one never
+     * did — it mailed the studio, mailed Evan, and left the customer looking
+     * at a thank-you screen with nothing in their inbox. That is the worse
+     * of the two forms to go quiet on: someone who priced a project and
+     * asked to talk has already decided they want it, and silence reads as
+     * "the form didn't work."
+     *
+     * Sent *as* info@ through delegation for the same reason the contact
+     * acknowledgement is, so their reply threads onto something that exists
+     * in the mailbox. Best-effort: the lead row is already written, so a
+     * failed acknowledgement must not fail the request.
+     */
+    const ack = await sendAsUser(
+      { name: COMPANY_NAME, email: COMPANY_EMAIL, gmailAddress: null, gmailAppPassword: null },
+      {
+        to: cleanEmail,
+        subject: `Your ${BASE_SERVICES[baseService].label} estimate — ${cleanCompany}`,
+        html: renderShell({
+          eyebrow: 'Estimate received',
+          title: `${cleanCompany} — ${BASE_SERVICES[baseService].label}`,
+          // Reads their own configuration back to them. A generic "thanks,
+          // we'll be in touch" carries nothing only this person could have
+          // caused, which is both a worse email and the shape a spam filter
+          // distrusts.
+          bodyHtml: `
+            <p>Hi ${escapeHtml(cleanName)},</p>
+            <p>Thanks — we've got your estimate for <strong style="color:#fff;">${escapeHtml(cleanCompany)}</strong> and someone will be in touch shortly to talk it through. Here's what you put together:</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; margin:20px 0; border-collapse:collapse;">
+              ${[
+                ['Service', BASE_SERVICES[baseService].label],
+                ['Add-ons', addOnKeys.map((key) => ADD_ONS[key].label).join(', ') || 'None'],
+                ['Timeline', `${TIMELINES[timeline].label} (${TIMELINES[timeline].weeks})`],
+                ['Estimated total', formatCents(breakdown.totalPrice)],
+              ]
+                .map(
+                  ([label, value], i) => `
+              <tr>
+                <td style="padding:9px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13px; color:rgba(255,255,255,0.45);">${escapeHtml(label)}</td>
+                <td style="padding:9px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:14px; color:${i === 3 ? '#7dd3fc' : '#fff'}; text-align:right; font-weight:${i === 3 ? '700' : '400'};">${escapeHtml(value)}</td>
+              </tr>`
+                )
+                .join('')}
+            </table>
+            <p style="font-size:13px; color:rgba(255,255,255,0.5);">This is an estimate, not an invoice — nothing has been charged and nothing is owed. The final figure is agreed on the call, in writing, before any work starts.</p>
+          `,
+        }),
+      }
+    );
+    if (!ack.ok) {
+      console.error(`Pricing acknowledgement to ${cleanEmail} failed (${ack.sentVia})`);
+    }
 
     // Evan specifically — the lead is his, and this one arrives with a budget
     // already attached, so it is the most actionable mail the studio gets.

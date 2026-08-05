@@ -6,7 +6,13 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendCustomChargeEmail, sendInvoiceRecordEmail } from '@/lib/email';
 import { buildCustomChargeInvoicePdf } from '@/lib/invoice-pdf';
-import { formatInvoiceNumber, invoiceFilename, invoiceNumberPrefix, readChargeDraft } from '@/lib/billing';
+import {
+  createInvoiceRow as sharedCreateInvoiceRow,
+  formatInvoiceNumber,
+  invoiceFilename,
+  invoiceNumberPrefix,
+  readChargeDraft,
+} from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
@@ -317,11 +323,7 @@ async function nextInvoiceNumber(now = new Date()): Promise<string> {
   return formatInvoiceNumber(year, issuedThisYear + 1);
 }
 
-/**
- * Claims that number, retrying when someone else claimed it first — P2002
- * means "that one's taken", and the next attempt counts again and gets the
- * one after it.
- */
+/** Thin alias for the shared allocator — the retry loop lives in lib/billing. */
 async function createInvoiceRow(input: {
   clientId: string;
   projectId: string;
@@ -330,26 +332,5 @@ async function createInvoiceRow(input: {
   amountCents: number;
   issuedById: string;
 }) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const number = await nextInvoiceNumber();
-    try {
-      return await prisma.invoice.create({
-        data: {
-          number,
-          clientId: input.clientId,
-          projectId: input.projectId,
-          description: input.description,
-          lineItems: input.lineItems as unknown as Prisma.InputJsonValue,
-          amountCents: input.amountCents,
-          status: 'open',
-          issuedById: input.issuedById,
-        },
-      });
-    } catch (error) {
-      const code = (error as { code?: string })?.code;
-      if (code !== 'P2002') throw error;
-      console.warn(`Invoice number ${number} was taken — retrying (attempt ${attempt + 1}).`);
-    }
-  }
-  return null;
+  return sharedCreateInvoiceRow(prisma, input);
 }
