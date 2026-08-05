@@ -249,7 +249,7 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           (fields.observation?.trim()
             ? `<p style="color:#fff; font-weight:600;">What prompted it: ${escMultiline(fields.observation)}</p>`
             : '') +
-          `<p>It is finished and it runs. It is not published anywhere — the video is how you see it move, and the brochure walks through what each part of it does and what it would cost, in three versions.</p>` +
+          `<p>It is finished and it runs. It is not published anywhere — the video is how you see it move, and the brochure walks through what each part of it does and what it would cost.</p>` +
           `<p>It is one idea, not the only one. Every piece of it is yours to change, and none of it costs you anything to look at. If you like the direction we can talk about taking it further; if you don't, you keep the ideas.</p>` +
           `<p>Worth fifteen minutes next week?</p>`,
         signOffHtml: signOff({ closing: 'Kind regards,', name: full, title }),
