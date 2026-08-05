@@ -103,6 +103,20 @@ export const NOTIFICATION_GUIDE: NotificationGroup[] = [
         where: ['dashboard'],
         timing: 'The moment they press it',
       },
+      {
+        trigger: 'The client sends design feedback instead of approving',
+        tells: 'We email you their notes, split into what we got wrong, what they simply want different, and what is new scope — and it takes over the dashboard headline until somebody reads it',
+        where: ['email', 'dashboard'],
+        timing: 'The moment they submit it',
+        basis: 'Section 4 — two included rounds; Exhibit C — non-conformance is free and outside them',
+      },
+      {
+        trigger: 'They use up both included revision rounds',
+        tells: 'The project says so, and the client is told plainly on their own form before they write anything',
+        where: ['screen'],
+        timing: 'As soon as the second round is spent',
+        basis: 'Section 9 — beyond the allowance is a Change Order',
+      },
     ],
   },
   {

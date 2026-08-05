@@ -9,6 +9,7 @@ import { EmailComposer } from '@/components/admin/EmailComposer';
 import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
 import { ChangeOrderPanel } from '@/components/admin/ChangeOrderPanel';
+import { DesignFeedbackPanel } from '@/components/admin/DesignFeedbackPanel';
 import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
 import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
@@ -901,11 +902,20 @@ export default function AdminProjectDetailPage() {
               summary IS the document the client signs, and in a sidebar it
               truncated to three words — which is the one part of a change
               order nobody can afford to have to guess at. */}
-          <ChangeOrderPanel
-            projectId={projectId}
-            totalPrice={project.totalPrice}
-            onApplied={loadProject}
-          />
+          {/* Above the change order panel on purpose: the new-scope group in
+              here is the most common reason to raise one, and reading the
+              request immediately before the tool that prices it is the order
+              the work actually happens in. Renders nothing until a client has
+              sent something. */}
+          <DesignFeedbackPanel projectId={projectId} />
+
+          <div id="change-orders">
+            <ChangeOrderPanel
+              projectId={projectId}
+              totalPrice={project.totalPrice}
+              onApplied={loadProject}
+            />
+          </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-xl font-bold mb-4">Activity</h2>

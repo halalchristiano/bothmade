@@ -462,3 +462,102 @@ export async function notifyAdminsDesignApprovedByClient(params: {
   );
   await notifyAdmins(`Design approved: ${params.company}`, html);
 }
+
+/**
+ * The client came back with notes instead of an approval.
+ *
+ * Sorted the way the agreement prices it, because those three groups want
+ * three different responses from us and reading them as one list is how a
+ * studio ends up doing paid work for free — or, worse, billing for its own
+ * mistake.
+ *
+ * The new-scope group is flagged here and nowhere the client can see it. Whether
+ * something they have asked for gets absorbed or quoted under Section 9 is a
+ * judgement about the relationship, and software should neither make that call
+ * nor pre-announce it on the studio's behalf.
+ */
+export async function notifyAdminsDesignFeedback(params: {
+  projectId: string;
+  projectName: string;
+  company: string;
+  round: number;
+  liked: string | null;
+  note: string | null;
+  notAsAgreed: Array<{ area: string; detail: string }>;
+  changes: Array<{ area: string; detail: string }>;
+  newScope: Array<{ area: string; detail: string }>;
+  consumedRound: boolean;
+  revisionsUsed: number;
+  revisionsIncluded: number;
+}): Promise<void> {
+  const group = (
+    title: string,
+    colour: string,
+    note: string,
+    items: Array<{ area: string; detail: string }>
+  ) =>
+    items.length === 0
+      ? ''
+      : `<div style="margin:16px 0;">
+           <p style="margin:0 0 4px 0;font-weight:700;color:${colour};">${escapeHtml(title)} (${items.length})</p>
+           <p style="margin:0 0 8px 0;font-size:13px;color:#777;">${escapeHtml(note)}</p>
+           <ul style="margin:0;padding-left:18px;color:#333;">
+             ${items
+               .map(
+                 (i) =>
+                   `<li style="margin-bottom:6px;"><strong>${escapeHtml(i.area)}</strong> — ${escMultiline(i.detail)}</li>`
+               )
+               .join('')}
+           </ul>
+         </div>`;
+
+  const remaining = Math.max(0, params.revisionsIncluded - params.revisionsUsed);
+  const html = wrap(
+    'Design feedback',
+    `<p><strong>${escapeHtml(params.company)}</strong> sent notes on round ${params.round} of
+       ${escapeHtml(params.projectName)} rather than approving it.</p>
+     ${
+       params.liked
+         ? `<div style="margin:16px 0;">
+              <p style="margin:0 0 4px 0;font-weight:700;color:#166534;">What's working</p>
+              <blockquote style="margin:0;border-left:3px solid #166534;padding-left:12px;color:#555;">${escMultiline(params.liked)}</blockquote>
+            </div>`
+         : ''
+     }
+     ${group(
+       'Not as agreed',
+       '#b45309',
+       'Section 4 non-conformance — fix at no charge, and it does not come out of their allowance.',
+       params.notAsAgreed
+     )}
+     ${group(
+       'In-scope changes',
+       '#1d4ed8',
+       'Within the two included rounds. This is the work you owe them.',
+       params.changes
+     )}
+     ${group(
+       'New scope',
+       '#b91c1c',
+       'Not a revision — Section 9. Your call whether to absorb it or quote it. They have not been told either way.',
+       params.newScope
+     )}
+     ${
+       params.note
+         ? `<div style="margin:16px 0;">
+              <p style="margin:0 0 4px 0;font-weight:700;">Anything else</p>
+              <blockquote style="margin:0;border-left:3px solid #ccc;padding-left:12px;color:#555;">${escMultiline(params.note)}</blockquote>
+            </div>`
+         : ''
+     }
+     <p style="color:#555;">${
+       params.consumedRound
+         ? `That spends revision ${params.revisionsUsed} of ${params.revisionsIncluded} — ${remaining} left.`
+         : `No revision round spent — nothing here was an in-scope preference.`
+     }</p>
+     <p style="color:#555;">Their review clock has stopped. It restarts when you present the next version.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'Read it in full'
+  );
+  await notifyAdmins(`Design feedback: ${params.company}`, html);
+}

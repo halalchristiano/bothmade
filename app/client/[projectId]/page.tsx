@@ -22,6 +22,7 @@ import { ClientHeader } from '@/components/portal/ClientHeader';
 import { GridBackdrop, CountUp } from '@/components/ui';
 import { addOnLabel, formatCentsExact } from '@/lib/pricing';
 import { deliverableHref, isOpenable } from '@/lib/deliverables';
+import { DesignFeedbackForm } from '@/components/client/DesignFeedbackForm';
 
 // The one motion signature carried over from the marketing site — the same
 // ease-out-expo curve used there, so the dashboard a client lives in every
@@ -88,6 +89,14 @@ interface Project {
     reviewEndsAt: string | null;
     approvedAt: string | null;
     deemed: boolean;
+    round?: number;
+    revisions?: {
+      used: number;
+      included: number;
+      remaining: number;
+      nextIsBillable: boolean;
+      clientLine: string;
+    };
   };
   estimatedCompletionDate: string | null;
   liveUrl: string | null;
@@ -205,6 +214,10 @@ export default function ClientDashboard() {
    * reconsidered is a Change Order under Section 9, not a button, because the
    * build has started on the strength of it.
    */
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  /** The acknowledgement the server generated from what they actually said. */
+  const [feedbackSent, setFeedbackSent] = useState<string | null>(null);
+
   const approveDesign = async () => {
     setApprovingDesign(true);
     setApproveError('');
@@ -808,18 +821,56 @@ export default function ClientDashboard() {
                     . If we haven&apos;t heard from you by then we&apos;ll take it as approved and start
                     building, so nothing stalls on a message that never got sent.
                   </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <button
-                      onClick={approveDesign}
-                      disabled={approvingDesign}
-                      className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
-                    >
-                      {approvingDesign ? 'Saving…' : 'Approve the design'}
-                    </button>
-                    <span className="text-xs text-white/40">
-                      Changes instead? Send us a message below — that&apos;s quicker than a call.
-                    </span>
-                  </div>
+                  {/* Two doors, equally weighted.
+                      "Approve" used to be the only button, with changes
+                      relegated to a message box — which quietly asks a client
+                      who has reservations to either swallow them or go and do
+                      something harder. The second door is a proper form, and
+                      it is right here. */}
+                  {!feedbackSent && !showFeedbackForm && (
+                    <>
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <button
+                          onClick={approveDesign}
+                          disabled={approvingDesign}
+                          className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                        >
+                          {approvingDesign ? 'Saving…' : 'Approve the design'}
+                        </button>
+                        <button
+                          onClick={() => setShowFeedbackForm(true)}
+                          className="rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white/85 transition-colors hover:bg-white/5"
+                        >
+                          I&apos;d like some changes
+                        </button>
+                      </div>
+                      {project.designReview.revisions && (
+                        <p className="mt-2 text-xs text-white/40">
+                          {project.designReview.revisions.clientLine}
+                        </p>
+                      )}
+                    </>
+                  )}
+
+                  {showFeedbackForm && !feedbackSent && (
+                    <DesignFeedbackForm
+                      projectId={projectId}
+                      revisionLine={project.designReview.revisions?.clientLine ?? ''}
+                      onCancel={() => setShowFeedbackForm(false)}
+                      onDone={(ack) => {
+                        setFeedbackSent(ack);
+                        setShowFeedbackForm(false);
+                        loadProject();
+                      }}
+                    />
+                  )}
+
+                  {feedbackSent && (
+                    <div className="mt-4 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] p-4">
+                      <p className="text-sm text-emerald-200">{feedbackSent}</p>
+                    </div>
+                  )}
+
                   {approveError && <p className="mt-2 text-xs text-red-300">{approveError}</p>}
                 </div>
               )}
