@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { amountPaidTowardProject } from '@/lib/billing';
+import { projectBalance } from '@/lib/billing';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 
@@ -142,11 +142,21 @@ export async function GET() {
 
     const activeProjects = await prisma.project.findMany({
       where: { status: { not: 'complete' } },
-      select: { id: true, totalPrice: true, client: { select: { company: true } }, payments: { select: { amount: true, type: true } } },
+      select: {
+        id: true,
+        totalPrice: true,
+        statusStage: true,
+        client: { select: { company: true } },
+        payments: { select: { amount: true, type: true } },
+        instalments: { select: { status: true, amountCents: true, trigger: true } },
+      },
       take: 40,
     });
     for (const p of activeProjects) {
-      const balanceDue = p.totalPrice - amountPaidTowardProject(p.payments);
+      // Invoiced and unpaid — not "hasn't finished paying the contract". With
+      // a three-instalment schedule the second reading is true of every live
+      // project, which turned this bell into a permanent one.
+      const balanceDue = projectBalance(p).dueNowCents;
       if (balanceDue <= 0) continue;
       items.push({
         id: `overdue-${p.id}`,

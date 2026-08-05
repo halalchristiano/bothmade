@@ -177,6 +177,16 @@ model Project {
   // by accident after a page reload forgets the button was already used.
   lastPaymentReminderSentAt DateTime?
 
+  // Hides this project from the Priorities list until the given date.
+  //
+  // A list of things needing attention with no way to say "seen it, not this
+  // week" only ever grows, and a list that only grows stops being read. This
+  // deliberately does not touch the underlying problem — the balance is still
+  // owed, the project is still quiet — it only defers the reminder, which is
+  // the difference between acknowledging something and pretending it went
+  // away. Null means live.
+  prioritySnoozedUntil DateTime?
+
   // Capability token for the public, no-login status page (/status/[id]?t=…).
   // Separate from the cuid PK on purpose: knowing a project's ID — which
   // shows up in admin URLs, emails, and Stripe metadata — must not be the
@@ -197,6 +207,7 @@ model Project {
   invoices            Invoice[]
   recurringOffers     RecurringOffer[]
 
+  @@index([prioritySnoozedUntil])
   @@map("projects")
 }
 

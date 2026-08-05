@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { amountPaidTowardProject } from '@/lib/billing';
+import { amountPaidTowardProject, projectBalance } from '@/lib/billing';
 import { AlertTriangle, FolderKanban, MessageSquare, Plus } from 'lucide-react';
 import { Badge, Card, Kicker, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
 
@@ -15,10 +15,18 @@ interface ProjectRow {
   createdAt: string;
   updatedAt: string;
   totalPrice: number;
+  statusStage: number;
   client: { company: string; email: string };
   messages: Array<{ isFromAdmin: boolean; createdAt: string }>;
   payments: Array<{ amount: number; type: string }>;
-  instalments?: Array<{ index: number; label: string; amountCents: number; status: string; dueAt: string | null }>;
+  instalments?: Array<{
+    index: number;
+    label: string;
+    amountCents: number;
+    status: string;
+    dueAt: string | null;
+    trigger: string;
+  }>;
 }
 
 const STATUSES = ['all', 'discovery', 'design', 'build', 'launch', 'complete'];
@@ -42,9 +50,25 @@ function balanceDue(project: ProjectRow): number {
   return project.totalPrice - amountPaidTowardProject(project.payments);
 }
 
-/** Anything a PM would actually want to look at today, in one signal. */
+/**
+ * Anything a PM would actually want to look at today, in one signal.
+ *
+ * The money half asks what's *owed*, not what's left on the contract. Every
+ * project carries a three-instalment schedule now, so "contracted price minus
+ * paid" is above zero for the entire life of the job — which made this filter
+ * select every live project and mean nothing.
+ */
 function needsAttention(project: ProjectRow): boolean {
-  return isAtRisk(project) || isAwaitingReply(project) || (project.status !== 'complete' && balanceDue(project) > 0);
+  if (isAtRisk(project) || isAwaitingReply(project)) return true;
+  if (project.status === 'complete') return false;
+  return (
+    projectBalance({
+      totalPrice: project.totalPrice,
+      statusStage: project.statusStage,
+      payments: project.payments,
+      instalments: project.instalments ?? [],
+    }).dueNowCents > 0
+  );
 }
 
 function AtRiskBadge({ project }: { project: ProjectRow }) {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
+import { projectBalance, type BalanceInstalment } from '@/lib/billing';
 import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
 
 const RANGE_LABELS: Record<StatsRange, string> = {
@@ -30,6 +31,17 @@ export async function GET(request: Request) {
     // Prior period of equal length, for the trend comparison.
     const previousPeriodStart = new Date(periodStart.getTime() - (now.getTime() - periodStart.getTime()));
 
+    /**
+     * A project somebody has said "not this week" about.
+     *
+     * Filtered out of every list that nags — handoffs, quiet projects,
+     * unanswered messages, money — and out of none of the lists that count
+     * (active project count, revenue). Snoozing is a decision about when to be
+     * reminded, never a change to what is true.
+     */
+    const snoozed = (p: { prioritySnoozedUntil: Date | null }) =>
+      !!p.prioritySnoozedUntil && p.prioritySnoozedUntil > now;
+
     const [
       activeProjects,
       newHandoffs,
@@ -54,7 +66,12 @@ export async function GET(request: Request) {
       // old, already-handled rows.
       prisma.project.findMany({
         where: {
-          OR: [{ handoffAcknowledgedAt: null }, { createdAt: { gte: periodStart } }],
+          // AND rather than two OR keys: an object literal can only carry one
+          // `OR`, and the second would silently win.
+          AND: [
+            { OR: [{ handoffAcknowledgedAt: null }, { createdAt: { gte: periodStart } }] },
+            { OR: [{ prioritySnoozedUntil: null }, { prioritySnoozedUntil: { lte: now } }] },
+          ],
           // An archived client is one somebody deliberately put away. Their
           // projects were still turning up here as work waiting to be picked
           // up, which is how a list of things to do fills with things nobody
@@ -121,7 +138,11 @@ export async function GET(request: Request) {
     // moment" quietly ships without its CTA. This is the one thing left to
     // do after everything else is done, so it needs its own nudge.
     const readyToDeliver = await prisma.project.findMany({
-      where: { statusStage: { gte: 4 }, liveUrl: null },
+      where: {
+        statusStage: { gte: 4 },
+        liveUrl: null,
+        OR: [{ prioritySnoozedUntil: null }, { prioritySnoozedUntil: { lte: now } }],
+      },
       orderBy: { updatedAt: 'desc' },
       take: 20,
       include: { client: { select: { company: true } } },
@@ -136,7 +157,7 @@ export async function GET(request: Request) {
     // Who spoke last decides it. Our message with no reply since means the
     // ball is with them; anything else means it's with us.
     const atRisk = activeProjects
-      .filter((p) => p.updatedAt < staleThreshold)
+      .filter((p) => p.updatedAt < staleThreshold && !snoozed(p))
       .map((p) => {
         const last = p.messages[0];
         const waitingOnClient = !!last?.isFromAdmin;
@@ -161,26 +182,60 @@ export async function GET(request: Request) {
     const waitingOnClient = atRisk.filter((p) => p.waitingOnClient);
     const atRiskProjects = atRisk.filter((p) => !p.waitingOnClient);
 
-    const overdueBalances = await Promise.all(
-      activeProjects.map(async (p) => {
-        const paid = await prisma.payment.aggregate({
-          where: { projectId: p.id },
-          _sum: { amount: true },
-        });
-        const amountPaid = paid._sum.amount || 0;
-        const balanceDue = p.totalPrice - amountPaid;
-        return {
-          id: p.id,
-          name: p.name,
-          company: p.client.company,
-          balanceDue,
-          statusStage: p.statusStage,
-          lastPaymentReminderSentAt: p.lastPaymentReminderSentAt,
-        };
-      })
-    );
+    // One query for every project's money, not one per project. This used to
+    // be a `payment.aggregate` inside a `Promise.all` over the active list —
+    // fine at four projects, a hundred round trips at a hundred.
+    const projectIds = activeProjects.map((p) => p.id);
+    const [scopePayments, activeInstalments] = await Promise.all([
+      prisma.payment.findMany({
+        where: { projectId: { in: projectIds } },
+        select: { projectId: true, amount: true, type: true },
+      }),
+      prisma.instalment.findMany({
+        where: { projectId: { in: projectIds } },
+        select: { projectId: true, status: true, amountCents: true, trigger: true },
+      }),
+    ]);
+    const paymentsByProject = new Map<string, Array<{ amount: number; type: string }>>();
+    for (const p of scopePayments) {
+      const list = paymentsByProject.get(p.projectId) ?? [];
+      list.push({ amount: p.amount, type: p.type });
+      paymentsByProject.set(p.projectId, list);
+    }
+    const instalmentsByProject = new Map<string, BalanceInstalment[]>();
+    for (const i of activeInstalments) {
+      const list = instalmentsByProject.get(i.projectId) ?? [];
+      list.push({ status: i.status, amountCents: i.amountCents, trigger: i.trigger });
+      instalmentsByProject.set(i.projectId, list);
+    }
+
+    // See projectBalance(): "what's outstanding" is three different questions,
+    // and answering them as one number is what made this list flag every live
+    // project forever.
+    const balances = activeProjects.filter((p) => !snoozed(p)).map((p) => {
+      const balance = projectBalance({
+        totalPrice: p.totalPrice,
+        statusStage: p.statusStage,
+        payments: paymentsByProject.get(p.id) ?? [],
+        instalments: instalmentsByProject.get(p.id) ?? [],
+      });
+      return {
+        id: p.id,
+        name: p.name,
+        company: p.client.company,
+        // Kept under its old name because every consumer reads it: this is
+        // now "invoiced and unpaid" rather than "everything not yet paid".
+        balanceDue: balance.dueNowCents,
+        remainingCents: balance.remainingCents,
+        unbilledCents: balance.unbilledCents,
+        gatedCents: balance.gatedCents,
+        statusStage: p.statusStage,
+        lastPaymentReminderSentAt: p.lastPaymentReminderSentAt,
+      };
+    });
+    const overdueBalances = balances;
     const projectsAwaitingReply = activeProjects
-      .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin)
+      .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin && !snoozed(p))
       .map((p) => ({
         id: p.id,
         name: p.name,
@@ -226,6 +281,12 @@ export async function GET(request: Request) {
           atRiskProjects: atRiskProjects.slice(0, 40),
           waitingOnClient: waitingOnClient.slice(0, 40),
           overdueBalances: overdueBalances.filter((p) => p.balanceDue > 0).sort((a, b) => b.balanceDue - a.balanceDue),
+          // Past its gate, invoice never sent. This is the one that costs
+          // real money: nobody is late, nobody has been asked.
+          unbilledInstalments: balances
+            .filter((p) => p.unbilledCents > 0)
+            .sort((a, b) => b.unbilledCents - a.unbilledCents)
+            .map((p) => ({ id: p.id, name: p.name, company: p.company, unbilledCents: p.unbilledCents })),
           projectsAwaitingReply,
           awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
           pendingMockups: pendingMockups.map((l) => ({ id: l.id, company: l.company, mockupRequestedAt: l.mockupRequestedAt })),
@@ -234,6 +295,15 @@ export async function GET(request: Request) {
           revenueLastMonth,
           revenueHistory,
           activeProjectCount: activeProjects.length,
+          // Said out loud on the page. A list that quietly hides rows is a
+          // list you stop believing is complete.
+          snoozed: activeProjects
+            .filter(snoozed)
+            .map((p) => ({
+              id: p.id,
+              company: p.client.company,
+              until: p.prioritySnoozedUntil,
+            })),
           activityFeed: [
             ...recentClientMessages.map((m) => ({
               type: 'message' as const,

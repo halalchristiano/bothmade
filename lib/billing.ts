@@ -30,6 +30,90 @@ export function amountPaidTowardProject(payments: Array<{ amount: number; type: 
 }
 
 /**
+ * Has the schedule's gate for this instalment actually been passed?
+ *
+ * The instalment triggers are written in the language of the contract — "on
+ * signing", "on design approval", "when ready for launch" — and the project's
+ * stage is the only record of whether those moments have happened. Sending is
+ * still a deliberate act by a person; this only answers whether it *would* be
+ * fair to send, which is the difference between "we haven't billed them yet"
+ * and "we can't bill them yet".
+ */
+export function gateReached(trigger: string, statusStage: number): boolean {
+  if (trigger === 'design-approval') return statusStage >= 2; // past Design
+  if (trigger === 'ready-for-launch') return statusStage >= 3; // Launch or later
+  return true; // signing — they signed, or there'd be no project
+}
+
+/**
+ * Where a project's money actually stands, split by whose move it is.
+ *
+ * "Balance due" used to be one number — contracted price minus everything
+ * paid — and that number was wrong in two directions at once.
+ *
+ * It was too small because it counted one-off `custom` payments, so a client
+ * invoiced separately for a change request appeared to have paid down the
+ * project itself. And it was too big because every project now carries a
+ * three-instalment schedule, so the moment someone pays the 40% on signing,
+ * the other 60% reads as "outstanding" — money that is not owed, has not been
+ * invoiced, and in most cases cannot be invoiced yet. A chase list where every
+ * live project is permanently flagged is a chase list nobody opens.
+ *
+ * So there are three numbers, and they mean different things:
+ *
+ *   dueNow    — invoiced, unpaid. Chase the client.
+ *   unbilled  — past its gate, never invoiced. Chase *yourself*; this is money
+ *               sitting on the table because nobody pressed send.
+ *   gated     — not owed yet. Not a problem. Not on any list.
+ */
+export interface ProjectBalance {
+  /** Contracted price minus what's cleared against it — the whole rest of the job. */
+  remainingCents: number;
+  /** Invoiced and unpaid. The only figure that belongs on a chase list. */
+  dueNowCents: number;
+  /** Gate passed, invoice never sent. Ours to fix, not theirs. */
+  unbilledCents: number;
+  /** Deliberately held back by the schedule. */
+  gatedCents: number;
+}
+
+export interface BalanceInstalment {
+  status: string;
+  amountCents: number;
+  trigger: string;
+}
+
+export function projectBalance(project: {
+  totalPrice: number;
+  statusStage: number;
+  payments: Array<{ amount: number; type: string }>;
+  instalments: BalanceInstalment[];
+}): ProjectBalance {
+  const paid = amountPaidTowardProject(project.payments);
+  const remainingCents = Math.max(0, project.totalPrice - paid);
+
+  // No schedule means a project from before instalments existed, still on the
+  // old lump-balance flow. There is no gate to be behind: whatever is left is
+  // simply owed.
+  const live = project.instalments.filter((i) => i.status !== 'void');
+  if (live.length === 0) {
+    return { remainingCents, dueNowCents: remainingCents, unbilledCents: 0, gatedCents: 0 };
+  }
+
+  let dueNowCents = 0;
+  let unbilledCents = 0;
+  let gatedCents = 0;
+  for (const inst of live) {
+    if (inst.status === 'paid') continue;
+    if (inst.status === 'due') dueNowCents += inst.amountCents;
+    else if (gateReached(inst.trigger, project.statusStage)) unbilledCents += inst.amountCents;
+    else gatedCents += inst.amountCents;
+  }
+
+  return { remainingCents, dueNowCents, unbilledCents, gatedCents };
+}
+
+/**
  * What a custom charge may be. Both ends are deliberate:
  *
  * The floor is Stripe's — a card charge below roughly 50¢ is rejected by the

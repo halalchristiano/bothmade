@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { amountPaidTowardProject } from '@/lib/billing';
+import { projectBalance } from '@/lib/billing';
 import { requireCronAuth } from '@/lib/cron-auth';
 import { getDigestRecipientEmails } from '@/lib/notify';
 import { sendWeeklyDigestEmail } from '@/lib/email';
@@ -30,16 +30,24 @@ export async function GET(request: NextRequest) {
       }),
       prisma.project.findMany({
         where: { status: { not: 'complete' } },
-        select: { id: true, totalPrice: true, updatedAt: true, payments: { select: { amount: true, type: true } } },
+        select: {
+          id: true,
+          totalPrice: true,
+          statusStage: true,
+          updatedAt: true,
+          payments: { select: { amount: true, type: true } },
+          instalments: { select: { status: true, amountCents: true, trigger: true } },
+        },
       }),
     ]);
 
     const wonValueThisWeek = wonThisWeek.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
     const revenueThisMonth = paymentsThisMonth.reduce((sum, p) => sum + p.amount, 0);
     const atRiskProjects = activeProjects.filter((p) => p.updatedAt < staleThreshold).length;
-    const overdueBalances = activeProjects.filter(
-      (p) => p.totalPrice - amountPaidTowardProject(p.payments) > 0
-    ).length;
+    // Money actually invoiced and unpaid. Counting everything not yet paid on
+    // the contract would report every live project as an overdue balance, in
+    // an email whose whole job is to say what needs chasing.
+    const overdueBalances = activeProjects.filter((p) => projectBalance(p).dueNowCents > 0).length;
 
     const emails = await getDigestRecipientEmails();
     const sent = await sendWeeklyDigestEmail(emails, {

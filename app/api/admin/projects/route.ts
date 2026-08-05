@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         // head — and the half that pays the rent is the one that was missing.
         instalments: {
           orderBy: { index: 'asc' },
-          select: { index: true, label: true, amountCents: true, status: true, dueAt: true },
+          select: { index: true, label: true, amountCents: true, status: true, dueAt: true, trigger: true },
         },
       },
       orderBy: { createdAt: 'desc' },

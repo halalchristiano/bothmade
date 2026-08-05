@@ -4,8 +4,10 @@ import {
   amountPaidTowardProject,
   dollarsToCents,
   formatInvoiceNumber,
+  gateReached,
   invoiceFilename,
   invoiceNumberPrefix,
+  projectBalance,
   readChargeDraft,
 } from '@/lib/billing';
 
@@ -169,5 +171,144 @@ describe('invoice numbering', () => {
   it('makes a filename that cannot escape its directory', () => {
     expect(invoiceFilename('BM-2026-0007')).toBe('BM-2026-0007.pdf');
     expect(invoiceFilename('../../etc/passwd')).toBe('etcpasswd.pdf');
+  });
+});
+
+describe('what a project actually owes', () => {
+  const schedule = (statuses: string[]) =>
+    statuses.map((status, i) => ({
+      status,
+      amountCents: [40_000, 30_000, 30_000][i],
+      trigger: ['signing', 'design-approval', 'ready-for-launch'][i],
+    }));
+
+  it('does not count a one-off charge against the project price', () => {
+    // The bug this replaces: a client billed $5,000 for a change request and
+    // paying it looked like they had paid down the project itself, so the
+    // project fell off the chase list still owing the money.
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 0,
+      payments: [
+        { amount: 40_000, type: 'deposit' },
+        { amount: 5_000, type: 'custom' },
+      ],
+      instalments: schedule(['paid', 'scheduled', 'scheduled']),
+    });
+
+    expect(balance.remainingCents).toBe(60_000);
+  });
+
+  it('does not chase money the schedule is deliberately holding back', () => {
+    // Signed and paid the 40% this morning. Nothing is owed. Before this,
+    // every live project showed "$60,000 outstanding" from day one.
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 0,
+      payments: [{ amount: 40_000, type: 'deposit' }],
+      instalments: schedule(['paid', 'scheduled', 'scheduled']),
+    });
+
+    expect(balance.dueNowCents).toBe(0);
+    expect(balance.gatedCents).toBe(60_000);
+    expect(balance.unbilledCents).toBe(0);
+  });
+
+  it('chases only what has been invoiced', () => {
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 2,
+      payments: [{ amount: 40_000, type: 'deposit' }],
+      instalments: schedule(['paid', 'due', 'scheduled']),
+    });
+
+    expect(balance.dueNowCents).toBe(30_000);
+    expect(balance.gatedCents).toBe(30_000);
+  });
+
+  it('separates money nobody has asked for from money nobody has paid', () => {
+    // Design was approved — payment 2 could have gone out and didn't. That is
+    // our failure, not the client's, and it belongs on a different list.
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 2,
+      payments: [{ amount: 40_000, type: 'deposit' }],
+      instalments: schedule(['paid', 'scheduled', 'scheduled']),
+    });
+
+    expect(balance.unbilledCents).toBe(30_000);
+    expect(balance.dueNowCents).toBe(0);
+    expect(balance.gatedCents).toBe(30_000);
+  });
+
+  it('treats a project with no schedule as owing whatever is left', () => {
+    // Pre-instalment projects are still on the lump-balance flow, where there
+    // is no gate to be behind.
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 1,
+      payments: [{ amount: 50_000, type: 'deposit' }],
+      instalments: [],
+    });
+
+    expect(balance.dueNowCents).toBe(50_000);
+    expect(balance.remainingCents).toBe(50_000);
+  });
+
+  it('ignores a voided schedule the same way', () => {
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 1,
+      payments: [],
+      instalments: schedule(['void', 'void', 'void']),
+    });
+
+    expect(balance.dueNowCents).toBe(100_000);
+  });
+
+  it('owes nothing once every instalment has settled', () => {
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 4,
+      payments: [
+        { amount: 40_000, type: 'deposit' },
+        { amount: 60_000, type: 'balance' },
+      ],
+      instalments: schedule(['paid', 'paid', 'paid']),
+    });
+
+    expect(balance).toEqual({
+      remainingCents: 0,
+      dueNowCents: 0,
+      unbilledCents: 0,
+      gatedCents: 0,
+    });
+  });
+
+  it('never reports a negative remainder when someone overpays', () => {
+    const balance = projectBalance({
+      totalPrice: 100_000,
+      statusStage: 4,
+      payments: [{ amount: 120_000, type: 'full' }],
+      instalments: [],
+    });
+
+    expect(balance.remainingCents).toBe(0);
+  });
+});
+
+describe('instalment gates', () => {
+  it('treats signing as always passed', () => {
+    expect(gateReached('signing', 0)).toBe(true);
+  });
+
+  it('opens design approval once the project is past Design', () => {
+    expect(gateReached('design-approval', 1)).toBe(false);
+    expect(gateReached('design-approval', 2)).toBe(true);
+  });
+
+  it('opens the final payment at Launch', () => {
+    expect(gateReached('ready-for-launch', 2)).toBe(false);
+    expect(gateReached('ready-for-launch', 3)).toBe(true);
   });
 });

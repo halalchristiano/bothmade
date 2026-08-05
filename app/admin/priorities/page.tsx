@@ -1,20 +1,53 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ListChecks, Inbox, MessageCircle, AlertTriangle, DollarSign, Rocket } from 'lucide-react';
+import {
+  ListChecks,
+  Inbox,
+  MessageCircle,
+  AlertTriangle,
+  DollarSign,
+  Rocket,
+  Receipt,
+  Clock,
+  Undo2,
+} from 'lucide-react';
 import { PageIn, PageTitle, Card, Kicker } from '@/components/admin/ui';
+
+/**
+ * Priorities: the one list of work that needs a person today.
+ *
+ * Two things used to make it unreadable.
+ *
+ * The money band asked "how much of the contracted price is unpaid", which
+ * since every project gained a three-instalment schedule is a number above
+ * zero for the entire life of every job. So the band listed every live
+ * project, permanently, and the correct response to it was to ignore it. It
+ * now asks two narrower questions instead — see projectBalance() in
+ * lib/billing.ts — and the more useful of the two is the new one: money past
+ * its gate that nobody has invoiced. That is revenue sitting on the table,
+ * and unlike a late client it is entirely ours to fix.
+ *
+ * And there was nothing to *do* here. Every row was a link out. A list of
+ * problems with no way to say "seen it, not this week" only grows, so the
+ * rows you couldn't act on today buried the ones you could. Snooze is the
+ * whole answer, and it deliberately changes nothing about the underlying
+ * project — see the snooze route.
+ */
 
 interface OpsStats {
   newHandoffs: Array<{ id: string; company: string; handoffAcknowledgedAt: string | null; daysWaiting: number }>;
   atRiskProjects: Array<{ id: string; name: string; company: string; daysSinceUpdate: number }>;
   overdueBalances: Array<{ id: string; name: string; company: string; balanceDue: number }>;
+  unbilledInstalments: Array<{ id: string; name: string; company: string; unbilledCents: number }>;
   projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   readyToDeliver: Array<{ id: string; name: string; company: string; updatedAt: string }>;
+  snoozed: Array<{ id: string; company: string; until: string }>;
 }
 
-type Band = 'deliver' | 'handoff' | 'reply' | 'atrisk' | 'balance';
+type Band = 'unbilled' | 'deliver' | 'handoff' | 'reply' | 'balance' | 'atrisk';
 
 interface PriorityRow {
   id: string;
@@ -24,114 +57,164 @@ interface PriorityRow {
 }
 
 const BAND_META: Record<Band, { label: string; icon: typeof Inbox; classes: string }> = {
+  unbilled: {
+    label: "Earned but never invoiced — send the payment",
+    icon: Receipt,
+    classes: 'border-emerald-400/30 bg-emerald-400/[0.07] text-emerald-200',
+  },
   deliver: {
     label: 'Done but not delivered — set the live URL',
     icon: Rocket,
     classes: 'border-purple-400/30 bg-purple-400/[0.06] text-purple-200',
   },
   handoff: {
-    label: "New handoffs waiting to be picked up",
+    label: 'New handoffs waiting to be picked up',
     icon: Inbox,
-    classes: 'border-emerald-400/30 bg-emerald-400/[0.06] text-emerald-200',
+    classes: 'border-teal-400/30 bg-teal-400/[0.06] text-teal-200',
   },
   reply: {
     label: 'Clients waiting on a reply',
     icon: MessageCircle,
     classes: 'border-sky-400/30 bg-sky-400/[0.06] text-sky-200',
   },
+  balance: {
+    label: 'Invoiced and unpaid — chase it',
+    icon: DollarSign,
+    classes: 'border-amber-400/30 bg-amber-400/[0.06] text-amber-200',
+  },
   atrisk: {
     label: "Gone quiet — nobody's touched these in a week+",
     icon: AlertTriangle,
     classes: 'border-red-400/30 bg-red-400/[0.06] text-red-200',
   },
-  balance: {
-    label: 'Outstanding balances',
-    icon: DollarSign,
-    classes: 'border-amber-400/30 bg-amber-400/[0.06] text-amber-200',
-  },
 };
 
-const BAND_ORDER: Band[] = ['deliver', 'handoff', 'reply', 'atrisk', 'balance'];
+/** Most-actionable first: money we control, then a client who is waiting. */
+const BAND_ORDER: Band[] = ['unbilled', 'deliver', 'handoff', 'reply', 'balance', 'atrisk'];
+
+const money = (cents: number) => `$${(cents / 100).toLocaleString()}`;
+
+const SNOOZE_CHOICES = [
+  { days: 1, label: 'tomorrow' },
+  { days: 3, label: '3 days' },
+  { days: 7, label: 'a week' },
+] as const;
+
+function untilLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'later';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 export default function PrioritiesPage() {
   const router = useRouter();
   const [rows, setRows] = useState<PriorityRow[] | null>(null);
+  const [snoozed, setSnoozed] = useState<OpsStats['snoozed']>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/ops-stats?range=quarter');
+      if (res.status === 401) {
+        router.push('/admin/login');
+        return;
+      }
+      const data = await res.json();
+      if (!data.success) return;
+      const stats: OpsStats = data.stats;
+
+      // Every project gets at most one row, in the band that matters most
+      // right now — a project that's both quiet AND owes money isn't two
+      // separate things to look at, it's one thing needing a call.
+      const seen = new Set<string>();
+      const out: PriorityRow[] = [];
+      const add = (id: string, band: Band, company: string, detail: string) => {
+        if (seen.has(id)) return;
+        seen.add(id);
+        out.push({ id, band, company, detail });
+      };
+
+      // A project can be both — an invoice out and unpaid, and a further
+      // payment past its gate that was never sent. That is one project to
+      // open, not two rows, but the row has to carry both facts or the
+      // dedup quietly loses one of them.
+      const alsoOwed = new Map(stats.overdueBalances.map((p) => [p.id, p.balanceDue]));
+      for (const p of stats.unbilledInstalments ?? []) {
+        const owed = alsoOwed.get(p.id);
+        add(
+          p.id,
+          'unbilled',
+          p.company,
+          owed
+            ? `${money(p.unbilledCents)} payable and never invoiced — and ${money(owed)} already invoiced is still unpaid`
+            : `${money(p.unbilledCents)} is payable and hasn't been invoiced`
+        );
+      }
+      for (const p of stats.readyToDeliver) {
+        add(p.id, 'deliver', p.company, `${p.name} is complete — add the live URL to unlock their delivery moment`);
+      }
+      for (const h of stats.newHandoffs) {
+        if (h.handoffAcknowledgedAt) continue;
+        add(
+          h.id,
+          'handoff',
+          h.company,
+          h.daysWaiting > 0 ? `Waiting ${h.daysWaiting}d — give them a first touch` : 'Just handed off'
+        );
+      }
+      for (const p of stats.projectsAwaitingReply) {
+        add(
+          p.id,
+          'reply',
+          p.company,
+          p.waitHours >= 24 ? `Waiting ${Math.floor(p.waitHours / 24)}d for a reply` : `Waiting ${p.waitHours}h for a reply`
+        );
+      }
+      for (const p of stats.overdueBalances) {
+        add(p.id, 'balance', p.company, `${money(p.balanceDue)} invoiced and still unpaid`);
+      }
+      for (const p of stats.atRiskProjects) {
+        add(p.id, 'atrisk', p.company, `${p.daysSinceUpdate} days since anyone touched it`);
+      }
+
+      setRows(out);
+      setSnoozed(stats.snoozed ?? []);
+    } catch {
+      setRows([]);
+    }
+  }, [router]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch('/api/admin/ops-stats?range=quarter');
-        if (res.status === 401) {
-          router.push('/admin/login');
-          return;
-        }
-        const data = await res.json();
-        if (!data.success) return;
-        const stats: OpsStats = data.stats;
-
-        // Every project gets at most one row, in the band that matters most
-        // right now — a project that's both quiet AND owes money isn't two
-        // separate things to look at, it's one thing needing a call.
-        const seen = new Set<string>();
-        const out: PriorityRow[] = [];
-
-        for (const p of stats.readyToDeliver) {
-          seen.add(p.id);
-          out.push({
-            id: p.id,
-            band: 'deliver',
-            company: p.company,
-            detail: `${p.name} is complete — add the live URL to unlock their delivery moment`,
-          });
-        }
-        for (const h of stats.newHandoffs) {
-          if (h.handoffAcknowledgedAt) continue;
-          seen.add(h.id);
-          out.push({
-            id: h.id,
-            band: 'handoff',
-            company: h.company,
-            detail: h.daysWaiting > 0 ? `Waiting ${h.daysWaiting}d — give them a first touch` : 'Just handed off',
-          });
-        }
-        for (const p of stats.projectsAwaitingReply) {
-          if (seen.has(p.id)) continue;
-          seen.add(p.id);
-          const hours = p.waitHours;
-          out.push({
-            id: p.id,
-            band: 'reply',
-            company: p.company,
-            detail: hours >= 24 ? `Waiting ${Math.floor(hours / 24)}d for a reply` : `Waiting ${hours}h for a reply`,
-          });
-        }
-        for (const p of stats.atRiskProjects) {
-          if (seen.has(p.id)) continue;
-          seen.add(p.id);
-          out.push({
-            id: p.id,
-            band: 'atrisk',
-            company: p.company,
-            detail: `${p.daysSinceUpdate} days since anyone touched it`,
-          });
-        }
-        for (const p of stats.overdueBalances) {
-          if (seen.has(p.id)) continue;
-          seen.add(p.id);
-          out.push({
-            id: p.id,
-            band: 'balance',
-            company: p.company,
-            detail: `$${(p.balanceDue / 100).toLocaleString()} outstanding`,
-          });
-        }
-        setRows(out);
-      } catch {
-        setRows([]);
-      }
-    };
     load();
-  }, [router]);
+  }, [load]);
+
+  /** `days: null` undoes it. Optimistic either way — the list is the point. */
+  const snooze = async (projectId: string, days: number | null) => {
+    setBusyId(projectId);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/snooze`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days }),
+      });
+      if (!res.ok) return;
+      if (days === null) {
+        setSnoozed((prev) => prev.filter((s) => s.id !== projectId));
+        await load();
+      } else {
+        const moved = rows?.find((r) => r.id === projectId);
+        setRows((prev) => prev?.filter((r) => r.id !== projectId) ?? prev);
+        if (moved) {
+          setSnoozed((prev) => [
+            ...prev,
+            { id: projectId, company: moved.company, until: new Date(Date.now() + days * 86_400_000).toISOString() },
+          ]);
+        }
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (rows === null) {
     return (
@@ -156,7 +239,7 @@ export default function PrioritiesPage() {
       </p>
 
       {grouped.length === 0 ? (
-        <Card className="p-12 text-center text-white/40">Everything's current. Nice.</Card>
+        <Card className="p-12 text-center text-white/40">Everything&apos;s current. Nice.</Card>
       ) : (
         <div className="space-y-8">
           {grouped.map(({ band, rows: bandRows }) => {
@@ -172,20 +255,67 @@ export default function PrioritiesPage() {
                 </div>
                 <div className="space-y-2">
                   {bandRows.map((row) => (
-                    <Link
+                    <div
                       key={row.id}
-                      href={`/admin/projects/${row.id}`}
-                      className="block rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 hover:bg-white/[0.05] transition-colors"
+                      className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 transition-colors hover:bg-white/[0.04]"
                     >
-                      <p className="text-sm font-semibold text-white/90">{row.company}</p>
-                      <p className="text-xs text-white/40 mt-0.5">{row.detail}</p>
-                    </Link>
+                      <Link href={`/admin/projects/${row.id}`} className="block">
+                        <p className="text-sm font-semibold text-white/90">{row.company}</p>
+                        <p className="text-xs text-white/40 mt-0.5">{row.detail}</p>
+                      </Link>
+                      {/* The reason this page is worth opening twice: a row you
+                          can't act on today can be put down without pretending
+                          it's finished. */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-white/[0.06] pt-2.5">
+                        <span className="text-[11px] text-white/30">Not today —</span>
+                        {SNOOZE_CHOICES.map((choice) => (
+                          <button
+                            key={choice.days}
+                            onClick={() => snooze(row.id, choice.days)}
+                            disabled={busyId === row.id}
+                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white/80 disabled:opacity-40"
+                          >
+                            {choice.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </section>
             );
           })}
         </div>
+      )}
+
+      {/* Snoozed rows are named, not silently dropped. A list that hides
+          things without saying so is a list you stop trusting. */}
+      {snoozed.length > 0 && (
+        <section className="mt-10 border-t border-white/[0.07] pt-6">
+          <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/30">
+            <Clock size={13} /> Snoozed ({snoozed.length})
+          </p>
+          <div className="space-y-1.5">
+            {snoozed.map((s) => (
+              <div
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.05] bg-white/[0.015] px-3 py-2"
+              >
+                <Link href={`/admin/projects/${s.id}`} className="text-xs text-white/50 hover:text-white/80">
+                  {s.company}
+                  <span className="ml-2 text-white/25">back on {untilLabel(s.until)}</span>
+                </Link>
+                <button
+                  onClick={() => snooze(s.id, null)}
+                  disabled={busyId === s.id}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-white/40 transition-colors hover:bg-white/[0.07] hover:text-white/80 disabled:opacity-40"
+                >
+                  <Undo2 size={11} /> Bring back
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </PageIn>
   );
