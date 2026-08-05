@@ -122,6 +122,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       company: lead.company,
       viewUrl,
       note: existing?.note ?? '',
+      observation: lead.personalizedObservation,
     });
 
     await prisma.leadActivity

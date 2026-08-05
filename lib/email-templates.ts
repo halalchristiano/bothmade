@@ -243,7 +243,12 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
           `<p>I'm ${esc(first)}, ${esc(title)} at Bothmade Studio. Rather than send you a pitch, we built ${esc(
             company
           )} a homepage and recorded a walkthrough of it. Both are attached.</p>` +
-          `<p style="color:#fff; font-weight:600;">What prompted it: ${escMultiline(fields.observation)}</p>` +
+          // Omitted entirely when there's nothing to say, rather than
+          // printed as a heading with a blank under it — which is what the
+          // preview showed the first time this template was used.
+          (fields.observation?.trim()
+            ? `<p style="color:#fff; font-weight:600;">What prompted it: ${escMultiline(fields.observation)}</p>`
+            : '') +
           `<p>It is finished and it runs. It is not published anywhere — the video is how you see it move, and the brochure walks through what each part of it does and what it would cost, in three versions.</p>` +
           `<p>It is one idea, not the only one. Every piece of it is yours to change, and none of it costs you anything to look at. If you like the direction we can talk about taking it further; if you don't, you keep the ideas.</p>` +
           `<p>Worth fifteen minutes next week?</p>`,

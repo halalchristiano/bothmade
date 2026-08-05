@@ -61,6 +61,7 @@ export async function POST(
       company: lead.company,
       viewUrl,
       note: mockup.note,
+      observation: lead.personalizedObservation,
     });
 
     await prisma.leadActivity

@@ -294,3 +294,61 @@ describe('the concept delivery template', () => {
     expect(built?.bodyHtml).toMatch(/yours to change/);
   });
 });
+
+/**
+ * The mockup email used to be the same email for everybody: "we've built
+ * something for you, have a click around." The single most persuasive
+ * sentence we hold about a prospect — the researched line saying why anyone
+ * built them anything — sat unused on the lead record while the send went out
+ * generic.
+ */
+describe('the mockup email', () => {
+  /**
+   * The body is built here rather than tested through a send, because the
+   * send fans out across delegated Gmail, per-user OAuth, an app password
+   * and Resend — four transports, none of which this is about.
+   */
+  const bodyOf = async (observation: string | null) => {
+    const { mockupEmailBody } = await import('@/lib/email');
+    return mockupEmailBody({ company: 'Monogram Custom Builders', contactName: 'Tony', observation });
+  };
+
+  it('opens with what was noticed about this business', async () => {
+    const html = await bodyOf('A doorway that asks people to choose Homes or Pools before it says who you are.');
+
+    expect(html).toContain('What prompted it');
+    expect(html).toContain('choose Homes or Pools');
+  });
+
+  /**
+   * A heading with nothing under it is worse than no heading — which is
+   * exactly what the composer preview showed the first time the concept
+   * template went out with the observation box left empty.
+   */
+  it('prints no heading at all when nothing was noticed', async () => {
+    for (const observation of [null, '', '   ']) {
+      expect(await bodyOf(observation)).not.toContain('What prompted it');
+    }
+  });
+
+  it('escapes an observation rather than letting it close the markup', async () => {
+    expect(await bodyOf('</p><script>x</script>')).not.toContain('<script>');
+  });
+
+  it('does the same in the concept template, rather than a dangling heading', async () => {
+    const { EMAIL_TEMPLATES } = await import('@/lib/email-templates');
+    const template = EMAIL_TEMPLATES.find((t) => t.id === 'concept_delivery');
+    const ctx = {
+      recipientName: 'Tony',
+      company: 'Monogram Custom Builders',
+      senderName: 'Evan Buoncristiano',
+    };
+
+    expect(template?.build({ ...ctx, fields: { observation: '  ' } }).bodyHtml).not.toContain(
+      'What prompted it'
+    );
+    expect(
+      template?.build({ ...ctx, fields: { observation: 'Two divisions, one doorway.' } }).bodyHtml
+    ).toContain('What prompted it');
+  });
+});

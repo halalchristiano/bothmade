@@ -1191,6 +1191,35 @@ export async function sendInstalmentEmail(params: {
  * every extra sentence in it is a sentence between the prospect and the work
  * that sells the deal.
  */
+/**
+ * The body of the mockup email, on its own so it can be read without a send.
+ *
+ * Exported because the send itself fans out across delegated Gmail, per-user
+ * OAuth, an app password and Resend, and none of those are what the wording
+ * is about.
+ */
+export function mockupEmailBody(opts: {
+  contactName: string | null;
+  company: string;
+  note?: string | null;
+  observation?: string | null;
+}): string {
+  const note = opts.note?.trim();
+  const observation = opts.observation?.trim();
+
+  return `
+    <p>Hi ${esc(opts.contactName) || 'there'},</p>
+    <p>We've built something for ${esc(opts.company)} — a working preview, not a picture of one. Have a click around.</p>
+    ${
+      observation
+        ? `<p style="color:#fff; font-weight:600;">What prompted it: ${escMultiline(observation)}</p>`
+        : ''
+    }
+    ${note ? `<p style="color:rgba(255,255,255,0.65);">${esc(note)}</p>` : ''}
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">When you've had a look there are two buttons at the bottom of the page: one if it works for you, one if you'd like changes. Either is useful — tell us which.</p>
+  `;
+}
+
 export async function sendMockupEmail(opts: {
   toEmail: string;
   contactName: string | null;
@@ -1198,16 +1227,19 @@ export async function sendMockupEmail(opts: {
   viewUrl: string;
   /** The rep's own note on this version, if it says something worth saying. */
   note?: string | null;
+  /**
+   * The one line from research about *this* business — why anyone built them
+   * something in the first place.
+   *
+   * Without it the email is the same email every prospect gets, and the
+   * single most persuasive sentence we hold about them sits unused on the
+   * lead record. It is the same field the cold-outreach templates open with,
+   * so a prospect who has heard from us before hears something consistent.
+   */
+  observation?: string | null;
 }): Promise<SendResult> {
   const { toEmail, contactName, company, viewUrl } = opts;
-  const note = opts.note?.trim();
-
-  const bodyHtml = `
-    <p>Hi ${esc(contactName) || 'there'},</p>
-    <p>We've built something for ${esc(company)} — a working preview, not a picture of one. Have a click around.</p>
-    ${note ? `<p style="color:rgba(255,255,255,0.65);">${esc(note)}</p>` : ''}
-    <p style="font-size:13px; color:rgba(255,255,255,0.5);">When you've had a look there are two buttons at the bottom of the page: one if it works for you, one if you'd like changes. Either is useful — tell us which.</p>
-  `;
+  const bodyHtml = mockupEmailBody(opts);
 
   return sendEmailDetailed({
     to: toEmail,

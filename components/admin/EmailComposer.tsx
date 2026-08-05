@@ -67,7 +67,15 @@ function defaultsForTemplate(
     if (templateId === 'requirements_request') d.onboardingLink = url;
     else d.dashboardUrl = url;
   }
-  if ((templateId === 'cold_outreach' || templateId === 'cold_outreach_researched') && ctx.defaultObservation) {
+  // The concept send is the same job as a cold email — it opens with the one
+  // thing somebody noticed about this business — so it wants the same
+  // researched line rather than a blank box the rep retypes from memory.
+  if (
+    (templateId === 'cold_outreach' ||
+      templateId === 'cold_outreach_researched' ||
+      templateId === 'concept_delivery') &&
+    ctx.defaultObservation
+  ) {
     d.observation = ctx.defaultObservation;
   }
   if (ctx.defaultSenderTitle) {
