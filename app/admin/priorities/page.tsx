@@ -13,6 +13,7 @@ import {
   Receipt,
   Clock,
   Undo2,
+  PenLine,
 } from 'lucide-react';
 import { PageIn, PageTitle, Card, Kicker } from '@/components/admin/ui';
 
@@ -44,10 +45,18 @@ interface OpsStats {
   unbilledInstalments: Array<{ id: string; name: string; company: string; unbilledCents: number }>;
   projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   readyToDeliver: Array<{ id: string; name: string; company: string; updatedAt: string }>;
+  unreadDesignFeedback: Array<{
+    id: string;
+    projectId: string;
+    name: string;
+    company: string;
+    round: number;
+    daysWaiting: number;
+  }>;
   snoozed: Array<{ id: string; company: string; until: string }>;
 }
 
-type Band = 'unbilled' | 'deliver' | 'handoff' | 'reply' | 'balance' | 'atrisk';
+type Band = 'feedback' | 'unbilled' | 'deliver' | 'handoff' | 'reply' | 'balance' | 'atrisk';
 
 interface PriorityRow {
   id: string;
@@ -57,6 +66,11 @@ interface PriorityRow {
 }
 
 const BAND_META: Record<Band, { label: string; icon: typeof Inbox; classes: string }> = {
+  feedback: {
+    label: 'Design feedback waiting to be read',
+    icon: PenLine,
+    classes: 'border-sky-400/40 bg-sky-400/[0.09] text-sky-100',
+  },
   unbilled: {
     label: "Earned but never invoiced — send the payment",
     icon: Receipt,
@@ -89,8 +103,16 @@ const BAND_META: Record<Band, { label: string; icon: typeof Inbox; classes: stri
   },
 };
 
-/** Most-actionable first: money we control, then a client who is waiting. */
-const BAND_ORDER: Band[] = ['unbilled', 'deliver', 'handoff', 'reply', 'balance', 'atrisk'];
+/**
+ * Most-actionable first: a client who has already done their part and
+ * stopped, then money we control, then a client who is waiting.
+ *
+ * Design feedback outranks even the unbilled money. Everything below it is
+ * something we can do whenever we get to it; this is a project that cannot
+ * move at all — their review clock stopped when they hit send — with a
+ * person on the other end wondering whether it arrived.
+ */
+const BAND_ORDER: Band[] = ['feedback', 'unbilled', 'deliver', 'handoff', 'reply', 'balance', 'atrisk'];
 
 const money = (cents: number) => `$${(cents / 100).toLocaleString()}`;
 
@@ -138,6 +160,34 @@ export default function PrioritiesPage() {
       // payment past its gate that was never sent. That is one project to
       // open, not two rows, but the row has to carry both facts or the
       // dedup quietly loses one of them.
+      // Before the money, and before the dedup can bury it under a balance:
+      // this is the only row where the client is waiting on us to read
+      // something we asked them to write.
+      const unread = stats.unreadDesignFeedback ?? [];
+      const unreadPerProject = unread.reduce<Record<string, number>>((acc, f) => {
+        acc[f.projectId] = (acc[f.projectId] ?? 0) + 1;
+        return acc;
+      }, {});
+      // Newest-first from the API, so the row names the round we have to
+      // build to. The backlog behind it still gets said out loud — three
+      // unread rounds and a row that mentions one is a row that under-reports
+      // how far behind the project is.
+      for (const f of unread) {
+        const behind = unreadPerProject[f.projectId] ?? 1;
+        const age =
+          f.daysWaiting > 0
+            ? `sent ${f.daysWaiting}d ago and still unread`
+            : 'just came in — nobody has read it';
+        add(
+          f.projectId,
+          'feedback',
+          f.company,
+          behind > 1
+            ? `${behind} rounds of feedback unread — the latest is round ${f.round}, ${age}`
+            : `Round ${f.round} feedback, ${age}`
+        );
+      }
+
       const alsoOwed = new Map(stats.overdueBalances.map((p) => [p.id, p.balanceDue]));
       for (const p of stats.unbilledInstalments ?? []) {
         const owed = alsoOwed.get(p.id);

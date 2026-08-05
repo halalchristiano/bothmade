@@ -1546,8 +1546,9 @@ export async function sendDesignFeedbackAckEmail(input: {
 }): Promise<SendResult> {
   const bodyHtml = `
     <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Your notes on <strong style="color:#fff;">${esc(input.projectName)}</strong> came through and the design team has them.</p>
     <p>${escMultiline(input.body)}</p>
-    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Everything you wrote is saved on your dashboard, so you can check what you asked for at any point.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Everything you wrote is saved on your dashboard, so you can check what you asked for at any point — and you&rsquo;ll get an email the moment the next version is ready.</p>
   `;
 
   return sendEmailDetailed({

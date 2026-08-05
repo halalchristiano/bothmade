@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, MessageSquareQuote, Sparkles } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight, MessageSquareQuote, Sparkles } from 'lucide-react';
 import { FEEDBACK_KINDS, revisionState, type FeedbackKind } from '@/lib/design-feedback';
 
 /**
@@ -70,6 +70,12 @@ export function DesignFeedbackPanel({ projectId }: { projectId: string }) {
   const [rounds, setRounds] = useState<FeedbackRound[]>([]);
   const [revisions, setRevisions] = useState(() => revisionState(0));
   const [loading, setLoading] = useState(true);
+  /**
+   * Which round is open. null means "the default", which is the newest —
+   * the empty string is how the newest one gets closed, since closing it
+   * cannot mean falling back to the default that opens it again.
+   */
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -123,20 +129,57 @@ export function DesignFeedbackPanel({ projectId }: { projectId: string }) {
         </span>
       </div>
 
-      <div className="space-y-5">
-        {rounds.map((round) => {
+      <div className="space-y-3">
+        {rounds.map((round, index) => {
           const groups = GROUPS.map((g) => ({
             ...g,
             spec: FEEDBACK_KINDS.find((k) => k.kind === g.kind)!,
             items: (round.items ?? []).filter((i) => i.kind === g.kind),
           })).filter((g) => g.items.length > 0);
 
+          /**
+           * Only the newest round is the brief.
+           *
+           * Rounds arrive newest-first, so index 0 is the live one. With
+           * three rounds stacked open at equal weight, the thing you must
+           * build to is indistinguishable from two supersededS lists — and
+           * building to an old one is a mistake that costs a round nobody
+           * gets back. So the current round is open and labelled, and the
+           * history collapses to one line you can still open.
+           */
+          const isCurrent = index === 0;
+          const open = expanded === round.id || (isCurrent && expanded === null);
+          const supersededBy = isCurrent ? null : rounds[index - 1].round;
+          const noteCount = (round.items ?? []).length;
+
           return (
-            <section key={round.id} className="rounded-xl border border-white/[0.06] p-4">
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-white/40">
+            <section
+              key={round.id}
+              className={`rounded-xl border p-4 ${
+                isCurrent ? 'border-sky-400/25 bg-sky-400/[0.03]' : 'border-white/[0.06]'
+              }`}
+            >
+              <button
+                onClick={() => setExpanded(open ? (isCurrent ? '' : null) : round.id)}
+                aria-expanded={open}
+                className="mb-1 flex w-full flex-wrap items-center gap-2 text-left text-[11px] text-white/40 hover:text-white/60"
+              >
+                <ChevronRight
+                  size={12}
+                  className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+                />
                 <span className="font-mono uppercase tracking-[0.12em]">Round {round.round}</span>
                 <span>·</span>
                 <span>{new Date(round.createdAt).toLocaleDateString()}</span>
+                {isCurrent ? (
+                  <span className="rounded border border-sky-400/40 bg-sky-400/10 px-1.5 py-0.5 font-semibold text-sky-100">
+                    Build to this one
+                  </span>
+                ) : (
+                  <span className="rounded border border-white/10 px-1.5 py-0.5 text-white/35">
+                    Superseded by round {supersededBy}
+                  </span>
+                )}
                 {round.consumedRound ? (
                   <span className="rounded border border-sky-400/25 px-1.5 py-0.5 text-sky-200/80">
                     Spent a revision round
@@ -146,7 +189,15 @@ export function DesignFeedbackPanel({ projectId }: { projectId: string }) {
                     No round spent
                   </span>
                 )}
-              </div>
+                {!open && (
+                  <span className="text-white/30">
+                    {noteCount} note{noteCount === 1 ? '' : 's'}
+                  </span>
+                )}
+              </button>
+
+              {!open ? null : (
+              <div className="mt-3">
 
               {round.liked && (
                 <div className="mb-4 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.04] p-3">
@@ -197,6 +248,8 @@ export function DesignFeedbackPanel({ projectId }: { projectId: string }) {
                   </p>
                   <p className="whitespace-pre-wrap text-sm text-white/70">{round.note}</p>
                 </div>
+              )}
+              </div>
               )}
             </section>
           );
