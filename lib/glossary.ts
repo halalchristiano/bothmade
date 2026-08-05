@@ -17,6 +17,15 @@ export interface GlossaryEntry {
   term: string;
   plain: string;
   sayIt?: string;
+  /**
+   * Other ways the same idea gets written down.
+   *
+   * A brief that says "CMS" and a brochure that says "Content Management
+   * System" are describing one thing, and both readers need the same
+   * definition. Without these the spelled-out form silently gets no
+   * explanation at all — which is the exact reader this page exists for.
+   */
+  aliases?: string[];
 }
 
 // Longest phrases first so "local SEO" wins over the bare "SEO" inside it.
@@ -26,24 +35,28 @@ export const SALES_GLOSSARY: GlossaryEntry[] = [
     plain:
       "Getting a business to show up when someone nearby searches for what they do — the map results and 'near me' searches, rather than the whole internet.",
     sayIt: "Making sure you're the one who comes up when someone in your area searches for this.",
+    aliases: ['local search'],
   },
   {
     term: 'SEO',
     plain:
       "Search engine optimisation — the work that makes Google show a business higher up when people search. Nothing to do with paid ads; this is the free results underneath them.",
     sayIt: 'Getting you found on Google without paying for ads.',
+    aliases: ['search engine optimisation', 'search engine optimization'],
   },
   {
     term: 'CRM',
     plain:
       "Customer relationship management — one system holding every customer and enquiry, so nothing gets lost in someone's inbox or on a sticky note.",
     sayIt: "One place where every enquiry lands, so none of them slip through.",
+    aliases: ['customer relationship management'],
   },
   {
     term: 'analytics',
     plain:
       "Tracking that shows how many people visit, where they came from, and what they did. Without it a business is guessing about which marketing works.",
     sayIt: "So you can actually see which of your marketing is bringing people in.",
+    aliases: ['event tracking'],
   },
   {
     term: 'conversion',
@@ -62,6 +75,7 @@ export const SALES_GLOSSARY: GlossaryEntry[] = [
     plain:
       "How you collect an interested person's details — the contact form, the quote request, the callback box. No capture, no follow-up.",
     sayIt: "Making sure you get their details while they're interested.",
+    aliases: ['contact form', 'enquiry form'],
   },
   {
     term: 'routing',
@@ -80,12 +94,14 @@ export const SALES_GLOSSARY: GlossaryEntry[] = [
     plain:
       "Content management system — the bit that lets the client edit their own text and photos without needing us every time.",
     sayIt: 'You can update your own content whenever you like.',
+    aliases: ['content management system'],
   },
   {
     term: 'integration',
     plain:
       "Making two separate systems talk to each other automatically, so information doesn't have to be typed into both.",
     sayIt: "Your systems talk to each other instead of you copying between them.",
+    aliases: ['integrations'],
   },
   {
     term: 'automation',
@@ -163,16 +179,19 @@ export const SALES_GLOSSARY: GlossaryEntry[] = [
     term: 'UX',
     plain: "User experience — how easy something is to actually use. Good UX is invisible; bad UX makes people leave.",
     sayIt: 'How easy it is for your customers to get what they came for.',
+    aliases: ['user experience'],
   },
   {
     term: 'API',
     plain: "The connector one piece of software uses to talk to another. What integrations are built on.",
     sayIt: 'The connection between your systems.',
+    aliases: ['application programming interface'],
   },
   {
     term: 'A/B test',
     plain: 'Showing two versions to different visitors to find out which one performs better.',
     sayIt: 'We test two versions and keep the winner.',
+    aliases: ['A/B testing', 'split test'],
   },
   {
     term: 'bounce rate',
@@ -202,7 +221,15 @@ export function findGlossaryTerms(...texts: Array<string | null | undefined>): G
   const found: GlossaryEntry[] = [];
   let remaining = haystack;
   for (const entry of SALES_GLOSSARY) {
-    const pattern = new RegExp(`\\b${entry.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    // The abbreviation and every way it gets spelled out, as one pattern, so
+    // "CMS" and "content management system" produce a single definition
+    // rather than one each or — worse — none for the spelled-out form.
+    const pattern = new RegExp(
+      [entry.term, ...(entry.aliases ?? [])]
+        .map((form) => `\\b${form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+        .join('|'),
+      'i'
+    );
     if (!pattern.test(remaining)) continue;
     found.push(entry);
     // Blank out every occurrence so a shorter term contained inside this one

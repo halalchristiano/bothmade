@@ -1,0 +1,921 @@
+/*
+ * A brochure that is a web page and a PDF at the same time.
+ *
+ * The whole file is built on fixed US-Letter pages rather than a flowing
+ * document, because the two outputs have to agree: a client reads the link on
+ * a laptop, forwards it to a partner who prints it, and both have to see the
+ * same page breaks in the same places. Flowing type reflows; a 8.5in x 11in
+ * box does not.
+ *
+ * Colours all come in as custom properties set by the route from the
+ * brochure's own theme, so the document takes on the concept's palette
+ * instead of Bothmade's. The only thing hard-coded here is the geometry.
+ */
+
+.doc {
+  --paper: #f4f1ea;
+  --paper-deep: #e7e1d4;
+  --ink: #131c26;
+  --bronze: #a9793f;
+  --slate: #3f6e7c;
+  --line: rgba(19, 28, 38, 0.14);
+
+  --page-w: 8.5in;
+  --page-h: 11in;
+  --pad: 0.72in;
+
+  background: #6b6b6b;
+  color: var(--ink);
+  font-family: var(--font-brochure-sans), system-ui, sans-serif;
+  font-size: 11pt;
+  line-height: 1.55;
+  padding: 28px 0;
+  min-height: 100vh;
+}
+
+.doc *,
+.doc *::before,
+.doc *::after {
+  box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------- page */
+
+.page {
+  position: relative;
+  width: var(--page-w);
+  height: var(--page-h);
+  margin: 0 auto 24px;
+  padding: var(--pad);
+  background: var(--paper);
+  color: var(--ink);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+}
+
+/* The rule of colour across the top of every page in the concept's header. */
+.page::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: linear-gradient(90deg, var(--slate) 0%, var(--bronze) 62%, var(--paper-deep) 100%);
+}
+
+.pageDark {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.pageDark .eyebrow {
+  color: var(--bronze);
+}
+
+.pageDark .title,
+.pageDark .runner,
+.pageDark .folio {
+  color: var(--paper);
+}
+
+.pageDark .body {
+  color: rgba(244, 241, 234, 0.78);
+}
+
+/* ------------------------------------------------------------- running */
+
+.runner {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 7.5pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(19, 28, 38, 0.45);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 26px;
+  flex: none;
+}
+
+.pageDark .runner {
+  color: rgba(244, 241, 234, 0.5);
+  border-bottom-color: rgba(244, 241, 234, 0.18);
+}
+
+.folio {
+  position: absolute;
+  left: var(--pad);
+  right: var(--pad);
+  bottom: 0.42in;
+  display: flex;
+  justify-content: space-between;
+  font-size: 7.5pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(19, 28, 38, 0.4);
+}
+
+.pageDark .folio {
+  color: rgba(244, 241, 234, 0.45);
+}
+
+.main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ------------------------------------------------------------ typeset */
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin: 0 0 14px;
+}
+
+.eyebrow::before {
+  content: '';
+  width: 34px;
+  height: 1px;
+  background: currentColor;
+  flex: none;
+}
+
+.title {
+  font-size: 25pt;
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+
+.titleSmall {
+  font-size: 19pt;
+}
+
+.body {
+  font-size: 10.5pt;
+  line-height: 1.62;
+  color: rgba(19, 28, 38, 0.72);
+  margin: 0;
+  max-width: 46em;
+}
+
+.serif {
+  font-family: var(--font-brochure-serif), Georgia, serif;
+  font-style: italic;
+}
+
+/* --------------------------------------------------------------- cover */
+
+.cover {
+  justify-content: space-between;
+  padding: 0;
+}
+
+.coverTop {
+  padding: 0.8in var(--pad) 0;
+}
+
+.coverArt {
+  flex: 1;
+  min-height: 0;
+  margin: 0.3in 0;
+  background: var(--paper-deep);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 18px;
+  padding: 0 var(--pad);
+}
+
+.coverShot {
+  width: 2.05in;
+  border-radius: 14px;
+  border: 1px solid rgba(19, 28, 38, 0.16);
+  box-shadow: 0 14px 34px rgba(19, 28, 38, 0.22);
+  object-fit: cover;
+  object-position: top center;
+  background: var(--paper);
+}
+
+.coverShot:nth-child(1) { margin-top: 0.34in; height: 3.5in; }
+.coverShot:nth-child(2) { margin-top: 0.1in; height: 3.9in; }
+.coverShot:nth-child(3) { margin-top: 0.34in; height: 3.5in; }
+
+.coverBottom {
+  padding: 0 var(--pad) 0.66in;
+}
+
+.coverTitle {
+  font-size: 40pt;
+  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  margin: 0 0 18px;
+  white-space: pre-line;
+}
+
+.coverRule {
+  height: 1px;
+  background: var(--line);
+  margin: 22px 0 16px;
+}
+
+.coverMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  font-size: 8.5pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(19, 28, 38, 0.55);
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+
+.markBox {
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--ink);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 14pt;
+  flex: none;
+}
+
+.markName {
+  font-weight: 700;
+  font-size: 13pt;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.markSub {
+  font-family: var(--font-brochure-serif), Georgia, serif;
+  font-style: italic;
+  font-size: 9.5pt;
+  color: rgba(19, 28, 38, 0.6);
+  line-height: 1.1;
+}
+
+/* ------------------------------------------------------------ chapters */
+
+.chapterBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.shots {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.shotFigure {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Centred in whatever the prose above it left, so a page with one short
+     screenshot doesn't hang everything off the top with a foot of paper
+     underneath. */
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  max-width: 3in;
+}
+
+/*
+ * Sized by the picture, not by the page.
+ *
+ * `aspect-ratio` comes in per-shot from the data, and `min-height: 0` plus
+ * `flex: 0 1 auto` lets a tall screenshot shrink to whatever the page has
+ * left rather than pushing the caption off the bottom.
+ */
+.shotFrame {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(19, 28, 38, 0.18);
+  background: var(--ink);
+  overflow: hidden;
+  box-shadow: 0 10px 26px rgba(19, 28, 38, 0.16);
+  padding: 5px;
+}
+
+/*
+ * `contain`, not `cover`. These are screenshots of a page, and cropping one
+ * to fill a frame shaves the first character off every line of the very
+ * copy the page is arguing about — the client sees "op 50 Swimming Pool
+ * Builders" and reasonably concludes the site is broken. Letterboxing
+ * against the frame is the lesser cost, and the frames are already close to
+ * the aspect of a phone.
+ */
+.shotFrame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: top center;
+  border-radius: 11px;
+}
+
+.shotCaption {
+  align-self: stretch;
+}
+
+.shotCaption {
+  font-size: 8.5pt;
+  line-height: 1.45;
+  color: rgba(19, 28, 38, 0.62);
+  padding-left: 10px;
+  border-left: 2px solid var(--bronze);
+}
+
+.facts {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--line);
+  flex: none;
+}
+
+.fact {
+  flex: 1;
+  padding: 12px 16px 0 0;
+}
+
+.factLabel {
+  font-size: 7.5pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin-bottom: 3px;
+}
+
+.factValue {
+  font-size: 11pt;
+  font-weight: 600;
+}
+
+.quote {
+  border-left: 3px solid var(--bronze);
+  padding: 4px 0 4px 20px;
+  margin: 0;
+  flex: none;
+}
+
+.quoteText {
+  font-family: var(--font-brochure-serif), Georgia, serif;
+  font-style: italic;
+  font-size: 17pt;
+  line-height: 1.3;
+  margin: 0 0 10px;
+}
+
+.quoteBy {
+  font-size: 8pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(19, 28, 38, 0.5);
+}
+
+.pageDark .quoteBy {
+  color: rgba(244, 241, 234, 0.55);
+}
+
+/* --------------------------------------------------------------- lines */
+
+.lineList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * The "everything" tier adds eleven lines at once, which is three inches
+ * more than a page has. Two columns rather than a smaller typeface: every
+ * item keeps the sentence explaining what it gets you, which is the only
+ * reason a client reads a line item at all.
+ */
+.lineListDense {
+  columns: 2;
+  column-gap: 22px;
+}
+
+.lineListDense .lineItem {
+  break-inside: avoid;
+  padding: 8px 0;
+  gap: 3px 12px;
+}
+
+.lineListDense .lineLabel {
+  font-size: 10pt;
+}
+
+.lineListDense .linePrice {
+  font-size: 9.5pt;
+}
+
+.lineListDense .lineWhat,
+.lineListDense .lineWhy {
+  font-size: 8pt;
+  line-height: 1.42;
+}
+
+.lineListDense .newBadge {
+  font-size: 6pt;
+  margin-left: 6px;
+  padding: 1px 5px;
+}
+
+.lineItem {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 18px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.lineLabel {
+  font-size: 11.5pt;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.linePrice {
+  font-size: 11pt;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  align-self: start;
+  padding-top: 1px;
+}
+
+.lineWhat {
+  grid-column: 1 / -1;
+  font-size: 9pt;
+  line-height: 1.5;
+  color: rgba(19, 28, 38, 0.6);
+}
+
+.lineWhy {
+  grid-column: 1 / -1;
+  font-size: 9pt;
+  line-height: 1.5;
+  color: var(--slate);
+  padding-left: 12px;
+  border-left: 2px solid rgba(63, 110, 124, 0.35);
+  margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------- tier */
+
+.tierHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 14px;
+  margin-bottom: 6px;
+  flex: none;
+}
+
+.tierTotal {
+  text-align: right;
+  flex: none;
+}
+
+.tierTotalFigure {
+  font-size: 30pt;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tierTotalNote {
+  font-size: 7.5pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(19, 28, 38, 0.5);
+  margin-top: 5px;
+}
+
+.forWho {
+  background: var(--paper-deep);
+  padding: 13px 16px;
+  font-size: 9.5pt;
+  line-height: 1.55;
+  border-left: 3px solid var(--bronze);
+  flex: none;
+  margin-bottom: 4px;
+}
+
+.newBadge {
+  display: inline-block;
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--bronze);
+  padding: 2px 7px;
+  border-radius: 3px;
+  margin-left: 9px;
+  vertical-align: 2px;
+}
+
+/* --------------------------------------------------------- comparison */
+
+.tierGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  flex: none;
+  margin-bottom: 22px;
+}
+
+.tierCard {
+  border: 1px solid var(--line);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.tierCardPicked {
+  border: 2px solid var(--ink);
+  background: var(--paper-deep);
+}
+
+.tierCardName {
+  font-size: 12pt;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.tierCardFigure {
+  font-size: 23pt;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tierCardTag {
+  font-size: 8.5pt;
+  line-height: 1.45;
+  color: rgba(19, 28, 38, 0.62);
+}
+
+.tierCardCount {
+  font-size: 8pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.pickedFlag {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--ink);
+  padding: 3px 8px;
+  align-self: flex-start;
+}
+
+/* Twenty-two rows is two pages of one table or one page of two, and the
+   point of this page is that all three options are visible at once. */
+.matrixPair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  flex: 1;
+  min-height: 0;
+  align-items: start;
+}
+
+.matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 7.5pt;
+  table-layout: fixed;
+}
+
+.matrix th,
+.matrix td {
+  text-align: left;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  line-height: 1.3;
+}
+
+.matrix thead th {
+  font-size: 6.5pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(19, 28, 38, 0.5);
+  border-bottom: 1px solid var(--ink);
+}
+
+.matrix td.tick,
+.matrix th.tick {
+  text-align: center;
+  width: 0.52in;
+}
+
+.tick strong {
+  color: var(--slate);
+}
+
+.dash {
+  color: rgba(19, 28, 38, 0.28);
+}
+
+.matrixNote {
+  flex: none;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 8.5pt;
+  line-height: 1.55;
+  color: rgba(19, 28, 38, 0.62);
+  max-width: 44em;
+}
+
+.matrixNote strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ schedule */
+
+.schedule {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  flex: none;
+}
+
+.scheduleCard {
+  border-top: 2px solid var(--ink);
+  padding-top: 12px;
+}
+
+.scheduleAmount {
+  font-size: 20pt;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.scheduleLabel {
+  font-size: 7.5pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin-bottom: 8px;
+}
+
+.scheduleTrigger {
+  font-size: 9pt;
+  color: rgba(19, 28, 38, 0.62);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.pageDark .scheduleCard {
+  border-top-color: var(--paper);
+}
+
+.pageDark .scheduleTrigger {
+  color: rgba(244, 241, 234, 0.66);
+}
+
+/* ------------------------------------------------------------ glossary */
+
+/* Fourteen definitions, each with two sentences: three columns is what
+   makes them one page rather than one and a bit. */
+.glossary {
+  columns: 3;
+  column-gap: 20px;
+  flex: 1;
+  min-height: 0;
+  font-size: 7.5pt;
+}
+
+.term {
+  break-inside: avoid;
+  margin-bottom: 11px;
+}
+
+.termName {
+  font-weight: 700;
+  font-size: 8.5pt;
+  margin-bottom: 2px;
+}
+
+.termPlain {
+  color: rgba(19, 28, 38, 0.68);
+  line-height: 1.45;
+}
+
+.termSay {
+  color: var(--slate);
+  line-height: 1.45;
+  margin-top: 3px;
+  padding-left: 9px;
+  border-left: 2px solid rgba(63, 110, 124, 0.3);
+}
+
+/* --------------------------------------------------------------- steps */
+
+.steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+}
+
+.step {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.step::before {
+  content: counter(step, decimal-leading-zero);
+  font-size: 13pt;
+  font-weight: 700;
+  color: var(--bronze);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.stepText {
+  font-size: 10pt;
+  line-height: 1.6;
+  color: rgba(19, 28, 38, 0.78);
+}
+
+.pageDark .stepText {
+  color: rgba(244, 241, 234, 0.8);
+}
+
+.closer {
+  border-top: 1px solid rgba(244, 241, 234, 0.2);
+  padding-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  flex: none;
+}
+
+.closerLine {
+  font-family: var(--font-brochure-serif), Georgia, serif;
+  font-style: italic;
+  font-size: 15pt;
+  line-height: 1.3;
+}
+
+.closerContact {
+  font-size: 9pt;
+  text-align: right;
+  color: rgba(244, 241, 234, 0.72);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- print */
+
+@page {
+  size: letter portrait;
+  margin: 0;
+}
+
+@media print {
+  .doc {
+    background: none;
+    padding: 0;
+  }
+
+  .page {
+    margin: 0;
+    box-shadow: none;
+    break-after: page;
+    break-inside: avoid;
+  }
+
+  .page:last-child {
+    break-after: auto;
+  }
+
+  /* Backgrounds are the design here, not decoration — a dark page that
+     prints white loses the contrast the whole layout depends on. */
+  .doc,
+  .page {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/*
+ * On a phone a fixed 8.5in box just scrolls sideways, which is worse than
+ * losing the pagination. So on screen — and only on screen — narrow viewports
+ * get pages that fill the width and grow to fit their content. Print keeps
+ * the fixed geometry above, so the PDF is unaffected by how it was viewed.
+ */
+@media screen and (max-width: 9in) {
+  .doc {
+    --pad: 24px;
+    padding: 0;
+  }
+
+  .page {
+    width: 100%;
+    height: auto;
+    min-height: 60vh;
+    margin-bottom: 0;
+    box-shadow: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .folio {
+    position: static;
+    margin-top: 28px;
+  }
+
+  .coverArt {
+    flex-wrap: wrap;
+    padding-bottom: 24px;
+  }
+
+  .shots {
+    flex-direction: column;
+  }
+
+  .shotFigure {
+    max-width: none;
+  }
+
+  .shotFrame {
+    height: 62vh;
+  }
+
+  .tierGrid,
+  .schedule {
+    grid-template-columns: 1fr;
+  }
+
+  .glossary {
+    columns: 1;
+  }
+}
