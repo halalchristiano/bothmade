@@ -288,8 +288,9 @@ function BillingWorkspace() {
                     here — but silence made that look like a broken box. */}
                 {query.trim().length < 2 && (
                   <p className="mt-2 text-xs text-white/35">
-                    Type at least two characters. Only paying customers appear here — a lead who
-                    hasn&apos;t bought yet has no project to bill against.
+                    Type at least two characters. Only customers with a project appear here — a
+                    charge hangs off a project, so a lead who hasn&apos;t bought yet has nothing to
+                    bill against. Quote extra work as a line item on their proposal instead.
                   </p>
                 )}
                 {query.trim().length >= 2 && (
@@ -298,7 +299,8 @@ function BillingWorkspace() {
                     {!searching && results.length === 0 && (
                       <p className="px-3 py-2 text-xs text-white/40">
                         No customer matches that. Only customers with a project can be billed here —
-                        if they&apos;re still a lead, send them a sign-and-pay link instead.
+                        if they&apos;re still a lead, put the work on their proposal and send them a
+                        sign-and-pay link instead.
                       </p>
                     )}
                     {results.map((found) => (

@@ -12,6 +12,8 @@ interface ClientRow {
   company: string;
   phone: string | null;
   createdAt: string;
+  /** When money first cleared. Null for a client created by hand, who has never paid. */
+  firstPaidAt: string | null;
   archivedAt: string | null;
   projects: Array<{ id: string }>;
   lastActivityAt: string | null;
@@ -84,7 +86,8 @@ export default function AdminClientsPage() {
               doing the second — which is exactly the thing that was worth
               asking about and was written down nowhere. */}
           <p className="text-white/40 mt-1 text-sm">
-            Everyone who has actually paid. A signed lead who never paid stays a lead.
+            Everyone with a project — almost always because they paid, occasionally because someone
+            set one up by hand. A signed lead with no project stays a lead.
           </p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -129,7 +132,11 @@ export default function AdminClientsPage() {
                 <p className="text-sm text-white/50 mb-2">{client.email}</p>
                 <div className="flex justify-between text-xs text-white/30">
                   <span>{client.projects.length} project{client.projects.length === 1 ? '' : 's'}</span>
-                  <span>First paid {new Date(client.createdAt).toLocaleDateString()}</span>
+                  <span>
+                    {client.firstPaidAt
+                      ? `First paid ${new Date(client.firstPaidAt).toLocaleDateString()}`
+                      : 'Never paid'}
+                  </span>
                 </div>
               </Link>
             ))}
@@ -146,12 +153,15 @@ export default function AdminClientsPage() {
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Health</th>
                     <th className="px-6 py-3 text-sm font-semibold text-white/40">Projects</th>
                     {/* "Joined" was ambiguous enough to be asked about
-                        directly — it is not the signature date, and someone
-                        can sign and never pay. A client row exists because
-                        money cleared, so the column says so. */}
+                        directly, and my first answer to it was wrong: a
+                        client row is *usually* created by a completed
+                        checkout, but creating a project by hand creates one
+                        too, with no money involved. So this shows the real
+                        first payment, and says plainly when there wasn't
+                        one — which is the more useful fact anyway. */}
                     <th
                       className="px-6 py-3 text-sm font-semibold text-white/40"
-                      title="A client appears here when their first payment clears — not when they sign."
+                      title="When money first cleared. 'Never paid' means they were added by hand."
                     >
                       First paid
                     </th>
@@ -172,7 +182,13 @@ export default function AdminClientsPage() {
                       </td>
                       <td className="px-6 py-4 text-white/50">{client.projects.length}</td>
                       <td className="px-6 py-4 text-white/50">
-                        {new Date(client.createdAt).toLocaleDateString()}
+                        {client.firstPaidAt ? (
+                          new Date(client.firstPaidAt).toLocaleDateString()
+                        ) : (
+                          <span className="text-amber-300/70" title="On the books, but no payment has ever cleared">
+                            Never paid
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <Link
