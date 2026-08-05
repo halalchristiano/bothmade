@@ -110,9 +110,11 @@ export default function SalesPage() {
             Add companies
           </BrandButton>
           {/* The one gradient action across every lens, and the point of the
-              whole screen: stop reading, start ringing. */}
+              whole screen: stop reading, start ringing. ?start=1 skips the
+              Call HQ page and opens the top of the queue, because someone
+              pressing this has already decided. */}
           <BrandButton
-            onClick={() => router.push('/admin/call')}
+            onClick={() => router.push('/admin/call?start=1')}
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
           >
             <Headset size={16} />

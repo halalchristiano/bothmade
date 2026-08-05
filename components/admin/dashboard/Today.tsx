@@ -310,7 +310,9 @@ export function Today() {
         text: `${sell.overdueFollowUps.length} follow-up${
           sell.overdueFollowUps.length === 1 ? ' is' : 's are'
         } overdue.`,
-        href: '/admin/call',
+        // ?start=1 — "Start calling" opens the top of the queue rather than
+        // the Call HQ page, which is what the words on the button promise.
+        href: '/admin/call?start=1',
         cta: 'Start calling',
       };
     }
@@ -424,7 +426,7 @@ export function Today() {
               </Link>
             )}
             <Link
-              href="/admin/call"
+              href="/admin/call?start=1"
               className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-white/[0.07] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-white/[0.12] transition-colors"
             >
               <Headset size={12} />
