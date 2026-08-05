@@ -246,30 +246,48 @@ describe('the Monogram brochure', () => {
   });
 
   it('counts its own pages, so the folio and the total agree', () => {
-    // Cover, eight chapters, three options, custom work, side by side,
-    // plain English, what happens next.
-    expect(countPages(MONOGRAM)).toBe(16);
-    expect(brochure.pageCount).toBe(1 + MONOGRAM.chapters.length + MONOGRAM.tiers.length + 4);
+    // Cover, two on the current site, eight chapters, three options, custom
+    // work, side by side, plain English, what happens next.
+    expect(countPages(MONOGRAM)).toBe(18);
+    expect(brochure.pageCount).toBe(1 + 2 + MONOGRAM.chapters.length + MONOGRAM.tiers.length + 4);
   });
 
   /**
-   * Nobody has been through monogramcustombuilders.com. A brochure that
-   * invented a criticism of it would be one sentence away from being wrong
-   * in front of the person who owns it, so the comparison pages are absent
-   * rather than guessed at — and that absence is deliberate enough to test.
+   * The comparison exists only because somebody went through the current
+   * site on a phone and screenshotted it. A brochure that invents a
+   * criticism of a prospect's website is one sentence away from being wrong
+   * in front of the person who owns it — so the rule is that the section is
+   * absent unless there are shots behind it, and this is that rule.
    */
-  it('makes no claim about the current site, having never been shown it', () => {
-    expect(MONOGRAM.comparison ?? []).toHaveLength(0);
-    expect(countPages({ ...MONOGRAM, comparison: [{ what: 'w', today: 't', concept: 'c' }] })).toBe(17);
+  it('shows the current site before criticising it, or says nothing at all', () => {
+    expect(MONOGRAM.comparison?.before.length).toBeGreaterThan(0);
+    expect(MONOGRAM.comparison?.rows.length).toBeGreaterThan(0);
+    // Two pages: the screenshots, then the table. Take the section away and
+    // the document has to lose exactly those two.
+    expect(countPages({ ...MONOGRAM, comparison: undefined })).toBe(countPages(MONOGRAM) - 2);
+  });
+
+  /**
+   * This is the only part of the document that says anything negative, and
+   * it goes to the person who paid for the thing being criticised. Opening
+   * straight into the list reads as contempt for a business that has been
+   * running successfully for thirty years.
+   */
+  it('opens the criticism by saying what is good', () => {
+    expect(MONOGRAM.comparison?.preamble).toMatch(/none of this is about the business/i);
   });
 
   it('points at a screenshot that exists for every shot on every page', async () => {
     const { access } = await import('node:fs/promises');
 
-    for (const chapter of MONOGRAM.chapters) {
-      for (const shot of chapter.shots) {
-        await expect(access(`public${shot.src}`), `missing ${shot.src}`).resolves.toBeUndefined();
-      }
+    const shots = [
+      ...MONOGRAM.chapters.flatMap((chapter) => chapter.shots),
+      ...(MONOGRAM.comparison?.before ?? []),
+    ];
+    expect(shots.length).toBeGreaterThan(0);
+
+    for (const shot of shots) {
+      await expect(access(`public${shot.src}`), `missing ${shot.src}`).resolves.toBeUndefined();
     }
   });
 

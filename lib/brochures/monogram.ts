@@ -120,6 +120,106 @@ export const MONOGRAM: BrochureInput = {
       'We built a working homepage for Monogram before asking for anything. This document walks through what it does, why each part of it is there, and exactly what it would cost to make it yours — in three versions, with every technical word explained.',
   },
 
+  /*
+   * Read off screenshots of monogramcustombuilders.com taken on a phone.
+   * Every `today` is something visible in one of the three shots on the page
+   * before the table, or in the wider set they came from — no inference about
+   * how the site performs, no numbers nobody measured, and nothing about
+   * desktop, which nobody looked at.
+   */
+  comparison: {
+    section: {
+      eyebrow: 'What we noticed',
+      title: 'We went through your site on a phone, the way your customers do.',
+      body:
+        'Three screens, in the order they arrive. Everything on the next page can be checked against one of them — none of it is an opinion about your website, it is a photograph of it.',
+    },
+    preamble:
+      'None of this is about the business. Thirty years, 1,500 projects, fifty-plus awards and a 4.9 from seventy-six reviews is a record most builders in the valley would trade for. It is about the twenty seconds between someone hearing your name and deciding whether to ring you.',
+    before: [
+      {
+        src: `${SHOTS}/today-doorway.jpg`,
+        alt: 'The current monogramcustombuilders.com landing screen, split between Homes and Pools',
+        caption:
+          'The first screen. Before anything about the company, a choice has to be made: Homes, or Pools.',
+        width: 1320,
+        height: 2411,
+      },
+      {
+        src: `${SHOTS}/today-stats.jpg`,
+        alt: 'The statistics section of the current site, set over a blurred photograph',
+        caption:
+          'The proof, over an out-of-focus photograph. The heading reads "Proffessional Xcellence Awards".',
+        width: 1320,
+        height: 2420,
+      },
+      {
+        src: `${SHOTS}/today-blank.jpg`,
+        alt: 'A full screen of empty white space on the current site',
+        caption:
+          'Kept scrolling. This is one whole screen, between the top of the page and the reviews.',
+        width: 1320,
+        height: 2419,
+      },
+    ],
+    rows: [
+      {
+        what: 'Getting in',
+        today: 'A split screen asks you to choose Homes or Pools before you see anything about the company.',
+        concept: 'Both divisions are on the homepage. Nobody has to pick a door before they can look.',
+      },
+      {
+        what: 'How many logos',
+        today:
+          'Three marks — Custom Homes, Custom Pools, Custom Builders — and the first two swap sides depending which half of the site you are in.',
+        concept: 'One mark. Monogram, Custom Homes & Pools, with the two divisions underneath it.',
+      },
+      {
+        what: 'The proof',
+        today:
+          '8, 95%, 50+ and 30+ set over a blurred photograph, under the words "Proffessional Xcellence Awards".',
+        concept:
+          'The same numbers, each with the body that awarded it, on a page built to be read in four seconds.',
+      },
+      {
+        what: 'Reading about you',
+        today:
+          'Several paragraphs of centred body copy over a red wash on one side of the site and a blue one on the other.',
+        concept:
+          'The same story in short sections — the founders named, and the contract line pulled out on its own.',
+      },
+      {
+        what: 'Your 4.9 from 76 reviews',
+        today: 'In a carousel low down the page, followed by most of a screen of empty white.',
+        concept:
+          'Not on it yet, and it should be — this is one of the strongest things you own. Say the word and it goes near the top.',
+      },
+      {
+        what: 'Getting in touch',
+        today:
+          'A phone number, a fax number, office hours Monday to Friday, and a "Contact Us For a Quote" link.',
+        concept:
+          'One question — a home, a pool, or both — then call or request a consultation. The number stays a button.',
+      },
+      {
+        what: 'The bottom of the screen',
+        today: 'A translate widget sits over the bottom-right corner of every page.',
+        concept: 'Call and Start a project, always there, and nothing else competing with them.',
+      },
+      {
+        what: 'Where you build',
+        today:
+          'A paragraph that opens "We are located in Coopersburg"; the contact page gives Center Valley.',
+        concept: 'Eight townships listed, and a button for someone whose town is not among them.',
+      },
+      {
+        what: 'The year',
+        today: 'One footer reads Copyright 2023. Another reads 2026.',
+        concept: 'One footer.',
+      },
+    ],
+  },
+
   chapters: [
     {
       section: {

@@ -27,6 +27,7 @@ import styles from './brochure.module.css';
  * heading twice.
  */
 const ACTS = {
+  today: 'Your site today',
   concept: 'The concept',
   options: 'The options',
   detail: 'The detail',
@@ -215,6 +216,8 @@ export function BrochureDoc({ brochure }: { brochure: Brochure }) {
     theme,
     cover,
     chapters,
+    comparison,
+    currentUrl,
     tiers,
     customItems,
     nextSteps,
@@ -282,7 +285,69 @@ export function BrochureDoc({ brochure }: { brochure: Brochure }) {
         </div>
       </section>
 
-      {/* 2..n — the concept, chapter by chapter */}
+      {/*
+        The current site, before the concept rather than after it. A client
+        who has already been shown something better reads a list of problems
+        with what they have as a sales pitch; a client who is shown the
+        problems first reads the concept as an answer.
+      */}
+      {comparison ? (
+        <>
+          <Page runner={ACTS.today} folio={next()} {...shared}>
+            <div className={styles.chapterBody}>
+              <Heading
+                eyebrow={comparison.section.eyebrow}
+                title={comparison.section.title}
+                body={comparison.section.body}
+                small
+              />
+              <p className={styles.preamble}>{comparison.preamble}</p>
+
+              <div className={[styles.shots, styles.beforeShots].join(' ')}>
+                {comparison.before.map((shot) => (
+                  <figure key={shot.src} className={styles.shotFigure}>
+                    <div
+                      className={styles.shotFrame}
+                      style={{ aspectRatio: `${shot.width} / ${shot.height}` } as CSSProperties}
+                    >
+                      <img src={shot.src} alt={shot.alt} width={shot.width} height={shot.height} />
+                    </div>
+                    <figcaption className={styles.shotCaption}>{shot.caption}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          </Page>
+
+          <Page runner={ACTS.today} folio={next()} {...shared}>
+            <Heading
+              eyebrow="Both ways"
+              title="Nine things, as they are and as they could be."
+              small
+            />
+            <table className={styles.versus}>
+              <thead>
+                <tr>
+                  <th className={styles.colWhat}>&nbsp;</th>
+                  <th className={styles.colToday}>{currentUrl.replace(/^https?:\/\/(www\.)?/, '')}</th>
+                  <th className={styles.colConcept}>{conceptUrl.replace(/^https?:\/\//, '')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.rows.map((row) => (
+                  <tr key={row.what}>
+                    <td className={styles.colWhat}>{row.what}</td>
+                    <td className={styles.colToday}>{row.today}</td>
+                    <td className={styles.colConcept}>{row.concept}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Page>
+        </>
+      ) : null}
+
+      {/* the concept, chapter by chapter */}
       {chapters.map((chapter) => (
         <ChapterPage key={chapter.section.title} chapter={chapter} folio={next()} {...shared} />
       ))}

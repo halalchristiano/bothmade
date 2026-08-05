@@ -159,13 +159,12 @@ export interface BrochureInput {
   /**
    * The "your site today vs this one" pages.
    *
-   * Deliberately optional and deliberately empty by default. A comparison is
-   * only worth printing if somebody actually looked at the current site, and
-   * a brochure that invents a criticism of a prospect's website is worse than
-   * one that never mentions it — they know their own site, and one wrong
-   * claim costs the whole document its credibility.
+   * Optional, and absent until somebody has actually been through the
+   * current site. A brochure that invents a criticism of a prospect's website
+   * is worse than one that never mentions it — they know their own site, and
+   * one wrong claim costs the whole document its credibility.
    */
-  comparison?: BrochureComparisonRow[];
+  comparison?: BrochureComparison;
 }
 
 export interface BrochureTheme {
@@ -191,6 +190,28 @@ export interface BrochureComparisonRow {
   what: string;
   today: string;
   concept: string;
+}
+
+/**
+ * What the current site does, and what the concept does instead.
+ *
+ * Two pages, screenshots first and the table second, in that order on
+ * purpose: a client reading a list of criticisms of their own website needs
+ * to see that each one is a photograph of their own website rather than an
+ * opinion about it. Every row has to be checkable against a shot on the page
+ * before it.
+ *
+ * `preamble` is not padding. This section is the only part of the document
+ * that says anything negative, it is going to the person who paid for the
+ * thing being criticised, and going straight into the list reads as contempt
+ * for a business that has been running successfully for thirty years.
+ */
+export interface BrochureComparison {
+  section: BrochureSection;
+  preamble: string;
+  /** The site as it is today. */
+  before: BrochureShot[];
+  rows: BrochureComparisonRow[];
 }
 
 export interface Brochure extends Omit<BrochureInput, 'tiers'> {
@@ -330,7 +351,11 @@ export function brochureProse(input: BrochureInput): string {
     for (const line of tier.lines) parts.push(line.label, line.description, line.benefit);
   }
   for (const item of input.customItems) parts.push(item.label, item.what, item.why);
-  for (const row of input.comparison ?? []) parts.push(row.what, row.today, row.concept);
+  if (input.comparison) {
+    parts.push(input.comparison.section.title, input.comparison.section.body, input.comparison.preamble);
+    for (const shot of input.comparison.before) parts.push(shot.caption);
+    for (const row of input.comparison.rows) parts.push(row.what, row.today, row.concept);
+  }
   parts.push(...input.nextSteps);
 
   return parts.join('\n');
@@ -348,7 +373,8 @@ export function countPages(input: BrochureInput): number {
   const COVER = 1;
   // Custom work, side by side, plain English, what happens next.
   const CLOSING = 4;
-  const comparison = (input.comparison?.length ?? 0) > 0 ? 1 : 0;
+  // The screenshots, then the table.
+  const comparison = input.comparison ? 2 : 0;
   return COVER + input.chapters.length + comparison + input.tiers.length + CLOSING;
 }
 

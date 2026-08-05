@@ -670,6 +670,80 @@
   color: rgba(19, 28, 38, 0.28);
 }
 
+/* ------------------------------------------------------- what we noticed */
+
+.preamble {
+  border-left: 3px solid var(--bronze);
+  padding: 2px 0 2px 18px;
+  margin: 0;
+  font-size: 11pt;
+  line-height: 1.6;
+  flex: none;
+}
+
+/* Three phone screens in a row, tighter than the concept pages: these are
+   evidence, not the thing being sold. */
+.beforeShots {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.beforeShots .shotFigure {
+  max-width: 2.35in;
+}
+
+.versus {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+  flex: 1;
+  table-layout: fixed;
+}
+
+.versus th,
+.versus td {
+  text-align: left;
+  padding: 9px 12px 9px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  line-height: 1.45;
+}
+
+.versus thead th {
+  font-size: 7.5pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(19, 28, 38, 0.5);
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 8px;
+}
+
+.versus .colWhat {
+  width: 1.5in;
+  font-weight: 600;
+  font-size: 9.5pt;
+  color: var(--ink);
+}
+
+.versus .colToday {
+  color: rgba(19, 28, 38, 0.6);
+}
+
+/* The column the document is arguing for, marked as such without a shout. */
+.versus .colConcept {
+  color: var(--slate);
+  padding-left: 12px;
+  border-left: 2px solid rgba(63, 110, 124, 0.28);
+}
+
+.versus thead .colConcept {
+  color: var(--slate);
+  border-left: 2px solid rgba(63, 110, 124, 0.28);
+}
+
 .matrixNote {
   flex: none;
   margin-top: 18px;
