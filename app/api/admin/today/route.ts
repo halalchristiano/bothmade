@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { uninvoicedPayments } from '@/lib/stage-gates';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 
 /**
@@ -36,7 +37,7 @@ export async function GET() {
       approvedMockups,
       unsignedProposals,
       dueInstalments,
-      scheduledInstalments,
+      gateProjects,
       unpaidInvoices,
       paidThisMonth,
       activeProjects,
@@ -109,9 +110,31 @@ export async function GET() {
       // And money that is waiting on a gate — not owed, but worth knowing the
       // size of, because it is the difference between a good month and a
       // great one.
-      prisma.instalment
-        .aggregate({ where: { status: 'scheduled' }, _sum: { amountCents: true }, _count: true })
-        .catch(() => ({ _sum: { amountCents: 0 }, _count: 0 })),
+      /**
+       * Every payment past its gate that nobody has invoiced.
+       *
+       * This used to be an aggregate of every 'scheduled' instalment in the
+       * system, which since every project gained a schedule is "the sum of
+       * all money not yet collected on all live work" — a number that goes up
+       * when you win business and means nothing on a dashboard. What matters
+       * is the far smaller set the studio has already EARNED and simply never
+       * asked for. See uninvoicedPayments() in lib/stage-gates.
+       */
+      prisma.project
+        .findMany({
+          where: { status: { not: 'complete' } },
+          select: {
+            id: true,
+            name: true,
+            statusStage: true,
+            client: { select: { company: true } },
+            instalments: {
+              where: { status: 'scheduled' },
+              select: { id: true, index: true, label: true, amountCents: true, trigger: true, status: true },
+            },
+          },
+        })
+        .catch(() => []),
 
       // 'open' is the only unpaid state an Invoice has — it goes open → paid.
       // There is no 'sent' or 'overdue', and asking for those would have made
@@ -156,6 +179,8 @@ export async function GET() {
       where: { type: 'call', createdAt: { gte: startOfDay } },
     });
 
+    const uninvoiced = uninvoicedPayments(gateProjects).slice(0, 8);
+
     return NextResponse.json(
       {
         success: true,
@@ -170,8 +195,10 @@ export async function GET() {
         },
         money: {
           dueInstalments,
-          scheduledTotalCents: scheduledInstalments._sum?.amountCents ?? 0,
-          scheduledCount: scheduledInstalments._count ?? 0,
+          // Earned, and never asked for. The only kind of missing revenue
+          // that is entirely ours to fix, and it does not announce itself.
+          uninvoiced,
+          uninvoicedTotalCents: uninvoiced.reduce((sum, u) => sum + u.amountCents, 0),
           unpaidInvoices,
           collectedThisMonthCents: paidThisMonth._sum.amount ?? 0,
         },

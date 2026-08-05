@@ -10,6 +10,8 @@ import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
 import { ChangeOrderPanel } from '@/components/admin/ChangeOrderPanel';
 import { Linkify } from '@/components/Linkify';
+import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
+import { stageMessage } from '@/lib/stage-gates';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
 import { Paperclip, X as XIcon } from 'lucide-react';
@@ -345,6 +347,8 @@ export default function AdminProjectDetailPage() {
     }
   };
 
+  const [openedGate, setOpenedGate] = useState<OpenedGate | null>(null);
+
   const handleStatusUpdate = async () => {
     setStatusSaving(true);
     try {
@@ -353,8 +357,12 @@ export default function AdminProjectDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: statusDraft, description: statusDescription }),
       });
+      const data = await response.json().catch(() => null);
       if (response.ok) {
         setStatusDescription('');
+        // The moment Section 7 calls "the day of approval". Reported by the
+        // route, never acted on by it — see GatePrompt.
+        setOpenedGate(data?.gateOpened ?? null);
         loadProject();
       }
     } finally {
@@ -794,7 +802,13 @@ export default function AdminProjectDetailPage() {
 
               <select
                 value={statusDraft}
-                onChange={(e) => setStatusDraft(e.target.value)}
+                onChange={(e) => {
+                  setStatusDraft(e.target.value);
+                  // Pre-fill what the client will read, so sending stays one
+                  // click. Only ever fills an empty box — a message somebody
+                  // has started writing is never overwritten by a template.
+                  if (!statusDescription.trim()) setStatusDescription(stageMessage(e.target.value).body);
+                }}
                 className={`${inputClass} mb-3 capitalize`}
               >
                 {STATUSES.map((s) => (
@@ -807,9 +821,13 @@ export default function AdminProjectDetailPage() {
                 value={statusDescription}
                 onChange={(e) => setStatusDescription(e.target.value)}
                 placeholder="Describe this update for the client..."
-                rows={3}
-                className={`${inputClass} resize-none mb-3`}
+                rows={5}
+                className={`${inputClass} resize-none mb-1`}
               />
+              <p className="mb-3 text-[11px] text-white/30">
+                This is what your client reads. Pick a stage above and it fills in — edit it, or
+                send as is.
+              </p>
               <button
                 onClick={handleStatusUpdate}
                 disabled={statusSaving || (statusDraft === project.status && !statusDescription)}
@@ -817,6 +835,18 @@ export default function AdminProjectDetailPage() {
               >
                 {statusSaving ? 'Saving...' : 'Send Status Update'}
               </button>
+
+              {openedGate && (
+                <div className="mt-3">
+                  <GatePrompt
+                    gate={openedGate}
+                    projectId={projectId}
+                    company={project.client.company}
+                    onDone={loadProject}
+                    onDismiss={() => setOpenedGate(null)}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

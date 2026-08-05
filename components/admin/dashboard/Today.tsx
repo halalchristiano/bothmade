@@ -71,8 +71,16 @@ interface TodayData {
       invoiceNumber: string | null;
       project: { id: string; name: string; client: { company: string } };
     }>;
-    scheduledTotalCents: number;
-    scheduledCount: number;
+    uninvoiced: Array<{
+      projectId: string;
+      projectName: string;
+      company: string;
+      instalmentId: string;
+      label: string;
+      amountCents: number;
+      claim: string;
+    }>;
+    uninvoicedTotalCents: number;
     unpaidInvoices: Array<{
       id: string;
       number: string;
@@ -226,6 +234,23 @@ export function Today() {
         text: `${sell.approvedMockups[0].lead.company} approved their mockup. Send the proposal.`,
         href: `/admin/leads/${sell.approvedMockups[0].lead.id}`,
         cta: 'Open the deal',
+      };
+    }
+    /**
+     * Above the chase list on purpose. An invoice that's out and unpaid is
+     * waiting on somebody else; money past its gate that nobody has invoiced
+     * is waiting on us, takes one click, and is the only kind of missing
+     * revenue that is entirely our own doing.
+     */
+    if (money.uninvoiced.length > 0) {
+      const first = money.uninvoiced[0];
+      return {
+        text:
+          money.uninvoiced.length === 1
+            ? `${first.company} passed ${first.claim} and ${formatCents(first.amountCents)} was never invoiced.`
+            : `${formatCents(money.uninvoicedTotalCents)} across ${money.uninvoiced.length} payments has passed its gate and never been invoiced.`,
+        href: `/admin/projects/${first.projectId}`,
+        cta: 'Invoice it',
       };
     }
     if (money.dueInstalments.length > 0) {
@@ -408,6 +433,34 @@ export function Today() {
             <Quiet text="Nothing invoiced and unpaid." />
           )}
 
+          {/* Earned and never asked for.
+              Distinct from everything above it: nobody is late, because
+              nobody has been billed. It sits below the chase list because it
+              is our job rather than theirs, and above the totals because it
+              is the only thing in this lane you can fix in one click. */}
+          {money.uninvoiced.length > 0 && (
+            <div className="mt-1 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] p-2.5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
+                Earned — nobody has invoiced it
+              </p>
+              {money.uninvoiced.map((u) => (
+                <Link
+                  key={u.instalmentId}
+                  href={`/admin/projects/${u.projectId}`}
+                  className="-mx-1 flex items-center justify-between gap-2 rounded-lg px-1 py-1 transition-colors hover:bg-white/[0.05]"
+                >
+                  <span className="min-w-0 truncate text-xs text-white/70">
+                    {u.company}
+                    <span className="text-white/35"> · {u.label} · past {u.claim}</span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold tabular-nums text-emerald-300">
+                    {formatCents(u.amountCents)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+
           <div className="mt-1 grid grid-cols-2 gap-1.5 pt-1">
             <div className="rounded-xl border border-white/[0.06] px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide text-white/30">In this month</p>
@@ -415,10 +468,17 @@ export function Today() {
                 {formatCents(money.collectedThisMonthCents)}
               </p>
             </div>
-            <div className="rounded-xl border border-white/[0.06] px-3 py-2" title="Not yet invoiced — waiting on a gate">
-              <p className="text-[10px] uppercase tracking-wide text-white/30">Still to come</p>
-              <p className="text-sm font-semibold text-white/70">
-                {formatCents(money.scheduledTotalCents)}
+            <div
+              className="rounded-xl border border-white/[0.06] px-3 py-2"
+              title="Past its gate and never invoiced — money we've earned and not asked for"
+            >
+              <p className="text-[10px] uppercase tracking-wide text-white/30">Earned, unbilled</p>
+              <p
+                className={`text-sm font-semibold ${
+                  money.uninvoicedTotalCents > 0 ? 'text-emerald-300' : 'text-white/40'
+                }`}
+              >
+                {formatCents(money.uninvoicedTotalCents)}
               </p>
             </div>
           </div>

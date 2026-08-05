@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, Scale } from 'lucide-react';
+import { AlertTriangle, BookOpen, Check, Scale } from 'lucide-react';
 import { Card, CardHeader, EmptyState, inputClass } from '@/components/admin/ui';
+import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { dollarsToCents } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
 
@@ -33,8 +34,20 @@ interface Stage {
   earned: boolean;
 }
 
+interface RefundableInvoice {
+  id: string;
+  number: string;
+  description: string;
+  amountCents: number;
+  refundedCents: number;
+  remainingCents: number;
+  allocatedCents: number;
+}
+
 interface Estimate {
   project: { id: string; name: string; company: string; status: string; totalPrice: number };
+  explanation: string[];
+  allocation: { invoices: RefundableInvoice[]; unallocatedCents: number };
   consumer: boolean;
   agencyRateCents: number;
   adminFeeCents: number;
@@ -60,7 +73,13 @@ interface Estimate {
 
 type Scenario = 'client-cancels' | 'agency-ends';
 
-export function RefundEstimate({ projectId }: { projectId: string }) {
+export function RefundEstimate({
+  projectId,
+  onRefunded,
+}: {
+  projectId: string;
+  onRefunded?: () => void;
+}) {
   const [scenario, setScenario] = useState<Scenario>('client-cancels');
   const [hours, setHours] = useState('');
   const [processorFee, setProcessorFee] = useState('');
@@ -299,9 +318,102 @@ export function RefundEstimate({ projectId }: { projectId: string }) {
             </p>
           ))}
 
+          {/* In plain English, built from this project's actual numbers.
+              Never a stock paragraph: a generic explanation under a specific
+              figure reads as an explanation OF that figure and gets trusted
+              like one, and is wrong exactly when the situation isn't the
+              common case — which is when somebody is reading it. */}
+          {estimate.explanation.length > 0 && (
+            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+              <p className="mb-2.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-white/30">
+                <BookOpen size={11} /> In plain English
+              </p>
+              <div className="space-y-2.5">
+                {estimate.explanation.map((para, i) => (
+                  <p key={i} className="text-sm leading-relaxed text-white/65">
+                    {para}
+                  </p>
+                ))}
+              </div>
+              <p className="mt-3 border-t border-white/[0.06] pt-3 text-[11px] text-white/35">
+                This comes from <span className="text-white/55">Section {e.clause}</span> of the
+                agreement {estimate.project.company} signed.
+              </p>
+            </div>
+          )}
+
+          {/* Which invoice the money actually comes off.
+              The entitlement above is one number about the whole project;
+              every refund goes against one invoice. Without sharing the pot
+              out first, the same $11,750 could be refunded off two invoices
+              and twice that would leave the account. */}
+          {estimate.allocation.invoices.length > 0 && (
+            <div>
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-white/30">
+                Refund it against
+              </p>
+              <div className="space-y-1.5">
+                {estimate.allocation.invoices.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {inv.number}
+                        <span className="ml-2 font-normal text-white/40">{inv.description}</span>
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-white/35">
+                        {formatCentsExact(inv.remainingCents)} left on it
+                        {inv.refundedCents > 0 && ` · ${formatCentsExact(inv.refundedCents)} already back`}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-sm font-semibold tabular-nums text-emerald-300">
+                        {formatCentsExact(inv.allocatedCents)}
+                      </span>
+                      <div className="flex items-center gap-3 text-[11px]">
+                        <InvoiceActions
+                          invoice={{
+                            id: inv.id,
+                            number: inv.number,
+                            description: inv.description,
+                            amountCents: inv.amountCents,
+                            status: 'paid',
+                            refundedCents: inv.refundedCents,
+                            sentToEmail: null,
+                          }}
+                          onDone={() => {
+                            load();
+                            onRefunded?.();
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-white/30">
+                Each amount is capped at both what&apos;s left on that invoice and what&apos;s left of
+                the entitlement, so refunding every line here comes to exactly{' '}
+                {formatCentsExact(e.settlement.returnedToClientCents)} — never twice.
+              </p>
+            </div>
+          )}
+
+          {/* Money owed with no invoice behind it. Real on older projects,
+              where the deposit predates the invoice ledger. */}
+          {estimate.allocation.unallocatedCents > 0 && (
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/[0.07] px-3 py-2 text-xs text-amber-200">
+              {formatCentsExact(estimate.allocation.unallocatedCents)} of this has no invoice to come
+              off — it was paid before the invoice ledger existed, or recorded by hand. It still has
+              to go back; it just has to go back another way.
+            </p>
+          )}
+
           <p className="text-[11px] text-white/25">
-            An estimate from the contract, not an action. Nothing here refunds anything — raise it
-            against the specific invoice below.
+            An estimate from the contract. The figures update as the project moves — nothing here
+            has refunded anything until you use a button above.
           </p>
         </div>
       )}

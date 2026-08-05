@@ -444,7 +444,7 @@ function BillingWorkspace() {
 
         {/* Between raising a charge and the ledger, because it belongs to
             neither: it is the thinking you do before you touch either one. */}
-        <RefundEstimate projectId={projectId} />
+        <RefundEstimate projectId={projectId} onRefunded={loadInvoices} />
 
         <Card className="p-6">
           <CardHeader

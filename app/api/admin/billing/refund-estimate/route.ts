@@ -4,7 +4,13 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { amountPaidTowardProject } from '@/lib/billing';
 import { AGENCY_RATE_CENTS, PREPAYMENT_ADMIN_FEE_CENTS } from '@/lib/contract-terms';
-import { isRefundScenario, refundEntitlement, type RefundScenario } from '@/lib/refund-entitlement';
+import {
+  allocateRefund,
+  explainEntitlement,
+  isRefundScenario,
+  refundEntitlement,
+  type RefundScenario,
+} from '@/lib/refund-entitlement';
 import { ensureInstalments } from '@/lib/instalments';
 
 /**
@@ -99,9 +105,36 @@ export async function GET(request: NextRequest) {
       processorFeeCents,
     });
 
+    // Where the refundable money actually sits. The entitlement is a fact
+    // about the project; a refund goes against one invoice, so the pot has to
+    // be shared out before anybody can act on it. See allocateRefund().
+    const invoices = await prisma.invoice.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        number: true,
+        description: true,
+        amountCents: true,
+        refundedCents: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+    const allocation = allocateRefund(invoices, entitlement.settlement.returnedToClientCents);
+
     return NextResponse.json(
       {
         success: true,
+        explanation: explainEntitlement({
+          entitlement,
+          scenario,
+          consumer,
+          company: project.client.company,
+          hoursWorked,
+          agencyRateCents: AGENCY_RATE_CENTS,
+        }),
+        allocation,
         project: {
           id: project.id,
           name: project.name,

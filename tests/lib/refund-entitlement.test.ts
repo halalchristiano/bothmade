@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { refundEntitlement, type EntitlementInstalment } from '@/lib/refund-entitlement';
+import {
+  allocateRefund,
+  explainEntitlement,
+  refundEntitlement,
+  type EntitlementInstalment,
+} from '@/lib/refund-entitlement';
 
 /**
  * Section 8, as arithmetic. Every case names the clause it comes from,
@@ -312,5 +317,192 @@ describe('the stage-by-stage picture', () => {
     });
 
     expect(result.cautions.join(' ')).toMatch(/nothing to settle/i);
+  });
+});
+
+describe('which invoice the money comes off', () => {
+  const inv = (id: string, number: string, amountCents: number, refundedCents = 0, status = 'paid', day = 1) => ({
+    id, number, description: 'Work', amountCents, refundedCents, status,
+    createdAt: new Date(2026, 0, day),
+  });
+
+  /**
+   * The failure this exists to prevent. The entitlement is one number about
+   * the whole project; refunds go against one invoice at a time. Treating the
+   * entitlement as a per-invoice figure lets the same $11,750 be refunded off
+   * two invoices, and $23,500 leaves the account.
+   */
+  it('shares one entitlement across invoices instead of repeating it', () => {
+    const result = allocateRefund([inv('a', 'BM-1', 800_000, 0, 'paid', 1), inv('b', 'BM-2', 1_200_000, 0, 'paid', 2)], 1_175_000);
+
+    expect(result.invoices.map((i) => [i.number, i.allocatedCents])).toEqual([
+      ['BM-1', 800_000],
+      ['BM-2', 375_000],
+    ]);
+    expect(result.invoices.reduce((s, i) => s + i.allocatedCents, 0)).toBe(1_175_000);
+  });
+
+  it('never allocates more than an invoice has left on it', () => {
+    const result = allocateRefund([inv('a', 'BM-1', 800_000, 600_000)], 1_000_000);
+
+    expect(result.invoices[0].allocatedCents).toBe(200_000);
+    expect(result.unallocatedCents).toBe(800_000);
+  });
+
+  it('takes the oldest invoice first', () => {
+    const result = allocateRefund(
+      [inv('b', 'BM-2', 500_000, 0, 'paid', 9), inv('a', 'BM-1', 500_000, 0, 'paid', 2)],
+      500_000
+    );
+
+    expect(result.invoices.map((i) => i.number)).toEqual(['BM-1']);
+  });
+
+  it('ignores invoices that were never paid, and voided ones', () => {
+    const result = allocateRefund(
+      [inv('a', 'BM-1', 500_000, 0, 'open'), inv('b', 'BM-2', 500_000, 0, 'void'), inv('c', 'BM-3', 500_000, 0, 'paid')],
+      500_000
+    );
+
+    expect(result.invoices.map((i) => i.number)).toEqual(['BM-3']);
+  });
+
+  it('drops invoices that got nothing rather than listing them at zero', () => {
+    const result = allocateRefund([inv('a', 'BM-1', 800_000), inv('b', 'BM-2', 800_000, 0, 'paid', 5)], 100_000);
+
+    expect(result.invoices).toHaveLength(1);
+  });
+
+  /**
+   * Real and worth naming: a deposit taken before the invoice ledger existed,
+   * or a payment recorded by hand, has no invoice to refund against. The money
+   * is still owed — it just has to go back another way.
+   */
+  it('reports money that has no invoice to come off', () => {
+    const result = allocateRefund([], 500_000);
+
+    expect(result.invoices).toEqual([]);
+    expect(result.unallocatedCents).toBe(500_000);
+  });
+});
+
+describe('the plain-English explanation', () => {
+  const explain = (over: Partial<Parameters<typeof explainEntitlement>[0]> = {}) => {
+    const entitlement = refundEntitlement({
+      ...base,
+      scenario: 'client-cancels',
+      statusStage: 1,
+      paidCents: 2_000_000,
+      ...(over.entitlement ? {} : {}),
+    });
+    return explainEntitlement({
+      entitlement,
+      scenario: 'client-cancels',
+      consumer: false,
+      company: 'Ridgeline Dental',
+      agencyRateCents: RATE,
+      ...over,
+    }).join(' ');
+  };
+
+  it('names the stages that were passed and the ones that were not', () => {
+    const text = explain();
+
+    expect(text).toMatch(/Payment 1 of 3 has passed its gate/);
+    expect(text).toMatch(/Payment 2 of 3 and Payment 3 of 3 have not been reached/);
+  });
+
+  it('quotes the figures the arithmetic actually produced', () => {
+    const text = explain();
+
+    expect(text).toMatch(/\$20,000/); // paid
+    expect(text).toMatch(/\$8,000/); // earned
+    expect(text).toMatch(/\$11,750/); // returned, after the $250 charge
+    expect(text).toMatch(/\$250 withheld/);
+  });
+
+  /**
+   * The case a stock paragraph would get wrong, and the one somebody is most
+   * likely to be reading: it is not a refund at all.
+   */
+  it('says plainly when the client owes us instead', () => {
+    const entitlement = refundEntitlement({
+      ...base,
+      scenario: 'client-cancels',
+      statusStage: 2,
+      paidCents: 800_000,
+    });
+    const text = explainEntitlement({
+      entitlement,
+      scenario: 'client-cancels',
+      consumer: false,
+      company: 'Ridgeline Dental',
+      agencyRateCents: RATE,
+    }).join(' ');
+
+    expect(text).toMatch(/This is not a refund/);
+    expect(text).toMatch(/they owe \$6,000/);
+    expect(text).toMatch(/had already crystallised/);
+  });
+
+  it('explains that gates stop mattering when we are the ones leaving', () => {
+    const entitlement = refundEntitlement({
+      ...base,
+      scenario: 'agency-ends',
+      statusStage: 4,
+      paidCents: 2_000_000,
+      hoursWorked: 20,
+    });
+    const text = explainEntitlement({
+      entitlement,
+      scenario: 'agency-ends',
+      consumer: false,
+      company: 'Ridgeline Dental',
+      hoursWorked: 20,
+      agencyRateCents: RATE,
+    }).join(' ');
+
+    expect(text).toMatch(/payment gates stop mattering/);
+    expect(text).toMatch(/20 hours at \$150 an hour/);
+  });
+
+  it('says which of the two consumer caps actually bit', () => {
+    const entitlement = refundEntitlement({
+      ...base,
+      consumer: true,
+      scenario: 'client-cancels',
+      statusStage: 1,
+      paidCents: 2_000_000,
+      hoursWorked: 100,
+    });
+    const text = explainEntitlement({
+      entitlement,
+      scenario: 'client-cancels',
+      consumer: true,
+      company: 'Ridgeline Dental',
+      hoursWorked: 100,
+      agencyRateCents: RATE,
+    }).join(' ');
+
+    expect(text).toMatch(/consumer terms/);
+    expect(text).toMatch(/The schedule is lower here/);
+  });
+
+  it('says nothing moves when they have paid exactly what was earned', () => {
+    const entitlement = refundEntitlement({
+      ...base,
+      scenario: 'client-cancels',
+      statusStage: 1,
+      paidCents: 800_000,
+    });
+    const text = explainEntitlement({
+      entitlement,
+      scenario: 'client-cancels',
+      consumer: false,
+      company: 'Ridgeline Dental',
+      agencyRateCents: RATE,
+    }).join(' ');
+
+    expect(text).toMatch(/nothing moves in either direction/);
   });
 });
