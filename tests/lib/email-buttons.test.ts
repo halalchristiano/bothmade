@@ -248,6 +248,9 @@ describe('sendTemplatedEmail', () => {
     expect(result.ok).toBe(true);
     const html = sendAsUser.mock.calls[0][1].html;
     expect(html).toContain('Both concepts');
-    expect(html).toContain('https://drive.google.com/file/d/abc123defg/view');
+    // Routed through our own domain rather than straight at Drive — see
+    // tests/lib/email-drive-links.test.ts for why a Drive link cannot be
+    // tapped on a phone.
+    expect(html).toContain('/l/drive/file/abc123defg');
   });
 });

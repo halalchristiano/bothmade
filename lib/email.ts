@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { emailLinkUrl } from '@/lib/email-links';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 // Leaf module — imports only googleapis and gmail-mime — so pulling it in
@@ -256,10 +257,14 @@ function renderShell(opts: {
   const title = esc(opts.title);
   const attachmentsHtml = opts.attachmentsHtml || '';
   const ctaLabel = esc(opts.ctaLabel);
-  const ctaUrl = safeUrl(opts.ctaUrl);
-  // The same link as plain text, for the line under the button. Escaped for
+  // Routed through us when it's a Drive link, so a tap on a phone reaches a
+  // browser rather than an app that silently declines to open it.
+  const ctaHref = emailLinkUrl(opts.ctaUrl);
+  const ctaUrl = safeUrl(ctaHref);
+  // The same link as plain text, for the line under the button — the wrapped
+  // one, so what it says and where it goes are the same address. Escaped for
   // display, not for an href.
-  const ctaUrlText = esc(normalizeUrl(opts.ctaUrl));
+  const ctaUrlText = esc(ctaHref);
   const footerNote = esc(opts.footerNote);
   const footerAvatarUrl = safeUrl(opts.footerAvatarUrl);
   return `

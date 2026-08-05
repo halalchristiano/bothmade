@@ -14,6 +14,7 @@
  * two — "Anyone with the link" and paste it in.
  */
 
+import { emailLinkUrl } from '@/lib/email-links';
 import { esc, escMultiline, normalizeUrl, safeUrl } from '@/lib/html';
 
 export type AttachmentKind = 'pdf' | 'image' | 'link';
@@ -155,7 +156,9 @@ function hostLabel(url: string): string {
  * single word of text on a phone.
  */
 function renderCard(attachment: EmailAttachmentLink): string {
-  const href = safeUrl(attachment.url);
+  // Routed through us for Drive, straight through for everything else — see
+  // lib/email-links.ts for why a Drive link cannot be tapped on a phone.
+  const href = safeUrl(emailLinkUrl(attachment.url));
   if (!href) return '';
 
   const kind = KIND_BY_VALUE.get(attachment.kind)!;
