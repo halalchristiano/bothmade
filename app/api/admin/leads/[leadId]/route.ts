@@ -48,6 +48,13 @@ export async function GET(
           id: true,
           name: true,
           totalPrice: true,
+          // The delivery half. Sales could see whether the money landed but
+          // not what happened to the work — and "did the thing I sold turn
+          // out well" is the question a closer most wants answered about a
+          // deal they are no longer on.
+          status: true,
+          statusStage: true,
+          liveUrl: true,
           instalments: {
             orderBy: { index: 'asc' },
             select: {

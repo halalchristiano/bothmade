@@ -38,6 +38,9 @@ export interface DealTimelineInput {
   activities: Array<{ type: string; createdAt: string | Date }>;
   /** The project this lead became, if it ever did. */
   project: {
+    status?: string;
+    statusStage?: number;
+    liveUrl?: string | null;
     instalments: Array<{
       index: number;
       label: string;
@@ -83,6 +86,15 @@ function firstActivityAt(
  * do, and colouring it like an overdue task would put a red mark on a
  * healthy deal.
  */
+/** Delivery stages in words rather than the enum value. */
+const DELIVERY_LABELS: Record<string, string> = {
+  discovery: 'Discovery',
+  design: 'Design',
+  build: 'Build',
+  launch: 'Launch',
+  complete: 'Complete',
+};
+
 export function buildDealTimeline(lead: DealTimelineInput): DealStep[] {
   const steps: DealStep[] = [];
   const lost = lead.status === 'lost';
@@ -165,6 +177,33 @@ export function buildDealTimeline(lead: DealTimelineInput): DealStep[] {
             : `${money(inst.amountCents)} at its gate`,
       });
     }
+  }
+
+  /**
+   * The delivery half.
+   *
+   * Sales could see whether the money landed and nothing about what happened
+   * to the work — so a closer's view of a deal ended at the invoice, and
+   * "did the thing I sold turn out well" was a question they had to leave
+   * Sales to answer. Only shown once there is a project: on an open deal it
+   * would be five empty rows of speculation.
+   */
+  if (lead.project?.status) {
+    const stage = lead.project.statusStage ?? 0;
+    const live = Boolean(lead.project.liveUrl);
+    steps.push({
+      key: 'delivery',
+      label: live ? 'Live' : DELIVERY_LABELS[lead.project.status] ?? lead.project.status,
+      // Complete-and-live is done; complete-without-a-URL is not, because the
+      // client's delivery moment has not fired yet.
+      state: live ? 'done' : stage >= 4 ? 'todo' : 'current',
+      at: null,
+      detail: live
+        ? 'Delivered and live'
+        : stage >= 4
+          ? 'Built and finished — no live URL set yet'
+          : `In ${DELIVERY_LABELS[lead.project.status] ?? lead.project.status}`,
+    });
   }
 
   /**

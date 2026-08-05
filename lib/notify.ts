@@ -428,3 +428,28 @@ export async function notifyAdminsPaymentNeedsCall(params: {
     alsoStudioInbox: true,
   });
 }
+
+/**
+ * The client approved their design themselves.
+ *
+ * Worth knowing the moment it happens rather than at the next dashboard
+ * visit: it is the gate that makes Payment 2 due, and it arrives days earlier
+ * than the deemed route would have — which is days of cash flow, and an
+ * approval that is worth more if it is ever argued about.
+ */
+export async function notifyAdminsDesignApprovedByClient(params: {
+  projectId: string;
+  projectName: string;
+  company: string;
+}): Promise<void> {
+  const html = wrap(
+    'Design approved',
+    `<p><strong>${escapeHtml(params.company)}</strong> approved the design on
+      ${escapeHtml(params.projectName)}.</p>
+     <p style="color:#555;">Build can start, and Payment 2 is now due — it has not been invoiced
+      yet.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'Invoice it'
+  );
+  await notifyAdmins(`Design approved: ${params.company}`, html);
+}

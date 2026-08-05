@@ -31,6 +31,8 @@ interface InstalmentRow {
   dueAt: string | null;
   paidAt: string | null;
   emailSentAt: string | null;
+  linkClickedAt: string | null;
+  linkClicks: number;
 }
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -168,6 +170,24 @@ export function InstalmentPanel({
                     ? `Invoiced${inst.invoiceNumber ? ` ${inst.invoiceNumber}` : ''}${inst.dueAt ? ` · due ${new Date(inst.dueAt).toLocaleDateString()}` : ''}`
                     : TRIGGER_LABEL[inst.trigger] ?? inst.trigger}
                 </p>
+                {/* "Never clicked" and "clicked and didn't finish" want
+                    completely different responses — one is usually a wrong
+                    address, the other a card that failed or a decision. They
+                    were indistinguishable from here until now. */}
+                {inst.status === 'due' && (
+                  <p className="text-[11px] truncate">
+                    {inst.linkClickedAt ? (
+                      <span className="text-amber-300/80">
+                        Opened the payment page {inst.linkClicks > 1 ? `${inst.linkClicks} times, last ` : ''}
+                        {new Date(inst.linkClickedAt).toLocaleDateString()} — and didn&apos;t finish
+                      </span>
+                    ) : (
+                      <span className="text-white/30">
+                        Never opened the payment page — check it reached the right person
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
               {inst.status !== 'paid' && isNext && (
                 <button

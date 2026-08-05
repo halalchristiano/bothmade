@@ -230,3 +230,58 @@ describe('a deal that has overtaken its own gaps', () => {
     expect(nextAction(steps)).toBe('Next: collect Payment 3 of 3.');
   });
 });
+
+describe('the delivery half', () => {
+  /**
+   * Sales could see whether the money landed and nothing about what happened
+   * to the work — so a closer's view of a deal ended at the invoice, and "did
+   * the thing I sold turn out well" meant leaving Sales to find out.
+   */
+  const won = (project: DealTimelineInput['project']) =>
+    buildDealTimeline({
+      ...BLANK,
+      status: 'won',
+      contractStatus: 'signed',
+      agreementSignedAt: '2026-01-10',
+      proposalTotalPrice: 2_000_000,
+      project,
+    });
+
+  it('says what stage the build is at', () => {
+    const delivery = won({ status: 'build', statusStage: 2, liveUrl: null, instalments: [] }).find(
+      (s) => s.key === 'delivery'
+    );
+
+    expect(delivery?.label).toBe('Build');
+    expect(delivery?.detail).toMatch(/In Build/);
+  });
+
+  it('calls a project with a live URL delivered', () => {
+    const delivery = won({
+      status: 'complete',
+      statusStage: 4,
+      liveUrl: 'https://example.test',
+      instalments: [],
+    }).find((s) => s.key === 'delivery');
+
+    expect(delivery?.label).toBe('Live');
+    expect(delivery?.state).toBe('done');
+  });
+
+  /**
+   * Finished but with no URL set is not done: the client's delivery moment
+   * has not fired, which is the whole point of Priorities' deliver band.
+   */
+  it('does not call a finished project delivered until the URL is set', () => {
+    const delivery = won({ status: 'complete', statusStage: 4, liveUrl: null, instalments: [] }).find(
+      (s) => s.key === 'delivery'
+    );
+
+    expect(delivery?.state).not.toBe('done');
+    expect(delivery?.detail).toMatch(/no live URL/i);
+  });
+
+  it('shows nothing at all on a deal that never became a project', () => {
+    expect(won(null).find((s) => s.key === 'delivery')).toBeUndefined();
+  });
+});

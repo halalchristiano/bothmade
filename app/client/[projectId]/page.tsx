@@ -82,6 +82,12 @@ interface Project {
     refundReason?: string | null;
     voidReason?: string | null;
   }>;
+  designReview?: {
+    presentedAt: string | null;
+    reviewEndsAt: string | null;
+    approvedAt: string | null;
+    deemed: boolean;
+  };
   estimatedCompletionDate: string | null;
   liveUrl: string | null;
   /** Capability token for the public /status link — see lib/share-links.ts. */
@@ -170,6 +176,8 @@ export default function ClientDashboard() {
   const [messageError, setMessageError] = useState('');
   const [payingBalance, setPayingBalance] = useState(false);
   const [payBalanceError, setPayBalanceError] = useState('');
+  const [approvingDesign, setApprovingDesign] = useState(false);
+  const [approveError, setApproveError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -188,6 +196,31 @@ export default function ClientDashboard() {
   // "New" badges on updates/deliverables: remember the last time this client
   // actually looked at the dashboard, so anything added since then stands out.
   const [lastVisitAt, setLastVisitAt] = useState<number | null>(null);
+
+  /**
+   * Approving the design.
+   *
+   * Only ever sets approval — there is no undo. A design approved and then
+   * reconsidered is a Change Order under Section 9, not a button, because the
+   * build has started on the strength of it.
+   */
+  const approveDesign = async () => {
+    setApprovingDesign(true);
+    setApproveError('');
+    try {
+      const res = await fetch(`/api/projects/${projectId}/approve-design`, { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setApproveError(data?.error || 'Something went wrong — try again in a moment.');
+        return;
+      }
+      await loadProject();
+    } catch {
+      setApproveError('Something went wrong — try again in a moment.');
+    } finally {
+      setApprovingDesign(false);
+    }
+  };
 
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -748,6 +781,56 @@ export default function ClientDashboard() {
                   );
                 })}
               </div>
+
+              {/* The design waiting on them, and the deadline they were given.
+                  Deemed approval under Section 4 only holds up if the client
+                  could see the clock running — burying it would make the
+                  clause both unfair and unarguable. */}
+              {project.designReview?.presentedAt && !project.designReview.approvedAt && (
+                <div className="relative mt-6 rounded-xl border border-sky-400/30 bg-sky-400/[0.07] p-5">
+                  <p className="mb-1 text-sm font-semibold text-sky-200">Your design is ready to review</p>
+                  <p className="text-sm text-white/70">
+                    Have a look and tell us what you think
+                    {project.designReview.reviewEndsAt && (
+                      <>
+                        {' '}by{' '}
+                        <span className="font-semibold text-white">
+                          {new Date(project.designReview.reviewEndsAt).toLocaleDateString(undefined, {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </>
+                    )}
+                    . If we haven&apos;t heard from you by then we&apos;ll take it as approved and start
+                    building, so nothing stalls on a message that never got sent.
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={approveDesign}
+                      disabled={approvingDesign}
+                      className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      {approvingDesign ? 'Saving…' : 'Approve the design'}
+                    </button>
+                    <span className="text-xs text-white/40">
+                      Changes instead? Send us a message below — that&apos;s quicker than a call.
+                    </span>
+                  </div>
+                  {approveError && <p className="mt-2 text-xs text-red-300">{approveError}</p>}
+                </div>
+              )}
+
+              {project.designReview?.approvedAt && project.statusStage <= 2 && (
+                <div className="relative mt-6 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] p-4">
+                  <p className="text-sm text-emerald-200">
+                    {project.designReview.deemed
+                      ? "The review period passed without us hearing back, so the design is approved and we're building it. If anything about it isn't right, tell us — we'd always rather know now."
+                      : "You've approved the design — we're building it."}
+                  </p>
+                </div>
+              )}
 
               <div className="relative mt-6 rounded-lg bg-white/5 border border-white/10 p-4">
                 <p className="text-sm font-semibold text-sky-300 mb-1">What's happening in {currentStage}?</p>

@@ -199,6 +199,7 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
+
       const sent = await sendPaymentChaseEmail({
         to: inst.project.client.email,
         contactName: inst.project.client.contactName,
@@ -209,7 +210,10 @@ export async function GET(request: NextRequest) {
         subject: state.subject,
         line: state.line,
         dueLabel: (inst.dueAt ?? now).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
-        paymentUrl,
+        // Through our own domain, so the click is ours to see before Stripe's
+        // — "never clicked" and "clicked and didn't finish" want completely
+        // different responses from us. See app/pay/[instalmentId].
+        paymentUrl: `${resolveSiteUrl()}/pay/${inst.id}`,
         seriouslyLate: state.phase === 'seriously-late',
       }).catch((error) => {
         console.error(`Chase email failed for ${inst.id}:`, error);

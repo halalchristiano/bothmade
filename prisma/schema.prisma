@@ -740,6 +740,16 @@ model Instalment {
   lastChasedAt DateTime?
   chaseCount   Int       @default(0)
 
+  // When the client last clicked through to pay, and how often.
+  //
+  // "Sent, never opened" and "clicked and didn't finish" are completely
+  // different problems — the first is usually a wrong address or a spam
+  // folder, the second is a card that failed or a decision being made — and
+  // without this they looked identical from here. The payment link goes
+  // through our own domain so the click is ours to see before Stripe's.
+  linkClickedAt DateTime?
+  linkClicks    Int       @default(0)
+
   createdAt DateTime @default(now())
 
   @@unique([projectId, index])

@@ -44,6 +44,7 @@ import { SignatureCertificatesCard } from '@/components/admin/SignatureCertifica
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart, Kicker, BrandButton } from '@/components/admin/ui';
 import { Today } from '@/components/admin/dashboard/Today';
+import { NotificationGuide } from '@/components/admin/dashboard/NotificationGuide';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 import { USER_ROLE_LABELS, type UserRole } from '@/lib/roles';
@@ -1421,6 +1422,13 @@ export default function AdminDashboardPage() {
           above the fold rather than buried in a breakdown nobody opened. */}
       <div className="mb-6">
         <TasksWidget />
+      </div>
+
+      {/* Beside the breakdown rather than in Settings, because the question
+          "why is it so quiet — is anything actually watching?" occurs to you
+          while you are looking at this page. */}
+      <div className="mb-4">
+        <NotificationGuide />
       </div>
 
       <div className="rounded-2xl border border-white/[0.07] bg-white/[0.01]">
