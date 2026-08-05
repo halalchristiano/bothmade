@@ -254,6 +254,21 @@ export function Today() {
         cta: 'Start calling',
       };
     }
+    // Last, but never skipped. Leaving this out let the headline announce
+    // "nothing overdue and nothing waiting" directly above a lane listing a
+    // proposal sitting unsigned — a page contradicting itself in one glance.
+    if (sell.unsignedProposals.length > 0) {
+      const oldest = sell.unsignedProposals[0];
+      const days = daysSince(oldest.updatedAt);
+      return {
+        text:
+          days === 0
+            ? `${oldest.company} got their proposal today. Nothing signed yet.`
+            : `${oldest.company} has had their proposal ${days} day${days === 1 ? '' : 's'} and hasn't signed.`,
+        href: `/admin/leads/${oldest.id}`,
+        cta: 'Chase it',
+      };
+    }
     return {
       text:
         sell.callsToday > 0

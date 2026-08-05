@@ -24,6 +24,7 @@ import {
   MessageCircle,
   Megaphone,
   ArrowRight,
+  ChevronRight,
   Palette,
   Phone,
   Mail,
@@ -34,7 +35,6 @@ import {
   UserCog,
 } from 'lucide-react';
 import { TasksWidget } from '@/components/admin/TasksWidget';
-import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { SnoozeButton } from '@/components/admin/SnoozeButton';
 import { UndoToast } from '@/components/admin/UndoToast';
@@ -112,46 +112,6 @@ function OpenStatusButton({ projectId }: { projectId: string }) {
     >
       <ExternalLink size={13} />
     </a>
-  );
-}
-
-function SkeletonBlock({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-white/[0.06] ${className}`} />;
-}
-
-/**
- * Shaped to roughly match the dashboard layout (header, stat row, card
- * grid) instead of a bare spinner — reduces the jarring "page replaced
- * with nothing" feel on first load.
- */
-function DashboardSkeleton() {
-  return (
-    <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex justify-between items-start mb-8">
-        <div className="space-y-2">
-          <SkeletonBlock className="h-4 w-16" />
-          <SkeletonBlock className="h-8 w-64" />
-          <SkeletonBlock className="h-4 w-48" />
-        </div>
-        <SkeletonBlock className="h-9 w-40 rounded-xl" />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-xl overflow-hidden mb-6 border border-white/[0.07]">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="p-5 bg-white/[0.02] space-y-2">
-            <SkeletonBlock className="h-3 w-20" />
-            <SkeletonBlock className="h-7 w-24" />
-          </div>
-        ))}
-      </div>
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
-        <SkeletonBlock className="lg:col-span-2 h-64 rounded-xl" />
-        <SkeletonBlock className="h-64 rounded-xl" />
-      </div>
-      <div className="grid lg:grid-cols-2 gap-5">
-        <SkeletonBlock className="h-52 rounded-xl" />
-        <SkeletonBlock className="h-52 rounded-xl" />
-      </div>
-    </div>
   );
 }
 
@@ -557,24 +517,7 @@ function SalesDashboard({
   const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
 
   return (
-    <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
-        <div>
-          <Kicker className="mb-2">Sales</Kicker>
-          <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
-          <p className="text-white/40">Sell it, get paid for it, ship it — in that order.</p>
-        </div>
-        <RangePicker range={range} onChange={onRangeChange} />
-      </div>
-      <div className="flex justify-end mb-6">
-        <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
-      </div>
-
-      {/* The whole point of the page, before any of the detail below it. */}
-      <div className="mb-6">
-        <Today />
-      </div>
-
+    <div>
       <div className="mb-6">
         <StatRow
           items={[
@@ -631,8 +574,6 @@ function SalesDashboard({
             </div>
           </div>
         </Card>
-
-        <TasksWidget />
       </div>
 
       <div className="mb-5">
@@ -663,7 +604,7 @@ function SalesDashboard({
           Team Chat
         </Link>
       </div>
-    </PageIn>
+    </div>
   );
 }
 
@@ -1126,7 +1067,6 @@ function TeamCard() {
 function OpsDashboard({
   stats,
   name,
-  showLeadsSpreadsheet,
   range,
   onRangeChange,
   lastUpdated,
@@ -1136,7 +1076,6 @@ function OpsDashboard({
 }: {
   stats: OpsStats;
   name: string;
-  showLeadsSpreadsheet: boolean;
   range: StatsRange;
   onRangeChange: (r: StatsRange) => void;
   lastUpdated: Date | null;
@@ -1160,9 +1099,9 @@ function OpsDashboard({
   const Shell = embedded ? 'div' : PageIn;
 
   return (
-    <Shell className={embedded ? 'max-w-7xl mx-auto px-4 md:px-8 pb-6 md:pb-10' : 'max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10'}>
+    <Shell className={embedded ? '' : 'max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10'}>
       {embedded ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-12 mb-6 pt-8 border-t border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-10 mb-6 pt-8 border-t border-white/10">
           <div>
             <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
             <p className="text-white/40 text-sm">Delivery, clients and money.</p>
@@ -1264,10 +1203,8 @@ function OpsDashboard({
 
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <ActivityFeedCard activity={stats.activityFeed} />
-
-        <TasksWidget />
 
         <TeamCard />
       </div>
@@ -1330,50 +1267,85 @@ function OpsDashboard({
         </Link>
       </div>
 
-      {showLeadsSpreadsheet && (
-        <div className="mt-8">
-          <LeadsSpreadsheet />
-        </div>
-      )}
     </Shell>
   );
 }
 
+/**
+ * The dashboard.
+ *
+ * Three things shipped on top of each other here and the result was a page
+ * nobody could land on: the Today panel, then a full sales dashboard, then a
+ * full operations dashboard — twenty-odd cards, several answering the same
+ * question twice, behind two heavyweight requests that had to finish before
+ * anything appeared.
+ *
+ * Now it opens on what you can act on: the one sentence, three lanes, and
+ * your own task list. The rest is still all here, and still one click away,
+ * but it is explicitly "the full breakdown" rather than the page — and it
+ * doesn't fetch until you ask for it, so landing costs one request instead
+ * of three.
+ *
+ * The range picker lives inside the breakdown for the same reason. It only
+ * ever controlled those two halves; sitting at the top of the page it looked
+ * like it controlled Today, which ignores it.
+ */
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [role, setRole] = useState<string | null>(null);
   const [name, setName] = useState('');
+
+  const [open, setOpen] = useState(false);
   const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
   const [opsStats, setOpsStats] = useState<OpsStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [range, setRange] = useState<StatsRange>('week');
 
+  // Who is looking at it — cheap, and needed for the greeting whether or not
+  // the breakdown is ever opened.
   useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then((res) => {
+        if (res.status === 401) {
+          router.push('/admin/login');
+          return null;
+        }
+        return res.ok ? res.json() : null;
+      })
+      .then((me) => {
+        if (!cancelled && me?.user) setName(me.user.name || '');
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  // Whether the breakdown was open last time. Someone who lives in it should
+  // not have to reopen it every morning.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('bothmade_dashboard_breakdown') === 'open') setOpen(true);
+    } catch {
+      /* private browsing — closed is a fine default */
+    }
+  }, []);
+
+  // The heavy pair, fetched only once somebody actually wants them, and again
+  // when the range changes underneath an open panel.
+  useEffect(() => {
+    if (!open) return;
     let cancelled = false;
 
     const load = async () => {
-      if (hasLoadedOnce) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      if (salesStats || opsStats) setRefreshing(true);
+      else setLoading(true);
       setError(null);
       try {
-        const meResponse = await fetch('/api/auth/me');
-        if (meResponse.status === 401) {
-          router.push('/admin/login');
-          return;
-        }
-        if (!meResponse.ok) throw new Error(`Failed to load your session (${meResponse.status}).`);
-        const me = await meResponse.json();
-        // Fall back narrow, like the nav does: an unresolved role must not show the ops dashboard to a sales session.
-        const userRole = me.user?.role || 'sales';
-
         // Both halves, for everyone. This used to fetch one or the other off
         // the signed-in role, which is what made two people in the same studio
         // unable to see the same screen — the rep couldn't see what was at
@@ -1382,6 +1354,10 @@ export default function AdminDashboardPage() {
           fetch(`/api/admin/sales-stats?range=${range}`),
           fetch(`/api/admin/ops-stats?range=${range}`),
         ]);
+        if (salesRes.status === 401 || opsRes.status === 401) {
+          router.push('/admin/login');
+          return;
+        }
         if (!salesRes.ok) throw new Error(`Failed to load sales data (${salesRes.status}).`);
         if (!opsRes.ok) throw new Error(`Failed to load operations data (${opsRes.status}).`);
         const [salesData, opsData] = await Promise.all([salesRes.json(), opsRes.json()]);
@@ -1389,14 +1365,13 @@ export default function AdminDashboardPage() {
         if (!opsData.success) throw new Error(opsData.error || 'Failed to load operations data.');
 
         if (cancelled) return;
-        setRole(userRole);
-        setName(me.user?.name || '');
         setSalesStats(salesData.stats);
         setOpsStats(opsData.stats);
         setLastUpdated(new Date());
-        setHasLoadedOnce(true);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Something went wrong loading your dashboard.');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Something went wrong loading the breakdown.');
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -1410,58 +1385,118 @@ export default function AdminDashboardPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, retryCount, range]);
+  }, [open, range, retryCount, router]);
 
-  if (loading) {
-    return <DashboardSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 min-h-[60vh] px-4 text-center">
-        <AlertTriangle className="text-red-400" size={32} />
-        <div>
-          <p className="font-semibold mb-1">Couldn't load your dashboard</p>
-          <p className="text-white/40 text-sm">{error}</p>
-        </div>
-        <BrandButton variant="primary" onClick={() => setRetryCount((c) => c + 1)}>
-          Try Again
-        </BrandButton>
-      </div>
-    );
-  }
+  const toggle = () => {
+    setOpen((wasOpen) => {
+      const next = !wasOpen;
+      try {
+        localStorage.setItem('bothmade_dashboard_breakdown', next ? 'open' : 'closed');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const onRefresh = () => setRetryCount((c) => c + 1);
 
-  // One screen, both halves, whoever is looking at it. Sales first because
-  // that is the order the work happens in — a lead becomes a project — and
-  // because the pipeline is what either of them checks first thing.
   return (
-    <>
-      {salesStats && (
-        <SalesDashboard
-          stats={salesStats}
-          name={name}
-          range={range}
-          onRangeChange={setRange}
-          lastUpdated={lastUpdated}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
-      )}
-      {opsStats && (
-        <OpsDashboard
-          stats={opsStats}
-          name={name}
-          showLeadsSpreadsheet
-          range={range}
-          onRangeChange={setRange}
-          lastUpdated={lastUpdated}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          embedded={!!salesStats}
-        />
-      )}
-    </>
+    <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="mb-6">
+        <Kicker className="mb-2">Studio</Kicker>
+        <h1 className="text-3xl font-bold tracking-tight mb-1">
+          Welcome back{name ? `, ${name}` : ''}
+        </h1>
+        <p className="text-white/40">Sell it, get paid for it, ship it — in that order.</p>
+      </div>
+
+      {/* What you can act on, before any of the detail. */}
+      <div className="mb-5">
+        <Today />
+      </div>
+
+      {/* One instance. This used to mount inside both halves, so the same
+          personal to-do list rendered twice on one page — and it belongs
+          above the fold rather than buried in a breakdown nobody opened. */}
+      <div className="mb-6">
+        <TasksWidget />
+      </div>
+
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.01]">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-white/[0.02] transition-colors rounded-2xl"
+        >
+          <ChevronRight
+            size={16}
+            className={`shrink-0 text-white/35 transition-transform ${open ? 'rotate-90' : ''}`}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-white">The full breakdown</p>
+            <p className="text-xs text-white/35">
+              Pipeline by stage, revenue history, at-risk projects, handoffs, activity and the team.
+            </p>
+          </div>
+          {open && (
+            <span
+              onClick={(e) => e.stopPropagation()}
+              className="hidden sm:flex items-center gap-3"
+              role="presentation"
+            >
+              <RangePicker range={range} onChange={setRange} />
+              <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
+            </span>
+          )}
+        </button>
+
+        {open && (
+          <div className="border-t border-white/[0.07] px-4 md:px-5 pb-6 pt-2">
+            {loading && !salesStats && (
+              <p className="py-10 text-center text-sm text-white/40">Loading the breakdown…</p>
+            )}
+
+            {error && (
+              <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+                <AlertTriangle className="text-red-400" size={26} />
+                <div>
+                  <p className="font-semibold mb-1">Couldn&apos;t load the breakdown</p>
+                  <p className="text-white/40 text-sm">{error}</p>
+                </div>
+                <BrandButton variant="primary" onClick={onRefresh}>
+                  Try again
+                </BrandButton>
+              </div>
+            )}
+
+            {salesStats && (
+              <SalesDashboard
+                stats={salesStats}
+                name={name}
+                range={range}
+                onRangeChange={setRange}
+                lastUpdated={lastUpdated}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+              />
+            )}
+            {opsStats && (
+              <OpsDashboard
+                stats={opsStats}
+                name={name}
+                range={range}
+                onRangeChange={setRange}
+                lastUpdated={lastUpdated}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                embedded
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </PageIn>
   );
 }

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Headset, KanbanSquare, PhoneCall, UserPlus, Users } from 'lucide-react';
+import { Headset, KanbanSquare, PhoneCall, Table2, UserPlus, Users } from 'lucide-react';
 import { BrandButton, Kicker, PageIn, PageTitle } from '@/components/admin/ui';
 import { QuickAddLeadModal } from '@/components/admin/QuickAddLeadModal';
 import { BoardView } from '@/components/admin/sales/BoardView';
 import { ListView } from '@/components/admin/sales/ListView';
 import { QueueView } from '@/components/admin/sales/QueueView';
+import { LeadsSpreadsheet } from '@/components/admin/LeadsSpreadsheet';
 
 /**
  * Sales. One screen.
@@ -18,25 +19,33 @@ import { QueueView } from '@/components/admin/sales/QueueView';
  * that none of them got opened, and the phone got picked up from memory
  * instead. Four front doors is the same as none.
  *
- * These are three *lenses*, not three destinations, so they live behind tabs
- * on one page with one header, one "add companies" button, and one call to
- * action. The default lens is the queue, because the queue is the only one
- * that answers a question you can act on in the next ten seconds.
+ * These are *lenses*, not destinations, so they live behind tabs on one page
+ * with one header, one "add companies" button, and one call to action. The
+ * default lens is the queue, because the queue is the only one that answers a
+ * question you can act on in the next ten seconds. The spreadsheet joined
+ * them late — it had been rendering at the bottom of the dashboard, below
+ * twenty cards and behind no nav item at all.
  *
  * Call HQ stays a separate route on purpose. It isn't a fifth list — it's a
  * mode you enter with a phone in your hand, and it takes over the screen.
  */
 
-type View = 'queue' | 'board' | 'list';
+type View = 'queue' | 'board' | 'list' | 'sheet';
 
 const VIEWS: Array<{ key: View; label: string; icon: typeof PhoneCall; blurb: string }> = [
   { key: 'queue', label: 'Who to call', icon: PhoneCall, blurb: 'Ranked by urgency. Start at the top.' },
   { key: 'board', label: 'Board', icon: KanbanSquare, blurb: 'Every deal by stage.' },
   { key: 'list', label: 'All leads', icon: Users, blurb: 'The whole book, filterable.' },
+  {
+    key: 'sheet',
+    label: 'Spreadsheet',
+    icon: Table2,
+    blurb: 'Edit in place, save a view, export to CSV.',
+  },
 ];
 
 function isView(value: string | null): value is View {
-  return value === 'queue' || value === 'board' || value === 'list';
+  return value === 'queue' || value === 'board' || value === 'list' || value === 'sheet';
 }
 
 export default function SalesPage() {
@@ -98,8 +107,8 @@ export default function SalesPage() {
             <UserPlus size={16} />
             Add companies
           </BrandButton>
-          {/* The one gradient action across all three lenses, and the point of
-              the whole screen: stop reading, start ringing. */}
+          {/* The one gradient action across every lens, and the point of the
+              whole screen: stop reading, start ringing. */}
           <BrandButton
             onClick={() => router.push('/admin/call')}
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
@@ -113,7 +122,7 @@ export default function SalesPage() {
       <div
         role="tablist"
         aria-label="Sales views"
-        className="inline-flex items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1 mb-6"
+        className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1 mb-6"
       >
         {VIEWS.map((v) => {
           const Icon = v.icon;
@@ -136,11 +145,17 @@ export default function SalesPage() {
       </div>
 
       {/* Mounted one at a time on purpose: each lens polls or fetches on
-          mount, and three of them running behind hidden tabs is three times
-          the load for two views nobody is looking at. */}
+          mount, and four of them running behind hidden tabs is four times the
+          load for three views nobody is looking at. */}
       {view === 'queue' && <QueueView />}
       {view === 'board' && <BoardView refreshToken={refreshToken} />}
       {view === 'list' && <ListView refreshToken={refreshToken} />}
+      {/* The spreadsheet spent its life rendered at the bottom of the
+          dashboard, below twenty cards, reachable from no nav item — a grid
+          with inline editing, saved views, bulk snooze and CSV export that
+          nobody would ever have found. It is a lens on the same leads as the
+          three beside it, so this is where it belongs. */}
+      {view === 'sheet' && <LeadsSpreadsheet key={refreshToken} />}
 
       {showAdd && (
         <QuickAddLeadModal
