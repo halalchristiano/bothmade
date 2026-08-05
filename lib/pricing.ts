@@ -649,6 +649,19 @@ export function isAddOnKey(value: string): value is AddOnKey {
   return isCatalogueKey(ADD_ONS, value);
 }
 
+/**
+ * The human name for a stored add-on key, or the key itself for anything the
+ * catalogue no longer carries.
+ *
+ * Falls back rather than throwing on purpose: a project sold when the
+ * catalogue had a service that has since been retired still has that key in
+ * its `addOns`, and a page that crashes rather than showing `legacy-seo` is
+ * worse for everyone.
+ */
+export function addOnLabel(key: string): string {
+  return isAddOnKey(key) ? ADD_ONS[key].label : key;
+}
+
 export function isClientType(value: string): value is ClientType {
   return isCatalogueKey(CLIENT_TYPES, value);
 }

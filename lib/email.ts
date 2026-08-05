@@ -1296,3 +1296,68 @@ export async function sendInvoiceRefundedEmail(input: {
     }),
   });
 }
+
+/**
+ * A Change Order, out for signature.
+ *
+ * The three numbers are the whole email: what it was, what it becomes, and
+ * the difference. A client reading "your project is now $23,000" without
+ * being shown the $20,000 it was and the $3,000 that moved has to go and find
+ * the old figure themselves, and the version of this that made them do that
+ * is the version that got replies asking what changed.
+ *
+ * Section 9 requires approval "in writing" before work begins, so the only
+ * call to action is the link — there is deliberately nothing here to pay.
+ */
+export async function sendChangeOrderEmail(input: {
+  to: string;
+  contactName: string | null;
+  company: string;
+  projectName: string;
+  number: string;
+  summary: string;
+  deltaLabel: string;
+  previousTotalLabel: string;
+  newTotalLabel: string;
+  timelineExtensionDays: number;
+  signUrl: string;
+}): Promise<SendResult> {
+  const row = (label: string, value: string, strong = false) => `
+    <tr>
+      <td style="padding:7px 0; color:rgba(255,255,255,${strong ? '0.75' : '0.45'}); font-size:14px;">${esc(label)}</td>
+      <td style="padding:7px 0; text-align:right; color:${strong ? '#fff' : 'rgba(255,255,255,0.55)'}; font-size:14px; font-weight:${strong ? '700' : '400'};">${esc(value)}</td>
+    </tr>`;
+
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Here's a change to <strong style="color:#fff;">${esc(input.projectName)}</strong> for you to look over. Nothing changes and no new work starts until you've agreed to it.</p>
+    <p style="border-left:2px solid rgba(125,211,252,0.6); padding-left:16px; color:rgba(255,255,255,0.75);">${esc(input.summary)}</p>
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 12px 0; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.35);">${esc(input.number)}</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${row('Project total was', input.previousTotalLabel)}
+        ${row('This change', input.deltaLabel)}
+        <tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,0.12); padding-top:4px;"></td></tr>
+        ${row('New project total', input.newTotalLabel, true)}
+      </table>
+    </div>
+    ${
+      input.timelineExtensionDays > 0
+        ? `<p style="font-size:13px; color:rgba(255,255,255,0.5);">This adds ${input.timelineExtensionDays} day${input.timelineExtensionDays === 1 ? '' : 's'} to the timeline.</p>`
+        : ''
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">The full breakdown, and how your remaining payments change, are on the page below. If it doesn't look right, decline it there and tell us why — it comes straight to us.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `${input.number} — a change to ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Change order',
+      title: `${input.projectName} — ${input.newTotalLabel}`,
+      bodyHtml,
+      ctaLabel: 'Read it and decide',
+      ctaUrl: input.signUrl,
+    }),
+  });
+}

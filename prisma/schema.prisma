@@ -83,6 +83,7 @@ model User {
   issuedInvoices       Invoice[]        @relation("InvoiceIssuer")
   voidedInvoices       Invoice[]        @relation("InvoiceVoider")
   refundedInvoices     Invoice[]        @relation("InvoiceRefunder")
+  changeOrders         ChangeOrder[]    @relation("ChangeOrderAuthor")
   recurringOffers      RecurringOffer[] @relation("RecurringOfferAuthor")
 
   @@map("users")
@@ -208,6 +209,7 @@ model Project {
   instalments Instalment[]
   invoices            Invoice[]
   recurringOffers     RecurringOffer[]
+  changeOrders        ChangeOrder[]
 
   @@index([prioritySnoozedUntil])
   @@map("projects")
@@ -833,6 +835,102 @@ model Invoice {
   @@index([clientId])
   @@index([projectId])
   @@map("invoices")
+}
+
+// A written amendment to a project's scope and fee — a Change Order under
+// Section 9 of the contract.
+//
+// Before this, a project's price was fixed the moment it was created and
+// nothing could move it. Work agreed mid-build was billed as a separate
+// one-off charge, which left the contracted total permanently wrong: the
+// instalment schedule described a price nobody was paying, and the client's
+// dashboard showed a job costing less than they were being charged.
+//
+// This is deliberately a signed document rather than an edit. Section 9: "no
+// such work begins until the Client approves the additional scope and fee in
+// writing." An admin form that quietly moved Project.totalPrice would be
+// faster and would be exactly the thing the clause exists to prevent.
+model ChangeOrder {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// "CO-1" — sequential within the project, which is how anyone refers to
+  /// one out loud. Unique per project, not globally.
+  number String
+
+  /// What is changing, in the words the client reads and signs.
+  summary String
+
+  /// [{ label, priceCents, kind: "add" | "remove", workStarted?, description? }]
+  /// `kind` carries the direction so a total can never be negated by a typed
+  /// minus sign, and `workStarted` is what Section 9 turns on: a removal
+  /// whose work has begun keeps its price.
+  items Json @default("[]")
+
+  /// Signed. Positive adds to the Total Fee, negative reduces it. Derived
+  /// from `items` and never accepted from a caller — two numbers that can
+  /// disagree will, and the one billed is never the one on the signed page.
+  deltaCents Int
+
+  /// Both sides of the change, snapshotted. The project's price will move
+  /// again; what this document said it moved from and to must not.
+  previousTotalCents Int
+  newTotalCents      Int
+
+  /// Section 9: "Change Orders extend the Project timeline by an amount
+  /// reasonably determined by the Agency."
+  timelineExtensionDays Int @default(0)
+
+  /// "draft" — being written, client has never seen it.
+  /// "sent" — link issued, awaiting signature.
+  /// "signed" — in force. This is the only status that has moved any money.
+  /// "declined" — client said no.
+  /// "withdrawn" — we pulled it.
+  status String @default("draft")
+
+  /// Capability token for the public signing page (/change/[token]). Same
+  /// reasoning as Project.shareToken and Lead.shareToken: the id that appears
+  /// in admin URLs must not also be the thing that authorises agreeing to a
+  /// price change.
+  token String @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
+
+  /// The schedule this change produced, stored as it was applied:
+  /// [{ index, label, was, now, frozen }]. The instalment rows themselves get
+  /// rewritten, so without this there is no record of what they were.
+  scheduleBefore Json @default("[]")
+  scheduleAfter  Json @default("[]")
+
+  pdfUrl String?
+
+  sentAt     DateTime?
+  viewedAt   DateTime?
+  signedAt   DateTime?
+  declinedAt DateTime?
+
+  /// Clickwrap evidence, same four questions as the contract signature on
+  /// Lead: who agreed, to what, when, and from where.
+  signerName      String?
+  signerEmail     String?
+  signerIp        String?
+  signerUserAgent String?
+  /// sha256 of the exact text shown at signing, so a later reword of this
+  /// page cannot retroactively change what an existing signature claims.
+  signedHash      String?
+  signedStatement String?
+  /// What the client typed when declining — the most useful sentence in the
+  /// whole record, and the one nobody thinks to capture.
+  declineNote     String?
+
+  createdById String?
+  createdBy   User?   @relation("ChangeOrderAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, number])
+  @@index([projectId, createdAt])
+  @@map("change_orders")
 }
 
 // An offer to put a client onto one of the recurring "ongoing care" services

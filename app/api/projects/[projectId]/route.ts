@@ -223,13 +223,23 @@ export async function PUT(
         description: body.description,
         status: body.status,
         statusStage: body.statusStage,
-        baseService: body.baseService,
-        addOns: Array.isArray(body.addOns)
-          ? body.addOns.join(',')
-          : body.addOns,
+        // baseService, addOns, basePrice and totalPrice are deliberately NOT
+        // settable here any more.
+        //
+        // This route accepted all four from any signed-in staff account. No
+        // record was written, the client was never told, and the instalment
+        // schedule did not follow — so a contracted price could be rewritten
+        // and the three payments beneath it would go on describing the old
+        // one. Nothing in the UI ever sent them, which is the only reason it
+        // was never used.
+        //
+        // Section 9 of the contract is explicit that scope and fee move by
+        // written amendment the client approves. That is what a Change Order
+        // is, and it is now the only path: see
+        // /api/public/change/[token], which moves the price, the scope and the
+        // schedule together, inside one transaction, only once someone has
+        // signed for it.
         timeline: body.timeline,
-        basePrice: body.basePrice,
-        totalPrice: body.totalPrice,
         estimatedCompletionDate:
           body.estimatedCompletionDate !== undefined
             ? body.estimatedCompletionDate

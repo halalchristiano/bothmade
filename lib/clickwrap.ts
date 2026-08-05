@@ -24,6 +24,20 @@ export const CLICKWRAP_STATEMENT =
   'proceeding to payment is my electronic signature on this agreement, with the same ' +
   'effect as signing it on paper.';
 
+/**
+ * The same act, for a Change Order rather than the original agreement.
+ *
+ * Separate constant rather than reusing the one above, because that one says
+ * "proceeding to payment" — a change order is signed before anything is
+ * invoiced, and a signature record quoting a payment step the client never
+ * took is a record worth arguing with. Section 9 requires approval "in
+ * writing" of the additional scope *and* fee, so the sentence names both.
+ */
+export const CHANGE_ORDER_STATEMENT =
+  'I have read and agree to this change to the scope and fee of my project, and to the ' +
+  'revised payment schedule shown above. I understand that typing my full name is my ' +
+  'electronic signature on this amendment, with the same effect as signing it on paper.';
+
 /** Same rules as any other name field on the site — see lib/validation.ts. */
 export const SIGNER_NAME_MAX = FIELD_LIMITS.name;
 

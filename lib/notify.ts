@@ -320,3 +320,38 @@ export async function notifyUserFollowUpDigest(
     html,
   });
 }
+
+/**
+ * A client agreed to a Change Order.
+ *
+ * Worth a notification rather than a dashboard row because signing is the
+ * moment the project's price, scope and payment schedule all move at once —
+ * and unlike everything else that changes those, nobody on the team did it.
+ */
+export async function notifyAdminsChangeOrderSigned(params: {
+  number: string;
+  company: string;
+  projectName: string;
+  signerName: string;
+  deltaCents: number;
+  newTotalCents: number;
+  projectId: string;
+}): Promise<void> {
+  const money = (cents: number) =>
+    (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const up = params.deltaCents > 0;
+
+  const html = wrap(
+    `${params.number} signed`,
+    `<p><strong>${escapeHtml(params.signerName)}</strong> at
+      <strong>${escapeHtml(params.company)}</strong> signed
+      <strong>${escapeHtml(params.number)}</strong> on ${escapeHtml(params.projectName)}.</p>
+     <p style="color:#555;">The fee ${up ? 'goes up' : 'comes down'} by
+       <strong>${money(Math.abs(params.deltaCents))}</strong>, to
+       <strong>${money(params.newTotalCents)}</strong>. Remaining instalments have
+       been recalculated.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'View Project'
+  );
+  await notifyAdmins(`${params.number} signed: ${params.company}`, html, { alsoStudioInbox: true });
+}
