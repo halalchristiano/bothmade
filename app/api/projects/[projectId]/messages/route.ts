@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requirePrincipal } from '@/lib/middleware';
 import { sendMessageNotificationEmail } from '@/lib/email';
+import { clientWantsEmail } from '@/lib/email-preferences';
 import { notifyAdminsNewClientMessage } from '@/lib/notify';
 
 export async function GET(
@@ -125,33 +126,25 @@ export async function POST(
         where: { clientId: project.clientId },
       });
 
-      if (prefs?.notificationsEnabled && prefs?.messages) {
-        const preview =
-          content.length > 100
-            ? content.substring(0, 100) + '...'
-            : content;
-
+      if (clientWantsEmail(prefs, 'messages')) {
         await sendMessageNotificationEmail(
           project.client.email,
           project.client.company,
           project.name,
-          preview,
+          content,
           projectId
-        );
+        ).catch((error) => console.error(`Message email failed for ${projectId}:`, error));
       }
     }
 
     // Send notification email to the team if from client to admin
     if (session.type === 'client' && project.client) {
-      const preview =
-        content.length > 100 ? content.substring(0, 100) + '...' : content;
-
       await notifyAdminsNewClientMessage({
         projectId,
         projectName: project.name,
         clientCompany: project.client.company,
-        preview,
-      });
+        message: content,
+      }).catch((error) => console.error(`Client message notify failed for ${projectId}:`, error));
     }
 
     return NextResponse.json(

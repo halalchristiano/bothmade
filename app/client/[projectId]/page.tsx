@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import { ClientHeader } from '@/components/portal/ClientHeader';
 import { GridBackdrop, CountUp } from '@/components/ui';
-import { formatCentsExact } from '@/lib/pricing';
+import { addOnLabel, formatCentsExact } from '@/lib/pricing';
+import { deliverableHref, isOpenable } from '@/lib/deliverables';
 
 // The one motion signature carried over from the marketing site — the same
 // ease-out-expo curve used there, so the dashboard a client lives in every
@@ -441,6 +442,7 @@ export default function ClientDashboard() {
   // Defaulted, because a dashboard already open in a tab when this shipped
   // is holding a project payload from before invoices existed.
   const invoices = project.invoices ?? [];
+  const openableDeliverables = (project.deliverables ?? []).filter((f) => isOpenable(f));
 
   // The public status link carries a capability token, so the project ID
   // alone doesn't open it. Without the token there's nothing to share.
@@ -870,8 +872,12 @@ export default function ClientDashboard() {
                 {project.addOns.length > 0 && (
                   <div>
                     <h3 className="text-sm text-white/40 mb-1">Add-ons</h3>
+                    {/* The catalogue's own names, not the storage keys with a
+                        capital letter bolted on — which is how a client came
+                        to be shown "Seo" as the name of something they had
+                        paid for. */}
                     <p className="text-lg font-semibold">
-                      {project.addOns.map((addon) => addon.charAt(0).toUpperCase() + addon.slice(1)).join(', ')}
+                      {project.addOns.map(addOnLabel).join(', ')}
                     </p>
                   </div>
                 )}
@@ -1155,15 +1161,21 @@ export default function ClientDashboard() {
               </motion.div>
             )}
 
-            {/* Deliverables */}
-            {project.deliverables.length > 0 && (
+            {/* Deliverables
+                Broken entries are hidden from the client entirely rather than
+                shown as broken. They cannot delete one and cannot fix one, so
+                the only thing a "broken link" note would give them is the
+                impression we sent them something that doesn't work. The admin
+                side flags it instead — the person who can fix it is the one
+                who gets told. */}
+            {openableDeliverables.length > 0 && (
               <motion.div variants={fadeUp} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
                 <h2 className="text-xl font-bold mb-6">Deliverables</h2>
                 <div className="space-y-3">
-                  {project.deliverables.map((file) => (
+                  {openableDeliverables.map((file) => (
                     <motion.a
                       key={file.id}
-                      href={file.url}
+                      href={deliverableHref(file.url) as string}
                       target="_blank"
                       rel="noopener noreferrer"
                       whileHover={{ x: 3 }}

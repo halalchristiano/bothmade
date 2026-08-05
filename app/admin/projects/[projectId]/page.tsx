@@ -13,12 +13,14 @@ import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
 import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
 import { stageMessage } from '@/lib/stage-gates';
+import { deliverableHref } from '@/lib/deliverables';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
 import { Paperclip, X as XIcon } from 'lucide-react';
 import {
   ADD_ONS,
   BASE_SERVICES,
+  addOnLabel,
   formatCents,
   formatCentsExact,
   isAddOnKey,
@@ -137,6 +139,17 @@ export default function AdminProjectDetailPage() {
 
   const [statusDraft, setStatusDraft] = useState('');
   const [statusDescription, setStatusDescription] = useState('');
+  /**
+   * The last text this filled in by itself.
+   *
+   * Filling only an empty box was wrong: pick Design, then change your mind
+   * and pick Build, and the box still held the Design message while the
+   * dropdown said Build — the two disagreeing about what the client was
+   * about to be told. Replacing it unconditionally is worse, because it
+   * throws away something you have written. So it remembers what it wrote,
+   * and only replaces the text if that is still exactly what is in the box.
+   */
+  const autoFilledRef = useRef('');
   const [statusSaving, setStatusSaving] = useState(false);
 
   const [estimatedDateDraft, setEstimatedDateDraft] = useState('');
@@ -579,7 +592,9 @@ export default function AdminProjectDetailPage() {
               {project.addOns.length > 0 && (
                 <div>
                   <p className="text-white/40 mb-1">Add-ons</p>
-                  <p className="font-medium capitalize">{project.addOns.join(', ')}</p>
+                  {/* addOnLabel, not CSS capitalize: the raw key rendered as
+                      "Seo", which reads like a typo somebody meant. */}
+                  <p className="font-medium">{project.addOns.map(addOnLabel).join(', ')}</p>
                 </div>
               )}
               {project.customItems && project.customItems.length > 0 && (
@@ -828,10 +843,15 @@ export default function AdminProjectDetailPage() {
                 value={statusDraft}
                 onChange={(e) => {
                   setStatusDraft(e.target.value);
-                  // Pre-fill what the client will read, so sending stays one
-                  // click. Only ever fills an empty box — a message somebody
-                  // has started writing is never overwritten by a template.
-                  if (!statusDescription.trim()) setStatusDescription(stageMessage(e.target.value).body);
+                  // Untouched — either empty, or still exactly what we last
+                  // wrote. Anything you have edited is yours and survives.
+                  const untouched =
+                    !statusDescription.trim() || statusDescription === autoFilledRef.current;
+                  if (untouched) {
+                    const next = stageMessage(e.target.value).body;
+                    autoFilledRef.current = next;
+                    setStatusDescription(next);
+                  }
                 }}
                 className={`${inputClass} mb-3 capitalize`}
               >
@@ -845,7 +865,7 @@ export default function AdminProjectDetailPage() {
                 value={statusDescription}
                 onChange={(e) => setStatusDescription(e.target.value)}
                 placeholder="Describe this update for the client..."
-                rows={5}
+                rows={10}
                 className={`${inputClass} resize-none mb-1`}
               />
               <p className="mb-3 text-[11px] text-white/30">
@@ -1106,14 +1126,26 @@ export default function AdminProjectDetailPage() {
               {project.deliverables.map((file) => (
                 <div key={file.id} className="p-3 rounded-lg border border-white/10">
                   <div className="flex justify-between items-start gap-2">
-                    <a
-                      href={file.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium hover:underline truncate text-sky-300"
-                    >
-                      {file.name}
-                    </a>
+                    {/* Validation stops new ones; this is for the entries
+                        already stored. A link that silently does nothing is
+                        worse than one that says it is broken. */}
+                    {deliverableHref(file.url) ? (
+                      <a
+                        href={deliverableHref(file.url) as string}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium hover:underline truncate text-sky-300"
+                      >
+                        {file.name}
+                      </a>
+                    ) : (
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-white/50">{file.name}</p>
+                        <p className="text-[11px] text-amber-300/80">
+                          Broken link — this opens nothing. Delete it and add it again.
+                        </p>
+                      </div>
+                    )}
                     <button
                       onClick={() => handleDeleteDeliverable(file.id)}
                       className="text-xs text-red-400 hover:underline shrink-0"

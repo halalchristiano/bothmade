@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readDeliverable } from '@/lib/deliverables';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
 import crypto from 'crypto';
@@ -38,18 +39,19 @@ export async function POST(
 
 
     const { name, url, size } = await request.json();
-    if (!name || !url) {
-      return NextResponse.json(
-        { error: 'File name and URL are required' },
-        { status: 400 }
-      );
+    // "File name and URL are required" only checked they were non-empty, so a
+    // name typed into the URL box passed and became a permanent link that
+    // opens nothing — on the client's dashboard too, where there is no Delete.
+    const parsed = readDeliverable({ name, url });
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
     const deliverables = await getDeliverables((await params).projectId);
     const newDeliverable: Deliverable = {
       id: crypto.randomUUID(),
-      name,
-      url,
+      name: parsed.name,
+      url: parsed.url,
       size,
       addedAt: new Date().toISOString(),
     };

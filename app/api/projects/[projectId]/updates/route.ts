@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { requirePrincipal } from '@/lib/middleware';
 import { sendStatusUpdateEmail } from '@/lib/email';
+import { clientWantsEmail } from '@/lib/email-preferences';
 
 export async function GET(
   request: NextRequest,
@@ -147,7 +148,7 @@ export async function POST(
       where: { clientId: project.clientId },
     });
 
-    if (prefs?.notificationsEnabled && prefs?.statusUpdates) {
+    if (clientWantsEmail(prefs, 'statusUpdates')) {
       await sendStatusUpdateEmail(
         project.client.email,
         project.client.company,
@@ -155,7 +156,7 @@ export async function POST(
         title,
         description,
         projectId
-      );
+      ).catch((error) => console.error(`Status email failed for ${projectId}:`, error));
     }
 
     return NextResponse.json(

@@ -61,6 +61,12 @@ export const NOTIFICATION_GUIDE: NotificationGroup[] = [
         basis: 'Section 7 — payable within fourteen days',
       },
       {
+        trigger: 'An invoice email never registers an open or a click',
+        tells: 'The row turns amber and says it may not have reached them — check the address before chasing again',
+        where: ['dashboard', 'screen'],
+        timing: 'From a day after it was sent, on the dashboard and on the project',
+      },
+      {
         trigger: 'A payment goes a week past due',
         tells: 'We email you their phone number and tell you to ring them',
         where: ['email'],
@@ -196,7 +202,8 @@ export const NOTIFICATION_GUIDE: NotificationGroup[] = [
  * everything is covered.
  */
 export const NOT_WATCHED: string[] = [
-  'Whether a client actually opened an email — only whether they clicked through to pay.',
+  'Whether a person actually read an invoice email. We can see it reached a live mailbox — Apple and Gmail load the images themselves, so an open is proof of delivery, not of reading.',
+  'Any email other than the invoices. Nothing else carries a pixel.',
   'Public holidays. The five-day review period counts weekends out and bank holidays in.',
   'Anything happening in your inbox that the system never sent.',
 ];

@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { escMultiline } from '@/lib/html';
-import { sendEmail, studioInbox } from './email';
+import { messageEmailBody, sendEmail, studioInbox } from './email';
 import { escapeHtml, safeUrl } from './html';
 
 /**
@@ -184,16 +184,25 @@ export async function notifyRepInboundEnquiry(params: {
   });
 }
 
+/**
+ * A client wrote to us. The whole message travels, for the same reason it
+ * does going the other way: a 100-character taste tells you a client is
+ * unhappy or waiting on something without telling you which, so the email
+ * can't be triaged from a phone and every one of them becomes a trip to the
+ * dashboard. Most need no reply at all once you've read them.
+ */
 export async function notifyAdminsNewClientMessage(params: {
   projectId: string;
   projectName: string;
   clientCompany: string;
-  preview: string;
+  message: string;
 }): Promise<void> {
+  const { text, truncated } = messageEmailBody(params.message);
   const html = wrap(
     'New client message',
     `<p><strong>${params.clientCompany}</strong> sent a message on <strong>${params.projectName}</strong>:</p>
-     <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;">${escMultiline(params.preview)}</blockquote>`,
+     <blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;">${escMultiline(text)}</blockquote>
+     ${truncated ? '<p style="color:#777;font-size:13px;">Trimmed here — the full message is in the project.</p>' : ''}`,
     `${siteUrl()}/admin/projects/${params.projectId}`,
     'Reply'
   );

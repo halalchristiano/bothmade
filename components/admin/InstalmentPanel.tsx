@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { readDelivery } from '@/lib/invoice-delivery';
 
 /**
  * The project's three-payment schedule, and the button that sends the next
@@ -33,6 +34,8 @@ interface InstalmentRow {
   emailSentAt: string | null;
   linkClickedAt: string | null;
   linkClicks: number;
+  emailOpenedAt: string | null;
+  emailOpens: number;
 }
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -140,13 +143,26 @@ export function InstalmentPanel({
       <ul className="space-y-2">
         {instalments.map((inst) => {
           const isNext = next?.id === inst.id;
+          /**
+           * Never landed, landed and ignored, and clicked but not finished
+           * want three different responses — a corrected address, a chase, a
+           * phone call — and from here they used to look identical: an unpaid
+           * invoice and nothing else.
+           *
+           * Rendered under the row rather than inside it. This panel sits in
+           * a narrow column, and a sentence squeezed into what is left beside
+           * the Send button wraps into a stack of two-word lines that nobody
+           * reads.
+           */
+          const delivery = inst.status === 'due' ? readDelivery(inst) : null;
           return (
             <li
               key={inst.id}
-              className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
+              className={`rounded-lg border px-3 py-2.5 ${
                 isNext ? 'border-sky-400/30 bg-sky-400/[0.05]' : 'border-white/[0.06]'
               }`}
             >
+              <div className="flex items-center gap-3">
               <span
                 className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold ${
                   inst.status === 'paid'
@@ -170,24 +186,6 @@ export function InstalmentPanel({
                     ? `Invoiced${inst.invoiceNumber ? ` ${inst.invoiceNumber}` : ''}${inst.dueAt ? ` · due ${new Date(inst.dueAt).toLocaleDateString()}` : ''}`
                     : TRIGGER_LABEL[inst.trigger] ?? inst.trigger}
                 </p>
-                {/* "Never clicked" and "clicked and didn't finish" want
-                    completely different responses — one is usually a wrong
-                    address, the other a card that failed or a decision. They
-                    were indistinguishable from here until now. */}
-                {inst.status === 'due' && (
-                  <p className="text-[11px] truncate">
-                    {inst.linkClickedAt ? (
-                      <span className="text-amber-300/80">
-                        Opened the payment page {inst.linkClicks > 1 ? `${inst.linkClicks} times, last ` : ''}
-                        {new Date(inst.linkClickedAt).toLocaleDateString()} — and didn&apos;t finish
-                      </span>
-                    ) : (
-                      <span className="text-white/30">
-                        Never opened the payment page — check it reached the right person
-                      </span>
-                    )}
-                  </p>
-                )}
               </div>
               {inst.status !== 'paid' && isNext && (
                 <button
@@ -210,6 +208,24 @@ export function InstalmentPanel({
                 >
                   Copy link
                 </button>
+              )}
+              </div>
+
+              {delivery && delivery.state !== 'not-sent' && (
+                <div className="mt-2 border-t border-white/[0.06] pt-2 text-[11px] leading-relaxed">
+                  <p
+                    className={
+                      delivery.concerning
+                        ? 'text-rose-300/80'
+                        : delivery.state === 'clicked'
+                        ? 'text-amber-300/80'
+                        : 'text-white/40'
+                    }
+                  >
+                    {delivery.headline}
+                  </p>
+                  {delivery.nextStep && <p className="text-white/30">{delivery.nextStep}</p>}
+                </div>
               )}
             </li>
           );

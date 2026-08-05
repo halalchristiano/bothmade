@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { emailLinkUrl } from '@/lib/email-links';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { openPixelUrl } from '@/lib/invoice-delivery';
 import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 // Leaf module — imports only googleapis and gmail-mime — so pulling it in
 // here does not create a cycle with lib/mailer.ts, which imports this file.
@@ -251,6 +252,12 @@ function renderShell(opts: {
   signOffHtml?: string;
   footerNote?: string;
   footerAvatarUrl?: string | null;
+  /**
+   * A 1x1 open pixel, on the invoice emails only. See app/e/[instalmentId]
+   * for what it is for and lib/invoice-delivery.ts for what an open may
+   * honestly be claimed to mean.
+   */
+  trackingPixelUrl?: string | null;
 }): string {
   const { bodyHtml } = opts;
   const eyebrow = esc(opts.eyebrow);
@@ -267,6 +274,12 @@ function renderShell(opts: {
   const ctaUrlText = esc(ctaHref);
   const footerNote = esc(opts.footerNote);
   const footerAvatarUrl = safeUrl(opts.footerAvatarUrl);
+  // Last thing in the body, so a client that stops rendering early still
+  // shows the whole email — the pixel is the only part nobody misses.
+  const pixelUrl = safeUrl(opts.trackingPixelUrl);
+  const trackingPixel = pixelUrl
+    ? `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block; width:1px; height:1px; border:0; opacity:0;" />`
+    : '';
   return `
 <!DOCTYPE html>
 <html>
@@ -331,6 +344,7 @@ function renderShell(opts: {
         </td>
       </tr>
     </table>
+    ${trackingPixel}
   </body>
 </html>
   `;
@@ -415,23 +429,52 @@ export async function sendStatusUpdateEmail(
 }
 
 /**
- * Send new message notification email
+ * The message itself, not a taste of it.
+ *
+ * Every caller used to cut the body at 100 characters and add an ellipsis,
+ * which is about a sentence and a half — long enough to say a decision is
+ * needed and never long enough to say what it is. A client reading that on a
+ * phone learns only that they have to go and log in somewhere to find out,
+ * and a good number of them simply don't, which turns a message we sent into
+ * a message nobody read.
+ *
+ * So the whole thing goes in the email. The dashboard link stays, because
+ * replying still happens there and because attachments don't travel — but it
+ * is now something to act on rather than the only way to find out what was
+ * said. The cap below is a safety valve, not an editorial choice: Gmail clips
+ * a message past roughly 102KB and hides the rest behind "View entire
+ * message", which would put our footer and the reply button in the hidden
+ * part. Nothing typed into a chat box comes close.
  */
+export const MESSAGE_EMAIL_MAX_CHARS = 8000;
+
+export function messageEmailBody(content: string): { text: string; truncated: boolean } {
+  if (content.length <= MESSAGE_EMAIL_MAX_CHARS) return { text: content, truncated: false };
+  return { text: content.slice(0, MESSAGE_EMAIL_MAX_CHARS).trimEnd(), truncated: true };
+}
+
 export async function sendMessageNotificationEmail(
   clientEmail: string,
   clientName: string,
   projectName: string,
-  messagePreview: string,
+  messageContent: string,
   projectId: string
 ): Promise<boolean> {
   const dashboardUrl = `${SITE_URL}/client/${projectId}`;
+  const { text, truncated } = messageEmailBody(messageContent);
 
   const bodyHtml = `
     <p>Hi ${esc(clientName)},</p>
     <p>You have a new message from the Bothmade team on <strong style="color:#fff;">${esc(projectName)}</strong>.</p>
     <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:16px 18px; margin:20px 0; color:rgba(255,255,255,0.75);">
-      ${escMultiline(messagePreview)}
+      ${escMultiline(text)}
     </div>
+    ${
+      truncated
+        ? '<p style="font-size:13px; color:rgba(255,255,255,0.5);">This message was too long to show in full here — open the conversation to read the rest.</p>'
+        : ''
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Reply in your dashboard and we&rsquo;ll see it straight away. If anything was attached, it&rsquo;s waiting there too.</p>
   `;
 
   return sendEmail({
@@ -441,7 +484,7 @@ export async function sendMessageNotificationEmail(
       eyebrow: 'New message',
       title: projectName,
       bodyHtml,
-      ctaLabel: 'View full conversation',
+      ctaLabel: 'Reply in your dashboard',
       ctaUrl: dashboardUrl,
     }),
   });
@@ -1120,6 +1163,8 @@ export async function sendInstalmentEmail(params: {
   paymentUrl: string;
   invoicePdf: Buffer | null;
   invoiceFilename: string;
+  /** Carries the open pixel, so "never landed" stops looking like "hasn't paid". */
+  instalmentId?: string;
 }): Promise<SendResult> {
   return sendEmailDetailed({
     to: params.toEmail,
@@ -1131,6 +1176,7 @@ export async function sendInstalmentEmail(params: {
       ctaLabel: params.copy.ctaLabel,
       ctaUrl: params.paymentUrl,
       footerNote: 'Payments are processed securely by Stripe. The invoice is attached for your records.',
+      trackingPixelUrl: params.instalmentId ? openPixelUrl(SITE_URL, params.instalmentId) : null,
     }),
     ...(params.invoicePdf
       ? { attachments: [{ filename: params.invoiceFilename, content: params.invoicePdf }] }
@@ -1386,6 +1432,8 @@ export async function sendPaymentChaseEmail(input: {
   dueLabel: string;
   paymentUrl: string;
   seriouslyLate: boolean;
+  /** Carries the open pixel. A chase nobody ever receives is worth knowing about. */
+  instalmentId?: string;
 }): Promise<SendResult> {
   const bodyHtml = `
     <p>Hi ${esc(input.contactName) || 'there'},</p>
@@ -1414,6 +1462,7 @@ export async function sendPaymentChaseEmail(input: {
       bodyHtml,
       ctaLabel: `Pay ${input.amountLabel}`,
       ctaUrl: input.paymentUrl,
+      trackingPixelUrl: input.instalmentId ? openPixelUrl(SITE_URL, input.instalmentId) : null,
     }),
   });
 }

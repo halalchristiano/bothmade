@@ -103,6 +103,15 @@ export async function GET() {
             amountCents: true,
             dueAt: true,
             invoiceNumber: true,
+            // Enough to tell "they haven't paid" from "it never arrived" —
+            // see readDelivery() in lib/invoice-delivery. The second is a
+            // wrong address, and no amount of chasing the first will fix it.
+            status: true,
+            emailSentAt: true,
+            emailOpenedAt: true,
+            emailOpens: true,
+            linkClickedAt: true,
+            linkClicks: true,
             project: { select: { id: true, name: true, client: { select: { company: true } } } },
           },
         })

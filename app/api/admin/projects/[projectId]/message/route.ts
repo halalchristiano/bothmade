@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { sendMessageNotificationEmail } from '@/lib/email';
+import { clientWantsEmail } from '@/lib/email-preferences';
 
 export async function POST(
   request: NextRequest,
@@ -53,15 +54,14 @@ export async function POST(
       where: { clientId: project.clientId },
     });
 
-    if (prefs?.notificationsEnabled && prefs?.messages) {
-      const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
+    if (clientWantsEmail(prefs, 'messages')) {
       await sendMessageNotificationEmail(
         project.client.email,
         project.client.company,
         project.name,
-        preview,
+        content,
         project.id
-      );
+      ).catch((error) => console.error(`Message email failed for ${project.id}:`, error));
     }
 
     return NextResponse.json({ success: true, message }, { status: 201 });

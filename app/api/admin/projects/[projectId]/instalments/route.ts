@@ -261,6 +261,7 @@ export async function POST(
       paymentUrl: checkout.url || '',
       invoicePdf,
       invoiceFilename: `${invoiceNumber}.pdf`,
+      instalmentId: inst.id,
     });
 
     await prisma.instalment.update({

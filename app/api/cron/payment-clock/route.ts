@@ -215,6 +215,9 @@ export async function GET(request: NextRequest) {
         // different responses from us. See app/pay/[instalmentId].
         paymentUrl: `${resolveSiteUrl()}/pay/${inst.id}`,
         seriouslyLate: state.phase === 'seriously-late',
+        // The pixel too: a chase that never lands is the one case where
+        // sending another one tomorrow is exactly the wrong move.
+        instalmentId: inst.id,
       }).catch((error) => {
         console.error(`Chase email failed for ${inst.id}:`, error);
         return { sent: false };

@@ -189,24 +189,48 @@ export interface StageMessage {
 
 export const STAGE_MESSAGES: Record<string, StageMessage> = {
   discovery: {
-    title: 'We\'re into Discovery',
-    body: "We've started Discovery — working out exactly what your site needs to do before anyone designs anything. You'll get a written summary to approve at the end of it, and that's what fixes the scope for the build.",
+    title: "We're into Discovery",
+    body: `We've started Discovery — working out exactly what your site needs to do, who it's for, and how the pieces fit together, before anyone designs anything.
+
+This is the stage that decides everything after it, so it's the one where we'll ask you the most. If there's a decision only you can make — how something should work, what matters most to your customers, anything we could reasonably get wrong by guessing — we'll come to you rather than assume. You won't be left wondering what we decided on your behalf.
+
+At the end of it you'll get a written summary to approve. That's what fixes the scope for the build, so it's worth reading properly.
+
+Everything lives on your dashboard as it happens — updates, files, payments, and a place to message us directly. You'll get an email whenever anything changes, so nothing needs watching; the dashboard is simply there when you want the whole picture in one place.`,
   },
   design: {
     title: 'Design has started',
-    body: "Discovery's done and we're designing. You'll see a concept before anything gets built — nothing goes into the build until you've approved how it looks.",
+    body: `Discovery's done and we're designing — layouts, colour, type, and how the whole thing should feel to use.
+
+You'll see a concept before a single line of code is written, and nothing goes into the build until you've approved how it looks. Where there's a genuine choice to make on look and feel, we'll bring it to you with a recommendation rather than quietly picking one; where it's a detail that doesn't change your experience of the site, we'll just handle it and keep you moving.
+
+When the design is ready you'll get it to review, with a date to come back to us by. If we don't hear from you by then we'll take it as approved and start building, so nothing stalls on a message that never got sent.
+
+It'll all be on your dashboard, and we'll email you the moment it's ready.`,
   },
   build: {
-    title: 'Design approved — we\'re building',
-    body: "The design is signed off and we've started building it. This is usually the longest stretch, and it's the quietest — we'll come back to you when there's something real to click through rather than sending updates that say \"still building\".",
+    title: "Design approved — we're building",
+    body: `The design is signed off and we've started building it. This is usually the longest stretch of the project, and the quietest.
+
+That quiet is deliberate. We'd rather come back to you when there's something real to click through than send updates that say "still building". If a decision comes up that changes how something works, or where two reasonable approaches would give you meaningfully different results, we'll stop and ask — you won't find out about it afterwards.
+
+Your dashboard is the place to see where things stand, message us about anything at all, and pick up any files or invoices as they appear. We'll email you whenever there's something new, so you don't need to keep checking.`,
   },
   launch: {
     title: 'Ready for launch',
-    body: "Everything's built and tested, and your site is ready to go live. You can see the finished thing in full on the preview link — the last step is going live, which we'll do as soon as everything's settled.",
+    body: `Everything's built and tested, and your site is ready to go live.
+
+You can see the finished thing in full on the preview link — take your time with it. If something isn't right, now is exactly the moment to say so, and we'd far rather hear it now than after it's live. Small copy and image changes we'll simply do; anything that changes the shape of the build we'll talk through with you first so you know what it means.
+
+The last step is going live, which we'll do as soon as everything's settled. It's on your dashboard along with everything else, and we'll email you when it's done.`,
   },
   complete: {
-    title: 'You\'re live',
-    body: "Your site is live. Everything we built is yours, and the files, credentials and documentation come with it. It's been a pleasure — tell us if anything at all looks off and we'll sort it.",
+    title: "You're live",
+    body: `Your site is live.
+
+Everything we built is yours — the files, the credentials and the documentation all come with it, and they're on your dashboard to download whenever you need them. Your dashboard stays open: past invoices, everything we delivered, and a direct line to us are all still there.
+
+If anything at all looks off, or you want a hand with something down the line, message us from the dashboard or just reply to any email from us. It's been a pleasure.`,
   },
 };
 

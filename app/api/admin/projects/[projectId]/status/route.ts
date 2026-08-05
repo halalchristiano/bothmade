@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { sendStatusUpdateEmail } from '@/lib/email';
+import { clientWantsEmail } from '@/lib/email-preferences';
 import { gateOpenedBy, stageMessage } from '@/lib/stage-gates';
 
 const STAGES = ['discovery', 'design', 'build', 'launch', 'complete'];
@@ -89,7 +90,7 @@ export async function PATCH(
       where: { clientId: project.clientId },
     });
 
-    if (prefs?.notificationsEnabled && prefs?.statusUpdates) {
+    if (clientWantsEmail(prefs, 'statusUpdates')) {
       await sendStatusUpdateEmail(
         project.client.email,
         project.client.company,
@@ -97,7 +98,7 @@ export async function PATCH(
         update.title,
         update.description,
         project.id
-      );
+      ).catch((error) => console.error(`Status email failed for ${project.id}:`, error));
     }
 
     return NextResponse.json(

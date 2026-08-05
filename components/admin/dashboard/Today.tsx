@@ -16,6 +16,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { formatCents } from '@/lib/pricing';
+import { readDelivery } from '@/lib/invoice-delivery';
 
 /**
  * The top of the dashboard, and the answer to why nobody opened it.
@@ -69,6 +70,12 @@ interface TodayData {
       amountCents: number;
       dueAt: string | null;
       invoiceNumber: string | null;
+      status: string;
+      emailSentAt: string | null;
+      emailOpenedAt: string | null;
+      emailOpens: number;
+      linkClickedAt: string | null;
+      linkClicks: number;
       project: { id: string; name: string; client: { company: string } };
     }>;
     uninvoiced: Array<{
@@ -404,22 +411,38 @@ export function Today() {
           icon={Banknote}
           accent="bg-emerald-400/15 text-emerald-300"
         >
-          {money.dueInstalments.map((i) => (
-            <Row
-              key={i.id}
-              href={`/admin/projects/${i.project.id}`}
-              title={`${i.project.client.company} — ${i.label}`}
-              detail={
-                i.dueAt
-                  ? new Date(i.dueAt) < new Date()
-                    ? `Overdue ${daysSince(i.dueAt)}d${i.invoiceNumber ? ` · ${i.invoiceNumber}` : ''}`
-                    : `Due ${new Date(i.dueAt).toLocaleDateString()}`
-                  : 'Invoiced'
-              }
-              right={formatCents(i.amountCents)}
-              tone={i.dueAt && new Date(i.dueAt) < new Date() ? 'warn' : 'neutral'}
-            />
-          ))}
+          {money.dueInstalments.map((i) => {
+            /**
+             * An invoice nobody has paid, and an invoice nobody has RECEIVED,
+             * look the same on this row — and the second is the more urgent
+             * of the two, because chasing it does nothing. When the delivery
+             * signal says the email may never have landed, that replaces the
+             * due date here: "overdue 9 days" is the wrong thing to read
+             * about an invoice that went to a dead address.
+             */
+            const delivery = readDelivery(i);
+            const overdue = Boolean(i.dueAt && new Date(i.dueAt) < new Date());
+            return (
+              <Row
+                key={i.id}
+                href={`/admin/projects/${i.project.id}`}
+                title={`${i.project.client.company} — ${i.label}`}
+                detail={
+                  // Short because this row truncates: the full reading, and
+                  // what to do about it, is on the project page.
+                  delivery.concerning
+                    ? 'Never opened — check the address'
+                    : i.dueAt
+                    ? overdue
+                      ? `Overdue ${daysSince(i.dueAt)}d${i.invoiceNumber ? ` · ${i.invoiceNumber}` : ''}`
+                      : `Due ${new Date(i.dueAt).toLocaleDateString()}`
+                    : 'Invoiced'
+                }
+                right={formatCents(i.amountCents)}
+                tone={delivery.concerning || overdue ? 'warn' : 'neutral'}
+              />
+            );
+          })}
           {money.unpaidInvoices.map((inv) => (
             <Row
               key={inv.id}

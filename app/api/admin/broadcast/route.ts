@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendMessageNotificationEmail } from '@/lib/email';
+import { clientWantsEmail } from '@/lib/email-preferences';
 
 /** Broadcast a message to every active project's client thread — for announcements not specific to one client. */
 export async function POST(request: NextRequest) {
@@ -34,17 +35,20 @@ export async function POST(request: NextRequest) {
       )
     );
 
-    const preview = content.trim().length > 100 ? content.trim().slice(0, 100) + '...' : content.trim();
+    const body = content.trim();
     let emailsSent = 0;
     for (const project of projects) {
-      if (project.client.emailPreferences?.notificationsEnabled && project.client.emailPreferences?.messages) {
+      if (clientWantsEmail(project.client.emailPreferences, 'messages')) {
         const sent = await sendMessageNotificationEmail(
           project.client.email,
           project.client.company,
           project.name,
-          preview,
+          body,
           project.id
-        );
+        ).catch((error) => {
+          console.error(`Broadcast email failed for ${project.id}:`, error);
+          return false;
+        });
         if (sent) emailsSent += 1;
       }
     }

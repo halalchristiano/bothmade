@@ -750,6 +750,16 @@ model Instalment {
   linkClickedAt DateTime?
   linkClicks    Int       @default(0)
 
+  // When the invoice email first registered an open, and how many times.
+  //
+  // Not proof anybody read it: Apple Mail loads images on delivery whether or
+  // not the human looks, and Gmail proxies them. What it does prove is that
+  // the message got past the spam filter into a live mailbox. The absence is
+  // the stronger signal — an invoice days old with no open and no click most
+  // likely never landed, which is a wrong address rather than a slow payer.
+  emailOpenedAt DateTime?
+  emailOpens    Int       @default(0)
+
   createdAt DateTime @default(now())
 
   @@unique([projectId, index])
