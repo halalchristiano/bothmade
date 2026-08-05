@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { requireStaff } from '@/lib/middleware';
 import { prisma } from '@/lib/prisma';
 import { RATE_LIMITS, checkRateLimit, enforceRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { createRecurringCheckoutSession } from '@/lib/stripe';
@@ -165,9 +166,25 @@ export async function POST(
       buildCareOfferUrl(offer.token, siteUrl)
     );
 
-    if (!checkout) {
+    if (!checkout.ok) {
+      /**
+       * The client gets a polite sentence; whoever is testing the link gets
+       * the actual reason.
+       *
+       * These failures are not transient — a key in the wrong mode or a
+       * misconfigured plan fails identically every time — so "try again in a
+       * moment" was advice that could never work, and the real message lived
+       * only in a server log. Anyone signed into the admin is by definition
+       * staff checking their own link, so they see what Stripe said.
+       */
+      const staff = await requireStaff().catch(() => null);
       return NextResponse.json(
-        { error: "We couldn't open checkout just now. Please try again in a moment." },
+        {
+          error: staff
+            ? `Stripe refused to open checkout — ${checkout.reason}`
+            : "We couldn't open checkout just now. Please try again in a moment.",
+          ...(staff ? { staffOnly: true } : {}),
+        },
         { status: 502 }
       );
     }

@@ -52,6 +52,8 @@ const INPUT = {
 };
 
 const lastSession = () => sessionsCreate.mock.calls[0][0];
+/** Genuinely the most recent call — the retry path makes two. */
+const latestSession = () => sessionsCreate.mock.calls.at(-1)![0];
 const lastCoupon = () => couponsCreate.mock.calls[0][0];
 
 beforeEach(() => {
@@ -176,10 +178,77 @@ describe('the customer record', () => {
 });
 
 describe('when Stripe refuses', () => {
-  it('returns nothing rather than a half-made checkout', async () => {
+  it('returns no checkout rather than a half-made one', async () => {
     sessionsCreate.mockRejectedValueOnce(new Error('card_declined'));
 
-    expect(await createRecurringCheckoutSession(INPUT, 'https://x/ok', 'https://x/back')).toBeNull();
+    const result = await createRecurringCheckoutSession(INPUT, 'https://x/ok', 'https://x/back');
+    expect(result.ok).toBe(false);
+  });
+
+  /**
+   * The whole reason this returns a reason at all. A swallowed error left the
+   * page saying "try again in a moment" for failures that are permanent — a
+   * key in the wrong mode fails identically every time — and put the only
+   * useful sentence in a server log nobody reads.
+   */
+  it('carries Stripe\'s own words back for whoever is testing the link', async () => {
+    const refusal = Object.assign(new Error('No such coupon: cpn_x'), {
+      type: 'StripeInvalidRequestError',
+    });
+    sessionsCreate.mockRejectedValueOnce(refusal);
+
+    const result = await createRecurringCheckoutSession(INPUT, 'https://x/ok', 'https://x/back');
+    expect(result).toEqual({ ok: false, reason: 'StripeInvalidRequestError: No such coupon: cpn_x' });
+  });
+
+  it('does not throw a second error while explaining the first', async () => {
+    sessionsCreate.mockRejectedValueOnce('a string, not an Error');
+
+    const result = await createRecurringCheckoutSession(INPUT, 'https://x/ok', 'https://x/back');
+    expect(result).toEqual({ ok: false, reason: 'Unknown error opening checkout.' });
+  });
+
+  it('says so when Stripe returns a session with nowhere to send anyone', async () => {
+    sessionsCreate.mockResolvedValueOnce({ id: 'cs_1', url: null });
+
+    const result = await createRecurringCheckoutSession(INPUT, 'https://x/ok', 'https://x/back');
+    expect(result).toMatchObject({ ok: false });
+  });
+});
+
+/**
+ * A `cus_...` minted against a different Stripe account or the other mode —
+ * a client onboarded on test keys keeps an id a live key has never heard of.
+ * The plan is perfectly sellable; refusing it over a stale foreign key is not
+ * an answer anybody wants.
+ */
+describe('a customer id Stripe does not recognise', () => {
+  const WITH_CUSTOMER = { ...INPUT, stripeCustomerId: 'cus_stale' };
+
+  it('retries on the email rather than losing the sale', async () => {
+    sessionsCreate.mockRejectedValueOnce(
+      Object.assign(new Error('No such customer: cus_stale'), { type: 'StripeInvalidRequestError' })
+    );
+
+    const result = await createRecurringCheckoutSession(WITH_CUSTOMER, 'https://x/ok', 'https://x/back');
+
+    expect(result.ok).toBe(true);
+    expect(sessionsCreate).toHaveBeenCalledTimes(2);
+    // The first attempt carried the stale id; the retry carries none.
+    expect(lastSession().customer).toBe('cus_stale');
+    expect(latestSession().customer).toBeUndefined();
+    expect(latestSession().customer_email).toBe('frell@linpotia.com');
+  });
+
+  it('does not retry a refusal that has nothing to do with the customer', async () => {
+    sessionsCreate.mockRejectedValueOnce(
+      Object.assign(new Error('No such coupon: cpn_x'), { type: 'StripeInvalidRequestError' })
+    );
+
+    const result = await createRecurringCheckoutSession(WITH_CUSTOMER, 'https://x/ok', 'https://x/back');
+
+    expect(result.ok).toBe(false);
+    expect(sessionsCreate).toHaveBeenCalledTimes(1);
   });
 });
 

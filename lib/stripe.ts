@@ -171,11 +171,51 @@ export interface RecurringCheckoutInput {
  * which is why `couponDurationMonths` includes the trial months — see
  * `buildSchedule` in lib/recurring.ts.
  */
+/**
+ * Why a checkout could not be opened, in Stripe's own words.
+ *
+ * The old signature returned `null` on any failure and logged the real error
+ * to a server log nobody reads. That is how "the button is dead and it gives
+ * me nada" happens: the page could only say "try again in a moment", which is
+ * advice for a transient failure, and none of these are transient. A stale
+ * customer id or a key in the wrong mode will fail identically forever.
+ */
+export type RecurringCheckoutResult =
+  | { ok: true; sessionId: string; url: string; couponId: string | null }
+  | { ok: false; reason: string };
+
+/**
+ * Stripe's message, or something honest when it isn't a Stripe error at all.
+ *
+ * Read structurally rather than with `instanceof Stripe.errors.StripeError`:
+ * this runs on the failure path of a payment, and a subclass that doesn't
+ * exist on the SDK build in front of it would turn "tell me why checkout
+ * failed" into a second, uncaught failure.
+ */
+function stripeReason(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const e = error as { type?: unknown; code?: unknown; message?: unknown };
+    const kind = typeof e.type === 'string' ? e.type : typeof e.code === 'string' ? e.code : null;
+    const message = typeof e.message === 'string' ? e.message : null;
+    if (message) return kind ? `${kind}: ${message}` : message;
+  }
+  return 'Unknown error opening checkout.';
+}
+
+/** Stripe's "that customer id means nothing to me", however it is dressed. */
+function isMissingCustomer(error: unknown): boolean {
+  const message =
+    error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : '';
+  return /No such customer/i.test(message);
+}
+
 export async function createRecurringCheckoutSession(
   input: RecurringCheckoutInput,
   successUrl: string,
   cancelUrl: string
-): Promise<{ sessionId: string; url: string; couponId: string | null } | null> {
+): Promise<RecurringCheckoutResult> {
   try {
     let couponId: string | null = null;
 
@@ -201,47 +241,70 @@ export async function createRecurringCheckoutSession(
       paymentType: 'recurring',
     };
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: input.productName,
-              ...(input.productDescription ? { description: input.productDescription } : {}),
+    const build = (customer: string | null) =>
+      stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: input.productName,
+                ...(input.productDescription ? { description: input.productDescription } : {}),
+              },
+              unit_amount: input.monthlyCents,
+              recurring: { interval: 'month' },
             },
-            unit_amount: input.monthlyCents,
-            recurring: { interval: 'month' },
+            quantity: 1,
           },
-          quantity: 1,
+        ],
+        ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+        // Stripe rejects a session carrying both, so an existing customer wins —
+        // it keeps the client's payment methods and invoice history in one place
+        // instead of spawning a second customer record for the same company.
+        ...(customer ? { customer } : { customer_email: input.clientEmail }),
+        subscription_data: {
+          ...(input.trialDays > 0 ? { trial_period_days: input.trialDays } : {}),
+          description: input.productName,
+          // Repeated on the subscription because invoice events arrive with a
+          // subscription, not with the checkout session that created it.
+          metadata,
         },
-      ],
-      ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
-      // Stripe rejects a session carrying both, so an existing customer wins —
-      // it keeps the client's payment methods and invoice history in one place
-      // instead of spawning a second customer record for the same company.
-      ...(input.stripeCustomerId
-        ? { customer: input.stripeCustomerId }
-        : { customer_email: input.clientEmail }),
-      subscription_data: {
-        ...(input.trialDays > 0 ? { trial_period_days: input.trialDays } : {}),
-        description: input.productName,
-        // Repeated on the subscription because invoice events arrive with a
-        // subscription, not with the checkout session that created it.
+        success_url: successUrl,
+        cancel_url: cancelUrl,
         metadata,
-      },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata,
-    });
+      });
 
-    if (!session.url) return null;
+    let session;
+    try {
+      session = await build(input.stripeCustomerId ?? null);
+    } catch (error) {
+      /**
+       * A stored customer id Stripe doesn't recognise.
+       *
+       * This happens whenever the id was minted against a different Stripe
+       * account or the other mode — a client onboarded while the studio was
+       * on test keys keeps a `cus_...` that a live key has never heard of.
+       * The plan itself is perfectly valid, so refusing to sell it because of
+       * a stale foreign key is the wrong answer: retry as a fresh customer
+       * on their email address, which is what would have happened had the id
+       * never been stored.
+       */
+      if (!isMissingCustomer(error) || !input.stripeCustomerId) throw error;
+      console.warn(
+        `Stripe does not recognise customer ${input.stripeCustomerId}; opening checkout on ${input.clientEmail} instead`
+      );
+      session = await build(null);
+    }
 
-    return { sessionId: session.id, url: session.url, couponId };
+    if (!session.url) {
+      return { ok: false, reason: 'Stripe created the session but returned no checkout URL.' };
+    }
+
+    return { ok: true, sessionId: session.id, url: session.url, couponId };
   } catch (error) {
     console.error('Stripe recurring checkout error:', error);
-    return null;
+    return { ok: false, reason: stripeReason(error) };
   }
 }
 

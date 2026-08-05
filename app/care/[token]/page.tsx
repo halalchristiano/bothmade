@@ -49,6 +49,9 @@ export default function CarePlanOfferPage({ params }: { params: Promise<{ token:
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // True when the message came back because *we* are signed in — it carries
+  // Stripe's own words, which a client must never be shown.
+  const [errorIsForStaff, setErrorIsForStaff] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -79,6 +82,7 @@ export default function CarePlanOfferPage({ params }: { params: Promise<{ token:
         window.location.href = data.url;
       } else {
         setSubmitError(data.error || 'Could not open checkout. Please try again.');
+        setErrorIsForStaff(Boolean(data.staffOnly));
         setSubmitting(false);
       }
     } catch {
@@ -207,7 +211,23 @@ export default function CarePlanOfferPage({ params }: { params: Promise<{ token:
             {submitting && (
               <p className="mt-4 text-sm text-white/40">Opening secure checkout…</p>
             )}
-            {submitError && <p className="mt-4 text-sm text-red-400">{submitError}</p>}
+            {submitError && (
+              <div
+                className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+                  errorIsForStaff
+                    ? 'border-amber-400/30 bg-amber-400/[0.07] text-amber-200'
+                    : 'border-red-400/30 bg-red-400/[0.06] text-red-300'
+                }`}
+              >
+                <p>{submitError}</p>
+                {errorIsForStaff && (
+                  <p className="mt-1.5 text-xs text-amber-200/60">
+                    You&apos;re seeing this because you&apos;re signed in to the admin. A client
+                    would see a plain apology, not this.
+                  </p>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
