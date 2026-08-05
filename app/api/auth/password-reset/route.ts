@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
       .deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } })
       .catch(() => null);
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
     const resetUrl = `${siteUrl}/auth/reset-password?token=${token}`;
 
     await sendPasswordResetEmail(normalizedEmail, resetUrl);

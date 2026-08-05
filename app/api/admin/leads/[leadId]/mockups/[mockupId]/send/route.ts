@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isFurtherAlong } from '@/lib/leads';
@@ -51,7 +52,7 @@ export async function POST(
     const sentAt = new Date();
     const updated = await markMockupSent(mockup.id, sentAt);
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
     const viewUrl = `${siteUrl}/m/${updated.shareToken}`;
 
     const result = await sendMockupEmail({

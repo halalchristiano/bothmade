@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import crypto from 'crypto';
 import Stripe from 'stripe';
 import { put } from '@vercel/blob';
@@ -332,7 +333,7 @@ export async function POST(
         .catch(() => null);
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       success_url: `${siteUrl}/checkout/success?type=welcome`,

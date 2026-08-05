@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import Stripe from 'stripe';
 import { put } from '@vercel/blob';
 import type { Prisma } from '@prisma/client';
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
 
     const filename = invoiceFilename(invoice.number);
     const amountLabel = formatCentsExact(amountCents);
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
 
     // The PDF and the pay link are independent failures with the same rule:
     // neither is allowed to lose the charge. Whatever survives is stored, the

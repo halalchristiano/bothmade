@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { FAQ_ITEMS } from '@/lib/start-faq';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const SITE_URL = resolveSiteUrl();
 
 /**
  * /start is a client component (the configurator is all state), and a client

@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { escMultiline } from '@/lib/html';
 import { sendEmail, studioInbox } from './email';
 import { escapeHtml, safeUrl } from './html';
@@ -9,7 +10,7 @@ import { escapeHtml, safeUrl } from './html';
  * localhost links in a deployed build and is invisible until someone clicks one.
  */
 function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  return resolveSiteUrl();
 }
 
 /**

@@ -1,8 +1,9 @@
 import type { MetadataRoute } from 'next';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { BLOG_POSTS } from '@/lib/blog';
 import { CASE_STUDIES } from '@/lib/case-studies';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const SITE_URL = resolveSiteUrl();
 
 /**
  * Static routes have no content date of their own. Using `new Date()` would

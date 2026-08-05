@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { resolveSiteUrl } from '@/lib/site-url';
 
 /**
  * Capability tokens for the two links we hand out with no login behind them:
@@ -43,7 +44,7 @@ export function readShareToken(request: Request): string | null {
 export const SHARE_TOKEN_PARAM = 't';
 
 function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  return resolveSiteUrl();
 }
 
 /** The public sign-and-pay link for a lead. */

@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { buildFromHeader, encodeMimeMessage } from '@/lib/gmail-mime';
 
 const SCOPES = [
@@ -18,7 +19,7 @@ const SCOPES = [
 
 export const BOUNCE_LABEL_NAME = 'Bounced — Call Instead';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+const SITE_URL = resolveSiteUrl();
 
 function getOAuthCreds(): { clientId: string; clientSecret: string } | null {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { prisma } from '@/lib/prisma';
 import { verifyOAuthState } from '@/lib/auth';
 import { encryptSecret } from '@/lib/crypto';
 import { exchangeGoogleAuthCode, createGmailOAuthBatchClient, setupBounceFolder } from '@/lib/gmail-oauth';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+const SITE_URL = resolveSiteUrl();
 
 /** Where Google redirects back to after the user approves (or denies) access. */
 export async function GET(request: NextRequest) {

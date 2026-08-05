@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { createCheckoutSession } from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import { findSalesRep } from '@/lib/notify';
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
     const successUrl = `${siteUrl}/checkout/success?type=welcome&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${siteUrl}/start`;
 

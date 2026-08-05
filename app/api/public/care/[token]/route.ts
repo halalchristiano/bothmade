@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { prisma } from '@/lib/prisma';
 import { RATE_LIMITS, checkRateLimit, enforceRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { createRecurringCheckoutSession } from '@/lib/stripe';
@@ -138,7 +139,7 @@ export async function POST(
 
     const schedule = scheduleForOffer(offer);
     const label = planLabel(schedule.addOns);
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
 
     const checkout = await createRecurringCheckoutSession(
       {

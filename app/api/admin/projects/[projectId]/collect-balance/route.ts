@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
@@ -53,7 +54,7 @@ export async function POST(
       return NextResponse.json({ error: 'No balance remaining on this project' }, { status: 400 });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
 
     const paymentLink = await stripe.paymentLinks.create({
       after_completion: {

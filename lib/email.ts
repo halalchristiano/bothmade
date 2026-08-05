@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { resolveSiteUrl } from '@/lib/site-url';
 import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 // Leaf module — imports only googleapis and gmail-mime — so pulling it in
 // here does not create a cycle with lib/mailer.ts, which imports this file.
@@ -45,7 +46,7 @@ function resendClient(): Resend | null {
  * so all three cannot drift.
  */
 const CONTACT_EMAIL = COMPANY_EMAIL;
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+const SITE_URL = resolveSiteUrl();
 
 // The studio is bothmade.studio. Everything reachable from the public site
 // lands here.

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { resolveSiteUrl } from '@/lib/site-url';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Nav } from '@/components/Nav';
@@ -8,7 +9,7 @@ import { COMPANY_LOCATION, COMPANY_EMAIL, COMPANY_ADDRESS_INLINE } from '@/lib/c
 import { TEAM } from '@/lib/team';
 import { BLOG_POSTS } from '@/lib/blog';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const SITE_URL = resolveSiteUrl();
 
 /**
  * Three posts chosen to answer a buyer's three real questions, rather than

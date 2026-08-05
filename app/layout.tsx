@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { resolveSiteUrl } from '@/lib/site-url';
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import Script from "next/script";
@@ -18,7 +19,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const SITE_URL = resolveSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

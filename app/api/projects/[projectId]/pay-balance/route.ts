@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveSiteUrl } from '@/lib/site-url';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { forbiddenResponse, requireClient } from '@/lib/middleware';
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return forbiddenResponse();
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = resolveSiteUrl();
 
     // Projects on the instalment schedule pay the next instalment that has
     // actually been invoiced — a client can't leapfrog a gate and pay for
