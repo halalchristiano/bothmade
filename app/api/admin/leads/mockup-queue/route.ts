@@ -20,8 +20,11 @@ export async function GET() {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
+    // Either link counts as "design has produced something". Checking only
+    // the preview column would keep a lead on the waiting list after the
+    // folder — the thing the client actually gets — had been attached.
     const leads = await prisma.lead.findMany({
-      where: { mockupRequested: true, mockupUrl: null },
+      where: { mockupRequested: true, mockupUrl: null, mockupFolderUrl: null },
       orderBy: { mockupRequestedAt: 'asc' },
       select: {
         id: true,

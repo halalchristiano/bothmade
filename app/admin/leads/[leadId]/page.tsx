@@ -28,6 +28,7 @@ import { PhoneField } from '@/components/PhoneField';
 import { PdfOrLinkField } from '@/components/admin/PdfOrLinkField';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
+import { MockupLinkSlot } from '@/components/admin/MockupLinkSlot';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 import { DealTimeline } from '@/components/admin/lead/DealTimeline';
@@ -60,6 +61,8 @@ import {
   ChevronRight,
   FileSignature,
   FileText,
+  FolderOpen,
+  Eye,
 } from 'lucide-react';
 import {
   ADD_ONS,
@@ -116,6 +119,7 @@ interface LeadDetail {
   mockupRequested: boolean;
   mockupRequestedAt: string | null;
   mockupUrl: string | null;
+  mockupFolderUrl: string | null;
   mockupDeliveredAt: string | null;
   mockups: Array<{ id: string; url: string; fileName: string | null; createdAt: string }>;
   vercelDeployPassword: string | null;
@@ -928,6 +932,45 @@ export default function LeadDetailPage() {
       setSaveError(SAVE_ERROR_MESSAGE);
     } finally {
       setRequestingMockup(false);
+    }
+  };
+
+  const [sendingMockup, setSendingMockup] = useState(false);
+  const [mockupSendNotice, setMockupSendNotice] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(
+    null
+  );
+
+  /**
+   * The whole job in one press: take the folder link, make a tracked version
+   * of it, mail it, stamp the record, move the stage. What it will not do is
+   * send the preview build — the route refuses, because that link is behind
+   * a Vercel password and the client would hit a wall.
+   */
+  const handleSendMockup = async () => {
+    setSendingMockup(true);
+    setMockupSendNotice(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/send-mockup`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMockupSendNotice({ tone: 'warn', text: data.error || 'Could not send it.' });
+        return;
+      }
+      setMockupSendNotice(
+        data.sent
+          ? { tone: 'ok', text: `Sent to ${lead?.email}. You'll see here when they open it.` }
+          : {
+              tone: 'warn',
+              text: `Link is ready but the email did not send${
+                data.reason ? ` — ${data.reason}` : ''
+              }. Copy it and send it yourself.`,
+            }
+      );
+      load();
+    } catch {
+      setMockupSendNotice({ tone: 'warn', text: 'Could not reach the server — try again.' });
+    } finally {
+      setSendingMockup(false);
     }
   };
 
@@ -1788,7 +1831,7 @@ export default function LeadDetailPage() {
           recipientEmail={lead.email || ''}
           recipientName={lead.contactName || undefined}
           company={lead.company}
-          defaultLoomUrl={lead.mockupUrl}
+          defaultLoomUrl={lead.mockupFolderUrl}
           defaultPainPoint={painPointSentence(lead.painPoints)}
           defaultObservation={lead.personalizedObservation}
           leadId={leadId}
@@ -1966,7 +2009,7 @@ export default function LeadDetailPage() {
                 link and a PDF because the link needs signal and a password
                 and the PDF needs neither — the PDF is simply the newest
                 version in the list that came in as a file. */}
-            {(lead.originalWebsite || lead.mockupUrl || latestMockupPdf || lead.invoicePdfUrl) && (
+            {(lead.originalWebsite || lead.mockupFolderUrl || lead.mockupUrl || latestMockupPdf || lead.invoicePdfUrl) && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {lead.originalWebsite && (
                   <a
@@ -1978,14 +2021,33 @@ export default function LeadDetailPage() {
                     <Compass size={13} /> Open their current site
                   </a>
                 )}
+                {/* Two links, two buttons, and they are not interchangeable.
+                    The folder is the deliverable — it is what the email
+                    carries. The preview deploys behind a Vercel password, so
+                    sending it hands the client a password wall; it is here to
+                    navigate to quickly and for nothing else. They used to be
+                    one field under one button reading "open the mockup we
+                    sent", on leads nothing had been sent to. */}
+                {lead.mockupFolderUrl && (
+                  <a
+                    href={lead.mockupFolderUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 bg-purple-400/10 px-3.5 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-400/20 transition-colors"
+                  >
+                    <FolderOpen size={13} /> Mockup folder
+                    <span className="text-purple-300/60 font-normal">· what they get</span>
+                  </a>
+                )}
                 {lead.mockupUrl && (
                   <a
                     href={lead.mockupUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/30 bg-purple-400/10 px-3.5 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-400/20 transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-2 text-xs font-semibold text-white/70 hover:bg-white/10 transition-colors"
                   >
-                    <CheckCircle2 size={13} /> Open the mockup we sent
+                    <Eye size={13} /> Preview build
+                    <span className="text-white/35 font-normal">· ours only</span>
                   </a>
                 )}
                 {latestMockupPdf && (
@@ -2864,7 +2926,7 @@ export default function LeadDetailPage() {
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
             <h2 className="text-lg font-bold mb-1">Mockups</h2>
-            {lead.mockupUrl ? (
+            {lead.mockupFolderUrl ? (
               <p className="text-xs text-emerald-300 mb-3">
                 Latest delivered {lead.mockupDeliveredAt ? new Date(lead.mockupDeliveredAt).toLocaleDateString() : ''} — every
                 version below, with whatever you noted against it.
@@ -2890,9 +2952,67 @@ export default function LeadDetailPage() {
               </div>
             )}
 
+            {/* Two slots, said out loud, because one field holding both is
+                what put a password-protected preview behind a button reading
+                "open the mockup we sent". */}
+            <div className="mb-4 space-y-3">
+              <MockupLinkSlot
+                leadId={leadId}
+                field="mockupFolderUrl"
+                value={lead.mockupFolderUrl}
+                label="Mockup folder"
+                tone="send"
+                hint="The Drive folder the client gets — screenshots, the brochure, the walkthrough video. This is the only link that goes in an email."
+                placeholder="drive.google.com/drive/folders/..."
+                onSaved={load}
+              />
+              <MockupLinkSlot
+                leadId={leadId}
+                field="mockupUrl"
+                value={lead.mockupUrl}
+                label="Preview build"
+                tone="internal"
+                hint="The Vercel subdomain, for pulling up quickly on a call. Password-protected, so it is never sent to anybody."
+                placeholder="company.bothmade.studio"
+                onSaved={load}
+              />
+            </div>
+
+            {lead.mockupFolderUrl && (
+              <div className="mb-4 rounded-xl border border-purple-400/25 bg-purple-400/[0.06] p-4">
+                <p className="text-sm font-semibold mb-1">Send it to {lead.contactName || lead.company}</p>
+                <p className="text-xs text-white/50 mb-3">
+                  Mails the folder from your inbox on a tracked link, records that it went, and moves the stage.
+                  You will see here when they open it.
+                </p>
+                <button
+                  onClick={handleSendMockup}
+                  disabled={sendingMockup || !lead.email}
+                  className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                >
+                  <Send size={14} />
+                  {sendingMockup ? 'Sending…' : 'Send mockup to client'}
+                </button>
+                {!lead.email && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    No email on this lead yet — add one above and this will work.
+                  </p>
+                )}
+                {mockupSendNotice && (
+                  <p
+                    className={`mt-2 text-xs ${
+                      mockupSendNotice.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'
+                    }`}
+                  >
+                    {mockupSendNotice.text}
+                  </p>
+                )}
+              </div>
+            )}
+
             <LeadMockupsPanel leadId={leadId} onChanged={load} />
 
-            {lead.mockupUrl && (
+            {lead.mockupFolderUrl && (
               <p className="text-xs text-white/30 mt-3">Now's the time to call, email, or follow up with this in hand.</p>
             )}
           </div>

@@ -127,7 +127,7 @@ export async function GET(request: Request) {
     });
 
     const pendingMockups = await prisma.lead.findMany({
-      where: { mockupRequested: true, mockupUrl: null },
+      where: { mockupRequested: true, mockupUrl: null, mockupFolderUrl: null },
       orderBy: { mockupRequestedAt: 'asc' },
       take: 10,
       select: { id: true, company: true, mockupRequestedAt: true },

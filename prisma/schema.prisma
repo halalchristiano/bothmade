@@ -389,6 +389,17 @@ model Lead {
   mockupUrl         String?
   mockupDeliveredAt DateTime?
 
+  // The two links are not the same thing, and treating them as one column is
+  // how a client got told to "open the mockup we sent" when nothing had been
+  // sent and the link went to a password-protected preview deployment.
+  //
+  // `mockupFolderUrl` is the deliverable: a Drive folder holding the
+  // screenshots, the brochure and the walkthrough video — everything that
+  // actually goes in the email. `mockupUrl` above stays what it has always
+  // held in practice, the Vercel subdomain, which is ours to navigate to
+  // quickly and is never sent to anybody.
+  mockupFolderUrl   String?
+
   // A PDF export of the mockup is another version of it, not a different
   // kind of thing, so it lives in the `mockups` list with a fileName set
   // rather than in a column of its own. The link is the better thing to

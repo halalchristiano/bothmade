@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { normalizeUrl } from '@/lib/html';
 
 /**
  * One lead gets several mockups over the life of a deal. Attaching one is
@@ -133,6 +134,32 @@ export function mockupSignal(m: LeadMockupDTO, now: Date = new Date()): string {
  * a dead — or hostile — button. A bare "www.figma.com/..." is the one thing
  * worth rescuing: it's what a paste from the address bar looks like.
  */
+/**
+ * The one link that may go to a client, and null when there isn't one.
+ *
+ * The preview deployment is not it. It sits behind Vercel's password
+ * protection so a prospect's competitors can't find their unannounced
+ * redesign, which means sending it hands the client a password wall — and
+ * for a while the lead page offered exactly that, under a button reading
+ * "open the mockup we sent" on a lead nothing had been sent to.
+ *
+ * So the choice is made here rather than at each call site. Anything that
+ * emails, pre-fills, or shares a mockup asks this function; the preview URL
+ * is for us to navigate to and nothing else.
+ *
+ * Normalised through `normalizeUrl` rather than `normalizeMockupUrl` below,
+ * because this is a link that ends up in an email and it has to survive the
+ * same way every other emailed link does — a Drive folder copied out of a
+ * document arrives without its scheme, and the stricter normalizer drops it
+ * on the floor.
+ */
+export function clientMockupLink(lead: {
+  mockupFolderUrl?: string | null;
+  mockupUrl?: string | null;
+}): string | null {
+  return normalizeUrl(lead.mockupFolderUrl);
+}
+
 export function normalizeMockupUrl(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();

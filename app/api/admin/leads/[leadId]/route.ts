@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
-import { mockupInclude, normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
+import { clientMockupLink, mockupInclude, normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
 
 export async function GET(
   request: NextRequest,
@@ -174,6 +174,7 @@ export async function PATCH(
       contractStatus,
       mockupRequested,
       mockupUrl,
+      mockupFolderUrl,
       qualNeed,
       qualAuthority,
       qualBudget,
@@ -271,6 +272,11 @@ export async function PATCH(
         mockupRequested: mockupRequested !== undefined ? mockupRequested : undefined,
         mockupRequestedAt: mockupRequested === true && !existing.mockupRequested ? new Date() : undefined,
         mockupUrl: mockupUrl !== undefined ? mockupUrl : undefined,
+        // Normalised on the way in, because this is the link that gets
+        // emailed and a folder URL pasted without its scheme is a dead
+        // button in a client's inbox.
+        mockupFolderUrl:
+          mockupFolderUrl !== undefined ? clientMockupLink({ mockupFolderUrl }) : undefined,
         mockupDeliveredAt: mockupUrl !== undefined && mockupUrl ? new Date() : undefined,
         qualNeed: qualNeed !== undefined ? qualNeed : undefined,
         qualAuthority: qualAuthority !== undefined ? qualAuthority : undefined,

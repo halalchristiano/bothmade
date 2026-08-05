@@ -183,7 +183,7 @@ export async function GET() {
         },
       }),
 
-      prisma.lead.count({ where: { mockupRequested: true, mockupUrl: null } }),
+      prisma.lead.count({ where: { mockupRequested: true, mockupUrl: null, mockupFolderUrl: null } }),
 
       /**
        * Design feedback nobody here has read yet.
