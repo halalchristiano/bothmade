@@ -125,7 +125,14 @@ export interface BrochureInput {
   company: string;
   /** Their line, as their own site says it. */
   strapline: string;
-  /** Where the concept is deployed. */
+  /**
+   * Where the concept is deployed — for our reference, not the client's.
+   *
+   * Deliberately never printed as somewhere to go. The concept is built but
+   * not published, and a brochure that says "open it on your phone right
+   * now" hands the client a link they cannot use and a first impression of
+   * us that we did not check our own work. What they get is the video.
+   */
   conceptUrl: string;
   /** Their site. Only ever printed, never characterised — see the note on
    * `comparison` below. */
@@ -138,6 +145,22 @@ export interface BrochureInput {
   chapters: BrochureChapter[];
   tiers: BrochureTier[];
   customItems: BrochureCustomItem[];
+  /**
+   * What actually arrives with this document.
+   *
+   * Printed, because the brochure is one file among several in an email and
+   * the client needs to know what to open and in what order. This is also
+   * the only honest way to point at the concept: it is a video and a set of
+   * screenshots, not an address.
+   */
+  enclosures: BrochureEnclosure[];
+  /**
+   * The one line from the research brief that proves a person looked at this
+   * business rather than a template being filled in.
+   *
+   * Comes from the lead's CSV brief. Optional — better absent than generic.
+   */
+  observation?: string;
   /** What happens after they say yes. */
   nextSteps: string[];
   /**
@@ -183,6 +206,15 @@ export interface BrochureChapter {
   facts?: { label: string; value: string }[];
   /** Optional pull quote, printed in the concept's serif. */
   quote?: { text: string; attribution: string };
+}
+
+/** One file arriving alongside the brochure. */
+export interface BrochureEnclosure {
+  /** What it is called in the email. */
+  label: string;
+  /** What it is, and why they would open it. */
+  what: string;
+  kind: 'video' | 'pdf' | 'images';
 }
 
 /** One observed difference. Both sides must be things someone actually saw. */
@@ -351,6 +383,8 @@ export function brochureProse(input: BrochureInput): string {
     for (const line of tier.lines) parts.push(line.label, line.description, line.benefit);
   }
   for (const item of input.customItems) parts.push(item.label, item.what, item.why);
+  for (const enclosure of input.enclosures) parts.push(enclosure.label, enclosure.what);
+  if (input.observation) parts.push(input.observation);
   if (input.comparison) {
     parts.push(input.comparison.section.title, input.comparison.section.body, input.comparison.preamble);
     for (const shot of input.comparison.before) parts.push(shot.caption);

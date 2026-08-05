@@ -8,6 +8,7 @@ import {
   EmailAttachmentsEditor,
   attachmentProblems,
   attachmentsForSend,
+  starterAttachments,
   type AttachmentDraft,
 } from './EmailAttachmentsEditor';
 import {
@@ -370,6 +371,13 @@ export function EmailComposer({
                     onChange={(id) => {
                       setTemplateId(id);
                       setFields(buildDefaultFields(id));
+                      // Only when the template asks for rows. Switching to a
+                      // template with no starters must not wipe attachments
+                      // somebody has already pasted links into.
+                      const starters = starterAttachments(
+                        EMAIL_TEMPLATES.find((t) => t.id === id)?.starterAttachments
+                      );
+                      if (starters.length > 0) setAttachments(starters);
                     }}
                   />
                 </Section>

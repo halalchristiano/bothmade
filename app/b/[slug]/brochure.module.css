@@ -670,6 +670,81 @@
   color: rgba(19, 28, 38, 0.28);
 }
 
+/* ----------------------------------------------------------- enclosures */
+
+/* The opening page has one screenshot and a page-width of paper beside it.
+   The list of what arrived in the email goes there. */
+.shotsAside {
+  align-items: stretch;
+  gap: 30px;
+}
+
+.shotsAside .shotFigure {
+  flex: 0 1 2.7in;
+}
+
+.enclosures {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.enclosuresTitle {
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin: 0 0 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.enclosureList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.enclosure {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.enclosureKind {
+  grid-row: 1;
+  align-self: center;
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--slate);
+  padding: 3px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.enclosureLabel {
+  grid-row: 1;
+  font-size: 11pt;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  align-self: center;
+}
+
+.enclosureWhat {
+  grid-column: 2;
+  font-size: 8.5pt;
+  line-height: 1.5;
+  color: rgba(19, 28, 38, 0.62);
+}
+
 /* ------------------------------------------------------- what we noticed */
 
 .preamble {

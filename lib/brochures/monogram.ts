@@ -4,10 +4,16 @@
  * Every fact on these pages is one the concept itself puts on screen, and
  * the concept was written from Monogram's own material: the founding year,
  * the two partners, the project count, the award list, the townships, the
- * contract line. Nothing here is inferred about how they run the business
- * and nothing is asserted about their current website, because nobody has
- * audited it yet — see `comparison` in lib/brochure.ts for why that page is
- * missing rather than guessed at.
+ * contract line. Nothing here is inferred about how they run the business.
+ *
+ * The `comparison` section is read off screenshots of their current site
+ * taken on a phone — every claim in it is visible in one of the three shots
+ * printed beside it, and nothing is said about desktop, which nobody looked
+ * at.
+ *
+ * The concept is built but NOT published. Nothing in this file may imply the
+ * client can go and look at it: what they get is the walkthrough video and
+ * the screenshots, both listed in `enclosures`.
  *
  * Prices are absent on purpose. The tiers are selections; the figures come
  * out of lib/pricing.ts when the page renders.
@@ -117,8 +123,36 @@ export const MONOGRAM: BrochureInput = {
     eyebrow: 'A concept for',
     title: 'Monogram\nCustom Builders',
     standfirst:
-      'We built a working homepage for Monogram before asking for anything. This document walks through what it does, why each part of it is there, and exactly what it would cost to make it yours — in three versions, with every technical word explained.',
+      'We built a working homepage for Monogram before asking for anything, and recorded a walkthrough of it — that video is attached to this email. This document is what the concept does, why each part of it is there, and what it would cost to make it yours, in three versions with every technical word explained. It is one idea, not the only one; every piece of it is yours to change.',
   },
+
+  /*
+   * What lands in the inbox alongside this document. The concept is built
+   * but not published, so the video is how they see it move — there is no
+   * address to send them to and this brochure must not imply there is.
+   */
+  enclosures: [
+    {
+      kind: 'video',
+      label: 'The walkthrough',
+      what: 'Two minutes of somebody scrolling the concept on a phone, so you can see how it moves rather than reading about it.',
+    },
+    {
+      kind: 'pdf',
+      label: 'This document',
+      what: 'The concept explained page by page, the three prices, and every technical word translated.',
+    },
+    {
+      kind: 'images',
+      label: 'The screens, full size',
+      what: 'Every page of the concept as its own image, for showing someone who is not on this email.',
+    },
+  ],
+
+  // From the research brief. One line, specific enough that it could not
+  // have been written about anybody else.
+  observation:
+    'Two award-winning divisions, thirty years in one valley, and a website that asks people to choose between them before it has told them who you are.',
 
   /*
    * Read off screenshots of monogramcustombuilders.com taken on a phone.
@@ -224,9 +258,9 @@ export const MONOGRAM: BrochureInput = {
     {
       section: {
         eyebrow: 'What this is',
-        title: 'Not a pitch deck. A site that already exists.',
+        title: 'We already built it. It is sitting there, ready to go.',
         body:
-          'Everything in this brochure is a photograph of something live. You can open it on your phone right now, tap the buttons, and read the words. Nothing here is a mock-up of a thing we might build — it is the thing, waiting for your sign-off to become yours.',
+          'This is not a proposal for something we might make. It is finished, it runs, and the video attached to this email is a recording of somebody using it. We do this before asking for anything, because showing is cheaper than describing and you should not have to imagine what you are buying.',
       },
       shots: [
         {
@@ -234,12 +268,13 @@ export const MONOGRAM: BrochureInput = {
           width: 1320,
           height: 2373,
           alt: 'The Monogram concept homepage, showing the Custom Homes and Custom Pools divisions',
-          caption: 'The homepage. Two divisions, one company — the split every visitor needs in the first second.',
+          caption:
+            'The homepage. Two divisions, one company — the split every visitor needs in the first second.',
         },
       ],
       facts: [
-        { label: 'Live at', value: 'monogram.bothmade.studio' },
-        { label: 'Built for', value: 'Phone first, then desktop' },
+        { label: 'Status', value: 'Built, not published' },
+        { label: 'To see it move', value: 'Video attached' },
         { label: 'Cost so far', value: 'Nothing' },
       ],
     },
@@ -450,7 +485,7 @@ export const MONOGRAM: BrochureInput = {
   ],
 
   nextSteps: [
-    'You look at the concept on your own phone, at monogram.bothmade.studio, and tell us what is wrong with it. That part is free and there is no version of this where we mind.',
+    'You watch the video attached to this email — about two minutes — and tell us what is wrong with it. That part is free, and there is no version of this where we mind. It is an idea, not a verdict on your business.',
     'We meet for half an hour — in person or on a call — and go through which of the three versions actually fits what you want the site to do this year.',
     'We send a contract with the version you picked written out in full, line by line, at the price on that page. Nothing in it is a surprise from this document.',
     'You pay the first of three payments and we start. Design approval triggers the second, and the third is due only when the site is ready to go live.',

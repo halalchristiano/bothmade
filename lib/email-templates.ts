@@ -3,7 +3,7 @@
 // Bothmade email, so whatever Evan or Kiana sends looks consistent with the
 // rest of the brand, not a plain-text scrawl.
 
-import { renderAttachments } from '@/lib/email-attachments';
+import { renderAttachments, type AttachmentKind } from '@/lib/email-attachments';
 import { esc, escMultiline, escParagraphs, normalizeUrl } from '@/lib/html';
 
 export interface TemplateField {
@@ -75,6 +75,15 @@ export interface EmailTemplate {
   /** Heading this sits under in the template picker. */
   group: string;
   fields: TemplateField[];
+  /**
+   * Attachment rows the composer lays out the moment this template is
+   * picked, labelled and captioned, with the links left blank to paste into.
+   *
+   * A send goes wrong when somebody forgets the second file, not when they
+   * mislabel the first — so the rows exist before anyone remembers them, and
+   * an empty one simply doesn't send.
+   */
+  starterAttachments?: Array<{ kind: AttachmentKind; label: string; note?: string }>;
   build: (ctx: TemplateContext) => BuiltEmail;
 }
 
@@ -184,6 +193,64 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   // genuinely dug into a specific lead. Either way, the observation field
   // below matters more than any other wording in the email — don't send
   // until it's genuinely true and specific to this business.
+  {
+    id: 'concept_delivery',
+    group: 'Concept delivery',
+    label: 'Concept + brochure (video attached)',
+    description:
+      'Sends the finished concept as a video and a brochure. Nothing links to a live site — the concept is built, not published.',
+    audience: 'sales',
+    fields: [
+      {
+        key: 'observation',
+        label: 'What you noticed about their site',
+        type: 'textarea',
+        required: true,
+        placeholder:
+          'e.g. two award-winning divisions and a homepage that asks people to choose between them before it says who you are',
+        helpText:
+          'One line, specific to them. It is the sentence that proves a person looked at this business rather than a template being filled in.',
+        examples: [
+          'Two award-winning divisions, thirty years in one valley, and a website that asks people to choose between them before it has told them who you are.',
+          'A 4.9 from seventy-six reviews, sitting in a carousel most of the way down the page.',
+        ],
+      },
+      {
+        key: 'senderTitle',
+        label: 'Your title',
+        type: 'text',
+        placeholder: 'e.g. Director of Sales',
+      },
+    ],
+    // Three rows, laid out and captioned. Two of them are PDFs, because the
+    // brochure and the full-size screens are separate files and forgetting
+    // the second one is the easiest mistake in this send.
+    starterAttachments: [
+      { kind: 'link', label: 'Watch the walkthrough', note: 'About two minutes — no sign-in needed' },
+      { kind: 'pdf', label: 'The brochure', note: 'The concept page by page, the three prices, every term explained' },
+      { kind: 'pdf', label: 'The screens, full size', note: 'For showing someone who is not on this email' },
+    ],
+    build: ({ recipientName, company, senderName, fields }) => {
+      const first = senderName ? senderName.split(' ')[0] : 'Evan';
+      const full = senderName || 'Evan';
+      const title = fields.senderTitle || 'Director of Sales';
+      return {
+        subject: `We built ${company} a homepage — here it is`,
+        eyebrow: 'A concept, already built',
+        title: 'We made the thing rather than describing it',
+        bodyHtml:
+          `<p>Hi ${greeting(recipientName)},</p>` +
+          `<p>I'm ${esc(first)}, ${esc(title)} at Bothmade Studio. Rather than send you a pitch, we built ${esc(
+            company
+          )} a homepage and recorded a walkthrough of it. Both are attached.</p>` +
+          `<p style="color:#fff; font-weight:600;">What prompted it: ${escMultiline(fields.observation)}</p>` +
+          `<p>It is finished and it runs. It is not published anywhere — the video is how you see it move, and the brochure walks through what each part of it does and what it would cost, in three versions.</p>` +
+          `<p>It is one idea, not the only one. Every piece of it is yours to change, and none of it costs you anything to look at. If you like the direction we can talk about taking it further; if you don't, you keep the ideas.</p>` +
+          `<p>Worth fifteen minutes next week?</p>`,
+        signOffHtml: signOff({ closing: 'Kind regards,', name: full, title }),
+      };
+    },
+  },
   {
     id: 'cold_outreach',
     group: 'Outreach',

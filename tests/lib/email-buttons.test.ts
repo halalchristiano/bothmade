@@ -254,3 +254,43 @@ describe('sendTemplatedEmail', () => {
     expect(html).toContain('/l/drive/file/abc123defg');
   });
 });
+
+/**
+ * The concept is built and not published. The email that carries it must not
+ * point anywhere — what the client gets is a video and two PDFs, and the
+ * failure mode is a rep who remembers the first attachment and forgets the
+ * second.
+ */
+describe('the concept delivery template', () => {
+  it('lays the attachment rows out before anybody has to remember them', async () => {
+    const { EMAIL_TEMPLATES } = await import('@/lib/email-templates');
+    const template = EMAIL_TEMPLATES.find((t) => t.id === 'concept_delivery');
+
+    expect(template).toBeDefined();
+    // More than one PDF: the brochure and the full-size screens are separate
+    // files, and dropping one of them is the easiest mistake in this send.
+    expect(template?.starterAttachments?.filter((a) => a.kind === 'pdf')).toHaveLength(2);
+    expect(template?.starterAttachments?.some((a) => a.kind === 'link')).toBe(true);
+    // Labelled, so a row left blank is obviously a row left blank.
+    for (const starter of template?.starterAttachments ?? []) {
+      expect(starter.label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('sends nobody to a concept that is not published', async () => {
+    const { EMAIL_TEMPLATES } = await import('@/lib/email-templates');
+    const template = EMAIL_TEMPLATES.find((t) => t.id === 'concept_delivery');
+    const built = template?.build({
+      recipientName: 'Tony',
+      company: 'Monogram Custom Builders',
+      senderName: 'Evan Buoncristiano',
+      fields: { observation: 'Two divisions, one doorway.', senderTitle: 'Director of Sales' },
+    });
+
+    expect(built?.bodyHtml).toContain('attached');
+    expect(built?.bodyHtml).toMatch(/not published/);
+    expect(built?.bodyHtml).not.toMatch(/bothmade\.studio\/|https?:\/\//);
+    // The client owns the direction, and the email has to say so.
+    expect(built?.bodyHtml).toMatch(/yours to change/);
+  });
+});

@@ -4,6 +4,7 @@ import {
   customItemPrice,
   type Brochure,
   type BrochureChapter,
+  type BrochureEnclosure,
   type BrochureLine,
   type BrochureTier,
 } from '@/lib/brochure';
@@ -109,10 +110,48 @@ function LineRow({ line, isNew }: { line: BrochureLine; isNew?: boolean }) {
   );
 }
 
+/**
+ * The files arriving with this document.
+ *
+ * On the opening page rather than the closing one, because it is the answer
+ * to the question that page raises: we built it, so where is it? The concept
+ * is not published — there is no address to send anyone to — and a brochure
+ * that skirts that leaves the client hunting for a link that does not exist.
+ */
+function Enclosures({ items }: { items: BrochureEnclosure[] }) {
+  const KIND_LABEL: Record<BrochureEnclosure['kind'], string> = {
+    video: 'Video',
+    pdf: 'PDF',
+    images: 'Images',
+  };
+
+  return (
+    <div className={styles.enclosures}>
+      <p className={styles.enclosuresTitle}>With this email</p>
+      <ul className={styles.enclosureList}>
+        {items.map((item) => (
+          <li key={item.label} className={styles.enclosure}>
+            <span className={styles.enclosureKind}>{KIND_LABEL[item.kind]}</span>
+            <span className={styles.enclosureLabel}>{item.label}</span>
+            <span className={styles.enclosureWhat}>{item.what}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ChapterPage({
   chapter,
+  enclosures,
+  observation,
   ...page
-}: { chapter: BrochureChapter } & Omit<PageProps, 'children' | 'runner'>) {
+}: {
+  chapter: BrochureChapter;
+  /** Only the opening chapter carries these. */
+  enclosures?: BrochureEnclosure[];
+  observation?: string;
+} & Omit<PageProps, 'children' | 'runner'>) {
   return (
     <Page {...page} runner={ACTS.concept}>
       <div className={styles.chapterBody}>
@@ -123,7 +162,10 @@ function ChapterPage({
           small
         />
 
-        <div className={styles.shots}>
+        {observation ? <p className={styles.preamble}>{observation}</p> : null}
+
+        <div className={[styles.shots, enclosures ? styles.shotsAside : ''].filter(Boolean).join(' ')}>
+          {enclosures ? <Enclosures items={enclosures} /> : null}
           {chapter.shots.map((shot) => (
             <figure key={shot.src} className={styles.shotFigure}>
               <div
@@ -225,7 +267,8 @@ export function BrochureDoc({ brochure }: { brochure: Brochure }) {
     signOff,
     glossary,
     schedule,
-    conceptUrl,
+    enclosures,
+    observation,
     city,
     pageCount,
   } = brochure;
@@ -278,7 +321,7 @@ export function BrochureDoc({ brochure }: { brochure: Brochure }) {
           <p className={styles.body}>{cover.standfirst}</p>
           <div className={styles.coverRule} />
           <div className={styles.coverMeta}>
-            <span>{conceptUrl.replace(/^https?:\/\//, '')}</span>
+            <span>Concept &middot; not yet published</span>
             <span>{city}</span>
             <span>By {COMPANY_NAME}</span>
           </div>
@@ -330,7 +373,7 @@ export function BrochureDoc({ brochure }: { brochure: Brochure }) {
                 <tr>
                   <th className={styles.colWhat}>&nbsp;</th>
                   <th className={styles.colToday}>{currentUrl.replace(/^https?:\/\/(www\.)?/, '')}</th>
-                  <th className={styles.colConcept}>{conceptUrl.replace(/^https?:\/\//, '')}</th>
+                  <th className={styles.colConcept}>The concept, attached</th>
                 </tr>
               </thead>
               <tbody>
@@ -348,8 +391,16 @@ export function BrochureDoc({ brochure }: { brochure: Brochure }) {
       ) : null}
 
       {/* the concept, chapter by chapter */}
-      {chapters.map((chapter) => (
-        <ChapterPage key={chapter.section.title} chapter={chapter} folio={next()} {...shared} />
+      {chapters.map((chapter, index) => (
+        <ChapterPage
+          key={chapter.section.title}
+          chapter={chapter}
+          // Only the opening chapter says what arrived with the document.
+          enclosures={index === 0 ? enclosures : undefined}
+          observation={index === 0 ? observation : undefined}
+          folio={next()}
+          {...shared}
+        />
       ))}
 
       {/* the three options */}
@@ -512,7 +563,7 @@ export function BrochureDoc({ brochure }: { brochure: Brochure }) {
             <br />
             {COMPANY_EMAIL}
             <br />
-            {conceptUrl.replace(/^https?:\/\//, '')}
+            {enclosures.length} files with this email
           </p>
         </div>
       </Page>

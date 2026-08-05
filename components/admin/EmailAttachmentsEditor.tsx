@@ -32,6 +32,23 @@ export function newAttachment(kind: AttachmentKind): AttachmentDraft {
   return { id: `a${nextId}`, kind, label: '', url: '', note: '' };
 }
 
+/**
+ * The rows a template wants laid out before anyone starts typing.
+ *
+ * Labelled and captioned, links blank. A send goes wrong when somebody
+ * forgets the second file, not when they mislabel the first — so the rows
+ * exist ahead of the memory, and a row nobody fills in simply doesn't send.
+ */
+export function starterAttachments(
+  starters: Array<{ kind: AttachmentKind; label: string; note?: string }> | undefined
+): AttachmentDraft[] {
+  return (starters ?? []).map((starter) => ({
+    ...newAttachment(starter.kind),
+    label: starter.label,
+    note: starter.note ?? '',
+  }));
+}
+
 const KIND_ICON: Record<AttachmentKind, typeof FileText> = {
   pdf: FileText,
   image: ImageIcon,

@@ -304,3 +304,38 @@ describe('the Monogram brochure', () => {
     }
   });
 });
+
+/**
+ * The client cannot visit the concept. It is built and not published, and
+ * what they get is a video. A brochure that says "open it on your phone
+ * right now" hands them a link that does not work and a first impression
+ * that we did not check our own document — which is exactly what shipped
+ * before somebody read page two properly.
+ */
+describe('nothing is live for them', () => {
+  const brochure = buildBrochure(MONOGRAM);
+
+  it('never tells the client to go and look at the concept', () => {
+    const prose = brochureProse(MONOGRAM).toLowerCase();
+
+    expect(prose).not.toContain(MONOGRAM.conceptUrl.replace(/^https?:\/\//, ''));
+    expect(prose).not.toMatch(/open it on your phone|visit the concept|live at/);
+  });
+
+  it('says instead what arrived in the email, and one of them is the video', () => {
+    expect(brochure.enclosures.length).toBeGreaterThan(1);
+    expect(brochure.enclosures.some((e) => e.kind === 'video')).toBe(true);
+    expect(brochureProse(MONOGRAM).toLowerCase()).toContain('video');
+  });
+
+  it('says out loud that the concept is one idea and theirs to change', () => {
+    expect(`${MONOGRAM.cover.standfirst} ${MONOGRAM.nextSteps.join(' ')}`.toLowerCase()).toMatch(
+      /yours to change|not a verdict|one idea/
+    );
+  });
+
+  it('carries a line that could not have been written about anyone else', () => {
+    expect(MONOGRAM.observation).toBeTruthy();
+    expect(brochureProse(MONOGRAM)).toContain(MONOGRAM.observation);
+  });
+});
