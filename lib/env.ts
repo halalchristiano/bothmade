@@ -109,6 +109,20 @@ export function cronSecret(): string | null {
 }
 
 /**
+ * Key for the one thing in this app that calls a model: tidying up a call
+ * note into the record the rest of the pipeline reads.
+ *
+ * Optional on purpose. Everything that key unlocks is a convenience on top
+ * of a flow that already works by hand, so an unset key hides the button
+ * rather than breaking the page — a rep can always write the note
+ * themselves, which is what they did before it existed.
+ */
+export function anthropicApiKey(): string | null {
+  const value = process.env.ANTHROPIC_API_KEY?.trim();
+  return value ? value : null;
+}
+
+/**
  * Fails the server at boot when a secret with no safe default is missing.
  * Called from instrumentation.ts.
  */

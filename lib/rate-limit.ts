@@ -53,6 +53,14 @@ export const RATE_LIMITS = {
   /** Quote/interest submissions — unchanged. */
   interest: { max: 5, windowMs: 10 * 60 * 1000 },
   /**
+   * Tidying a call note. Staff-only and already behind a login, so this is
+   * not about abuse — it is the one endpoint in the app that bills per
+   * request, and a stuck retry loop on a page someone left open should cost
+   * pennies rather than run all night. Set well above what a person
+   * finishing calls could ever press.
+   */
+  tidyNote: { max: 40, windowMs: 10 * 60 * 1000 },
+  /**
    * Failed sign-ins against one account, whatever address they come from.
    *
    * `login` above is keyed on the caller's IP, which is the wrong shape for
