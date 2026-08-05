@@ -23,6 +23,7 @@ import { GridBackdrop, CountUp } from '@/components/ui';
 import { addOnLabel, formatCentsExact } from '@/lib/pricing';
 import { deliverableHref, isOpenable } from '@/lib/deliverables';
 import { DesignFeedbackForm } from '@/components/client/DesignFeedbackForm';
+import { DesignDirectionForm } from '@/components/client/DesignDirectionForm';
 
 // The one motion signature carried over from the marketing site — the same
 // ease-out-expo curve used there, so the dashboard a client lives in every
@@ -84,6 +85,18 @@ interface Project {
     refundReason?: string | null;
     voidReason?: string | null;
   }>;
+  designDirection?: {
+    likes: Array<{ url: string; why: string }>;
+    dislikes: Array<{ url: string; why: string }>;
+    adjectives: string[];
+    untouchable: string | null;
+    hardNos: string | null;
+    notes: string | null;
+    signedAt: string | null;
+    signerName: string | null;
+  } | null;
+  designDirectionStatus?: { exists: boolean; signed: boolean; warning: string | null };
+  designDirectionStatement?: string;
   designReview?: {
     presentedAt: string | null;
     reviewEndsAt: string | null;
@@ -214,6 +227,7 @@ export default function ClientDashboard() {
    * reconsidered is a Change Order under Section 9, not a button, because the
    * build has started on the strength of it.
    */
+  const [showDirectionForm, setShowDirectionForm] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   /** The acknowledgement the server generated from what they actually said. */
   const [feedbackSent, setFeedbackSent] = useState<string | null>(null);
@@ -796,6 +810,91 @@ export default function ClientDashboard() {
                   );
                 })}
               </div>
+
+              {/* The brief, before anything is designed.
+                  Nearly every expensive restart on a design project is a
+                  direction problem discovered a week after the direction was
+                  set — usually from a sentence on a call. Ten minutes here
+                  buys both sides something to measure the first concept
+                  against, which is what turns "that's not what I wanted" from
+                  an argument into a category. */}
+              {!project.designDirection?.signedAt && !project.designReview?.approvedAt && (
+                <div className="relative mt-6 rounded-xl border border-purple-400/30 bg-purple-400/[0.06] p-5">
+                  <p className="mb-1 text-sm font-semibold text-purple-200">
+                    {project.designReview?.presentedAt
+                      ? 'We still need your design brief'
+                      : 'One thing before we start designing'}
+                  </p>
+                  <p className="text-sm text-white/70">
+                    You&apos;ve told us what the site needs to do. This is the other half — what it
+                    should look and feel like.
+                  </p>
+                  {!showDirectionForm && (
+                    <button
+                      onClick={() => setShowDirectionForm(true)}
+                      className="mt-4 rounded-lg bg-gradient-to-r from-purple-400 to-sky-400 px-4 py-2 text-sm font-semibold text-black transition-opacity hover:opacity-90"
+                    >
+                      Fill in the design brief
+                    </button>
+                  )}
+                  {showDirectionForm && project.designDirectionStatement && (
+                    <DesignDirectionForm
+                      projectId={projectId}
+                      statement={project.designDirectionStatement}
+                      onSigned={() => {
+                        setShowDirectionForm(false);
+                        loadProject();
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Once signed, it sits beside the design. They judge the concept
+                  against it, and so do we. */}
+              {project.designDirection?.signedAt && (
+                <details className="relative mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-white/80">
+                    The design brief you agreed
+                    {project.designDirection.adjectives?.length > 0 && (
+                      <span className="ml-2 font-normal text-white/40">
+                        {project.designDirection.adjectives.join(' · ')}
+                      </span>
+                    )}
+                  </summary>
+                  <div className="mt-3 space-y-3 text-sm text-white/65">
+                    {project.designDirection.likes?.length > 0 && (
+                      <div>
+                        <p className="mb-1 text-xs uppercase tracking-wide text-white/35">Sites you liked</p>
+                        <ul className="space-y-1">
+                          {project.designDirection.likes.map((l, i) => (
+                            <li key={i}>
+                              <span className="text-white/85">{l.url}</span>
+                              {l.why && <span className="text-white/50"> — {l.why}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {project.designDirection.untouchable && (
+                      <p>
+                        <span className="text-white/40">Mustn&apos;t change: </span>
+                        {project.designDirection.untouchable}
+                      </p>
+                    )}
+                    {project.designDirection.hardNos && (
+                      <p>
+                        <span className="text-white/40">Hard no&apos;s: </span>
+                        {project.designDirection.hardNos}
+                      </p>
+                    )}
+                    <p className="text-xs text-white/30">
+                      Agreed by {project.designDirection.signerName} on{' '}
+                      {new Date(project.designDirection.signedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </details>
+              )}
 
               {/* The design waiting on them, and the deadline they were given.
                   Deemed approval under Section 4 only holds up if the client

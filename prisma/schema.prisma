@@ -248,6 +248,7 @@ model Project {
   recurringOffers     RecurringOffer[]
   changeOrders        ChangeOrder[]
   designFeedback      DesignFeedback[]
+  designDirection     DesignDirection?
 
   @@index([prioritySnoozedUntil])
   @@index([designReviewEndsAt])
@@ -1052,6 +1053,64 @@ model DesignFeedback {
 
   @@index([projectId, createdAt])
   @@map("design_feedback")
+}
+
+// What "good" looks like, agreed in writing before anyone designs anything.
+//
+// Requirements Sign-off under Section 5 fixes WHAT gets built. Nothing fixed
+// how it should LOOK — and Section 4 excludes "subjective preferences not
+// reflected in agreed specifications" as grounds for rejecting a Deliverable.
+// With no visual direction on record, every aesthetic disagreement is by
+// definition a preference: a win on paper and a loss in practice, because
+// when the studio genuinely misread the client it still spends one of their
+// two rounds.
+//
+// A signed direction closes that with machinery the agreement already has.
+// A concept that departs from it is a Section 4 non-conformance, which
+// Exhibit C makes free AND outside the revision allowance. A client who
+// simply changes their mind about the direction is spending a round. Same
+// facts, opposite outcomes, and now something to tell them apart by.
+//
+// One per project. See lib/design-direction.ts.
+model DesignDirection {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// [{ url, why }]. The `why` is the half that matters: two clients can send
+  /// the same reference meaning opposite things by it.
+  likes    Json @default("[]")
+  dislikes Json @default("[]")
+
+  /// Three words for how it should feel. They settle it when two references
+  /// disagree, which is most of the time.
+  adjectives Json @default("[]")
+
+  /// Already fixed and has to be designed around — logo, brand colours, a
+  /// typeface, an existing photo library.
+  untouchable String?
+  /// Off the table entirely.
+  hardNos     String?
+  notes       String?
+
+  sentAt   DateTime?
+  signedAt DateTime?
+
+  /// Clickwrap evidence, same four questions as the contract and change order
+  /// signatures: who agreed, to what, when, and from where. signedHash is a
+  /// sha256 of the exact statement served, so a later reword of the page
+  /// cannot retroactively change what an existing signature claims.
+  signerName      String?
+  signerEmail     String?
+  signerIp        String?
+  signerUserAgent String?
+  signedHash      String?
+  signedStatement String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("design_directions")
 }
 
 // An offer to put a client onto one of the recurring "ongoing care" services

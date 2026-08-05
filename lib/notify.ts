@@ -561,3 +561,38 @@ export async function notifyAdminsDesignFeedback(params: {
   );
   await notifyAdmins(`Design feedback: ${params.company}`, html);
 }
+
+/**
+ * The client signed their design direction.
+ *
+ * Worth an email because it unblocks the most expensive guess in the project.
+ * Until this lands, the first concept is built on whatever was said on a
+ * call — and if it misses, Section 4 calls that the client's preference and
+ * spends one of their two rounds on our misreading. After it lands, a
+ * departure from the brief is a non-conformance we fix free.
+ */
+export async function notifyAdminsDesignDirectionSigned(params: {
+  projectId: string;
+  projectName: string;
+  company: string;
+  adjectives: string[];
+  likeCount: number;
+  dislikeCount: number;
+}): Promise<void> {
+  const words = params.adjectives.map((a) => escapeHtml(a)).join(' · ');
+  const html = wrap(
+    'Design direction agreed',
+    `<p><strong>${escapeHtml(params.company)}</strong> signed the design direction for
+       ${escapeHtml(params.projectName)}.</p>
+     ${words ? `<p style="font-size:18px;font-weight:700;">${words}</p>` : ''}
+     <p style="color:#555;">${params.likeCount} reference${params.likeCount === 1 ? '' : 's'} they like${
+       params.dislikeCount > 0 ? `, ${params.dislikeCount} they don't` : ''
+     } — with their reasons.</p>
+     <p style="color:#555;">You can design against this now. Anything you present that departs from it
+       is ours to correct free under Section 4; a change of mind about the direction itself is one of
+       their two rounds.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'Read the brief'
+  );
+  await notifyAdmins(`Design direction agreed: ${params.company}`, html);
+}

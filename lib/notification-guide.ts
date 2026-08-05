@@ -84,6 +84,19 @@ export const NOTIFICATION_GUIDE: NotificationGroup[] = [
     title: 'The design review clock',
     rules: [
       {
+        trigger: 'The client signs their design direction',
+        tells: 'We email you the brief — their references, their reasons, their three words — and it sits on the project beside anything they say later',
+        where: ['email', 'dashboard'],
+        timing: 'The moment they sign it',
+        basis: 'Section 4 — a departure from a signed brief is a non-conformance, not a preference',
+      },
+      {
+        trigger: 'You go to present a design with no signed direction',
+        tells: 'The project says so before you send, and says what it costs you if they argue',
+        where: ['screen'],
+        timing: "Whenever you open a project that hasn't got one",
+      },
+      {
         trigger: 'You send a design for review',
         tells: 'The client is emailed the deadline; the countdown appears on the project',
         where: ['email', 'screen'],

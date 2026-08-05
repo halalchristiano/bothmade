@@ -10,6 +10,7 @@ import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
 import { ChangeOrderPanel } from '@/components/admin/ChangeOrderPanel';
 import { DesignFeedbackPanel } from '@/components/admin/DesignFeedbackPanel';
+import { DesignDirectionPanel } from '@/components/admin/DesignDirectionPanel';
 import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
 import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
@@ -907,6 +908,11 @@ export default function AdminProjectDetailPage() {
               request immediately before the tool that prices it is the order
               the work actually happens in. Renders nothing until a client has
               sent something. */}
+          {/* The brief above the feedback, because that is the order you have
+              to read them in: their complaint only means something next to
+              what we told them we would do. */}
+          <DesignDirectionPanel projectId={projectId} />
+
           <DesignFeedbackPanel projectId={projectId} />
 
           <div id="change-orders">
