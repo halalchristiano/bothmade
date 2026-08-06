@@ -26,6 +26,14 @@ export function SendMockupPanel({
   sending,
   notice,
   onSend,
+  /**
+   * Already gone once. Changes what the panel says, not what it does.
+   *
+   * A second send is nearly always because the first landed in a shared inbox
+   * nobody opened — so the panel says that, next to the field that fixes it,
+   * rather than repeating copy written for a first delivery.
+   */
+  resend = false,
 }: {
   recipientName: string | null;
   company: string;
@@ -33,6 +41,7 @@ export function SendMockupPanel({
   sending: boolean;
   notice: { tone: 'ok' | 'warn'; text: string } | null;
   onSend: (email?: string) => void;
+  resend?: boolean;
 }) {
   // Opens by itself when there is no address at all, because then it is not
   // an override — it is the only way this send happens.
@@ -46,10 +55,13 @@ export function SendMockupPanel({
 
   return (
     <div className="mb-4 rounded-xl border border-purple-400/25 bg-purple-400/[0.06] p-4">
-      <p className="text-sm font-semibold mb-1">Send it to {recipientName || company}</p>
+      <p className="text-sm font-semibold mb-1">
+        {resend ? 'Send it again' : `Send it to ${recipientName || company}`}
+      </p>
       <p className="text-xs text-white/50 mb-3">
-        Mails the folder on a tracked link, records that it went, and moves the stage. You will see here when
-        they open it. The preview build is never sent.
+        {resend
+          ? 'Mails the same folder on a fresh tracked link. If the first one went to a shared inbox, this is where you point it somewhere a person actually reads.'
+          : 'Mails the folder on a tracked link, records that it went, and moves the stage. You will see here when they open it. The preview build is never sent.'}
       </p>
 
       <div className="mb-3 space-y-2">
@@ -115,7 +127,7 @@ export function SendMockupPanel({
         className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
       >
         <Send size={14} />
-        {sending ? 'Sending…' : 'Send mockup to client'}
+        {sending ? 'Sending…' : resend ? 'Send it again' : 'Send mockup to client'}
       </button>
 
       {notice && (

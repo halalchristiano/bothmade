@@ -9,6 +9,7 @@ import { PAIN_POINTS, parseSalesPoints, type PainPointKey } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
 import { MockupLinkSlot } from '@/components/admin/MockupLinkSlot';
+import { SendMockupPanel } from '@/components/admin/SendMockupPanel';
 
 interface QueueRow {
   id: string;
@@ -176,6 +177,8 @@ export default function MockupQueuePage() {
   const [live, setLive] = useState<LiveMockup[]>([]);
   const [tab, setTab] = useState<'build' | 'out'>('build');
   const [sendingId, setSendingId] = useState<string | null>(null);
+  /** Which card has its send panel open. One at a time — this is a list. */
+  const [sendingOpenId, setSendingOpenId] = useState<string | null>(null);
   const [sendNotice, setSendNotice] = useState<{ id: string; tone: 'ok' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -201,11 +204,23 @@ export default function MockupQueuePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sendMockup = async (m: LiveMockup) => {
+  /**
+   * The same send the lead page does, from the screen you are already on.
+   *
+   * `/send-mockup` rather than the per-version route: it sends the *folder*,
+   * which is the one link that may go to a client, and it takes an address to
+   * send it to instead. Two screens sending two different things under one
+   * label is how a password-protected preview reached somebody.
+   */
+  const sendMockup = async (m: LiveMockup, email?: string) => {
     setSendingId(m.id);
     setSendNotice(null);
     try {
-      const res = await fetch(`/api/admin/leads/${m.lead.id}/mockups/${m.id}/send`, { method: 'POST' });
+      const res = await fetch(`/api/admin/leads/${m.lead.id}/send-mockup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(email ? { email } : {}),
+      });
       const data = await res.json();
       if (!res.ok) {
         setSendNotice({ id: m.id, tone: 'error', text: data.error || 'Could not send it.' });
@@ -215,9 +230,10 @@ export default function MockupQueuePage() {
         id: m.id,
         tone: data.sent ? 'ok' : 'error',
         text: data.sent
-          ? 'Sent — you will see it here when they open it.'
+          ? `Sent to ${data.sentTo}${data.emailUpdated ? ' — that is this lead’s address from now on' : ''}. You will see here when they open it.`
           : `Link is ready but the email did not send${data.reason ? ` — ${data.reason}` : ''}. Copy it from the lead and send it by hand.`,
       });
+      if (data.sent) setSendingOpenId(null);
       await load();
     } catch {
       setSendNotice({ id: m.id, tone: 'error', text: 'Could not reach the server — try again.' });
@@ -330,7 +346,9 @@ export default function MockupQueuePage() {
                   {m.responseNote && (
                     <p className="mt-2 text-xs italic text-white/60">&ldquo;{m.responseNote}&rdquo;</p>
                   )}
-                  {sendNotice?.id === m.id && (
+                  {/* Only when the panel is closed, which is where the same
+                      notice renders while it is open. */}
+                  {sendNotice?.id === m.id && sendingOpenId !== m.id && (
                     <p
                       className={`mt-1.5 text-xs ${
                         sendNotice.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'
@@ -352,22 +370,61 @@ export default function MockupQueuePage() {
                   >
                     Open
                   </a>
-                  {/* Sendable from here, because this is the screen you are
-                      on when you finish building one. Bouncing out to the
-                      lead page to press a second button is how a built
-                      mockup sits unsent for three days. */}
-                  {(m.status === 'draft' || m.expired) && (
-                    <button
-                      type="button"
-                      onClick={() => sendMockup(m)}
-                      disabled={sendingId === m.id}
-                      className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
-                    >
-                      {sendingId === m.id ? 'Sending…' : m.expired ? 'Re-send' : 'Send to client'}
-                    </button>
-                  )}
+                  {/* Sendable from here whatever state it is in, because this
+                      is the screen you are on when you finish building one —
+                      and the screen you come back to when a client says they
+                      never got it.
+
+                      It used to appear only on an unsent or expired mockup,
+                      which meant the two cases that most need it — "sent, not
+                      opened" and "sent to the wrong inbox" — had no button at
+                      all, and the only way to send again was the lead page.
+                      "Never opened" is precisely when somebody wants to try
+                      the owner's own address. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSendNotice(null);
+                      setSendingOpenId(sendingOpenId === m.id ? null : m.id);
+                    }}
+                    aria-expanded={sendingOpenId === m.id}
+                    className={
+                      m.status === 'draft' || m.expired
+                        ? 'rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90 transition-opacity'
+                        : 'rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/5 transition-colors'
+                    }
+                  >
+                    {sendingOpenId === m.id
+                      ? 'Cancel'
+                      : m.status === 'draft'
+                        ? 'Send to client'
+                        : 'Send again'}
+                  </button>
                 </div>
               </div>
+
+              {/* Opened rather than sent on the first click, deliberately.
+                  Re-mailing a client is not undoable, and the address is the
+                  decision worth making here — the panel is where a rep uses
+                  the owner's own number-off-a-call address instead of the
+                  info@ this probably went to the first time. */}
+              {sendingOpenId === m.id && (
+                <div className="mt-3">
+                  <SendMockupPanel
+                    recipientName={m.lead.contactName}
+                    company={m.lead.company}
+                    emailOnFile={m.lead.email}
+                    sending={sendingId === m.id}
+                    notice={
+                      sendNotice?.id === m.id
+                        ? { tone: sendNotice.tone === 'ok' ? 'ok' : 'warn', text: sendNotice.text }
+                        : null
+                    }
+                    onSend={(email) => sendMockup(m, email)}
+                    resend={m.status !== 'draft'}
+                  />
+                </div>
+              )}
 
               {/* Both links, on the page named after them. Managing them only
                   from the lead detail meant opening a second screen to check
