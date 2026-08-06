@@ -6,6 +6,8 @@ import { sendAsUser } from '@/lib/mailer';
 import { escapeHtml } from '@/lib/html';
 import { COMPANY_EMAIL, COMPANY_NAME, COMPANY_WEBSITE } from '@/lib/company';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
+import { buildSalesNote, parseProblems, recommendedWork, toOptions } from '@/lib/contact-enquiry';
+import type { PainPointKey } from '@/lib/leads';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
   FIELD_ERRORS,
@@ -150,7 +152,8 @@ interface RecordedEnquiry {
  */
 async function recordEnquiry(
   enquiry: Enquiry,
-  assignToId: string | null
+  assignToId: string | null,
+  problems: PainPointKey[]
 ): Promise<RecordedEnquiry> {
   const detail = [
     `Service requested: ${SERVICE_LABELS[enquiry.service]}`,
@@ -163,7 +166,7 @@ async function recordEnquiry(
 
   const existing = await prisma.lead.findFirst({
     where: { email: enquiry.email },
-    select: { id: true },
+    select: { id: true, painPoints: true },
   });
 
   if (existing) {
@@ -177,14 +180,22 @@ async function recordEnquiry(
     // They came to us — the strongest buying signal there is, and the sales
     // views sort on it. Touch updatedAt so this lead surfaces to the top.
     // Assignment is left alone: whoever already owns this lead keeps it.
+    /*
+     * Merged, never replaced. A returning enquirer's row is sales-owned by
+     * now — somebody may have researched it — so new ticks are added to what
+     * is there and everything else rides in on the activity note above.
+     */
+    const merged = [
+      ...new Set([...(existing.painPoints ?? '').split(',').filter(Boolean), ...problems]),
+    ];
     await prisma.lead.update({
       where: { id: existing.id },
-      data: { replyReceivedAt: new Date() },
+      data: { replyReceivedAt: new Date(), painPoints: merged.join(',') },
     });
     return { leadId: existing.id, returning: true };
   }
 
-  const lead = await prisma.lead.create({
+  const created = await prisma.lead.create({
     data: {
       // `company` is required on Lead but optional on the form; their name is
       // a better placeholder than an empty string in a list of businesses.
@@ -192,6 +203,22 @@ async function recordEnquiry(
       contactName: enquiry.name,
       email: enquiry.email,
       phone: enquiry.phone || null,
+      /*
+       * The brief, written by the person it is about.
+       *
+       * These are the same keys the research CSV imports and the same ones
+       * `PAIN_POINT_BRIEFS` prices against, so storing them here is the whole
+       * feature: the lead page stops saying "Nothing to brief you on yet" and
+       * the recommended work is already chosen. Nothing is inferred — every
+       * key is a box they ticked themselves.
+       */
+      painPoints: problems.join(','),
+      salesNote: buildSalesNote(problems, enquiry.message) || null,
+      // They answered these on the form, so they are answers, not guesses.
+      qualBudget: enquiry.budget ? `Said ${BUDGET_LABELS[enquiry.budget]} on the enquiry form.` : null,
+      qualTiming: enquiry.timeline
+        ? `Said ${TIMELINE_LABELS[enquiry.timeline]} on the enquiry form.`
+        : null,
       // The floor of their stated bracket — sorts the pipeline honestly
       // without inventing a number they never gave. (On a repeat enquiry the
       // existing row is sales-owned; the new figures ride in on the activity
@@ -208,7 +235,24 @@ async function recordEnquiry(
     select: { id: true },
   });
 
-  return { leadId: lead.id, returning: false };
+  /*
+   * A new lead gets a timeline entry too.
+   *
+   * Only returning enquirers used to get one, so the newest and most
+   * actionable leads in the system opened on an empty Timeline — the tab
+   * that is supposed to answer "what has happened with these people".
+   */
+  await prisma.leadActivity
+    .create({
+      data: {
+        leadId: created.id,
+        type: 'note',
+        content: `Enquiry from bothmade.studio\n\n${detail}`,
+      },
+    })
+    .catch((e) => console.error('Inbound enquiry activity not written:', e));
+
+  return { leadId: created.id, returning: false };
 }
 
 export async function POST(request: NextRequest) {
@@ -222,7 +266,7 @@ export async function POST(request: NextRequest) {
     if (limited) return limited;
 
     const body = await request.json();
-    const { name, email, company, phone, message, service, budget, timeline, website } =
+    const { name, email, company, phone, message, problems, service, budget, timeline, website } =
       body ?? {};
 
     // Honeypot: a real person never fills a field they cannot see. Respond 200
@@ -237,13 +281,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Message received.' }, { status: 200 });
     }
 
+    /*
+     * The message is no longer the only way to say something.
+     *
+     * The form now asks what is wrong as tick boxes, so somebody who ticks
+     * three of them and writes nothing has told us considerably more than
+     * somebody who typed "hi, need a website". Requiring prose on top of
+     * that is asking them to repeat themselves — but an enquiry that says
+     * nothing at all is still worth stopping, so one or the other is
+     * required.
+     */
+    const ticked = parseProblems(problems);
+
     if (
       typeof name !== 'string' ||
       typeof email !== 'string' ||
       typeof message !== 'string' ||
       !name.trim() ||
       !email.trim() ||
-      !message.trim()
+      (!message.trim() && ticked.length === 0)
     ) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -273,7 +329,8 @@ export async function POST(request: NextRequest) {
         [!isValidEmail(cleanEmail), FIELD_ERRORS.email],
         [Boolean(rawPhone) && !isValidPhone(rawPhone), FIELD_ERRORS.phone],
         [!isValidCompany(cleanCompany), FIELD_ERRORS.company],
-        [!isValidMessage(cleanMessage), FIELD_ERRORS.message],
+        // Only held to a minimum length when it is the only thing they said.
+        [ticked.length === 0 && !isValidMessage(cleanMessage), FIELD_ERRORS.message],
       ] as [boolean, string][]
     ).find(([failed]) => failed);
 
@@ -301,7 +358,8 @@ export async function POST(request: NextRequest) {
           budget: cleanBudget,
           timeline: cleanTimeline,
         },
-        rep.id
+        rep.id,
+        ticked
       );
     } catch (error) {
       console.error('Failed to record contact enquiry as a lead:', error);
@@ -439,6 +497,56 @@ export async function POST(request: NextRequest) {
      * Falls back to Resend when delegation isn't configured, which still
      * gets the acknowledgement out — it just won't be in Sent.
      */
+    /*
+     * What we would do about what they ticked — named, explained, unpriced.
+     *
+     * The labels come out of the same catalogue the checkout charges from,
+     * and the benefit line is the catalogue's own, so this email cannot
+     * promise something the pricing page does not sell. No figures: a number
+     * before a conversation is a number argued with instead of a problem
+     * discussed, and the point of the reply is to get the conversation.
+     *
+     * Each line carries its own plain-English gloss, because "CRM & Lead
+     * Capture Setup" means nothing to a plumber and a list of jargon is a
+     * list nobody reads.
+     */
+    const { needs, worthRaising } = recommendedWork(ticked);
+    const options = toOptions([...needs, ...worthRaising]).slice(0, 6);
+    const optionsHtml =
+      options.length === 0
+        ? ''
+        : `<p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">
+             From what you ticked, this is what we would look at
+           </p>
+           <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; margin:0 0 22px;">
+             ${options
+               .map(
+                 (option) => `<tr>
+                   <td style="padding:0 0 16px;">
+                     <p style="margin:0 0 3px; color:#fff; font-weight:600; font-size:14px;">${escapeHtml(
+                       option.label
+                     )}</p>
+                     <p style="margin:0 0 3px; color:rgba(255,255,255,0.72); font-size:13px; line-height:1.55;">${escapeHtml(
+                       option.benefit
+                     )}</p>
+                     ${
+                       option.explain
+                         ? `<p style="margin:0; color:rgba(255,255,255,0.42); font-size:12px; line-height:1.55;">${escapeHtml(
+                             option.explain
+                           )}</p>`
+                         : ''
+                     }
+                   </td>
+                 </tr>`
+               )
+               .join('')}
+           </table>
+           <p style="margin:0 0 20px; color:rgba(255,255,255,0.45); font-size:12.5px; line-height:1.6;">
+             No prices here on purpose — what any of it costs depends on what you
+             actually need, and that is a five-minute conversation rather than a
+             number guessed at from a form.
+           </p>`;
+
     const ack = await sendAsUser(
       {
         name: COMPANY_NAME,
@@ -510,9 +618,13 @@ export async function POST(request: NextRequest) {
                }
              </table>
 
-             <p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">What you wrote</p>
-             <p style="margin:0 0 20px; padding:0 0 0 14px; border-left:2px solid rgba(255,255,255,0.18); white-space:pre-wrap;">${safe.message}</p>
-
+             ${
+               cleanMessage
+                 ? `<p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">What you wrote</p>
+                    <p style="margin:0 0 20px; padding:0 0 0 14px; border-left:2px solid rgba(255,255,255,0.18); white-space:pre-wrap;">${safe.message}</p>`
+                 : ''
+             }
+             ${optionsHtml}
              <p style="margin:0;">
                ${rep?.name ? `${escapeHtml(rep.name)} will read this and reply` : "We'll reply"}
                within 24 hours — usually sooner. Reply to this email if you want to add

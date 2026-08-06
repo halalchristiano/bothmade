@@ -2,6 +2,8 @@
 
 import { motion } from 'framer-motion';
 import { useState, useRef, FormEvent } from 'react';
+import { ENQUIRY_PROBLEMS } from '@/lib/contact-enquiry';
+import type { PainPointKey } from '@/lib/leads';
 import { track } from '@vercel/analytics';
 import { COUNTRIES, DEFAULT_COUNTRY, countryByIso2 } from '@/lib/country-codes';
 import { trackEvent } from '@/lib/analytics';
@@ -147,6 +149,17 @@ const EMPTY: FormState = {
 
 export function ContactForm() {
   const [formData, setFormData] = useState<FormState>(EMPTY);
+  /**
+   * What is wrong with what they have today.
+   *
+   * Tick boxes rather than a paragraph, because these are the exact keys the
+   * brief, the recommendation engine and the estimate all already read — so
+   * an enquiry answered here arrives with the brief written instead of
+   * landing as prose somebody has to re-type into the same boxes later.
+   */
+  const [problems, setProblems] = useState<PainPointKey[]>([]);
+  const toggleProblem = (key: PainPointKey) =>
+    setProblems((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -231,6 +244,7 @@ export function ContactForm() {
           phone: fullPhone(formData),
           company: formData.company,
           message: formData.message,
+          problems,
           service: formData.service,
           budget: formData.budget,
           timeline: formData.timeline,
@@ -454,16 +468,50 @@ export function ContactForm() {
         <FieldError id="contact-phone-error" message={fieldErrors.phone} />
       </div>
 
+      {/* What is wrong with what they have today.
+          Tick boxes rather than a paragraph: these are the exact keys the
+          brief, the recommendation engine and the estimate read, so an
+          enquiry answered here arrives already briefed. Optional — somebody
+          who only wants to say hello should not be made to audit themselves
+          first. */}
+      <fieldset className="border-0 p-0 m-0">
+        <legend className="block text-sm text-black/50 mb-4">
+          What is not working right now? Tick anything that sounds like you.
+        </legend>
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+          {ENQUIRY_PROBLEMS.map((problem) => {
+            const checked = problems.includes(problem.key);
+            return (
+              <label
+                key={problem.key}
+                className={`flex items-start gap-3 py-2.5 cursor-pointer group transition-colors ${
+                  checked ? 'text-black' : 'text-black/60 hover:text-black/85'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  name="problems"
+                  value={problem.key}
+                  checked={checked}
+                  onChange={() => toggleProblem(problem.key)}
+                  className="mt-1 h-4 w-4 shrink-0 accent-black cursor-pointer"
+                />
+                <span className="text-base leading-snug">{problem.ask}</span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
       <div>
         <textarea
           name="message"
-          aria-label="Tell us about the project"
-          placeholder="Tell us about the project"
+          aria-label="Anything else we should know?"
+          placeholder="Anything else we should know? (optional)"
           value={formData.message}
           onChange={handleChange}
           onBlur={handleBlur}
-          required
-          rows={4}
+          rows={3}
           maxLength={FIELD_LIMITS.message}
           aria-invalid={Boolean(fieldErrors.message)}
           aria-describedby={fieldErrors.message ? 'contact-message-error' : undefined}

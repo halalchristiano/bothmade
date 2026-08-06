@@ -30,7 +30,7 @@ const email = () => screen.getByLabelText('Your email address');
 const phone = () => screen.getByLabelText('Phone (optional)');
 const country = () => screen.getByLabelText('Country dial code');
 const company = () => screen.getByLabelText('Company (optional)');
-const message = () => screen.getByLabelText('Tell us about the project');
+const message = () => screen.getByLabelText('Anything else we should know?');
 const send = () => screen.getByRole('button', { name: 'Send' });
 
 /** Fills every required field with something valid. Company is the only one it skips. */
@@ -381,6 +381,10 @@ describe('a valid submission', () => {
         phone: '+1 (555) 000-0000',
         company: 'Random',
         message: 'I want an app built.',
+        // The tick boxes, empty because this submission ticked none. Sent
+        // regardless, so the route never has to distinguish "none" from
+        // "an older form that did not ask".
+        problems: [],
         service: 'web',
         budget: '',
         timeline: '',
