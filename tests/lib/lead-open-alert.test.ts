@@ -14,13 +14,13 @@ const prisma = {
   leadActivity: { create: vi.fn(async () => ({})) },
   user: { findFirst: vi.fn(async () => ({ id: 'user_1' })) },
 };
-const postSystemMessage = vi.fn(async () => {});
-const sendEmail = vi.fn(async () => true);
+const postSystemMessage = vi.fn(async (_input: unknown) => {});
+const sendEmail = vi.fn(async (_input: unknown) => true);
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
-vi.mock('@/lib/team-chat', () => ({ postSystemMessage: (...a: unknown[]) => postSystemMessage(...a) }));
+vi.mock('@/lib/team-chat', () => ({ postSystemMessage: (input: unknown) => postSystemMessage(input) }));
 vi.mock('@/lib/email', () => ({
-  sendEmail: (...a: unknown[]) => sendEmail(...a),
+  sendEmail: (input: unknown) => sendEmail(input),
   renderShell: (opts: { bodyHtml: string }) => `<html>${opts.bodyHtml}</html>`,
 }));
 vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.studio' }));
@@ -58,7 +58,7 @@ describe('the alert', () => {
     const result = await alertOnFirstRealOpen('lead_1');
 
     expect(result.sent).toBe(true);
-    const mail = sendEmail.mock.calls[0][0] as { to: string; subject: string; html: string };
+    const mail = sendEmail.mock.calls[0][0] as unknown as { to: string; subject: string; html: string };
     expect(mail.to).toBe('evan@bothmade.studio');
     expect(mail.subject).toMatch(/Ridgeline Roofing just opened/i);
     expect(mail.html).toContain('2 times');
@@ -71,7 +71,10 @@ describe('the alert', () => {
 
     await alertOnFirstRealOpen('lead_1');
 
-    const posted = postSystemMessage.mock.calls[0][0] as { content: string; urgent: boolean };
+    const posted = postSystemMessage.mock.calls[0][0] as unknown as {
+      content: string;
+      urgent: boolean;
+    };
     expect(posted.urgent).toBe(true);
     expect(posted.content).toContain('Ridgeline Roofing');
   });
@@ -134,7 +137,9 @@ describe('the alert', () => {
 
     await alertOnFirstRealOpen('lead_1');
 
-    const claim = prisma.lead.updateMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    const claim = prisma.lead.updateMany.mock.calls[0][0] as unknown as {
+      where: Record<string, unknown>;
+    };
     expect(claim.where).toMatchObject({ id: 'lead_1', coldEmailOpenNotifiedAt: null });
   });
 
