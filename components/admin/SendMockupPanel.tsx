@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Mail, Send } from 'lucide-react';
 import { isValidEmail } from '@/lib/validation';
+import { MOCKUP_KINDS, type MockupKind } from '@/lib/mockup-kinds';
 
 /**
  * Send the folder, and decide where it goes.
@@ -40,13 +41,23 @@ export function SendMockupPanel({
   emailOnFile: string | null;
   sending: boolean;
   notice: { tone: 'ok' | 'warn'; text: string } | null;
-  onSend: (email?: string) => void;
+  onSend: (email?: string, kind?: MockupKind) => void;
   resend?: boolean;
 }) {
   // Opens by itself when there is no address at all, because then it is not
   // an override — it is the only way this send happens.
   const [overriding, setOverriding] = useState(!emailOnFile);
   const [email, setEmail] = useState('');
+  /*
+   * What was actually made.
+   *
+   * The standard email says the mockup is "a working preview, not a picture
+   * of one". Once that was untrue, so the send button was correctly not
+   * pressed and the whole tracked path was abandoned for one client. A claim
+   * the email cannot always make belongs here as a choice rather than as a
+   * reason to stop using the send.
+   */
+  const [kind, setKind] = useState<MockupKind>('preview');
 
   const typed = email.trim();
   const invalid = typed.length > 0 && !isValidEmail(typed);
@@ -106,7 +117,7 @@ export function SendMockupPanel({
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !invalid && typed && onSend(typed)}
+                onKeyDown={(e) => e.key === 'Enter' && !invalid && typed && onSend(typed, kind)}
                 placeholder="tony@monogramcustomhomes.com"
                 className="w-full bg-transparent text-xs text-white placeholder:text-white/25 focus:outline-none"
               />
@@ -121,8 +132,27 @@ export function SendMockupPanel({
         )}
       </div>
 
+      {/* What it is, which decides what the email is allowed to say. */}
+      <div className="mb-3 border-t border-white/10 pt-3">
+        <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/40">What are you sending?</p>
+        {MOCKUP_KINDS.map((option) => (
+          <label key={option.value} className="flex cursor-pointer items-start gap-2.5 py-1 text-xs">
+            <input
+              type="radio"
+              checked={kind === option.value}
+              onChange={() => setKind(option.value)}
+              className="mt-0.5 accent-purple-400"
+            />
+            <span>
+              <span className="text-white/80">{option.label}</span>
+              <span className="block text-white/35">{option.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+
       <button
-        onClick={() => onSend(overriding ? typed : undefined)}
+        onClick={() => onSend(overriding ? typed : undefined, kind)}
         disabled={sending || !target || invalid}
         className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
       >

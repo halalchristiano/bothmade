@@ -30,6 +30,7 @@ import { EmailComposer } from '@/components/admin/EmailComposer';
 import { LeadMockupsPanel } from '@/components/admin/MockupAttachments';
 import { MockupLinkButton, MockupLinkSlot } from '@/components/admin/MockupLinkSlot';
 import { SendMockupPanel } from '@/components/admin/SendMockupPanel';
+import type { MockupKind } from '@/lib/mockup-kinds';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 import { DealTimeline } from '@/components/admin/lead/DealTimeline';
@@ -946,14 +947,14 @@ export default function LeadDetailPage() {
    * send the preview build — the route refuses, because that link is behind
    * a Vercel password and the client would hit a wall.
    */
-  const handleSendMockup = async (email?: string) => {
+  const handleSendMockup = async (email?: string, kind?: MockupKind) => {
     setSendingMockup(true);
     setMockupSendNotice(null);
     try {
       const res = await fetch(`/api/admin/leads/${leadId}/send-mockup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(email ? { email } : {}),
+        body: JSON.stringify({ ...(email ? { email } : {}), ...(kind ? { kind } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

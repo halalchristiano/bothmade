@@ -117,6 +117,9 @@ async function buildPreview(
           viewUrl: `${resolveSiteUrl()}/m/${existing?.shareToken ?? 'the-tracked-link'}`,
           note: existing?.note ?? '',
           observation: lead.personalizedObservation,
+          // The preview has to make the same claim the send will, or the
+          // whole point of showing it first is lost.
+          kind: payload.kind === 'visuals' ? 'visuals' : 'preview',
         })
       );
     }

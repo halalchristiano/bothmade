@@ -7,6 +7,8 @@ import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/compa
 // here does not create a cycle with lib/mailer.ts, which imports this file.
 import { isDomainDelegationConfigured, sendAsDelegatedUser } from '@/lib/gmail-delegated';
 import { captureForPreview } from '@/lib/email-preview';
+import { type MockupKind } from '@/lib/mockup-kinds';
+export { MOCKUP_KINDS, readMockupKind, type MockupKind } from '@/lib/mockup-kinds';
 import {
   esc,
   escMultiline,
@@ -1333,13 +1335,23 @@ export function mockupEmailBody(opts: {
   company: string;
   note?: string | null;
   observation?: string | null;
+  kind?: MockupKind;
 }): string {
   const note = opts.note?.trim();
   const observation = opts.observation?.trim();
+  const visuals = opts.kind === 'visuals';
 
   return `
     <p>Hi ${esc(opts.contactName) || 'there'},</p>
-    <p>We've built something for ${esc(opts.company)} — a working preview, not a picture of one. Have a click around.</p>
+    <p>${
+      visuals
+        ? `We've designed something for ${esc(
+            opts.company
+          )} — how it would look, laid out properly. Have a proper look through.`
+        : `We've built something for ${esc(
+            opts.company
+          )} — a working preview, not a picture of one. Have a click around.`
+    }</p>
     ${
       observation
         ? `<p style="color:#fff; font-weight:600;">What prompted it: ${escMultiline(observation)}</p>`
@@ -1433,18 +1445,26 @@ export async function sendMockupEmail(opts: {
    * so a prospect who has heard from us before hears something consistent.
    */
   observation?: string | null;
+  /** Whether this is a clickable build or designs to look at. */
+  kind?: MockupKind;
 }): Promise<SendResult> {
   const { toEmail, contactName, company, viewUrl } = opts;
   const bodyHtml = mockupEmailBody(opts);
+  const visuals = opts.kind === 'visuals';
 
   return sendEmailDetailed({
     to: toEmail,
-    subject: `We built something for ${company} — have a look`,
+    // The subject and the button follow the same fact as the body. An email
+    // headed "we built something" over a set of images is the same wrong
+    // claim in a different place.
+    subject: visuals
+      ? `We've designed something for ${company} — have a look`
+      : `We built something for ${company} — have a look`,
     html: renderShell({
-      eyebrow: 'Your mockup',
+      eyebrow: visuals ? 'Your designs' : 'Your mockup',
       title: `${company} — a first look`,
       bodyHtml,
-      ctaLabel: 'Open the mockup',
+      ctaLabel: visuals ? 'See the designs' : 'Open the mockup',
       ctaUrl: viewUrl,
     }),
   });

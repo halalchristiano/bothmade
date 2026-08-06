@@ -30,7 +30,10 @@ describe('SendMockupPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /send mockup to client/i }));
 
     // No argument: the route uses whatever is on the lead.
-    expect(onSend).toHaveBeenCalledWith(undefined);
+    // The second argument says what was made, which decides what the
+    // email may claim. "A working preview" is the default and the case
+    // the standard wording was written for.
+    expect(onSend).toHaveBeenCalledWith(undefined, 'preview');
   });
 
   it('sends to the address typed instead, when there is a better one', async () => {
@@ -41,7 +44,7 @@ describe('SendMockupPanel', () => {
     await userEvent.type(screen.getByPlaceholderText(/tony@/i), 'tony@monogramcustomhomes.com');
     await userEvent.click(screen.getByRole('button', { name: /send mockup to client/i }));
 
-    expect(onSend).toHaveBeenCalledWith('tony@monogramcustomhomes.com');
+    expect(onSend).toHaveBeenCalledWith('tony@monogramcustomhomes.com', 'preview');
   });
 
   /**
@@ -88,4 +91,30 @@ describe('SendMockupPanel', () => {
 
     expect(screen.getByRole('button', { name: /sending/i })).toBeDisabled();
   });
+});
+
+/**
+ * The one thing the standard email cannot always say.
+ *
+ * "A working preview, not a picture of one" was untrue once, so the send
+ * button was correctly not pressed and the whole tracked path was abandoned
+ * for that client. The claim is a choice now, made here, before sending.
+ */
+it('lets the sender say it is designs rather than a working build', async () => {
+  const onSend = vi.fn();
+  render(
+    <SendMockupPanel
+      recipientName="Dana Cole"
+      company="Havis"
+      emailOnFile="dana@havis.example"
+      sending={false}
+      notice={null}
+      onSend={onSend}
+    />
+  );
+
+  await userEvent.click(screen.getByRole('radio', { name: /Designs to look at/i }));
+  await userEvent.click(screen.getByRole('button', { name: /Send mockup to client/i }));
+
+  expect(onSend).toHaveBeenCalledWith(undefined, 'visuals');
 });

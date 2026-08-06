@@ -287,3 +287,35 @@ describe('the rest of the chain', () => {
     }
   });
 });
+
+/**
+ * The server's email stack must not follow a type into the browser.
+ *
+ * lib/email.ts pulls in Resend, the Gmail transports and node:async_hooks. A
+ * client component that imports so much as a type name from it drags all of
+ * that into the browser bundle, and Turbopack fails the build with two dozen
+ * errors from inside google-auth-library — none of which name the import that
+ * caused them. That happened, and the fix was a dependency-free module both
+ * sides can share.
+ */
+describe('what the browser is allowed to import', () => {
+  it('keeps lib/email out of every client component', async () => {
+    const { execSync } = await import('node:child_process');
+    const files = execSync(
+      "grep -rl \"^'use client'\" app components --include=*.tsx --include=*.ts || true",
+      { encoding: 'utf8' }
+    )
+      .split('\n')
+      .filter(Boolean);
+
+    expect(files.length).toBeGreaterThan(10);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      if (/from ['"]@\/lib\/email['"]/.test(source)) offenders.push(file);
+    }
+
+    expect(offenders, 'these would drag Resend and node:async_hooks into the browser').toEqual([]);
+  });
+});

@@ -10,6 +10,7 @@ import { formatCents } from '@/lib/pricing';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
 import { MockupLinkSlot } from '@/components/admin/MockupLinkSlot';
 import { SendMockupPanel } from '@/components/admin/SendMockupPanel';
+import type { MockupKind } from '@/lib/mockup-kinds';
 
 interface QueueRow {
   id: string;
@@ -221,14 +222,14 @@ export default function MockupQueuePage() {
    * send it to instead. Two screens sending two different things under one
    * label is how a password-protected preview reached somebody.
    */
-  const sendMockup = async (m: LiveMockup, email?: string) => {
+  const sendMockup = async (m: LiveMockup, email?: string, kind?: MockupKind) => {
     setSendingId(m.id);
     setSendNotice(null);
     try {
       const res = await fetch(`/api/admin/leads/${m.lead.id}/send-mockup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(email ? { email } : {}),
+        body: JSON.stringify({ ...(email ? { email } : {}), ...(kind ? { kind } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -509,7 +510,7 @@ export default function MockupQueuePage() {
                         ? { tone: sendNotice.tone === 'ok' ? 'ok' : 'warn', text: sendNotice.text }
                         : null
                     }
-                    onSend={(email) => sendMockup(m, email)}
+                    onSend={(email, kind) => sendMockup(m, email, kind)}
                     resend={m.status !== 'draft'}
                   />
                 </div>

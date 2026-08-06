@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isFurtherAlong } from '@/lib/leads';
 import { sendMockupEmail } from '@/lib/email';
+import { readMockupKind } from '@/lib/mockup-kinds';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { isValidEmail } from '@/lib/validation';
 import {
@@ -52,6 +53,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
      */
     const body = await request.json().catch(() => ({}));
     const override = typeof body?.email === 'string' ? body.email.trim() : '';
+    // What was made, which decides what the email is allowed to claim. Only
+    // the two values the panel offers; anything else falls back to the usual
+    // case rather than putting an unrecognised word in front of a client.
+    const kind = readMockupKind(body?.kind);
     if (override && !isValidEmail(override)) {
       return NextResponse.json({ error: `"${override}" is not an email address.` }, { status: 400 });
     }
@@ -135,6 +140,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       viewUrl,
       note: existing?.note ?? '',
       observation: lead.personalizedObservation,
+      kind,
     });
 
     /*

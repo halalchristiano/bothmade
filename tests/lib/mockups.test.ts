@@ -465,3 +465,73 @@ describe('a mockup sent by hand', () => {
     ]);
   });
 });
+
+/**
+ * What the mockup email is allowed to claim.
+ *
+ * The standard wording says the mockup is "a working preview, not a picture
+ * of one". True almost every time, and once it was not — so the send button
+ * was correctly not pressed, the client got a hand-written email, and the
+ * lead sat on the build queue as outstanding work forever. A claim the email
+ * cannot always make has to be a choice, not a reason to abandon the tracked
+ * send.
+ */
+describe('what the mockup email says it is', () => {
+  it('promises a clickable build only when that is what was made', async () => {
+    const { mockupEmailBody } = await import('@/lib/email');
+    const base = { contactName: 'Dana Cole', company: 'Havis' };
+
+    const preview = mockupEmailBody({ ...base, kind: 'preview' });
+    expect(preview).toContain('not a picture of one');
+    expect(preview).toContain('click around');
+  });
+
+  /** The exact sentence that was wrong for Havis must be absent. */
+  it('claims nothing clickable when it is designs to look at', async () => {
+    const { mockupEmailBody } = await import('@/lib/email');
+
+    const visuals = mockupEmailBody({ contactName: 'Dana Cole', company: 'Havis', kind: 'visuals' });
+
+    expect(visuals).not.toContain('not a picture of one');
+    expect(visuals).not.toContain('working preview');
+    expect(visuals).not.toMatch(/click around/i);
+    expect(visuals).toMatch(/designed something/i);
+  });
+
+  /** Left unsaid, it is the usual case — no existing caller changes behaviour. */
+  it('is a working preview unless somebody says otherwise', async () => {
+    const { mockupEmailBody } = await import('@/lib/email');
+
+    expect(mockupEmailBody({ contactName: null, company: 'Havis' })).toContain(
+      'not a picture of one'
+    );
+  });
+
+  /** The subject and the button carry the same claim as the body. */
+  it('does not head an email about designs with "we built something"', async () => {
+    const { sendMockupEmail } = await import('@/lib/email');
+    const { composeOnly } = await import('@/lib/email-preview');
+
+    const [mail] = await composeOnly(() =>
+      sendMockupEmail({
+        toEmail: 'dana@havis.example',
+        contactName: 'Dana Cole',
+        company: 'Havis',
+        viewUrl: 'https://bothmade.studio/m/tok',
+        kind: 'visuals',
+      })
+    );
+
+    expect(mail.subject).not.toMatch(/we built/i);
+    expect(mail.subject).toMatch(/designed/i);
+    expect(mail.html).toContain('See the designs');
+    expect(mail.html).not.toContain('Open the mockup');
+  });
+
+  it('offers both, each saying what it means', async () => {
+    const { MOCKUP_KINDS } = await import('@/lib/mockup-kinds');
+
+    expect(MOCKUP_KINDS.map((k) => k.value)).toEqual(['preview', 'visuals']);
+    for (const kind of MOCKUP_KINDS) expect(kind.hint.length).toBeGreaterThan(20);
+  });
+});
