@@ -21,6 +21,8 @@ interface QueueRow {
   salesNote: string | null;
   originalWebsite: string | null;
   currentSiteAssessment: string | null;
+  /** The preview deployment, when a concept already exists. */
+  mockupUrl: string | null;
   customPainPoints: string | null;
   essentialPoints: string | null;
   estimateLowCents: number | null;
@@ -445,10 +447,32 @@ export default function MockupQueuePage() {
               <MockupBrief lead={lead} />
 
               <div className="mt-4 pt-4 border-t border-white/[0.08]">
+                {/* A concept can exist while the deliverable does not. Saying
+                    so is the difference between "start from nothing" and
+                    "assemble the folder from the build that is already up". */}
+                {lead.mockupUrl && (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-white/35">
+                      Concept already up
+                    </span>
+                    <a
+                      href={lead.mockupUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate text-xs text-white/60 hover:text-white/90 transition-colors"
+                    >
+                      {lead.mockupUrl.replace(/^https?:\/\//, '')}
+                    </a>
+                    <span className="text-xs text-amber-300/80">— client folder still needed</span>
+                  </div>
+                )}
+
                 <MockupDeliveryForm
                   leadId={lead.id}
-                  onDelivered={() => setLeads((prev) => prev.filter((l) => l.id !== lead.id))}
-                  placeholder="yourcompany.bothmade.studio"
+                  onDelivered={load}
+                  field="mockupFolderUrl"
+                  submitLabel="Attach folder"
+                  placeholder="drive.google.com/drive/folders/..."
                 />
               </div>
             </div>

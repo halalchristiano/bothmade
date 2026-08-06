@@ -20,11 +20,24 @@ export async function GET() {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
-    // Either link counts as "design has produced something". Checking only
-    // the preview column would keep a lead on the waiting list after the
-    // folder — the thing the client actually gets — had been attached.
+    /*
+     * "Built" means the client folder exists. Nothing else does.
+     *
+     * A preview deployment is not a deliverable — it is a password-protected
+     * subdomain we look at. Counting it as produced work put leads with a
+     * concept and no folder on the Built tab, reading "13 built" when the
+     * brochure and video had not been assembled for any of them. The work
+     * left to do is the folder, so the folder is what decides the column.
+     *
+     * The `mockupUrl` half of the OR catches leads that were never formally
+     * requested but already have a concept standing — those need a folder
+     * too, and previously appeared on neither tab.
+     */
     const leads = await prisma.lead.findMany({
-      where: { mockupRequested: true, mockupUrl: null, mockupFolderUrl: null },
+      where: {
+        mockupFolderUrl: null,
+        OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
+      },
       orderBy: { mockupRequestedAt: 'asc' },
       select: {
         id: true,
@@ -32,6 +45,8 @@ export async function GET() {
         contactName: true,
         mockupRequestedAt: true,
         hotLead: true,
+        // So a row can say "concept exists, folder still needed".
+        mockupUrl: true,
         assignedTo: { select: { name: true } },
         // The brief.
         painPoints: true,
@@ -52,10 +67,16 @@ export async function GET() {
     // whether anyone had opened it was nobody's screen.
     const live = await prisma.leadMockup
       .findMany({
-        // Drafts included deliberately. Attaching a mockup takes the lead off
-        // the build queue, and filtering drafts out of this list too meant a
-        // built-but-unsent mockup appeared on neither tab — it left the page
-        // named after it at the exact moment somebody needed to send it.
+        // Only versions belonging to a lead that has a client folder. A
+        // mockup row created back when the preview link *was* the mockup is
+        // history, not a deliverable — its lead still needs a folder built,
+        // so it belongs on the other tab.
+        //
+        // Drafts are included deliberately: attaching a folder takes the
+        // lead off the build queue, and filtering drafts out here too would
+        // leave a built-but-unsent mockup on neither tab, at the exact
+        // moment somebody needed to send it.
+        where: { lead: { mockupFolderUrl: { not: null } } },
         orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
         take: 60,
         include: {

@@ -10,11 +10,15 @@ import { useState } from 'react';
  * nothing when the save failed, and only one cleared the field afterwards.
  */
 
-async function deliverMockup(leadId: string, mockupUrl: string): Promise<boolean> {
+async function deliverMockup(
+  leadId: string,
+  url: string,
+  field: 'mockupUrl' | 'mockupFolderUrl'
+): Promise<boolean> {
   const res = await fetch(`/api/admin/leads/${leadId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mockupUrl }),
+    body: JSON.stringify({ [field]: url }),
   });
   return res.ok;
 }
@@ -31,6 +35,15 @@ export function MockupDeliveryForm({
    */
   submitLabel = 'Attach mockup',
   autoFocus = false,
+  /**
+   * Which link this attaches.
+   *
+   * The build queue attaches the client folder, because the folder is what
+   * takes a lead off that queue — a preview deployment is not a deliverable,
+   * and pasting one here used to look like finishing the job while leaving
+   * the client with nothing to open.
+   */
+  field = 'mockupUrl',
   /** The three call sites sit in different-sized boxes, so the control scales. */
   size = 'md',
 }: {
@@ -39,6 +52,7 @@ export function MockupDeliveryForm({
   placeholder?: string;
   submitLabel?: string;
   autoFocus?: boolean;
+  field?: 'mockupUrl' | 'mockupFolderUrl';
   size?: 'sm' | 'md';
 }) {
   const [url, setUrl] = useState('');
@@ -51,7 +65,7 @@ export function MockupDeliveryForm({
     setSaving(true);
     setError('');
     try {
-      if (!(await deliverMockup(leadId, trimmed))) {
+      if (!(await deliverMockup(leadId, trimmed, field))) {
         setError("Couldn't save that link — try again.");
         return;
       }
