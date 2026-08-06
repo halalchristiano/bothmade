@@ -4,6 +4,12 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
 import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
 import { clientMockupLink, mockupInclude, normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
+import { findDesigner } from '@/lib/notify';
+import { mockupRequestEmail } from '@/lib/email';
+import { sendAsUser } from '@/lib/mailer';
+import { decryptSecret } from '@/lib/crypto';
+import { parseSalesPoints } from '@/lib/leads';
+import { resolveSiteUrl } from '@/lib/site-url';
 
 export async function GET(
   request: NextRequest,
@@ -348,6 +354,78 @@ export async function PATCH(
           urgent: true,
         },
       });
+
+      /*
+       * And in an inbox, from the person asking.
+       *
+       * The team message alone reaches whoever has the tab open. Sent as the
+       * requester rather than from the shared address, so it lands with a
+       * name on it and a reply goes back to them rather than into info@ —
+       * the same reasoning as the post-call follow-up.
+       *
+       * Everything after this point is a notification about work that is
+       * already recorded, so a failure is logged and swallowed: the request
+       * itself is saved either way, and 500ing here would tell the rep their
+       * request did not go through when it did.
+       */
+      try {
+        const [designer, requester] = await Promise.all([
+          findDesigner(),
+          prisma.user.findUnique({
+            where: { id: session.userId },
+            select: {
+              name: true,
+              email: true,
+              gmailAddress: true,
+              gmailAppPassword: true,
+              googleRefreshToken: true,
+            },
+          }),
+        ]);
+
+        // Asking yourself for a mockup needs no email about it.
+        if (designer.email && designer.email !== requester?.email) {
+          const mail = mockupRequestEmail({
+            company: lead.company,
+            requestedBy: requester?.name ?? null,
+            leadUrl: `${resolveSiteUrl()}/admin/leads/${leadId}`,
+            currentSite: lead.originalWebsite,
+            assessment: lead.currentSiteAssessment,
+            essentials: parseSalesPoints(lead.essentialPoints).map((p) => p.point),
+            note: lead.salesNote,
+          });
+
+          const result = await sendAsUser(
+            {
+              name: requester?.name ?? null,
+              email: requester?.email ?? null,
+              gmailAddress: requester?.gmailAddress ?? null,
+              gmailAppPassword: requester?.gmailAppPassword
+                ? decryptSecret(requester.gmailAppPassword)
+                : null,
+              googleRefreshToken: requester?.googleRefreshToken
+                ? decryptSecret(requester.googleRefreshToken)
+                : null,
+            },
+            { to: designer.email, subject: mail.subject, html: mail.html }
+          );
+
+          await prisma.leadActivity
+            .create({
+              data: {
+                leadId,
+                type: 'email',
+                content: result.ok
+                  ? `Mockup requested — ${designer.email} told by email.`
+                  : `Mockup requested, but the email to ${designer.email} did not send.`,
+                createdById: session.userId,
+              },
+            })
+            .catch((e) => console.error('Mockup request activity not written:', e));
+        }
+      } catch (e) {
+        console.error('Mockup request email failed after the request was saved:', e);
+      }
     }
     // A delivered link becomes a numbered mockup on the lead (which is also
     // what resolves the urgent request and messages the team). A second link

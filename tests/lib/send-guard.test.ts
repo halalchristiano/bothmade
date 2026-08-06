@@ -230,3 +230,24 @@ describe('the endpoints that only sometimes send', () => {
     expect(sendRouteFor('/api/admin/leads/lead_1/activity', 'POST', {})).toBeNull();
   });
 });
+
+describe('asking for a mockup', () => {
+  const path = '/api/admin/leads/lead_1';
+
+  /**
+   * A mockup request now emails whoever builds them. It shares an endpoint
+   * with every other edit to a lead, so only the request itself stops.
+   */
+  it('stops on the request, and on nothing else that endpoint does', () => {
+    expect(sendRouteFor(path, 'PATCH', { mockupRequested: true })).not.toBeNull();
+
+    expect(sendRouteFor(path, 'PATCH', { mockupFolderUrl: 'https://drive…' })).toBeNull();
+    expect(sendRouteFor(path, 'PATCH', { status: 'qualified' })).toBeNull();
+    expect(sendRouteFor(path, 'PATCH', { mockupRequested: false })).toBeNull();
+  });
+
+  it('is a PATCH — the POST on that path is something else entirely', () => {
+    expect(sendRouteFor(path, 'PATCH')).not.toBeNull();
+    expect(sendRouteFor(path, 'POST')).toBeNull();
+  });
+});

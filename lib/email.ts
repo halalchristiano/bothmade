@@ -1350,6 +1350,72 @@ export function mockupEmailBody(opts: {
   `;
 }
 
+/**
+ * "I need a mockup for this one" — the handoff, in an inbox.
+ *
+ * It used to be an in-app team message and nothing else: fine if the person
+ * who builds mockups happens to have the tab open, invisible if they do not,
+ * and the request sat in a queue nobody had been told about.
+ *
+ * The brief travels with it. Whoever picks this up needs to know what the
+ * mockup has to prove before they open a design tool, and that is already on
+ * the lead — the site being replaced, what is wrong with it, and the exact
+ * promises the rep is selling. A request that says only "mockup please"
+ * costs a conversation that this email can have instead.
+ */
+export function mockupRequestEmail(input: {
+  company: string;
+  requestedBy: string | null;
+  leadUrl: string;
+  currentSite: string | null;
+  assessment: string | null;
+  essentials: string[];
+  note: string | null;
+}): { subject: string; html: string } {
+  const list = input.essentials
+    .slice(0, 8)
+    .map((point) => `<li style="margin:0 0 6px;">${esc(point)}</li>`)
+    .join('');
+
+  return {
+    subject: `Mockup needed — ${input.company}`,
+    html: renderShell({
+      eyebrow: 'Mockup requested',
+      title: input.company,
+      bodyHtml:
+        `<p style="margin:0 0 16px;">${esc(input.requestedBy) || 'Someone'} has asked for a mockup for ${esc(
+          input.company
+        )}.</p>` +
+        (input.currentSite
+          ? `<p style="margin:0 0 12px;"><span style="color:rgba(255,255,255,0.45);">The site it replaces:</span> ${esc(
+              input.currentSite
+            )}</p>`
+          : '') +
+        (input.assessment
+          ? `<p style="margin:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">What is wrong with it now</p>
+             <p style="margin:0 0 16px; padding:0 0 0 14px; border-left:2px solid rgba(255,255,255,0.18); white-space:pre-wrap;">${escMultiline(
+               input.assessment
+             )}</p>`
+          : '') +
+        (list
+          ? `<p style="margin:0 0 6px; color:rgba(255,255,255,0.45); font-size:13px;">What it has to show — this is what is being sold</p>
+             <ul style="margin:0 0 16px; padding-left:18px;">${list}</ul>`
+          : '') +
+        (input.note
+          ? `<p style="margin:0 0 16px;"><span style="color:rgba(255,255,255,0.45);">Note:</span> ${escMultiline(
+              input.note
+            )}</p>`
+          : '') +
+        `<p style="margin:0; font-size:13px; color:rgba(255,255,255,0.5);">Everything else is on the lead. Replying to this reaches ${esc(
+          input.requestedBy
+        ) || 'whoever asked'} directly.</p>`,
+      ctaLabel: 'Open the lead',
+      ctaUrl: input.leadUrl,
+      footerNote: `${COMPANY_NAME} — internal`,
+    }),
+  };
+}
+
 export async function sendMockupEmail(opts: {
   toEmail: string;
   contactName: string | null;

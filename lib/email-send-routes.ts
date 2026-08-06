@@ -59,6 +59,16 @@ export const SEND_ROUTES: SendRouteSpec[] = [
     preview: 'mockup',
   },
   {
+    // Requesting a mockup emails whoever builds them, as the person asking.
+    // The rest of what this endpoint does — saving a link, editing a field —
+    // sends nothing, so only the request itself stops here.
+    match: /^\/api\/admin\/leads\/[^/]+$/,
+    methods: ['PATCH'],
+    when: (body) => body.mockupRequested === true,
+    action: 'Ask for a mockup, and email whoever builds them',
+    preview: 'mockup-request',
+  },
+  {
     match: /^\/api\/admin\/leads\/[^/]+\/follow-up$/,
     action: 'Send the follow-up email',
     preview: 'follow-up',

@@ -49,6 +49,32 @@ export async function findSalesRep(): Promise<SalesRep> {
   return user ?? { id: null, email: salesFallbackEmail(), name: null };
 }
 
+/**
+ * Where a mockup request goes when no `owner` account exists — the person
+ * who actually builds them. Override with DESIGN_EMAIL.
+ */
+function designFallbackEmail(): string {
+  return process.env.DESIGN_EMAIL || 'kiana@bothmade.studio';
+}
+
+/**
+ * Whoever builds the work — the `owner` account (Kiana).
+ *
+ * The mirror of findSalesRep. A mockup request is a handoff from the person
+ * selling to the person making, and until now it produced only an in-app
+ * team message: fine if you have the tab open, invisible if you do not, and
+ * the request sat in a queue nobody had been told about.
+ */
+export async function findDesigner(): Promise<SalesRep> {
+  const user = await prisma.user.findFirst({
+    where: { role: 'owner' },
+    select: { id: true, email: true, name: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return user ?? { id: null, email: designFallbackEmail(), name: null };
+}
+
 /** Same as getAdminEmails() but respects the per-user weekly-digest opt-out. */
 export async function getDigestRecipientEmails(): Promise<string[]> {
   const users = await prisma.user.findMany({ where: { weeklyDigestOptOut: false }, select: { email: true } });

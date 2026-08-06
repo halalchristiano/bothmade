@@ -3,9 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { buildTemplatedEmail } from '@/lib/send-templated-email';
 import { composeOnly, type ComposedEmail } from '@/lib/email-preview';
-import { renderShell, sendMockupEmail } from '@/lib/email';
+import { mockupRequestEmail, renderShell, sendMockupEmail } from '@/lib/email';
 import { escMultiline, escParagraphs } from '@/lib/html';
 import { clientMockupLink } from '@/lib/mockups';
+import { findDesigner } from '@/lib/notify';
+import { parseSalesPoints } from '@/lib/leads';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { sendRouteFor } from '@/lib/email-send-routes';
 
@@ -108,6 +110,27 @@ async function buildPreview(
           observation: lead.personalizedObservation,
         })
       );
+    }
+
+    case 'mockup-request': {
+      const leadId = segmentAfter(path, 'leads');
+      if (!leadId) return [];
+      const [lead, designer, requester] = await Promise.all([
+        prisma.lead.findUnique({ where: { id: leadId } }),
+        findDesigner(),
+        prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+      ]);
+      if (!lead) return [];
+      const mail = mockupRequestEmail({
+        company: lead.company,
+        requestedBy: requester?.name ?? null,
+        leadUrl: `${resolveSiteUrl()}/admin/leads/${leadId}`,
+        currentSite: lead.originalWebsite,
+        assessment: lead.currentSiteAssessment,
+        essentials: parseSalesPoints(lead.essentialPoints).map((p) => p.point),
+        note: lead.salesNote,
+      });
+      return [{ to: [designer.email], subject: mail.subject, html: mail.html }];
     }
 
     case 'follow-up': {
