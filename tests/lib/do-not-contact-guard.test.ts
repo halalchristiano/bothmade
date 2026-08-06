@@ -113,3 +113,69 @@ describe('a lead marked do-not-contact', () => {
     expect(refused.error).toMatch(/do-not-contact/i);
   });
 });
+
+/**
+ * The opposite failure: a lead nobody is allowed to email a second time.
+ *
+ * Sending once set coldEmailSentAt, and the lead page then hid the send button
+ * for good — so the most ordinary follow-up in the job (the first email went to
+ * an info@ nobody reads, or the draft has been rewritten since) had no button
+ * at all, while the same action stayed available for fifty leads at once from
+ * the list. The route never had that restriction and must not grow one.
+ */
+describe('a lead that has already been contacted', () => {
+  const CONTACTED = {
+    ...WILLING,
+    id: 'lead_again',
+    company: 'Ridgeline Roofing',
+    email: 'office@ridgelineroofing.com',
+    status: 'contacted',
+    coldEmailSentAt: new Date('2026-08-01T10:00:00.000Z'),
+    coldEmailOpens: 4,
+    coldEmailOpenedAt: new Date('2026-08-01T10:30:00.000Z'),
+    coldEmailLastOpenedAt: new Date('2026-08-03T09:00:00.000Z'),
+  };
+
+  it('can be sent the cold email again', async () => {
+    prisma.lead.findMany.mockResolvedValue([CONTACTED]);
+
+    const res = await sendColdDrafts(request({ leadIds: [CONTACTED.id] }));
+    const data = await res.json();
+
+    expect(sendAsUser.mock.calls.map((c) => (c[1] as { to: string }).to)).toContain(CONTACTED.email);
+    expect(data.results.find((r: { leadId: string }) => r.leadId === CONTACTED.id).ok).toBe(true);
+  });
+
+  /**
+   * Opens of the previous email are not evidence about this one. Left alone,
+   * a resent lead would sit at the top of Call HQ for something it did last
+   * month.
+   */
+  it('starts the open count again rather than carrying the old one', async () => {
+    prisma.lead.findMany.mockResolvedValue([CONTACTED]);
+
+    await sendColdDrafts(request({ leadIds: [CONTACTED.id] }));
+
+    const written = prisma.lead.update.mock.calls
+      .map((c) => (c as unknown as [{ data: Record<string, unknown> }])[0].data)
+      .find((d) => 'coldEmailSentAt' in d);
+
+    expect(written).toMatchObject({
+      coldEmailOpens: 0,
+      coldEmailOpenedAt: null,
+      coldEmailLastOpenedAt: null,
+    });
+    expect(written?.coldEmailSentAt).toBeInstanceOf(Date);
+  });
+
+  /** Still a hard stop — being contactable again is not being contactable. */
+  it('is still refused when it is also marked do-not-contact', async () => {
+    prisma.lead.findMany.mockResolvedValue([{ ...CONTACTED, doNotContact: true }]);
+
+    const res = await sendColdDrafts(request({ leadIds: [CONTACTED.id] }));
+    const data = await res.json();
+
+    expect(sendAsUser).not.toHaveBeenCalled();
+    expect(data.results[0].reason).toMatch(/do-not-contact/i);
+  });
+});

@@ -103,7 +103,20 @@ function ColdOutreachFlag({ lead }: { lead: LeadRow }) {
       </span>
     );
   }
-  return null;
+  // Already gone. Not nothing — a sent lead can still be sent again, which is
+  // what happens when the first one landed in an info@ inbox nobody reads, and
+  // the row said nothing at all about that being possible.
+  return (
+    <span
+      title={`Cold email sent ${new Date(lead.coldEmailSentAt).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+      })} — select the lead to send it again`}
+      className="inline-flex"
+    >
+      <MailCheck size={13} className="text-white/25" />
+    </span>
+  );
 }
 
 function QuickActions({ lead, onLogged }: { lead: LeadRow; onLogged?: () => void }) {

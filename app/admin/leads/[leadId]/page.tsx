@@ -52,6 +52,7 @@ import {
   Phone,
   Send,
   CheckCircle2,
+  RefreshCw,
   Tag,
   CalendarClock,
   User,
@@ -1023,7 +1024,19 @@ export default function LeadDetailPage() {
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
 
   const handleSendColdDraft = async () => {
-    if (!lead || !confirm(`Send the prepared cold email to ${lead.company} now?`)) return;
+    if (!lead) return;
+    // A second send is a real thing to want — the first one went to a shared
+    // inbox, or the draft has been rewritten since — but it is also the one
+    // mistake that cannot be taken back, so the prompt says when the last one
+    // went rather than asking the same bland question twice.
+    const already = lead.coldEmailSentAt || coldDraftSent;
+    const lastSent = lead.coldEmailSentAt
+      ? new Date(lead.coldEmailSentAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+      : 'today';
+    const question = already
+      ? `A cold email already went to ${lead.company} on ${lastSent}. Send it again to ${lead.email}?`
+      : `Send the prepared cold email to ${lead.company} now?`;
+    if (!confirm(question)) return;
     setSendingColdDraft(true);
     try {
       const res = await fetch('/api/admin/email/send-cold-drafts', {
@@ -1499,17 +1512,41 @@ export default function LeadDetailPage() {
               <Phone size={15} />
             </a>
           )}
-          {lead.email && lead.coldEmailDraft && !lead.coldEmailSentAt && !coldDraftSent && (
-            <button
-              onClick={handleSendColdDraft}
-              disabled={sendingColdDraft}
-              title="Send cold email"
-              aria-label="Send cold email"
-              className="flex items-center justify-center w-9 h-9 rounded-full bg-emerald-400/10 border border-emerald-400/25 text-emerald-300 disabled:opacity-50 hover:bg-emerald-400/20 transition-colors"
-            >
-              <Send size={15} />
-            </button>
-          )}
+          {/*
+            Sending once used to remove this button for good, which made the
+            most ordinary follow-up in the job impossible: the first email went
+            to an info@ nobody reads, or the draft has been rewritten since, and
+            the only way to send again was the composer and a hand-typed email.
+            The bulk send on the leads list never had that restriction, so the
+            same action was available for fifty leads at once and not for one.
+
+            It comes back once a lead is contacted. What changes is the tone —
+            amber rather than green, and a prompt that says when the last one
+            went — because the button's job is now "again", not "yet".
+          */}
+          {lead.email &&
+            lead.coldEmailDraft &&
+            !lead.doNotContact &&
+            lead.status !== 'won' &&
+            lead.status !== 'lost' &&
+            (() => {
+              const already = Boolean(lead.coldEmailSentAt) || coldDraftSent;
+              return (
+                <button
+                  onClick={handleSendColdDraft}
+                  disabled={sendingColdDraft}
+                  title={already ? 'Send the cold email again' : 'Send cold email'}
+                  aria-label={already ? 'Send the cold email again' : 'Send cold email'}
+                  className={`flex items-center justify-center w-9 h-9 rounded-full border disabled:opacity-50 transition-colors ${
+                    already
+                      ? 'bg-amber-400/10 border-amber-400/25 text-amber-300 hover:bg-amber-400/20'
+                      : 'bg-emerald-400/10 border-emerald-400/25 text-emerald-300 hover:bg-emerald-400/20'
+                  }`}
+                >
+                  {already ? <RefreshCw size={15} /> : <Send size={15} />}
+                </button>
+              );
+            })()}
           {(lead.coldEmailSentAt || coldDraftSent) &&
             (() => {
               // "Sent" was all this said, which is the least interesting half
