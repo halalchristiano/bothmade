@@ -4,6 +4,7 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { sendMessageNotificationEmail } from '@/lib/email';
 import { clientWantsEmail } from '@/lib/email-preferences';
+import { sanitizeAttachments } from '@/lib/team-chat';
 
 export async function POST(
   request: NextRequest,
@@ -20,7 +21,11 @@ export async function POST(
     if (denied) return denied;
 
 
-    const { content, attachments = [] } = await request.json();
+    const { content, attachments: rawAttachments = [] } = await request.json();
+    // Filtered rather than trusted: these become an href on the other
+    // party's screen, and a message body is the one place a browser gets to
+    // choose what goes in one.
+    const attachments = sanitizeAttachments(rawAttachments);
     if (!content) {
       return NextResponse.json(
         { error: 'Message content is required' },

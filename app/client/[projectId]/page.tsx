@@ -1,16 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { AttachLink } from '@/components/AttachLink';
+import { AttachmentList } from '@/components/AttachmentCard';
+import { readAttachments, type Attachment } from '@/lib/attachments';
 import { Linkify } from '@/components/Linkify';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
-import { upload } from '@vercel/blob/client';
 import {
   CheckCircle2,
   Circle,
   Download,
-  Paperclip,
   Sparkles,
   ArrowRight,
   ShieldCheck,
@@ -199,14 +200,13 @@ export default function ClientDashboard() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages' | 'onboarding'>('overview');
   const [messageContent, setMessageContent] = useState('');
-  const [fileToAttach, setFileToAttach] = useState<File | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [messageError, setMessageError] = useState('');
   const [payingBalance, setPayingBalance] = useState(false);
   const [payBalanceError, setPayBalanceError] = useState('');
   const [approvingDesign, setApprovingDesign] = useState(false);
   const [approveError, setApproveError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [questions, setQuestions] = useState<
@@ -371,48 +371,36 @@ export default function ClientDashboard() {
     }
   };
 
-  const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    setMessageError('');
-    if (file && file.size > MAX_ATTACHMENT_BYTES) {
-      setMessageError('That file is too large to attach (25MB max) — try a smaller file or a link instead.');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      setFileToAttach(null);
-      return;
-    }
-    setFileToAttach(file);
-  };
-
+  /**
+   * Sending a message, with whatever links go with it.
+   *
+   * There used to be a file picker here that uploaded a single file to our
+   * storage before the message could go. It was the slowest and least
+   * reliable thing on this page — a 25MB file meant the button said
+   * "Sending..." for a minute with no other sign of life, and an upload that
+   * failed took the typed message down with it. Sharing the link to where the
+   * document already lives is faster, stays current when the document
+   * changes, and cannot half-succeed.
+   */
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageContent.trim() && !fileToAttach) return;
+    if (!messageContent.trim() && attachments.length === 0) return;
 
     setSendingMessage(true);
     setMessageError('');
     try {
-      let attachments: Array<{ name: string; url: string }> = [];
-      if (fileToAttach) {
-        const blob = await upload(fileToAttach.name, fileToAttach, {
-          access: 'public',
-          handleUploadUrl: '/api/client/upload',
-          // Scopes the token to this project — the server checks we own it.
-          clientPayload: JSON.stringify({ projectId }),
-        });
-        attachments = [{ name: fileToAttach.name, url: blob.url }];
-      }
-
       const response = await fetch(`/api/projects/${projectId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: messageContent || '(file attached)', attachments }),
+        body: JSON.stringify({
+          content: messageContent.trim() || '(link attached)',
+          attachments,
+        }),
       });
 
       if (response.ok) {
         setMessageContent('');
-        setFileToAttach(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        setAttachments([]);
         loadProject();
       } else {
         const data = await response.json().catch(() => ({}));
@@ -1494,56 +1482,86 @@ export default function ClientDashboard() {
               <p className="text-xs text-white/40">Our team typically replies within one business day</p>
             </div>
 
+            {/* A conversation, laid out like one.
+                Every message used to be the same left-aligned block with a
+                coloured edge, so telling your own words from the studio's
+                meant reading the name above each. Sides and shape do that
+                without anybody having to read anything. */}
             <div
-              className="space-y-4 mb-8 max-h-96 overflow-y-auto"
+              className="mb-8 max-h-[28rem] space-y-5 overflow-y-auto pr-1"
               ref={messagesScrollRef}
             >
               {project.messages.length > 0 ? (
-                project.messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`p-4 rounded-lg border-l-2 ${
-                      message.isFromAdmin
-                        ? 'bg-white/5 border-white/30'
-                        : 'bg-sky-400/10 border-sky-400/50'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <p className="font-semibold text-sm">
-                        {message.isFromAdmin ? message.user?.name || 'Team' : 'You'}
-                      </p>
-                      <p className="text-xs text-white/30">
-                        {new Date(message.createdAt).toLocaleDateString()}{' '}
-                        {new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                      </p>
-                    </div>
-                    <p className="text-white/70 text-sm whitespace-pre-wrap break-words"><Linkify text={message.content} /></p>
-                    {message.attachments && message.attachments !== '[]' && (
-                      <div className="mt-2 space-y-1">
-                        {(() => {
-                          try {
-                            const files = JSON.parse(message.attachments) as Array<{ name: string; url: string }>;
-                            return files.map((f, i) => (
-                              <a
-                                key={i}
-                                href={f.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1.5 text-xs text-sky-300 hover:underline"
-                              >
-                                <Paperclip size={11} /> {f.name}
-                              </a>
-                            ));
-                          } catch {
-                            return null;
-                          }
-                        })()}
+                project.messages.map((message) => {
+                  const fromTeam = message.isFromAdmin;
+                  const files = readAttachments(message.attachments);
+                  return (
+                    <div
+                      key={message.id}
+                      className={`flex flex-col ${fromTeam ? 'items-start' : 'items-end'}`}
+                    >
+                      <div className="mb-1.5 flex items-center gap-2 px-1">
+                        {fromTeam && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-sky-400 to-purple-500 text-[9px] font-bold text-black">
+                            B
+                          </span>
+                        )}
+                        <span className="text-xs font-semibold text-white/70">
+                          {fromTeam ? message.user?.name || 'Bothmade' : 'You'}
+                        </span>
+                        <span className="text-[11px] text-white/25">
+                          {new Date(message.createdAt).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                          {' · '}
+                          {new Date(message.createdAt).toLocaleTimeString([], {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))
+
+                      <div
+                        className={`flex w-full max-w-[85%] flex-col ${
+                          fromTeam ? 'items-start' : 'items-end'
+                        }`}
+                      >
+                        {message.content && message.content !== '(link attached)' && (
+                          <p
+                            className={`inline-block whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                              fromTeam
+                                ? 'rounded-tl-md border border-white/10 bg-white/[0.06] text-white/80'
+                                : 'rounded-tr-md border border-sky-400/25 bg-sky-400/[0.10] text-white/85'
+                            }`}
+                          >
+                            <Linkify text={message.content} />
+                          </p>
+                        )}
+
+                        {/* The link, given the room it deserves. This is how
+                            a design, a contract, or a walkthrough arrives —
+                            it should not look like a footnote. */}
+                        {/* Bounded rather than filling the bubble's width: a
+                            single card stretched the full 85% and floated free
+                            of the message it belonged to. */}
+                        <AttachmentList
+                          attachments={files}
+                          className={`w-full ${files.length > 1 ? 'max-w-2xl' : 'max-w-sm'} ${
+                            message.content && message.content !== '(link attached)' ? 'mt-2.5' : ''
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
-                <p className="text-white/50">No messages yet. Start a conversation with the team!</p>
+                <div className="rounded-xl border border-dashed border-white/12 px-5 py-8 text-center">
+                  <p className="text-sm text-white/50">Nothing here yet.</p>
+                  <p className="mt-1 text-xs text-white/30">
+                    Anything you send lands with the team working on your project.
+                  </p>
+                </div>
               )}
             </div>
 
@@ -1555,16 +1573,18 @@ export default function ClientDashboard() {
                 className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent resize-none transition-colors"
                 rows={4}
               />
-              <div className="flex items-center gap-3">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  onChange={handleFileChange}
-                  className="text-xs text-white/50 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:text-xs"
-                />
+              <AttachLink
+                attachments={attachments}
+                onChange={setAttachments}
+                placeholder="Paste a link — a Google Doc, a Drive folder, anything we should see"
+              />
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] text-white/25">
+                  Share links rather than files — a link stays up to date when you change the document.
+                </p>
                 <motion.button
                   type="submit"
-                  disabled={sendingMessage || (!messageContent.trim() && !fileToAttach)}
+                  disabled={sendingMessage || (!messageContent.trim() && attachments.length === 0)}
                   whileHover={{ scale: 1.02, y: -1 }}
                   whileTap={{ scale: 0.98 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 22 }}

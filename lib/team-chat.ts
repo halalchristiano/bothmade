@@ -10,11 +10,9 @@
 
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { readAttachments, type Attachment } from '@/lib/attachments';
 
-export interface TeamAttachment {
-  name: string;
-  url: string;
-}
+export type TeamAttachment = Attachment;
 
 /**
  * Unread = not sent by me, addressed to me or broadcast, arrived since I
@@ -80,15 +78,15 @@ export async function postSystemMessage(input: {
   });
 }
 
-/** Parse an attachments payload from the client into the stored shape, dropping anything malformed. */
+/**
+ * Parse an attachments payload from the client into the stored shape,
+ * dropping anything malformed.
+ *
+ * One implementation, shared with the project threads, because this is the
+ * function that decides whether a string a browser sent us ends up as an
+ * `href` — and `javascript:` has to be refused in every thread, not the one
+ * whose route happened to have a filter in it.
+ */
 export function sanitizeAttachments(raw: unknown): TeamAttachment[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter(
-      (a): a is { name: unknown; url: unknown } =>
-        typeof a === 'object' && a !== null && 'name' in a && 'url' in a
-    )
-    .map((a) => ({ name: String(a.name).slice(0, 200), url: String(a.url) }))
-    .filter((a) => a.name.length > 0 && /^https?:\/\//.test(a.url))
-    .slice(0, 10);
+  return readAttachments(raw);
 }

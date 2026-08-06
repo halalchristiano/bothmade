@@ -29,9 +29,23 @@ import { SendGuard } from '@/components/admin/SendGuard';
  * same admin now (the owner's call), so the role only labels the account;
  * it no longer gates navigation.
  */
-export const AdminSessionContext = createContext<{ userName: string; userRole: string }>({
+export const AdminSessionContext = createContext<{
+  userName: string;
+  userRole: string;
+  /**
+   * Who is signed in, by id.
+   *
+   * Team chat needs this to know which bubbles are yours, and it was fetching
+   * /api/auth/me a second time to find out — so for the first moment after a
+   * load, and forever if that one request failed, your own messages rendered
+   * on the wrong side of the thread under someone else's name. The layout has
+   * already asked; there is no reason to ask twice.
+   */
+  userId: string;
+}>({
   userName: '',
   userRole: '',
+  userId: '',
 });
 
 export function useAdminSession() {
@@ -402,6 +416,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const reduceMotion = useReducedMotion();
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
+  const [userId, setUserId] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -415,6 +430,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (pathname === '/admin/login') {
       setUserName('');
       setUserRole('');
+      setUserId('');
       return;
     }
     fetch('/api/auth/me')
@@ -423,6 +439,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         if (data?.type === 'user') {
           setUserName(data.user?.name || '');
           setUserRole(data.user?.role || '');
+          setUserId(data.user?.id || '');
         }
       })
       .catch(() => {});
@@ -492,7 +509,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
 
   return (
-    <AdminSessionContext.Provider value={{ userName, userRole }}>
+    <AdminSessionContext.Provider value={{ userName, userRole, userId }}>
       <div className="min-h-screen bg-ink text-white">
         {/* Desktop sidebar — the brand's ground, the brand's mark. */}
         <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-white/[0.08] bg-ink z-40">

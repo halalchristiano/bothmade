@@ -4,6 +4,7 @@ import { requirePrincipal } from '@/lib/middleware';
 import { sendMessageNotificationEmail } from '@/lib/email';
 import { clientWantsEmail } from '@/lib/email-preferences';
 import { notifyAdminsNewClientMessage } from '@/lib/notify';
+import { sanitizeAttachments } from '@/lib/team-chat';
 
 export async function GET(
   request: NextRequest,
@@ -70,7 +71,11 @@ export async function POST(
     if (!session) return response;
 
     const { projectId } = await params;
-    const { content, attachments = [] } = await request.json();
+    const { content, attachments: rawAttachments = [] } = await request.json();
+    // Filtered rather than trusted: these become an href on the other
+    // party's screen, and a message body is the one place a browser gets to
+    // choose what goes in one.
+    const attachments = sanitizeAttachments(rawAttachments);
 
     if (!content) {
       return NextResponse.json(

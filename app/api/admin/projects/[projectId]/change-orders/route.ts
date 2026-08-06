@@ -11,6 +11,7 @@ import {
   type ScheduleRow,
 } from '@/lib/change-orders';
 import { ensureInstalments } from '@/lib/instalments';
+import { changeOrderVerdict, readChangeScale } from '@/lib/change-order-verdict';
 
 /**
  * Draft a Change Order, and list the ones a project already has.
@@ -72,14 +73,39 @@ export async function POST(
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
     const { summary, items, deltaCents, timelineExtensionDays } = parsed.draft;
+    const changeScale = readChangeScale(body?.changeScale);
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, totalPrice: true, status: true },
+      select: {
+        id: true,
+        totalPrice: true,
+        status: true,
+        designPresentedAt: true,
+        designApprovedAt: true,
+        designRevisionsUsed: true,
+      },
     });
     if (!project) {
       return NextResponse.json({ error: 'That project no longer exists.' }, { status: 404 });
     }
+
+    /*
+     * The contract's answer, taken at the moment it is raised.
+     *
+     * Recorded rather than merely shown, because the project keeps moving
+     * through its gates: the same request judged six weeks from now is judged
+     * against a different one. What a dispute asks is what was true on the
+     * day, and the only way to answer that is to have written it down.
+     *
+     * It does not block. A verdict of "included" is the contract saying this
+     * costs nothing, and there are real reasons to raise one anyway — a
+     * revision the client insisted on paying for, a round we have agreed to
+     * treat as non-conformance and want on the record. The panel says so
+     * loudly before anybody gets here; overruling it is a decision a person
+     * is allowed to make, and now one that leaves a trace.
+     */
+    const verdict = changeOrderVerdict(changeScale, project);
 
     const newTotalCents = project.totalPrice + deltaCents;
     if (newTotalCents <= 0) {
@@ -135,6 +161,9 @@ export async function POST(
         newTotalCents,
         timelineExtensionDays,
         status: 'draft',
+        changeScale,
+        verdictRuling: verdict.ruling,
+        verdictStage: verdict.stageLabel,
         scheduleBefore: before.map((r) => ({
           index: r.index,
           label: r.label,
@@ -155,6 +184,7 @@ export async function POST(
       {
         success: true,
         changeOrder: order,
+        verdict,
         // Surfaced rather than buried: a reduction the client has already
         // overpaid is a refund conversation, and the person drafting this
         // needs to know before they send it.

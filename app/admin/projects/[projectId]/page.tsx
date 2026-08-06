@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+// Deliverables are still real file uploads — only chat attachments became links.
 import { upload } from '@vercel/blob/client';
 import { Lock, Mail } from 'lucide-react';
 import { EmailComposer } from '@/components/admin/EmailComposer';
@@ -20,7 +21,9 @@ import { stageMessage } from '@/lib/stage-gates';
 import { deliverableHref } from '@/lib/deliverables';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
-import { Paperclip, X as XIcon } from 'lucide-react';
+import { AttachLink } from '@/components/AttachLink';
+import { AttachmentList } from '@/components/AttachmentCard';
+import { readAttachments, type Attachment } from '@/lib/attachments';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -101,6 +104,7 @@ interface ProjectDetail {
     deemed: boolean;
     round?: number;
     designUrl?: string | null;
+    revisions?: { used: number; included: number; remaining: number };
   };
   contractUrl?: string | null;
 }
@@ -363,28 +367,15 @@ export default function AdminProjectDetailPage() {
     }
   };
 
-  const [messageFiles, setMessageFiles] = useState<{ name: string; url: string }[]>([]);
-  const [messageUploading, setMessageUploading] = useState(false);
-  const messageFileInput = useRef<HTMLInputElement>(null);
-
-  const handleAttachMessageFiles = async (list: FileList | null) => {
-    if (!list || list.length === 0) return;
-    setMessageUploading(true);
-    try {
-      for (const file of Array.from(list).slice(0, 5)) {
-        const blob = await upload(file.name, file, {
-          access: 'public',
-          handleUploadUrl: '/api/admin/team-chat/upload',
-        });
-        setMessageFiles((prev) => [...prev, { name: file.name, url: blob.url }]);
-      }
-    } catch {
-      // The composer stays usable; the missing chip is the signal.
-    } finally {
-      setMessageUploading(false);
-      if (messageFileInput.current) messageFileInput.current.value = '';
-    }
-  };
+  /**
+   * What goes to the client alongside the message.
+   *
+   * Links now, not uploads. Copying a file into our own bucket handed the
+   * client a snapshot of a document that carries on being edited where it
+   * lives, and the upload itself was the part that failed — a thread that
+   * sits on "Uploading…" never sends the message either.
+   */
+  const [messageFiles, setMessageFiles] = useState<Attachment[]>([]);
 
   const handleSendMessage = async () => {
     if (!messageContent.trim() && messageFiles.length === 0) return;
@@ -904,6 +895,14 @@ export default function AdminProjectDetailPage() {
             <ChangeOrderPanel
               projectId={projectId}
               totalPrice={project.totalPrice}
+              // What the contract's answer turns on: which gate the project
+              // has passed, and how much of the revision allowance is left.
+              stage={{
+                status: project.status,
+                designPresentedAt: project.designReview?.presentedAt ?? null,
+                designApprovedAt: project.designReview?.approvedAt ?? null,
+                designRevisionsUsed: project.designReview?.revisions?.used ?? 0,
+              }}
               onApplied={loadProject}
             />
           </div>
@@ -967,28 +966,11 @@ export default function AdminProjectDetailPage() {
                       </p>
                     </div>
                     <p className="text-sm text-white/60 whitespace-pre-wrap break-words"><Linkify text={m.content} /></p>
-                    {m.attachments && m.attachments !== '[]' && (
-                      <div className="mt-2 space-y-1">
-                        {(() => {
-                          try {
-                            const files = JSON.parse(m.attachments) as Array<{ name: string; url: string }>;
-                            return files.map((f, i) => (
-                              <a
-                                key={i}
-                                href={f.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1.5 text-xs text-sky-300 hover:underline"
-                              >
-                                📎 {f.name}
-                              </a>
-                            ));
-                          } catch {
-                            return null;
-                          }
-                        })()}
-                      </div>
-                    )}
+                    <AttachmentList
+                      attachments={readAttachments(m.attachments)}
+                      compact
+                      className="mt-2.5"
+                    />
                   </div>
                 );
               })}
@@ -1011,48 +993,19 @@ export default function AdminProjectDetailPage() {
                 className={`${inputClass} resize-none mb-3`}
                 placeholder="Type a message, or click 'Draft from selections' above..."
               />
-              {messageFiles.length > 0 && (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {messageFiles.map((f, i) => (
-                    <span key={i} className="flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1 text-xs text-white/70">
-                      📎 <span className="max-w-[160px] truncate">{f.name}</span>
-                      <button
-                        onClick={() => setMessageFiles((prev) => prev.filter((_, j) => j !== i))}
-                        aria-label={`Remove ${f.name}`}
-                        className="text-white/40 hover:text-white"
-                      >
-                        <XIcon size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <input
-                  ref={messageFileInput}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => handleAttachMessageFiles(e.target.files)}
-                  aria-label="Attach files to message"
-                />
-                <button
-                  onClick={() => messageFileInput.current?.click()}
-                  disabled={messageUploading}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/15 text-white/60 hover:bg-white/5 hover:text-white disabled:opacity-40"
-                  aria-label="Attach a file"
-                  title="Attach a file — it goes to the client with this message"
-                >
-                  <Paperclip size={15} />
-                </button>
-                <button
-                  onClick={handleSendMessage}
-                  disabled={messageSending || messageUploading || (!messageContent.trim() && messageFiles.length === 0)}
-                  className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-                >
-                  {messageSending ? 'Sending...' : messageUploading ? 'Uploading…' : 'Send Message'}
-                </button>
-              </div>
+              <AttachLink
+                attachments={messageFiles}
+                onChange={setMessageFiles}
+                placeholder="Paste a link — a Figma file, a Google Doc, a Drive folder…"
+                className="mb-3"
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={messageSending || (!messageContent.trim() && messageFiles.length === 0)}
+                className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              >
+                {messageSending ? 'Sending...' : 'Send Message'}
+              </button>
             </div>
           </div>
 

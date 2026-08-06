@@ -13,7 +13,13 @@
  *    storage is metered, and an unbounded token is an unbounded invoice.
  */
 
-/** Attachments a client adds to a project message. */
+/**
+ * Attachments a client used to add to a project message.
+ *
+ * Chat attachments are links now — nothing uploads from a message thread on
+ * either side. This list stays because the deliverables policy below is built
+ * on it, and a deliverable is still a real file the studio hands over.
+ */
 export const CLIENT_ATTACHMENT_CONTENT_TYPES = [
   'image/png',
   'image/jpeg',
@@ -223,17 +229,3 @@ export function checkUpload(
   return { contentType };
 }
 
-/**
- * Reads the `{ projectId }` a client's upload must be scoped to. The Blob
- * client sends this verbatim from the browser, so it is a claim, not a
- * fact — the caller still has to check the session owns that project.
- */
-export function readProjectIdFromPayload(clientPayload: string | null | undefined): string | null {
-  if (!clientPayload) return null;
-  try {
-    const parsed = JSON.parse(clientPayload) as { projectId?: unknown };
-    return typeof parsed.projectId === 'string' && parsed.projectId ? parsed.projectId : null;
-  } catch {
-    return null;
-  }
-}

@@ -154,6 +154,16 @@ interface LiveMockup {
   expired: boolean;
   sendFailedAt: string | null;
   sendFailedReason: string | null;
+  /**
+   * How many versions this lead has behind the one on the card.
+   *
+   * One card per lead now. This tab used to list every version, and a lead
+   * picks them up without anybody deciding to make one — the preview build is
+   * a version, the client folder is a version, a PDF export is a version — so
+   * the same business showed up two and three times with nothing saying why.
+   * The count says it in four characters instead.
+   */
+  versionCount: number;
   lead: {
     id: string;
     company: string;
@@ -399,6 +409,13 @@ export default function MockupQueuePage() {
                     {m.lead.company}
                     <ExternalLink size={11} className="opacity-40" />
                   </Link>
+                  {/* The history, said on the one card rather than shown as
+                      extra copies of the business. */}
+                  {m.versionCount > 1 && (
+                    <span className="ml-2 rounded-md bg-white/[0.07] px-1.5 py-0.5 text-[10px] text-white/40">
+                      {m.versionCount} versions
+                    </span>
+                  )}
                   <p className={`text-xs mt-0.5 ${m.sendFailedAt ? 'text-red-300' : 'text-white/55'}`}>
                     {m.signal}
                   </p>

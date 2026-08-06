@@ -27,17 +27,25 @@ describe('unreadWhere', () => {
 });
 
 describe('sanitizeAttachments', () => {
-  it('keeps well-formed http(s) files and drops everything else', () => {
+  it('keeps well-formed http(s) links and drops everything else', () => {
     const result = sanitizeAttachments([
       { name: 'brief.pdf', url: 'https://blob.example.com/brief.pdf' },
       { name: 'evil', url: 'javascript:alert(1)' },
       { name: 'ftp', url: 'ftp://example.com/x' },
-      { name: '', url: 'https://blob.example.com/unnamed.pdf' },
       'not-an-object',
       { name: 'no-url' },
     ]);
 
     expect(result).toEqual([{ name: 'brief.pdf', url: 'https://blob.example.com/brief.pdf' }]);
+  });
+
+  // Dropping it was the old behaviour and the wrong one: an unnamed link is
+  // still a link somebody meant to share, and losing it silently is worse
+  // than showing it under a name read off its own address.
+  it('names a link that arrived without one rather than discarding it', () => {
+    expect(sanitizeAttachments([{ name: '', url: 'https://blob.example.com/unnamed.pdf' }])).toEqual([
+      { name: 'unnamed.pdf', url: 'https://blob.example.com/unnamed.pdf' },
+    ]);
   });
 
   it('caps volume and name length rather than storing whatever arrives', () => {

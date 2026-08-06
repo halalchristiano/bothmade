@@ -2,19 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { upload } from '@vercel/blob/client';
+import { useRouter } from 'next/navigation';
 import {
   Hash,
   AlertTriangle,
-  Paperclip,
   Send,
   X,
   CheckCircle2,
   RotateCcw,
-  FileText,
+  Link2,
   Users as UsersIcon,
 } from 'lucide-react';
 import { Kicker, inputClass } from '@/components/admin/ui';
+import { AttachLinkButton } from '@/components/AttachLink';
+import { AttachmentList } from '@/components/AttachmentCard';
+import { describeAttachment, readAttachments, type Attachment } from '@/lib/attachments';
 import { useAdminSession } from '../layout';
 
 /**
@@ -30,6 +32,12 @@ import { useAdminSession } from '../layout';
  * because it can, incremental polling that appends instead of replacing,
  * read-marking only when the tab is actually visible, and autoscroll only
  * when you were already at the bottom.
+ *
+ * Since then: it polls on a ten-second timer, and that timer used to run in
+ * a background tab and carry on running after the session expired — every
+ * request the same 401, forever, which is most of what an error rate on a
+ * quiet site is made of. It idles while hidden and gives up on a 401 now.
+ * Attachments are links rather than uploads; see lib/attachments.ts.
  */
 
 interface TeamUser {
@@ -37,11 +45,6 @@ interface TeamUser {
   name: string | null;
   email: string;
   role?: string;
-}
-
-interface Attachment {
-  name: string;
-  url: string;
 }
 
 interface ChatMessage {
@@ -62,15 +65,6 @@ interface ChatMessage {
 }
 
 type View = { type: 'all' } | { type: 'flags' } | { type: 'dm'; userId: string };
-
-function attachmentsOf(m: ChatMessage): Attachment[] {
-  if (!Array.isArray(m.attachments)) return [];
-  return m.attachments.filter(
-    (a): a is Attachment => typeof a === 'object' && a !== null && 'url' in a && 'name' in a
-  );
-}
-
-const IMAGE_RE = /\.(png|jpe?g|gif|webp|avif)$/i;
 
 /** Plain text with clickable links — chat messages are full of URLs that rendered inert. */
 function Linkified({ text }: { text: string }) {
@@ -111,8 +105,12 @@ function timeLabel(iso: string): string {
 }
 
 export default function TeamChatPage() {
-  const { userName } = useAdminSession();
-  const [me, setMe] = useState('');
+  const router = useRouter();
+  // Straight from the layout's session rather than a second /api/auth/me.
+  // Fetching it again meant your own messages rendered on the left, under
+  // your own name, until the round trip came back — and permanently if it
+  // ever failed, which also broke every DM view.
+  const { userName, userId: me } = useAdminSession();
   const [team, setTeam] = useState<TeamUser[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [view, setView] = useState<View>({ type: 'all' });
@@ -122,23 +120,18 @@ export default function TeamChatPage() {
   const [draft, setDraft] = useState('');
   const [urgent, setUrgent] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<Attachment[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const nearBottomRef = useRef(true);
   const lastSeenRef = useRef<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Set once the session is gone — every later request is the same 401. */
+  const deadRef = useRef(false);
 
   // ----- data -----
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.type === 'user') setMe(d.user?.id ?? '');
-      })
-      .catch(() => {});
     fetch('/api/admin/users')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -148,64 +141,99 @@ export default function TeamChatPage() {
   }, []);
 
   const markRead = useCallback(() => {
-    if (document.visibilityState !== 'visible') return;
+    if (deadRef.current || document.visibilityState !== 'visible') return;
     fetch('/api/admin/team-messages/read', { method: 'POST' }).catch(() => {});
   }, []);
 
-  const loadAll = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/team-messages');
-      const data = await res.json();
-      if (data?.success) {
-        setMessages(data.messages);
-        const last = data.messages[data.messages.length - 1];
-        if (last) lastSeenRef.current = last.createdAt;
+  /**
+   * One fetch for both the first load and every poll after it.
+   *
+   * They were two functions that had drifted apart: the first set the
+   * "Offline" flag on failure, the second swallowed everything, so a chat
+   * that had been failing to poll for an hour looked exactly like a chat with
+   * nothing new in it. And neither noticed a 401 — an expired tab kept asking
+   * every ten seconds, forever, and showed "No messages yet — say hi." over
+   * the top of a conversation it simply was not allowed to read.
+   */
+  const load = useCallback(
+    async (mode: 'initial' | 'poll') => {
+      if (deadRef.current) return;
+      const after = mode === 'poll' ? lastSeenRef.current : null;
+      try {
+        const res = await fetch(
+          after
+            ? `/api/admin/team-messages?after=${encodeURIComponent(after)}`
+            : '/api/admin/team-messages'
+        );
+        if (res.status === 401 || res.status === 403) {
+          deadRef.current = true;
+          router.push('/admin/login');
+          return;
+        }
+        if (!res.ok) {
+          setLoadFailed(true);
+          return;
+        }
+        const data = await res.json();
+        if (!data?.success || !Array.isArray(data.messages)) {
+          setLoadFailed(true);
+          return;
+        }
         setLoadFailed(false);
+        if (data.messages.length > 0) {
+          setMessages((prev) => {
+            // The initial load replaces; a poll appends what it has not seen.
+            const base = mode === 'initial' ? [] : prev;
+            const known = new Set(base.map((m) => m.id));
+            const fresh = (data.messages as ChatMessage[]).filter((m) => !known.has(m.id));
+            return fresh.length > 0 ? [...base, ...fresh] : base;
+          });
+          const last = data.messages[data.messages.length - 1];
+          if (last) lastSeenRef.current = last.createdAt;
+          markRead();
+        }
+      } catch {
+        // A dropped connection is the next tick's problem. Only a 401 is final.
+        setLoadFailed(true);
+      } finally {
+        if (mode === 'initial') setLoaded(true);
       }
-    } catch {
-      setLoadFailed(true);
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
-
-  const poll = useCallback(async () => {
-    try {
-      const after = lastSeenRef.current;
-      const res = await fetch(
-        after ? `/api/admin/team-messages?after=${encodeURIComponent(after)}` : '/api/admin/team-messages'
-      );
-      const data = await res.json();
-      if (!data?.success || !Array.isArray(data.messages) || data.messages.length === 0) return;
-      setMessages((prev) => {
-        const known = new Set(prev.map((m) => m.id));
-        const fresh = (data.messages as ChatMessage[]).filter((m) => !known.has(m.id));
-        return fresh.length > 0 ? [...prev, ...fresh] : prev;
-      });
-      const last = data.messages[data.messages.length - 1];
-      if (last) lastSeenRef.current = last.createdAt;
-      if (document.visibilityState === 'visible') markRead();
-    } catch {
-      // A failed poll is the next poll's problem, not an unhandled rejection.
-    }
-  }, [markRead]);
+    },
+    [markRead, router]
+  );
 
   useEffect(() => {
-    loadAll();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer || deadRef.current) return;
+      timer = setInterval(() => load('poll'), 10000);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+
+    load('initial');
     markRead();
-    const interval = setInterval(poll, 10000);
+    start();
+
+    // A tab nobody is looking at does not need a ten-second refresh; it
+    // catches up the moment it comes back.
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        poll();
+        load('poll');
         markRead();
+        start();
+      } else {
+        stop();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      clearInterval(interval);
+      stop();
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [loadAll, poll, markRead]);
+  }, [load, markRead]);
 
   // ----- scroll behaviour -----
 
@@ -220,7 +248,17 @@ export default function TeamChatPage() {
     if (!el) return;
     // Container-scoped scrolling — scrollIntoView could drag the page.
     if (nearBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages, view]);
+  }, [messages]);
+
+  // Switching views always lands at the newest message. Carrying the previous
+  // view's scroll position across put you halfway up a conversation you had
+  // just opened, which reads as "the recent messages are missing".
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    nearBottomRef.current = true;
+    el.scrollTop = el.scrollHeight;
+  }, [view]);
 
   // ----- derived -----
 
@@ -229,7 +267,12 @@ export default function TeamChatPage() {
   const visible = useMemo(() => {
     switch (view.type) {
       case 'all':
-        return messages.filter((m) => !m.toUserId || m.toUserId === me || m.fromUserId === me);
+        // Broadcasts only. Direct messages used to appear here as well as in
+        // their own view, and one you had sent carried no marker at all — so
+        // a private message to one person sat in the room named "Everyone"
+        // looking exactly like something the whole team could read. They have
+        // a view each, and the rail says when one is waiting.
+        return messages.filter((m) => !m.toUserId);
       case 'flags':
         // Server already scopes to broadcasts + my DMs; keep the same rule
         // here so a flagged DM never surfaces outside its two parties.
@@ -247,6 +290,23 @@ export default function TeamChatPage() {
 
   const openFlags = messages.filter((m) => m.urgent && !m.resolved).length;
 
+  /**
+   * Who has said something you have not read, so a DM is not a room you have
+   * to remember to check. Approximate on purpose — it counts what this tab
+   * has received since it opened, which is exactly the case that was invisible
+   * before: a message arriving while you sit in Everyone, in a view you have
+   * no reason to click.
+   */
+  const dmActivity = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const m of messages) {
+      if (!m.toUserId || m.fromUserId === me) continue;
+      if (m.toUserId !== me) continue;
+      counts[m.fromUserId] = (counts[m.fromUserId] ?? 0) + 1;
+    }
+    return counts;
+  }, [messages, me]);
+
   const grouped = useMemo(() => {
     const groups: { day: string; items: ChatMessage[] }[] = [];
     for (const m of visible) {
@@ -260,29 +320,9 @@ export default function TeamChatPage() {
 
   // ----- actions -----
 
-  async function attachFiles(list: FileList | null) {
-    if (!list || list.length === 0) return;
-    setUploading(true);
-    setSendError(null);
-    try {
-      for (const file of Array.from(list).slice(0, 5)) {
-        const blob = await upload(file.name, file, {
-          access: 'public',
-          handleUploadUrl: '/api/admin/team-chat/upload',
-        });
-        setPendingFiles((prev) => [...prev, { name: file.name, url: blob.url }]);
-      }
-    } catch {
-      setSendError("Couldn't upload that file — check the type and size (25MB max).");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
   async function send() {
     const content = draft.trim();
-    if ((!content && pendingFiles.length === 0) || uploading) return;
+    if (!content && pendingFiles.length === 0) return;
     const toUserId = view.type === 'dm' ? view.userId : null;
     const files = pendingFiles;
     // Anything sent from the Flags board is a flag.
@@ -319,6 +359,10 @@ export default function TeamChatPage() {
     setPendingFiles([]);
     setSendError(null);
     nearBottomRef.current = true;
+    // The textarea grows itself as you type, in an inline style that nothing
+    // was putting back. Sending a five-line message left a five-line empty
+    // box sitting there.
+    if (composerRef.current) composerRef.current.style.height = 'auto';
 
     try {
       const res = await fetch('/api/admin/team-messages', {
@@ -427,6 +471,11 @@ export default function TeamChatPage() {
                 {(t.name || t.email)[0]?.toUpperCase()}
               </span>
               <span className="truncate">{t.name || t.email}</span>
+              {/* Direct messages no longer appear in Everyone, so this is
+                  what stops one arriving in a room nobody has open. */}
+              {(dmActivity[t.id] ?? 0) > 0 && view.type !== 'dm' && (
+                <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+              )}
             </button>
           ))}
           {teammates.length === 0 && (
@@ -465,7 +514,7 @@ export default function TeamChatPage() {
               <div className="space-y-3 pb-2">
                 {group.items.map((m) => {
                   const mine = m.fromUserId === me;
-                  const files = attachmentsOf(m);
+                  const files = readAttachments(m.attachments);
 
                   if (m.kind === 'system') {
                     // The app narrating — a timeline row, not a person talking.
@@ -517,35 +566,12 @@ export default function TeamChatPage() {
                             </p>
                           )}
                           {files.length > 0 && (
-                            <div className={`flex flex-wrap gap-2 ${m.content ? 'mt-2' : ''}`}>
-                              {files.map((f, i) =>
-                                IMAGE_RE.test(f.url) ? (
-                                  <a key={i} href={f.url} target="_blank" rel="noopener noreferrer">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={f.url}
-                                      alt={f.name}
-                                      className="max-h-44 rounded-lg border border-white/10 object-cover"
-                                    />
-                                  </a>
-                                ) : (
-                                  <a
-                                    key={i}
-                                    href={f.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
-                                      mine && !m.urgent
-                                        ? 'border-black/20 text-black hover:bg-black/10'
-                                        : 'border-white/15 text-white/80 hover:bg-white/5'
-                                    }`}
-                                  >
-                                    <FileText size={12} />
-                                    <span className="max-w-[180px] truncate">{f.name}</span>
-                                  </a>
-                                )
-                              )}
-                            </div>
+                            <AttachmentList
+                              attachments={files}
+                              tone={mine && !m.urgent ? 'onGradient' : 'dark'}
+                              compact
+                              className={m.content ? 'mt-2' : ''}
+                            />
                           )}
                           {(m.relatedLeadId || m.relatedProjectId) && (
                             <div className="mt-2 flex gap-1.5">
@@ -604,43 +630,37 @@ export default function TeamChatPage() {
         <div className="border-t border-white/[0.08] px-5 py-4">
           {pendingFiles.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
-              {pendingFiles.map((f, i) => (
-                <span
-                  key={i}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1 text-xs text-white/70"
-                >
-                  <FileText size={12} />
-                  <span className="max-w-[160px] truncate">{f.name}</span>
-                  <button
-                    onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
-                    aria-label={`Remove ${f.name}`}
-                    className="text-white/40 hover:text-white"
+              {pendingFiles.map((f, i) => {
+                const meta = describeAttachment(f);
+                return (
+                  <span
+                    key={`${f.url}-${i}`}
+                    className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-xs"
                   >
-                    <X size={11} />
-                  </button>
-                </span>
-              ))}
+                    <Link2 size={12} className="shrink-0 text-white/40" />
+                    <span className="min-w-0">
+                      <span className="block max-w-[180px] truncate text-white/80">{f.name}</span>
+                      <span className="block max-w-[180px] truncate text-[10px] text-white/35">
+                        {meta.typeLabel}
+                        {meta.host && ` · ${meta.host}`}
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+                      aria-label={`Remove ${f.name}`}
+                      className="shrink-0 text-white/40 hover:text-white"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
           <div className="flex items-end gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => attachFiles(e.target.files)}
-              aria-label="Attach files"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white/60 hover:bg-white/5 hover:text-white disabled:opacity-40"
-              aria-label="Attach a file"
-              title="Attach a file (PDFs, images, docs — 25MB max)"
-            >
-              <Paperclip size={16} />
-            </button>
+            <AttachLinkButton onAdd={(a) => setPendingFiles((prev) => [...prev, a])} />
             <textarea
+              ref={composerRef}
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value);
@@ -684,14 +704,13 @@ export default function TeamChatPage() {
             </button>
             <button
               onClick={send}
-              disabled={uploading || (!draft.trim() && pendingFiles.length === 0)}
+              disabled={!draft.trim() && pendingFiles.length === 0}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 disabled:opacity-40"
               aria-label="Send"
             >
               <Send size={15} />
             </button>
           </div>
-          {uploading && <p className="mt-1.5 text-[11px] text-white/40">Uploading…</p>}
           {sendError && <p className="mt-1.5 text-[11px] text-amber-300">{sendError}</p>}
         </div>
       </div>

@@ -1,11 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { FileDiff, Plus, Send, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, FileDiff, Plus, Scale, Send, X } from 'lucide-react';
 import { Badge, BrandButton, inputClass } from '@/components/admin/ui';
 import { dollarsToCents } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
 import { committedRemovals, deltaCents, MAX_LABEL_LENGTH, type ChangeOrderItem } from '@/lib/change-orders';
+import {
+  CHANGE_SCALES,
+  changeOrderVerdict,
+  type ChangeScale,
+  type ProjectStage,
+} from '@/lib/change-order-verdict';
 
 /**
  * Raise a Change Order against a project.
@@ -18,6 +24,16 @@ import { committedRemovals, deltaCents, MAX_LABEL_LENGTH, type ChangeOrderItem }
  * It is deliberately not an edit box on the price field. Section 9: "no such
  * work begins until the Client approves the additional scope and fee in
  * writing." So this produces a document, and the client signs it.
+ *
+ * What it did not do was check whether the change should be billed at all.
+ * The contract's answer depends on two things — how big the change is, and
+ * which gate the project has passed — and both were being weighed in
+ * somebody's head against clauses spread over five sections. So the change is
+ * declared minor or major, the stage comes off the project, and the ruling is
+ * on screen before the fee is typed. It advises rather than blocks: there are
+ * real reasons to raise a change order the contract says is free, and one of
+ * them is a client who insists on paying for a fourth round. Overruling it is
+ * a decision a person makes, and one that now leaves a trace on the record.
  */
 
 interface ChangeOrderRow {
@@ -35,6 +51,10 @@ interface ChangeOrderRow {
   signedAt: string | null;
   signerName: string | null;
   declineNote: string | null;
+  /** What it was called when raised, and what the contract said at the time. */
+  changeScale?: string | null;
+  verdictRuling?: string | null;
+  verdictStage?: string | null;
   createdBy: { name: string | null; email: string } | null;
 }
 
@@ -57,10 +77,13 @@ const STATUS_TONE: Record<string, 'emerald' | 'amber' | 'sky' | 'red' | 'neutral
 export function ChangeOrderPanel({
   projectId,
   totalPrice,
+  stage,
   onApplied,
 }: {
   projectId: string;
   totalPrice: number;
+  /** Where the project has got to, which is half of what decides the ruling. */
+  stage: ProjectStage;
   onApplied: () => void;
 }) {
   const [orders, setOrders] = useState<ChangeOrderRow[]>([]);
@@ -70,9 +93,17 @@ export function ChangeOrderPanel({
   const [lines, setLines] = useState<LineDraft[]>([
     { label: '', amount: '', kind: 'add', workStarted: false },
   ]);
+  const [changeScale, setChangeScale] = useState<ChangeScale>('major');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  // Same function the route runs, so what is shown here and what is stored on
+  // the document cannot disagree.
+  const verdict = useMemo(
+    () => changeOrderVerdict(changeScale, stage),
+    [changeScale, stage]
+  );
 
   const load = useCallback(async () => {
     try {
@@ -107,6 +138,7 @@ export function ChangeOrderPanel({
     setSummary('');
     setDays('');
     setLines([{ label: '', amount: '', kind: 'add', workStarted: false }]);
+    setChangeScale('major');
     setDrafting(false);
     setError('');
   };
@@ -121,6 +153,7 @@ export function ChangeOrderPanel({
         body: JSON.stringify({
           summary,
           items,
+          changeScale,
           timelineExtensionDays: Number(days) || 0,
         }),
       });
@@ -195,6 +228,97 @@ export function ChangeOrderPanel({
 
       {drafting && (
         <div className="mb-5 space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+          {/* Asked first, because it is the question that decides everything
+              below it. Nothing can read a request and tell you whether it is
+              a nudge or a re-architecture — a person says which, and the
+              contract answers from there. */}
+          <fieldset>
+            <legend className="mb-2 text-xs font-medium text-white/50">
+              How big is this change?
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {CHANGE_SCALES.map((option) => (
+                <label
+                  key={option.value}
+                  className={`cursor-pointer rounded-xl border p-3 transition-colors ${
+                    changeScale === option.value
+                      ? 'border-sky-400/60 bg-sky-400/[0.08]'
+                      : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+                  }`}
+                >
+                  <span className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      name="change-scale"
+                      value={option.value}
+                      checked={changeScale === option.value}
+                      onChange={() => setChangeScale(option.value)}
+                      className="mt-0.5 shrink-0 accent-sky-400"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-semibold text-white/85">
+                        {option.label}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-white/40">
+                        {option.hint}
+                      </span>
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* The ruling, before the fee gets typed. */}
+          <div
+            className={`rounded-xl border p-3.5 ${
+              verdict.chargeable
+                ? verdict.reworkLikely
+                  ? 'border-amber-400/35 bg-amber-400/[0.07]'
+                  : 'border-sky-400/30 bg-sky-400/[0.06]'
+                : 'border-emerald-400/30 bg-emerald-400/[0.06]'
+            }`}
+          >
+            <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-white/35">
+              <Scale size={11} />
+              {verdict.stageLabel}
+            </p>
+            <p
+              className={`mt-1.5 flex items-start gap-1.5 text-sm font-semibold ${
+                verdict.chargeable
+                  ? verdict.reworkLikely
+                    ? 'text-amber-200'
+                    : 'text-sky-200'
+                  : 'text-emerald-200'
+              }`}
+            >
+              {!verdict.chargeable && <CheckCircle2 size={14} className="mt-0.5 shrink-0" />}
+              {verdict.headline}
+            </p>
+            <div className="mt-2 space-y-1.5">
+              {verdict.detail.map((line, i) => (
+                <p key={i} className="text-[11px] leading-relaxed text-white/55">
+                  {line}
+                </p>
+              ))}
+            </div>
+            {verdict.timelineNote && (
+              <p className="mt-2 border-t border-white/[0.07] pt-2 text-[11px] leading-relaxed text-white/40">
+                {verdict.timelineNote}
+              </p>
+            )}
+            <p className="mt-2 text-[10px] text-white/25">{verdict.clauses.join(' · ')}</p>
+          </div>
+
+          {!verdict.chargeable && (
+            <p className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[11px] leading-relaxed text-white/45">
+              You can still raise one — a client who insists on paying, or a round you have agreed
+              to bill by exception. It is recorded as raised against a stage where the contract said
+              it was included, which is exactly what you would want on the file if it were ever
+              questioned.
+            </p>
+          )}
+
           <div>
             <label className="mb-1.5 block text-xs font-medium text-white/50">
               What&apos;s changing, and why?
@@ -368,6 +492,23 @@ export function ChangeOrderPanel({
                     </Badge>
                   </p>
                   <p className="mt-1 text-xs text-white/45 line-clamp-2">{order.summary}</p>
+                  {/* What was true on the day. Six weeks on the project has
+                      moved through another gate and the same call would be
+                      judged differently, so the answer is kept, not redone. */}
+                  {order.verdictStage && (
+                    <p className="mt-1 text-[11px] text-white/30">
+                      {order.changeScale === 'minor' ? 'Minor' : 'Major'} · {order.verdictStage}
+                      {order.verdictRuling === 'included' && (
+                        <span className="text-amber-300/70">
+                          {' '}
+                          · raised despite the contract including it
+                        </span>
+                      )}
+                      {order.verdictRuling === 'change_order_with_rework' && (
+                        <span className="text-amber-300/70"> · rework priced in</span>
+                      )}
+                    </p>
+                  )}
                   {order.signedAt && order.signerName && (
                     <p className="mt-1 text-[11px] text-emerald-300/70">
                       Signed by {order.signerName} on {new Date(order.signedAt).toLocaleDateString()}

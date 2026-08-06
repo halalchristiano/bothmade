@@ -998,6 +998,23 @@ model ChangeOrder {
   /// reasonably determined by the Agency."
   timelineExtensionDays Int @default(0)
 
+  /// How big the change was called when it was raised: "minor" (a revision
+  /// consistent with the agreed scope) or "major" (new scope, or materially
+  /// different). Section 4 turns on exactly this distinction, and nothing can
+  /// derive it from the line items — a person says which.
+  changeScale String @default("major")
+
+  /// The contract's answer at the moment it was raised, and where the project
+  /// stood when it was given: "included" | "change_order" |
+  /// "change_order_with_rework", and a stage line like "Build — approved
+  /// design, implementation under way".
+  ///
+  /// Stored rather than recomputed because the project moves on. Six weeks
+  /// later the same call would be judged against a different gate, and the
+  /// question a dispute asks is what was true when this was agreed.
+  verdictRuling String?
+  verdictStage  String?
+
   /// "draft" — being written, client has never seen it.
   /// "sent" — link issued, awaiting signature.
   /// "signed" — in force. This is the only status that has moved any money.

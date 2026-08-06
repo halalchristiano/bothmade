@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { MOCKUPS_TO_BUILD_WHERE, mockupInclude, mockupSignal, toMockupDTO } from '@/lib/mockups';
+import {
+  clientMockupLink,
+  MOCKUPS_TO_BUILD_WHERE,
+  mockupInclude,
+  mockupSignal,
+  toMockupDTO,
+} from '@/lib/mockups';
 
 /**
  * Every lead waiting on a mockup, oldest request first — the dashboard widget
@@ -58,41 +64,45 @@ export async function GET() {
       },
     });
 
-    // The other half of a page called "Mockups": the ones already out with
-    // clients. Until now this screen only listed work to be built, so the
-    // moment a mockup was delivered it left the only page named after it and
-    // whether anyone had opened it was nobody's screen.
-    const live = await prisma.leadMockup
+    /*
+     * The other half of a page called "Mockups": the ones already out with
+     * clients. Until now this screen only listed work to be built, so the
+     * moment a mockup was delivered it left the only page named after it and
+     * whether anyone had opened it was nobody's screen.
+     *
+     * One card per *lead*, not per version — which is the fix for a list that
+     * had started reading like a bug. A lead collects a version for its
+     * preview build, another for the client folder, another again for a PDF
+     * export, and this tab listed each of them, so the same business appeared
+     * two and three times over with nothing on the card saying why. Two
+     * "Havis" rows side by side do not look like two versions of one mockup;
+     * they look like the system has lost track of who Havis is.
+     *
+     * Only leads that have a client folder. A mockup row from back when the
+     * preview link *was* the mockup is history, not a deliverable — its lead
+     * still needs a folder built, so it belongs on the other tab.
+     *
+     * Drafts are included deliberately: attaching a folder takes the lead off
+     * the build queue, and filtering drafts out here too would leave a
+     * built-but-unsent mockup on neither tab, at the exact moment somebody
+     * needed to send it.
+     */
+    const built = await prisma.lead
       .findMany({
-        // Only versions belonging to a lead that has a client folder. A
-        // mockup row created back when the preview link *was* the mockup is
-        // history, not a deliverable — its lead still needs a folder built,
-        // so it belongs on the other tab.
-        //
-        // Drafts are included deliberately: attaching a folder takes the
-        // lead off the build queue, and filtering drafts out here too would
-        // leave a built-but-unsent mockup on neither tab, at the exact
-        // moment somebody needed to send it.
-        where: { lead: { mockupFolderUrl: { not: null } } },
-        orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }],
+        where: { mockupFolderUrl: { not: null } },
+        orderBy: { mockupDeliveredAt: { sort: 'desc', nulls: 'last' } },
         take: 60,
-        include: {
-          ...mockupInclude,
-          // Both links and the address, so the two slots and the send
-          // control can live on this page rather than only on the lead.
-          lead: {
-            select: {
-              id: true,
-              company: true,
-              contactName: true,
-              status: true,
-              estimatedValue: true,
-              email: true,
-              mockupUrl: true,
-              mockupFolderUrl: true,
-              mockupSentManuallyAt: true,
-            },
-          },
+        select: {
+          id: true,
+          company: true,
+          contactName: true,
+          status: true,
+          estimatedValue: true,
+          email: true,
+          mockupUrl: true,
+          mockupFolderUrl: true,
+          mockupSentManuallyAt: true,
+          mockups: { orderBy: { createdAt: 'asc' }, include: mockupInclude },
         },
       })
       .catch((err) => {
@@ -102,18 +112,58 @@ export async function GET() {
         return [];
       });
 
-    return NextResponse.json(
-      {
-        success: true,
-        leads,
-        live: live.map((m) => ({
-          ...toMockupDTO(m),
-          signal: mockupSignal(toMockupDTO(m)),
-          lead: m.lead,
-        })),
-      },
-      { status: 200 }
-    );
+    /*
+     * Which version speaks for the lead.
+     *
+     * The folder one, when it exists — that is the link the send button on
+     * this page actually mails, so its send state is the state the card is
+     * reporting on. Otherwise the most recently touched version, because that
+     * is where the story currently is. Picking by "most urgent" instead would
+     * put a superseded draft's "not sent yet" on a lead whose newer version
+     * went out this morning.
+     */
+    const live = built.map((lead) => {
+      const { mockups, ...leadFields } = lead;
+      const versions = mockups.map(toMockupDTO);
+      const folderLink = clientMockupLink(lead);
+      const byRecency = [...versions].sort(
+        (a, b) =>
+          new Date(b.sentAt ?? b.uploadedAt).getTime() - new Date(a.sentAt ?? a.uploadedAt).getTime()
+      );
+      const representative =
+        (folderLink ? versions.find((v) => v.url === folderLink) : undefined) ?? byRecency[0];
+
+      // A folder attached without a version row ever being written — that
+      // recording is best-effort and swallows its own errors — used to land
+      // the lead on neither tab. The card is about the lead and the send
+      // works off the lead, so it can be shown honestly with nothing behind
+      // it rather than disappearing.
+      if (!representative) {
+        return {
+          ...toMockupDTO({
+            id: `lead-${lead.id}`,
+            url: folderLink ?? '',
+            fileName: null,
+            note: '',
+            createdAt: new Date(),
+          }),
+          signal: 'Not sent to the client yet',
+          versionCount: 0,
+          lead: leadFields,
+        };
+      }
+
+      return {
+        ...representative,
+        signal: mockupSignal(representative),
+        // Said on the card, so a lead with a history reads as one business
+        // with several versions rather than as several businesses.
+        versionCount: versions.length,
+        lead: leadFields,
+      };
+    });
+
+    return NextResponse.json({ success: true, leads, live }, { status: 200 });
   } catch (error) {
     console.error('Mockup queue error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
