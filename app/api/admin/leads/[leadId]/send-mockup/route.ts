@@ -133,6 +133,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .catch((e) => console.error('Email-change activity not written:', e));
     }
 
+    // Only to resolve [Sender Name] in a written draft — the transport works
+    // out who is actually sending on its own.
+    const sender = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { name: true },
+    });
+
     const result = await sendMockupEmail({
       toEmail,
       contactName: lead.contactName,
@@ -141,6 +148,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       note: existing?.note ?? '',
       observation: lead.personalizedObservation,
       kind,
+      draft: lead.mockupEmailDraft,
+      senderName: sender?.name,
     });
 
     /*

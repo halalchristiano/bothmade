@@ -175,6 +175,8 @@ interface LiveMockup {
     mockupFolderUrl: string | null;
     /** Marked delivered outside the system — no email, no tracked link. */
     mockupSentManuallyAt?: string | null;
+    /** The mockup email written for this lead, if research wrote one. */
+    mockupEmailDraft?: string | null;
   };
 }
 
@@ -529,6 +531,7 @@ export default function MockupQueuePage() {
                     }
                     onSend={(email, kind) => sendMockup(m, email, kind)}
                     resend={m.status !== 'draft'}
+                    written={Boolean(m.lead.mockupEmailDraft)}
                   />
                 </div>
               )}

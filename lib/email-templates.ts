@@ -284,7 +284,9 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       const title = fields.senderTitle || 'Director of Sales';
       return {
         subject: `Thoughts on ${company}'s website`,
-        eyebrow: 'Cold outreach',
+        // Same as the researched one below: the recipient sees this, and
+        // captioning our own email "Cold outreach" is a confession, not a
+        // heading.
         title: 'Something worth flagging',
         bodyHtml:
           `<p>Hi ${greeting(recipientName)},</p>` +
@@ -302,8 +304,11 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
   {
     id: 'cold_outreach_researched',
     group: 'Outreach',
-    label: 'Cold outreach (deeply researched)',
-    description: 'For leads you\'ve dug into specifically — references what you\'ve already found, not just a general observation.',
+    // Named after the CSV column it stands in for, because that is what it
+    // is: the same email a researched lead arrives carrying, for a lead
+    // nobody wrote one for.
+    label: 'personalisedColdEmail (in-depth research)',
+    description: 'For leads you\'ve dug into specifically — references what you\'ve already found, not just a general observation. The written personalisedColdEmail on a lead beats this every time; use it when there isn\'t one.',
     audience: 'sales',
     fields: [
       {
@@ -328,7 +333,11 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
       const title = fields.senderTitle || 'Director of Sales';
       return {
         subject: `Thoughts on ${company}'s website`,
-        eyebrow: 'Cold outreach',
+        // No eyebrow. This one is read by the prospect, and a label above the
+        // greeting reading "Cold outreach" tells them, in our own words,
+        // that they are on a list — which is the one thing the email is
+        // trying not to sound like. The written drafts go out with no label
+        // for the same reason; this now matches them.
         title: 'Something worth flagging',
         bodyHtml:
           `<p>Hi ${greeting(recipientName)},</p>` +

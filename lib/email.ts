@@ -9,9 +9,11 @@ import { isDomainDelegationConfigured, sendAsDelegatedUser } from '@/lib/gmail-d
 import { captureForPreview } from '@/lib/email-preview';
 import { type MockupKind } from '@/lib/mockup-kinds';
 export { MOCKUP_KINDS, readMockupKind, type MockupKind } from '@/lib/mockup-kinds';
+import { firstNameOf, personalize, splitDraft } from '@/lib/cold-email';
 import {
   esc,
   escMultiline,
+  escParagraphs,
   htmlToPlainText,
   normalizeUrl,
   safeUrl,
@@ -1324,11 +1326,25 @@ export async function sendEnquiryNudge(input: {
 }
 
 /**
+ * The one line the mockup email can't drop, whoever wrote the rest of it:
+ * the page it links to has an approve button and a request-changes button on
+ * it, and a client who doesn't know that replies by email instead — which is
+ * how "they liked it" goes unrecorded.
+ */
+const MOCKUP_BUTTONS_LINE = `<p style="font-size:13px; color:rgba(255,255,255,0.5);">When you've had a look there are two buttons at the bottom of the page: one if it works for you, one if you'd like changes. Either is useful — tell us which.</p>`;
+
+/**
  * The body of the mockup email, on its own so it can be read without a send.
  *
  * Exported because the send itself fans out across delegated Gmail, per-user
  * OAuth, an app password and Resend, and none of those are what the wording
  * is about.
+ *
+ * A lead that arrived with a written second email uses it verbatim. That is
+ * the whole point of writing one: the cold email was about this business
+ * specifically, and following it with "We've built something for you — have a
+ * click around" is a change of voice the prospect can hear. The wording below
+ * is the fallback for every lead nobody wrote one for.
  */
 export function mockupEmailBody(opts: {
   contactName: string | null;
@@ -1336,10 +1352,31 @@ export function mockupEmailBody(opts: {
   note?: string | null;
   observation?: string | null;
   kind?: MockupKind;
+  /** The bespoke follow-on email written for this lead, if research wrote one. */
+  draft?: string | null;
+  /** Resolves `[Sender Name]` in that draft. */
+  senderName?: string | null;
 }): string {
   const note = opts.note?.trim();
   const observation = opts.observation?.trim();
   const visuals = opts.kind === 'visuals';
+  const draft = opts.draft?.trim();
+
+  if (draft) {
+    const { body } = splitDraft(draft, opts.company);
+    const written = personalize(body, {
+      firstName: firstNameOf(opts.contactName),
+      senderName: opts.senderName || undefined,
+    });
+    // The observation is deliberately not repeated here: the draft was
+    // written around it, and printing it again underneath reads like a mail
+    // merge that got in the way of a real letter.
+    return (
+      escParagraphs(written) +
+      (note ? `<p style="color:rgba(255,255,255,0.65);">${esc(note)}</p>` : '') +
+      MOCKUP_BUTTONS_LINE
+    );
+  }
 
   return `
     <p>Hi ${esc(opts.contactName) || 'there'},</p>
@@ -1358,7 +1395,7 @@ export function mockupEmailBody(opts: {
         : ''
     }
     ${note ? `<p style="color:rgba(255,255,255,0.65);">${esc(note)}</p>` : ''}
-    <p style="font-size:13px; color:rgba(255,255,255,0.5);">When you've had a look there are two buttons at the bottom of the page: one if it works for you, one if you'd like changes. Either is useful — tell us which.</p>
+    ${MOCKUP_BUTTONS_LINE}
   `;
 }
 
@@ -1447,22 +1484,44 @@ export async function sendMockupEmail(opts: {
   observation?: string | null;
   /** Whether this is a clickable build or designs to look at. */
   kind?: MockupKind;
+  /**
+   * The follow-on email written for this lead at research time — the reply to
+   * the reply, in the same voice as the cold email that started it. Carries
+   * its own subject line, which is the point: "We built something for
+   * Acme — have a look" is a subject about us, and the drafted one is about
+   * them.
+   */
+  draft?: string | null;
+  /** Whoever is sending, for `[Sender Name]` in that draft. */
+  senderName?: string | null;
 }): Promise<SendResult> {
   const { toEmail, contactName, company, viewUrl } = opts;
   const bodyHtml = mockupEmailBody(opts);
   const visuals = opts.kind === 'visuals';
+  const draft = opts.draft?.trim();
+  const drafted = draft
+    ? personalize(splitDraft(draft, company).subject, {
+        firstName: firstNameOf(contactName),
+        senderName: opts.senderName || undefined,
+      })
+    : null;
 
   return sendEmailDetailed({
     to: toEmail,
     // The subject and the button follow the same fact as the body. An email
     // headed "we built something" over a set of images is the same wrong
     // claim in a different place.
-    subject: visuals
-      ? `We've designed something for ${company} — have a look`
-      : `We built something for ${company} — have a look`,
+    subject:
+      drafted ||
+      (visuals
+        ? `We've designed something for ${company} — have a look`
+        : `We built something for ${company} — have a look`),
     html: renderShell({
-      eyebrow: visuals ? 'Your designs' : 'Your mockup',
-      title: `${company} — a first look`,
+      // A written email gets the same shell the written cold email gets: its
+      // own subject as the heading and no category label above it. The stock
+      // wording keeps the labelled header, which is what it was written for.
+      eyebrow: drafted ? undefined : visuals ? 'Your designs' : 'Your mockup',
+      title: drafted || `${company} — a first look`,
       bodyHtml,
       ctaLabel: visuals ? 'See the designs' : 'Open the mockup',
       ctaUrl: viewUrl,

@@ -35,6 +35,13 @@ export function SendMockupPanel({
    * rather than repeating copy written for a first delivery.
    */
   resend = false,
+  /**
+   * This lead arrived with its own mockup email written for it — so that is
+   * what goes, not the standard wording. Said here because it changes what
+   * the prospect reads, and the rep should know which of the two they are
+   * about to send before they press it, not after.
+   */
+  written = false,
 }: {
   recipientName: string | null;
   company: string;
@@ -43,6 +50,7 @@ export function SendMockupPanel({
   notice: { tone: 'ok' | 'warn'; text: string } | null;
   onSend: (email?: string, kind?: MockupKind) => void;
   resend?: boolean;
+  written?: boolean;
 }) {
   // Opens by itself when there is no address at all, because then it is not
   // an override — it is the only way this send happens.
@@ -132,7 +140,17 @@ export function SendMockupPanel({
         )}
       </div>
 
-      {/* What it is, which decides what the email is allowed to say. */}
+      {written && (
+        <p className="mb-3 rounded-lg border border-emerald-400/25 bg-emerald-400/[0.07] px-3 py-2 text-xs text-emerald-200/90">
+          This lead has its own mockup email, written with the cold email that
+          opened the conversation — that is what goes, in its own words. The
+          preview before sending shows it.
+        </p>
+      )}
+
+      {/* What it is, which decides what the standard email is allowed to say.
+          A written one already says what it is in its own sentences, so this
+          only decides the button and the subject there. */}
       <div className="mb-3 border-t border-white/10 pt-3">
         <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/40">What are you sending?</p>
         {MOCKUP_KINDS.map((option) => (

@@ -102,6 +102,9 @@ export async function GET() {
           mockupUrl: true,
           mockupFolderUrl: true,
           mockupSentManuallyAt: true,
+          // Only whether there is one — the panel says which wording is
+          // about to go out, and the text itself belongs in the preview.
+          mockupEmailDraft: true,
           mockups: { orderBy: { createdAt: 'asc' }, include: mockupInclude },
         },
       })

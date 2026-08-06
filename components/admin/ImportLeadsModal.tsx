@@ -83,6 +83,12 @@ const COLUMN_GROUPS: Array<{ title: string; blurb?: string; columns: Column[] }>
         example: 'Subject: Thoughts on Linpotia\\n\\nHi [First Name], ...',
       },
       {
+        header: 'mockupEmail',
+        description:
+          'The second email, written now: what goes out with the mockup once they reply. Same shape ("Subject: ...", blank line, body) and it should read as the next thing the same person says. Without it the mockup goes out under the standard wording.',
+        example: 'Subject: Here it is\\n\\nHere it is. [First Name] — the filter is down the left ...',
+      },
+      {
         header: 'personalizedObservation',
         description: 'A short one-liner (not the full email) — pre-fills the "personalized observation" field in the cold-outreach template',
         example: 'Your Google reviews are exceptional, but barely visible on the homepage.',
@@ -217,6 +223,13 @@ const WRITING_GUIDE: Array<{
     good: 'Subject: Thoughts on Linpotia\n\nHi [First Name], I came across Linpotia while …',
     bad: 'Hi there, I hope this email finds you well. We are a web design agency …',
     why: 'No subject line means it cannot be sent in one click, and a generic opener gets deleted.',
+  },
+  {
+    header: 'mockupEmail',
+    shape: 'The reply to their reply. Show the thing, say plainly what it is and is not, then ask one real question.',
+    good: 'Subject: Here it is\n\nFilter down the left, results update live — that is the bit that cannot happen today. It is a static design, so nothing clicks; I would rather show you the idea honestly than fake a demo.',
+    bad: 'Hi, please find attached the mockup we have prepared for your review. Let us know your thoughts!',
+    why: 'The cold email was written for them. Following it with a template is a change of voice they can hear.',
   },
   {
     header: 'Pain point 1, 2, 3 …',

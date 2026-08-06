@@ -105,11 +105,14 @@ async function buildPreview(
       // The tracked link the client is given. Reuses the existing version's
       // token when there is one so the preview shows the real address; a new
       // send has no token yet, and the shape of the URL is what matters.
-      const existing = await prisma.leadMockup.findFirst({
-        where: { leadId, url: link },
-        orderBy: { createdAt: 'desc' },
-        select: { shareToken: true, note: true },
-      });
+      const [existing, sender] = await Promise.all([
+        prisma.leadMockup.findFirst({
+          where: { leadId, url: link },
+          orderBy: { createdAt: 'desc' },
+          select: { shareToken: true, note: true },
+        }),
+        prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+      ]);
       return composeOnly(() =>
         sendMockupEmail({
           toEmail: override || lead.email || '',
@@ -118,6 +121,10 @@ async function buildPreview(
           viewUrl: `${resolveSiteUrl()}/m/${existing?.shareToken ?? 'the-tracked-link'}`,
           note: existing?.note ?? '',
           observation: lead.personalizedObservation,
+          // A lead carrying its own written second email is previewed as that
+          // email, because that is what would go.
+          draft: lead.mockupEmailDraft,
+          senderName: sender?.name,
           // The preview has to make the same claim the send will, or the
           // whole point of showing it first is lost.
           kind: payload.kind === 'visuals' ? 'visuals' : 'preview',

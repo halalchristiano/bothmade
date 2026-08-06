@@ -158,6 +158,7 @@ interface LeadDetail {
   qualifiedAt: string | null;
   coldEmailDraft: string | null;
   coldEmailSentAt: string | null;
+  mockupEmailDraft: string | null;
   personalizedObservation: string | null;
   emailDeliveryFailedAt: string | null;
   emailDeliveryFailedReason: string | null;
@@ -2994,6 +2995,7 @@ export default function LeadDetailPage() {
                 sending={sendingMockup}
                 notice={mockupSendNotice}
                 onSend={handleSendMockup}
+                written={Boolean(lead.mockupEmailDraft)}
               />
             )}
 

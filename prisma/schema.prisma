@@ -488,6 +488,13 @@ model Lead {
   coldEmailDraft  String?
   coldEmailSentAt DateTime?
 
+  // The second email in the same voice: what gets sent with the mockup, once
+  // they've replied. Written at research time alongside the cold email so the
+  // two read as one conversation rather than a bespoke opener followed by a
+  // template. When it's empty the mockup send falls back to the standard
+  // wording, which is fine — just not as good.
+  mockupEmailDraft String?
+
   // Set when a send attempt to this lead's email actually fails (bounced,
   // rejected, dead address) — distinct from simply never having sent one.
   // Surfaced as its own "couldn't reach — call instead" list so a bad

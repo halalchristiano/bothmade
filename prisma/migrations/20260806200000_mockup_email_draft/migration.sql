@@ -1,0 +1,12 @@
+-- The mockup email was the one email nobody wrote.
+--
+-- A lead imported from research arrives with a cold email written for that
+-- specific business — its own subject, its own opening, the one observation
+-- that made it worth writing at all. Then they reply, the mockup goes over,
+-- and the email carrying it is the same paragraph every prospect gets. The
+-- best email in the sequence is followed by the most generic one, at exactly
+-- the moment the prospect is paying most attention.
+--
+-- So the researcher writes both at once, and they land together on import.
+-- Additive only: one nullable column, nothing moved.
+ALTER TABLE "leads" ADD COLUMN "mockupEmailDraft" TEXT;

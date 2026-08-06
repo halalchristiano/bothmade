@@ -51,6 +51,12 @@ const HEADER_ALIASES: Record<string, string> = {
   status: 'status',
   personalisedcoldemail: 'personalisedcoldemail',
   personalizedcoldemail: 'personalisedcoldemail',
+  mockupemail: 'mockupemail',
+  mockupemaildraft: 'mockupemail',
+  personalisedmockupemail: 'mockupemail',
+  personalizedmockupemail: 'mockupemail',
+  secondemail: 'mockupemail',
+  followupemail: 'mockupemail',
   personalizedobservation: 'personalizedobservation',
   personalisedobservation: 'personalizedobservation',
   mockupurl: 'mockupurl',
@@ -329,6 +335,11 @@ function normalizeRow(row: Record<string, string>): Record<string, string> {
         canonical = 'upsellfreeform';
       } else if (key.includes('essential')) {
         canonical = 'needfreeform';
+      } else if (key.includes('mockup') && key.includes('email')) {
+        // Checked ahead of both the cold-email and the plain "mockup"
+        // branches: "personalised mockup email" is neither a second cold
+        // email nor a link to a mockup, and either mistake loses it.
+        canonical = 'mockupemail';
       } else if (key.includes('coldemail') || ((key.includes('personalized') || key.includes('personalised')) && key.includes('email'))) {
         canonical = 'personalisedcoldemail';
       } else if (key.includes('observation')) {
@@ -373,7 +384,9 @@ function normalizeRow(row: Record<string, string>): Record<string, string> {
  * (semicolon-separated keys), notes, status. Also accepts a wide set of
  * optional research columns produced by external prep work —
  * personalisedcoldemail (a full "Subject: ...\n\n<body>" draft, stored as-is
- * for one-click sending), personalizedobservation (a short one-liner that
+ * for one-click sending), mockupemail (the same thing again for the email
+ * that carries the mockup, so the second email sounds like the first),
+ * personalizedobservation (a short one-liner that
  * pre-fills the cold-outreach template), mockupurl and mockuppdfurl (the
  * finished mockup as a link and as a PDF), vercelpassword (the preview
  * deployment's password), invoicepdfurl, the business profile (industry,
@@ -551,6 +564,7 @@ export async function POST(request: NextRequest) {
           notes,
           status,
           coldEmailDraft: row.personalisedcoldemail?.trim() || null,
+          mockupEmailDraft: row.mockupemail?.trim() || null,
           personalizedObservation:
             row.personalizedobservation?.trim() || row.personalisedobservation?.trim() || null,
 

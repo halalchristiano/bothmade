@@ -535,3 +535,102 @@ describe('what the mockup email says it is', () => {
     for (const kind of MOCKUP_KINDS) expect(kind.hint.length).toBeGreaterThan(20);
   });
 });
+
+/**
+ * The second email, written at research time.
+ *
+ * A lead imported from research arrives with a cold email written for that
+ * one business. They reply, the mockup goes over — and until now the email
+ * carrying it was the same paragraph every prospect gets, at the exact
+ * moment the prospect is paying most attention. A lead carrying a written
+ * mockupEmail now sends that instead, subject line and all.
+ */
+describe('the written mockup email', () => {
+  const DRAFT = [
+    'Subject: Here it is',
+    '',
+    'Here it is, [First Name].',
+    '',
+    'Filter down the left, results update live. It is a static design rather than a working build, so nothing clicks.',
+    '',
+    '[Sender Name]',
+  ].join('\n');
+
+  it('sends the drafted words rather than the stock ones', async () => {
+    const { mockupEmailBody } = await import('@/lib/email');
+
+    const body = mockupEmailBody({
+      contactName: 'Dana Cole',
+      company: 'Havis',
+      draft: DRAFT,
+      senderName: 'Evan Buoncristiano',
+    });
+
+    expect(body).toContain('Filter down the left');
+    expect(body).toContain('Here it is, Dana.');
+    expect(body).toContain('Evan Buoncristiano');
+    // None of the stock wording survives alongside it.
+    expect(body).not.toContain('not a picture of one');
+    expect(body).not.toMatch(/We&#039;ve built something|We've built something/);
+  });
+
+  /**
+   * The observation is what the cold email was built around. Printing it
+   * again under a written follow-on reads like a mail merge got in the way
+   * of a real letter.
+   */
+  it('does not staple the research observation onto a written email', async () => {
+    const { mockupEmailBody } = await import('@/lib/email');
+
+    const body = mockupEmailBody({
+      contactName: null,
+      company: 'Havis',
+      draft: DRAFT,
+      observation: 'twenty-five patterns and fifteen finishes, shown as a list of pages',
+    });
+
+    expect(body).not.toContain('What prompted it');
+    expect(body).not.toContain('fifteen finishes');
+  });
+
+  /** However it is worded, the client still has to know about the buttons. */
+  it('keeps the line about the two buttons', async () => {
+    const { mockupEmailBody } = await import('@/lib/email');
+
+    expect(mockupEmailBody({ contactName: null, company: 'Havis', draft: DRAFT })).toContain(
+      'two buttons at the bottom'
+    );
+  });
+
+  it('carries the draft its own subject, and drops the category label', async () => {
+    const { sendMockupEmail } = await import('@/lib/email');
+    const { composeOnly } = await import('@/lib/email-preview');
+
+    const [mail] = await composeOnly(() =>
+      sendMockupEmail({
+        toEmail: 'dana@havis.example',
+        contactName: 'Dana Cole',
+        company: 'Havis',
+        viewUrl: 'https://bothmade.studio/m/tok',
+        draft: DRAFT,
+      })
+    );
+
+    expect(mail.subject).toBe('Here it is');
+    expect(mail.html).not.toMatch(/We built something for Havis/);
+    // The label above the greeting is what makes a written email look like a
+    // template again.
+    expect(mail.html).not.toContain('Your mockup');
+    // The button is still the button.
+    expect(mail.html).toContain('Open the mockup');
+  });
+
+  /** Nothing written, nothing changes. */
+  it('falls back to the stock wording when nobody wrote one', async () => {
+    const { mockupEmailBody } = await import('@/lib/email');
+
+    expect(mockupEmailBody({ contactName: null, company: 'Havis', draft: '   ' })).toContain(
+      'not a picture of one'
+    );
+  });
+});

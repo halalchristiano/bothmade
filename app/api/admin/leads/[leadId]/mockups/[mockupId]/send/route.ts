@@ -55,6 +55,13 @@ export async function POST(
     const siteUrl = resolveSiteUrl();
     const viewUrl = `${siteUrl}/m/${updated.shareToken}`;
 
+    // Only to resolve [Sender Name] in a written draft — the transport works
+    // out who is actually sending on its own.
+    const sender = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { name: true },
+    });
+
     const result = await sendMockupEmail({
       toEmail: lead.email,
       contactName: lead.contactName,
@@ -62,6 +69,8 @@ export async function POST(
       viewUrl,
       note: mockup.note,
       observation: lead.personalizedObservation,
+      draft: lead.mockupEmailDraft,
+      senderName: sender?.name,
     });
 
     // The row was stamped sent a moment ago, because the tracked link 404s
