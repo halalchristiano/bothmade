@@ -137,6 +137,10 @@ export async function GET() {
         emailDeliveryFailedReason: true,
         coldEmailSentAt: true,
         coldEmailOpens: true,
+        // Filterable on the page: a rep working a morning of med spas reuses
+        // the same pitch twenty times, which is worth more than working the
+        // list in whatever order it arrived.
+        industry: true,
         coldEmailOpenedAt: true,
         coldEmailLastOpenedAt: true,
         salesNote: true,

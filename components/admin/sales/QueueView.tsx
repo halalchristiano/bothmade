@@ -42,6 +42,7 @@ interface CallRow {
   status: LeadStatus;
   hotLead: boolean;
   estimatedValue: number | null;
+  industry: string | null;
   nextFollowUpAt: string | null;
   emailDeliveryFailedReason: string | null;
   salesNote: string | null;
@@ -108,6 +109,33 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
   },
 };
 
+/**
+ * Deal-size bands, in dollars.
+ *
+ * Chosen off what the pipeline actually contains rather than round numbers
+ * for their own sake: most rows sit between $8k and $22k, so bands at 5, 10
+ * and 20 split the book into thirds instead of leaving two of them empty.
+ */
+const VALUE_BANDS = [
+  { min: 0, label: 'Any' },
+  { min: 5000, label: '$5k+' },
+  { min: 10000, label: '$10k+' },
+  { min: 20000, label: '$20k+' },
+];
+
+/**
+ * Open-count bands. One open is deliberately offered even though one open is
+ * weak evidence — a rep who wants to work everything that showed any sign at
+ * all should be able to, and the number beside it is the honest count.
+ */
+const OPEN_BANDS = [
+  { min: 0, label: 'Any' },
+  { min: 1, label: '1+' },
+  { min: 2, label: '2+' },
+  { min: 3, label: '3+' },
+  { min: 5, label: '5+' },
+];
+
 const ORDER: CallReason[] = [
   'replied',
   'opened',
@@ -159,6 +187,20 @@ export function QueueView() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  /*
+   * The three questions a rep actually asks of a call list, as filters.
+   *
+   * "Only the big ones today." "Who is actually reading my emails?" "Give me
+   * a morning of dentists so I can say the same thing twenty times." Each one
+   * was previously answered by scrolling and remembering, which is the same
+   * as not being answered.
+   *
+   * Every option carries its own count, so the filter row doubles as the
+   * answer to how many there are before anything is clicked.
+   */
+  const [minValue, setMinValue] = useState(0);
+  const [minOpens, setMinOpens] = useState(0);
+  const [industry, setIndustry] = useState('');
   // Choosing controls. The list knows the right order; these let a rep pick a
   // business to actually ring now — which the order alone can't, because the
   // most urgent lead is often one where it's the middle of the night.
@@ -384,10 +426,46 @@ export function QueueView() {
   // couldn't read its area code would quietly lose work.
   const callableNow = (r: CallRow) => (leadLocalTime(r.phone, now)?.callability ?? 'okay') !== 'bad';
 
-  const searched = callable.filter(match);
+  // Money first, because it is the filter that changes which leads matter
+  // rather than which order they come in.
+  const overValue = (r: CallRow) => (r.estimatedValue ?? 0) >= minValue * 100;
+  const overOpens = (r: CallRow) => r.opens >= minOpens;
+  const inIndustry = (r: CallRow) => !industry || r.industry === industry;
+
+  const searched = callable.filter(
+    (r) => match(r) && overValue(r) && overOpens(r) && inIndustry(r)
+  );
   const readyCount = searched.filter(callableNow).length;
   const visible = readyNow ? searched.filter(callableNow) : searched;
-  const visibleNoPhone = noPhone.filter(match);
+
+  /*
+   * Counts for the chips, each measured against the *other* filters rather
+   * than against the whole list. A chip reading "$20k+ (14)" that yields four
+   * rows because an industry filter is also on is a number nobody can act on.
+   */
+  const countAtValue = (dollars: number) =>
+    callable.filter((r) => match(r) && overOpens(r) && inIndustry(r) && (r.estimatedValue ?? 0) >= dollars * 100)
+      .length;
+  const countAtOpens = (n: number) =>
+    callable.filter((r) => match(r) && overValue(r) && inIndustry(r) && r.opens >= n).length;
+
+  // Only the industries actually in front of you, biggest first — a select
+  // listing every trade in the database would mostly be empty options.
+  const industries = Object.entries(
+    callable
+      .filter((r) => match(r) && overValue(r) && overOpens(r))
+      .reduce<Record<string, number>>((acc, r) => {
+        if (r.industry) acc[r.industry] = (acc[r.industry] ?? 0) + 1;
+        return acc;
+      }, {})
+  ).sort((a, b) => b[1] - a[1]);
+
+  const filtersOn = minValue > 0 || minOpens > 0 || Boolean(industry);
+  // The same filters, or the header count says one thing and the list shows
+  // another the moment a trade is picked.
+  const visibleNoPhone = noPhone.filter(
+    (r) => match(r) && overValue(r) && overOpens(r) && inIndustry(r)
+  );
   const visibleNoSignal = noSignal.filter(match);
   const visibleScheduledHot = scheduledHot.filter(match);
 
@@ -530,6 +608,94 @@ export function QueueView() {
             {k === 'urgent' ? 'Most urgent' : k === 'value' ? 'Biggest deal' : 'Best time to call'}
           </button>
         ))}
+      </div>
+
+      {/* Worth how much · read it how often · what trade. Every option says
+          how many are behind it, so the row answers the question before it is
+          clicked. */}
+      <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] px-3.5 py-3">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] uppercase tracking-wide text-white/35 mr-0.5">Worth</span>
+            {VALUE_BANDS.map((band) => {
+              const n = countAtValue(band.min);
+              return (
+                <button
+                  key={band.min}
+                  onClick={() => setMinValue(band.min)}
+                  disabled={n === 0 && band.min > 0}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-30 ${
+                    minValue === band.min
+                      ? 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200'
+                      : 'border-white/12 text-white/50 hover:bg-white/5'
+                  }`}
+                >
+                  {band.label} <span className="opacity-55">({n})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] uppercase tracking-wide text-white/35 mr-0.5">Opened</span>
+            {OPEN_BANDS.map((band) => {
+              const n = countAtOpens(band.min);
+              return (
+                <button
+                  key={band.min}
+                  onClick={() => setMinOpens(band.min)}
+                  disabled={n === 0 && band.min > 0}
+                  title={
+                    band.min === 0
+                      ? 'Everyone on the sheet'
+                      : `Opened your email at least ${band.min} ${band.min === 1 ? 'time' : 'times'}`
+                  }
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-30 ${
+                    minOpens === band.min
+                      ? 'border-amber-400/40 bg-amber-400/15 text-amber-200'
+                      : 'border-white/12 text-white/50 hover:bg-white/5'
+                  }`}
+                >
+                  {band.min > 0 && <Eye size={10} />}
+                  {band.label} <span className="opacity-55">({n})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {industries.length > 1 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] uppercase tracking-wide text-white/35">Trade</span>
+              <select
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                className="rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1 text-xs font-semibold text-white/60 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+              >
+                <option value="" className="bg-raised">
+                  Every trade ({industries.reduce((n, [, c]) => n + c, 0)})
+                </option>
+                {industries.map(([name, count]) => (
+                  <option key={name} value={name} className="bg-raised">
+                    {name} ({count})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {filtersOn && (
+            <button
+              onClick={() => {
+                setMinValue(0);
+                setMinOpens(0);
+                setIndustry('');
+              }}
+              className="ml-auto text-xs font-semibold text-white/40 hover:text-white transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {nextUp && (
