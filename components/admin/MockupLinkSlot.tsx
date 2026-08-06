@@ -142,8 +142,13 @@ export function MockupLinkSlot({
         <p className={`flex items-center gap-1.5 text-sm font-semibold ${accent.text}`}>
           <Icon size={14} /> {label}
         </p>
+        {/* "Goes to client", not "sent to client". The badge says which link
+            is the deliverable; whether it has actually gone is a different
+            fact, shown beside it on the Mockups page — and a row reading
+            "not sent yet" under a badge reading "sent" is a contradiction
+            somebody has to stop and resolve. */}
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${accent.chip}`}>
-          {tone === 'send' ? 'Sent to client' : 'Never sent'}
+          {tone === 'send' ? 'Goes to client' : 'Internal only'}
         </span>
       </div>
       <p className="text-xs text-white/40 mb-3 leading-relaxed">{hint}</p>

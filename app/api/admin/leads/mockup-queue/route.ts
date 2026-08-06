@@ -60,7 +60,20 @@ export async function GET() {
         take: 60,
         include: {
           ...mockupInclude,
-          lead: { select: { id: true, company: true, contactName: true, status: true, estimatedValue: true } },
+          // Both links and the address, so the two slots and the send
+          // control can live on this page rather than only on the lead.
+          lead: {
+            select: {
+              id: true,
+              company: true,
+              contactName: true,
+              status: true,
+              estimatedValue: true,
+              email: true,
+              mockupUrl: true,
+              mockupFolderUrl: true,
+            },
+          },
         },
       })
       .catch((err) => {

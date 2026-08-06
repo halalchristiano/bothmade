@@ -361,6 +361,30 @@ export async function PATCH(
       });
     }
 
+    /*
+     * The folder becomes a version too, or it falls off the Mockups page.
+     *
+     * The build queue treats either link as "design has produced something",
+     * so pasting a folder takes the lead off "To build". The "Built" tab
+     * lists mockup versions. Without this the folder creates no version, and
+     * a lead with the deliverable attached appears on neither tab — it
+     * vanishes from the only screen named after mockups, at exactly the
+     * moment somebody needs to send it.
+     *
+     * cacheAsLatest is off: the folder already has its own column, and
+     * writing it into mockupUrl would overwrite the preview build.
+     */
+    if (mockupFolderUrl !== undefined && mockupFolderUrl) {
+      const url = clientMockupLink({ mockupFolderUrl });
+      if (url) {
+        await recordLeadMockup({ leadId, url, userId: session.userId, cacheAsLatest: false }).catch(
+          (err) => {
+            console.error('Could not record folder mockup version:', err);
+          }
+        );
+      }
+    }
+
     // A PDF export goes into the same list rather than a column of its own —
     // it's another version of the mockup, and keeping it here means the
     // history survives the next revision instead of being overwritten by it.

@@ -8,6 +8,7 @@ import { Badge, Card, EmptyState, Kicker, PageIn, PageTitle, SearchFilter, match
 import { PAIN_POINTS, parseSalesPoints, type PainPointKey } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { MockupDeliveryForm } from '@/components/admin/MockupDelivery';
+import { MockupLinkSlot } from '@/components/admin/MockupLinkSlot';
 
 interface QueueRow {
   id: string;
@@ -147,7 +148,16 @@ interface LiveMockup {
   viewCount: number;
   responseNote: string | null;
   expired: boolean;
-  lead: { id: string; company: string; contactName: string | null; status: string; estimatedValue: number | null };
+  lead: {
+    id: string;
+    company: string;
+    contactName: string | null;
+    status: string;
+    estimatedValue: number | null;
+    email: string | null;
+    mockupUrl: string | null;
+    mockupFolderUrl: string | null;
+  };
 }
 
 const LIVE_TONE: Record<string, string> = {
@@ -355,6 +365,33 @@ export default function MockupQueuePage() {
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Both links, on the page named after them. Managing them only
+                  from the lead detail meant opening a second screen to check
+                  which link was which — and the folder is the one that goes
+                  to the client, so getting it wrong is not a small mistake. */}
+              <div className="mt-3 space-y-2">
+                <MockupLinkSlot
+                  leadId={m.lead.id}
+                  field="mockupFolderUrl"
+                  value={m.lead.mockupFolderUrl}
+                  label="Mockup folder"
+                  tone="send"
+                  hint="The Drive folder the client gets — screenshots, the brochure, the walkthrough video. The only link that goes in an email."
+                  placeholder="drive.google.com/drive/folders/..."
+                  onSaved={load}
+                />
+                <MockupLinkSlot
+                  leadId={m.lead.id}
+                  field="mockupUrl"
+                  value={m.lead.mockupUrl}
+                  label="Preview build"
+                  tone="internal"
+                  hint="The Vercel subdomain, for pulling up quickly on a call. Password-protected, so it is never sent."
+                  placeholder="company.bothmade.studio"
+                  onSaved={load}
+                />
               </div>
             </div>
           ))}
