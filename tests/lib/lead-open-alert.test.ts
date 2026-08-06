@@ -94,16 +94,62 @@ describe('the alert', () => {
     expect(prisma.lead.updateMany).not.toHaveBeenCalled();
   });
 
-  it('fires for a single open that arrives too late to be automatic', async () => {
+  /**
+   * The one that went wrong in the wild.
+   *
+   * Three alerts landed in one evening, every one of them reading "opened
+   * once", every one a mail scanner fetching the pixel a few minutes after
+   * delivery. The gate was `callable`, which passes any single open slow
+   * enough not to look automatic — a weaker test than the call sheet's own,
+   * so the alert announced a reader the app itself did not believe in and
+   * then sent somebody to the top of a list that lead was not on.
+   *
+   * One open proves the address is live. It is not a person.
+   */
+  it('stays silent for a single open, however late it arrives', async () => {
+    for (const delay of [3 * 60 * 60 * 1000, 26 * 60 * 60 * 1000]) {
+      vi.clearAllMocks();
+      prisma.lead.updateMany.mockResolvedValue({ count: 1 });
+      prisma.lead.findUnique.mockResolvedValue(
+        lead({ coldEmailOpens: 1, coldEmailOpenedAt: at(delay), coldEmailLastOpenedAt: at(delay) })
+      );
+
+      const result = await alertOnFirstRealOpen('lead_1');
+
+      expect(result.sent).toBe(false);
+      expect(sendEmail).not.toHaveBeenCalled();
+      // Nothing claimed, so the second open can still earn the alert.
+      expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it('fires on the open that turns a delivery into a reader', async () => {
     prisma.lead.findUnique.mockResolvedValue(
       lead({
-        coldEmailOpens: 1,
-        coldEmailOpenedAt: at(3 * 60 * 60 * 1000),
-        coldEmailLastOpenedAt: at(3 * 60 * 60 * 1000),
+        coldEmailOpens: 2,
+        coldEmailOpenedAt: at(30 * 1000),
+        coldEmailLastOpenedAt: at(4 * 60 * 60 * 1000),
       })
     );
 
     expect((await alertOnFirstRealOpen('lead_1')).sent).toBe(true);
+  });
+
+  /**
+   * Delivery is the part that lags, not the scanner. A send that sits in a
+   * queue for five minutes and is fetched on arrival used to clear the
+   * ninety-second window and read as a person.
+   */
+  it('treats a first open minutes after the send as the delivery', async () => {
+    prisma.lead.findUnique.mockResolvedValue(
+      lead({
+        coldEmailOpens: 1,
+        coldEmailOpenedAt: at(5 * 60 * 1000),
+        coldEmailLastOpenedAt: at(5 * 60 * 1000),
+      })
+    );
+
+    expect((await alertOnFirstRealOpen('lead_1')).sent).toBe(false);
   });
 
   it('does not alert twice for the same send', async () => {

@@ -61,6 +61,19 @@ export interface OpenReading {
    * is somebody looking.
    */
   callable: boolean;
+  /**
+   * Whether repetition has actually proved a human — the `engaged` and `hot`
+   * bands, and nothing else.
+   *
+   * Deliberately stricter than `callable`. `callable` decides whether a lead
+   * is worth a dial, where a single late open is cheap to act on and cheap to
+   * be wrong about. This decides whether we are allowed to say the words "is
+   * reading it" and interrupt somebody's evening to say them, which a single
+   * open never earns — see the note at the top of this file. Getting that bar
+   * wrong sends three phone alerts in ten minutes for three mail scanners and
+   * teaches everybody to swipe the next one away.
+   */
+  confirmedReader: boolean;
   /** Opens, as recorded. Shown as-is — never rounded or "corrected". */
   opens: number;
   /** What can honestly be said, in one line, on a row in the queue. */
@@ -84,11 +97,20 @@ function toDate(value: Date | string | null): Date | null {
 /**
  * How soon after sending an open still looks like a machine.
  *
- * A privacy proxy or a scanner fetches within seconds of delivery. A human
- * opening that fast is possible and rare. The open still counts as proof of
- * delivery — it just isn't evidence of a reader.
+ * A privacy proxy or a scanner fetches on delivery — and delivery is the part
+ * that lags. Ninety seconds was measured from the wrong end: it assumed the
+ * scanner fetches the instant we press send, when queueing, greylisting and a
+ * slow first hop routinely put five or ten minutes between the send and the
+ * mailbox. Every one of those fetches then read as a person, on a single
+ * open, at two minutes past midnight.
+ *
+ * Ten minutes is the honest edge of "this was the delivery, not a reader". A
+ * human opening a cold email inside ten minutes of it being sent does happen;
+ * it is rare enough that treating it as a machine costs a call sheet position
+ * and nothing else, while the other error costs the credibility of every
+ * alert we send.
  */
-export const MACHINE_OPEN_WINDOW_MS = 90_000;
+export const MACHINE_OPEN_WINDOW_MS = 10 * 60 * 1000;
 
 /**
  * How far apart two opens have to be before the second one means anything.
@@ -127,6 +149,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
     return {
       band: 'silent',
       callable: false,
+      confirmedReader: false,
       opens: 0,
       headline: 'No cold email sent yet',
       nextStep: null,
@@ -140,6 +163,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
     return {
       band: 'silent',
       callable: false,
+      confirmedReader: false,
       opens: 0,
       headline: concerning ? 'Sent, and nothing came back at all' : 'Sent — nothing back yet',
       nextStep: concerning
@@ -166,6 +190,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
     return {
       band: 'hot',
       callable: true,
+      confirmedReader: true,
       opens,
       headline: `Opened ${opens} times${returned ? ', and came back to it' : ''}`,
       nextStep: 'Call today. Somebody is reading this repeatedly and has not written back.',
@@ -177,6 +202,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
     return {
       band: 'engaged',
       callable: true,
+      confirmedReader: true,
       opens,
       headline: `Opened ${opens} times`,
       nextStep: 'Worth a call — it landed and it was read more than once.',
@@ -186,6 +212,10 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
 
   return {
     band: 'delivered',
+    // Never a confirmed reader. One fetch is one fetch, however late it
+    // arrives — the whole argument of this module is that repetition is the
+    // signal and a single open is proof of delivery.
+    confirmedReader: false,
     // One open counts as a person only when it did not arrive at machine
     // speed. A prefetch on delivery proves the address works and nothing
     // more, and calling on it is exactly the wasted dial the call sheet is

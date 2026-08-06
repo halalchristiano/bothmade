@@ -62,9 +62,21 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
   if (lead.coldEmailOpenNotifiedAt) return { sent: false, reason: 'already alerted' };
 
   const reading = readOpens(lead);
-  // A mail server fetching the image on delivery is not news, and telling
-  // somebody it is would make every future alert worthless.
-  if (!reading.callable) return { sent: false, reason: 'not a person yet' };
+  /*
+   * Repetition, or nothing.
+   *
+   * This used to fire on `callable`, which is true for a single open that
+   * merely arrived too slowly to look automatic. That is a weaker test than
+   * the call sheet's own — the sheet only calls a lead "opened" in the
+   * engaged and hot bands — so the alert was announcing a reader the app
+   * itself did not believe in, and then telling you to find them at the top
+   * of a list they were not on. Three of them landed in one evening, every
+   * one saying "opened once", every one a mail scanner.
+   *
+   * One open proves the address is live. That is worth knowing and is on the
+   * lead. It is not worth a notification.
+   */
+  if (!reading.confirmedReader) return { sent: false, reason: 'not a person yet' };
 
   /*
    * The claim, and the check, in one statement.

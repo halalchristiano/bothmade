@@ -199,7 +199,7 @@ export async function GET() {
       if (lead.replyReceivedAt) {
         // Outranks a booked follow-up: they've moved, so the old plan is stale.
         reason = 'replied';
-      } else if (opens.band === 'hot' || opens.band === 'engaged') {
+      } else if (opens.confirmedReader) {
         // Above the follow-up bands deliberately: this is evidence from this
         // morning, and it goes cold in days.
         reason = 'opened';

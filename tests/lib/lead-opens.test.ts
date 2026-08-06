@@ -263,3 +263,100 @@ describe('worth a call', () => {
     expect(readOpens(facts({ coldEmailSentAt: null }), NOW).callable).toBe(false);
   });
 });
+
+/**
+ * The stricter line, and why there are two.
+ *
+ * `callable` answers "is this worth a dial", where a late single open is
+ * cheap to act on and cheap to be wrong about. `confirmedReader` answers "may
+ * we say the words 'is reading it' and send a notification saying them",
+ * which a single open never earns however long after the send it lands — the
+ * whole argument of this module is that repetition is the signal.
+ *
+ * These came apart in the wild: the alert fired on `callable` and sent three
+ * notifications in one evening, all reading "opened once", all mail scanners.
+ */
+describe('confirmed reader', () => {
+  const single = (delayMs: number) =>
+    readOpens(
+      facts({ coldEmailOpens: 1, coldEmailOpenedAt: at(delayMs), coldEmailLastOpenedAt: at(delayMs) }),
+      at(delayMs + 60 * 60 * 1000)
+    );
+
+  it('is false for one open, at machine speed or hours later', () => {
+    for (const delay of [1000, 5 * 60 * 1000, 4 * 60 * 60 * 1000, 30 * 60 * 60 * 1000]) {
+      expect(single(delay).confirmedReader, `${delay}ms`).toBe(false);
+    }
+  });
+
+  it('is stricter than callable, never looser', () => {
+    const late = single(4 * 60 * 60 * 1000);
+    expect(late.callable).toBe(true);
+    expect(late.confirmedReader).toBe(false);
+  });
+
+  it('is true exactly for the bands the call sheet calls opened', () => {
+    for (const opens of [2, 3, 6]) {
+      const r = readOpens(
+        facts({
+          coldEmailOpens: opens,
+          coldEmailOpenedAt: at(60 * 60 * 1000),
+          coldEmailLastOpenedAt: at(20 * 60 * 60 * 1000),
+        }),
+        NOW
+      );
+      expect(['engaged', 'hot']).toContain(r.band);
+      expect(r.confirmedReader).toBe(true);
+    }
+  });
+
+  it('is false for silence and for a lead nobody emailed', () => {
+    expect(readOpens(facts(), NOW).confirmedReader).toBe(false);
+    expect(readOpens(facts({ coldEmailSentAt: null }), NOW).confirmedReader).toBe(false);
+  });
+
+  /** A prefetch on delivery plus one real open is a reader, and must alert. */
+  it('is true once a second fetch follows the delivery prefetch', () => {
+    const r = readOpens(
+      facts({
+        coldEmailOpens: 2,
+        coldEmailOpenedAt: at(30 * 1000),
+        coldEmailLastOpenedAt: at(4 * 60 * 60 * 1000),
+      }),
+      NOW
+    );
+    expect(r.confirmedReader).toBe(true);
+  });
+});
+
+/**
+ * Ninety seconds was measured from the send, and the scanner fetches on
+ * delivery — so a queued send meant every scanner read as a person.
+ */
+describe('how long an open still looks like the delivery', () => {
+  it('covers a send that sat in a queue for five minutes', () => {
+    const r = readOpens(
+      facts({
+        coldEmailOpens: 1,
+        coldEmailOpenedAt: at(5 * 60 * 1000),
+        coldEmailLastOpenedAt: at(5 * 60 * 1000),
+      }),
+      NOW
+    );
+    expect(r.band).toBe('delivered');
+    expect(r.callable).toBe(false);
+  });
+
+  it('still lets a genuinely later single open onto the sheet', () => {
+    const r = readOpens(
+      facts({
+        coldEmailOpens: 1,
+        coldEmailOpenedAt: at(45 * 60 * 1000),
+        coldEmailLastOpenedAt: at(45 * 60 * 1000),
+      }),
+      NOW
+    );
+    expect(r.callable).toBe(true);
+    expect(r.confirmedReader).toBe(false);
+  });
+});
