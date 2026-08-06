@@ -23,6 +23,7 @@ import { GridBackdrop, CountUp } from '@/components/ui';
 import { addOnLabel, formatCentsExact } from '@/lib/pricing';
 import { deliverableHref, isOpenable } from '@/lib/deliverables';
 import { DesignFeedbackForm } from '@/components/client/DesignFeedbackForm';
+import { OnboardingAnswers } from '@/components/client/OnboardingAnswers';
 import { DesignDirectionForm } from '@/components/client/DesignDirectionForm';
 
 // The one motion signature carried over from the marketing site — the same
@@ -1583,64 +1584,8 @@ export default function ClientDashboard() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: EASE }}
-            className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8"
           >
-            <h2 className="text-xl font-bold mb-2">Onboarding</h2>
-            <p className="text-white/50 text-sm mb-6">
-              A few questions from the team to help kick your project off right.
-            </p>
-
-            {questions.length === 0 ? (
-              <p className="text-white/50">Nothing to fill out yet — check back soon.</p>
-            ) : (
-              <div className="space-y-6">
-                {questions.map((q) => {
-                  const options = q.options.split(',').map((o) => o.trim()).filter(Boolean);
-                  return (
-                    <div key={q.id}>
-                      <label className="block text-sm font-medium mb-2 text-white/80">
-                        {q.question}
-                        {q.response && <span className="ml-2 text-xs text-emerald-300">Answered</span>}
-                      </label>
-                      {q.type === 'textarea' ? (
-                        <textarea
-                          value={answers[q.id] || ''}
-                          onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                          rows={3}
-                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent resize-none transition-colors"
-                        />
-                      ) : q.type === 'select' ? (
-                        <select
-                          value={answers[q.id] || ''}
-                          onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors"
-                        >
-                          <option value="" className="bg-[#05030a]">Select...</option>
-                          {options.map((opt) => (
-                            <option key={opt} value={opt} className="bg-[#05030a]">
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          value={answers[q.id] || ''}
-                          onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors"
-                        />
-                      )}
-                      <button
-                        onClick={() => handleSubmitAnswer(q.id)}
-                        disabled={savingAnswerId === q.id}
-                        className="mt-2 text-sm rounded-lg border border-white/20 px-4 py-1.5 hover:bg-white/5 disabled:opacity-50 transition-colors"
-                      >
-                        {savingAnswerId === q.id ? 'Saving...' : 'Save Answer'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <OnboardingAnswers projectId={projectId} questions={questions} onSaved={loadOnboarding} />
           </motion.div>
         )}
         </div>

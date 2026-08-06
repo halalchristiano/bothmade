@@ -9,6 +9,7 @@ import {
   sendDesignBriefRequestEmail,
   sendDesignPresentedEmail,
   sendMockupEmail,
+  sendOnboardingRequestEmail,
   sendProjectLiveEmail,
 } from '@/lib/email';
 import { designStage } from '@/lib/design-stages';
@@ -183,6 +184,31 @@ async function buildPreview(
           stageLabel: stage.label,
           stageMeaning: stage.meaning,
           designUrl: (typed && normalizeUrl(typed)) || project.designUrl,
+        })
+      );
+    }
+
+    case 'onboarding-request': {
+      const projectId = segmentAfter(path, 'projects');
+      if (!projectId) return [];
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: {
+          name: true,
+          client: { select: { email: true, contactName: true } },
+          onboardingQuestions: { include: { response: true } },
+        },
+      });
+      if (!project) return [];
+      const outstanding = project.onboardingQuestions.filter((q) => !q.response).length;
+      if (outstanding === 0) return [];
+      return composeOnly(() =>
+        sendOnboardingRequestEmail({
+          to: project.client.email,
+          contactName: project.client.contactName,
+          projectName: project.name,
+          outstanding,
+          loginUrl: `${resolveSiteUrl()}/client/login`,
         })
       );
     }

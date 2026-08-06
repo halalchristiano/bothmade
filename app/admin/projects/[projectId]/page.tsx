@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
-import { Mail } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
@@ -14,6 +14,8 @@ import { DesignDirectionPanel } from '@/components/admin/DesignDirectionPanel';
 import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
 import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
+import { OnboardingBuilder } from '@/components/admin/OnboardingBuilder';
+import { DeleteProject } from '@/components/admin/DeleteProject';
 import { stageMessage } from '@/lib/stage-gates';
 import { deliverableHref } from '@/lib/deliverables';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
@@ -179,10 +181,6 @@ export default function AdminProjectDetailPage() {
   const [questions, setQuestions] = useState<
     Array<{ id: string; question: string; type: string; options: string; response: { answer: string } | null }>
   >([]);
-  const [newQuestion, setNewQuestion] = useState('');
-  const [newQuestionType, setNewQuestionType] = useState('text');
-  const [newQuestionOptions, setNewQuestionOptions] = useState('');
-  const [questionSaving, setQuestionSaving] = useState(false);
 
   const [collectingBalance, setCollectingBalance] = useState(false);
   // -1 until the schedule panel reports back, so the legacy balance button
@@ -249,35 +247,6 @@ export default function AdminProjectDetailPage() {
     } finally {
       setNoteSaving(false);
     }
-  };
-
-  const handleAddQuestion = async () => {
-    if (!newQuestion.trim()) return;
-    setQuestionSaving(true);
-    try {
-      const response = await fetch(`/api/admin/projects/${projectId}/onboarding`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: newQuestion,
-          type: newQuestionType,
-          options: newQuestionOptions,
-          order: questions.length,
-        }),
-      });
-      if (response.ok) {
-        setNewQuestion('');
-        setNewQuestionOptions('');
-        loadQuestions();
-      }
-    } finally {
-      setQuestionSaving(false);
-    }
-  };
-
-  const handleDeleteQuestion = async (questionId: string) => {
-    await fetch(`/api/admin/projects/${projectId}/onboarding/${questionId}`, { method: 'DELETE' });
-    loadQuestions();
   };
 
   const handleCollectBalance = async () => {
@@ -512,9 +481,23 @@ export default function AdminProjectDetailPage() {
   }
 
   // Merge messages + updates into one chronological thread
+  /*
+   * Internal notes belong in here too.
+   *
+   * They were a separate list further down the page, which meant the one
+   * thread that answers "what has happened on this project" was missing the
+   * half written by us — a note saying "client rang, wants the launch moved"
+   * sat somewhere the timeline did not look, so the timeline read as though
+   * nothing had happened that week.
+   *
+   * Yellow and labelled, because the other two entries in this thread have
+   * been seen by the client and these have not. That distinction has to be
+   * visible at a glance or somebody will quote an internal note back to them.
+   */
   const thread = [
     ...project.updates.map((u) => ({ type: 'update' as const, at: u.createdAt, data: u })),
     ...project.messages.map((m) => ({ type: 'message' as const, at: m.createdAt, data: m })),
+    ...notes.map((n) => ({ type: 'note' as const, at: n.createdAt, data: n })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
   const invoices = project.invoices ?? [];
@@ -944,6 +927,29 @@ export default function AdminProjectDetailPage() {
                     </div>
                   );
                 }
+                if (item.type === 'note') {
+                  const n = item.data;
+                  return (
+                    <div
+                      key={`n-${n.id}`}
+                      className="rounded-lg border-l-2 border-amber-400/60 bg-amber-400/[0.07] p-4"
+                    >
+                      <div className="mb-1 flex items-start justify-between gap-3">
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-200">
+                          <Lock size={12} />
+                          Internal note{n.author?.name ? ` — ${n.author.name}` : ''}
+                        </p>
+                        <p className="shrink-0 text-xs text-white/30">
+                          {new Date(n.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm text-white/70">{n.content}</p>
+                      <p className="mt-1.5 text-[11px] text-amber-300/50">
+                        Only visible here — the client never sees this.
+                      </p>
+                    </div>
+                  );
+                }
                 const m = item.data;
                 return (
                   <div
@@ -1223,67 +1229,27 @@ export default function AdminProjectDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-lg font-bold mb-1">Onboarding Form</h2>
-            <p className="text-xs text-white/40 mb-4">
-              Custom questions for this client to answer from their dashboard.
-            </p>
+        </div>
+      </div>
 
-            <div className="space-y-3 mb-4">
-              {questions.length === 0 && <p className="text-white/40 text-sm">No questions yet.</p>}
-              {questions.map((q) => (
-                <div key={q.id} className="p-3 rounded-lg border border-white/10">
-                  <div className="flex justify-between items-start gap-2">
-                    <p className="text-sm font-medium">{q.question}</p>
-                    <button
-                      onClick={() => handleDeleteQuestion(q.id)}
-                      className="text-xs text-red-400 hover:underline shrink-0"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  {q.response ? (
-                    <p className="text-xs text-emerald-300 mt-1">Answered: {q.response.answer}</p>
-                  ) : (
-                    <p className="text-xs text-white/30 mt-1">Awaiting answer</p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-4 border-t border-white/10 space-y-2">
-              <input
-                value={newQuestion}
-                onChange={(e) => setNewQuestion(e.target.value)}
-                placeholder="Question text"
-                className={`${inputClass} text-sm`}
-              />
-              <select
-                value={newQuestionType}
-                onChange={(e) => setNewQuestionType(e.target.value)}
-                className={`${inputClass} text-sm`}
-              >
-                <option value="text" className="bg-[#05030a]">Short text</option>
-                <option value="textarea" className="bg-[#05030a]">Long text</option>
-                <option value="select" className="bg-[#05030a]">Multiple choice</option>
-              </select>
-              {newQuestionType === 'select' && (
-                <input
-                  value={newQuestionOptions}
-                  onChange={(e) => setNewQuestionOptions(e.target.value)}
-                  placeholder="Options, comma-separated"
-                  className={`${inputClass} text-sm`}
-                />
-              )}
-              <button
-                onClick={handleAddQuestion}
-                disabled={questionSaving || !newQuestion.trim()}
-                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                {questionSaving ? 'Adding...' : 'Add Question'}
-              </button>
-            </div>
-          </div>
+      {/* Out of the sidebar and across the page.
+          This is a working surface — questions to write, answers to read —
+          and it was in a two-tenths column, which is most of why it felt
+          like a settings panel rather than a thing you use. */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <OnboardingBuilder
+          projectId={projectId}
+          questions={questions}
+          onChanged={loadQuestions}
+        />
+        <div className="flex flex-col justify-end">
+          {/* Destructive and permanent, so it earns neither prominence nor a
+              single click. */}
+          <DeleteProject
+            projectId={projectId}
+            company={project.client.company}
+            projectName={project.name}
+          />
         </div>
       </div>
     </div>

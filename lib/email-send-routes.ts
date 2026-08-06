@@ -101,6 +101,11 @@ export const SEND_ROUTES: SendRouteSpec[] = [
   { match: /^\/api\/admin\/projects\/[^/]+\/instalments$/, action: 'Email the instalment to pay' },
   { match: /^\/api\/admin\/projects\/[^/]+\/payment-reminder$/, action: 'Send the payment reminder' },
   {
+    match: /^\/api\/admin\/projects\/[^/]+\/onboarding\/request$/,
+    action: 'Ask the client to answer the onboarding questions',
+    preview: 'onboarding-request',
+  },
+  {
     match: /^\/api\/admin\/projects\/[^/]+\/design-brief-request$/,
     action: 'Ask the client for their design brief',
     preview: 'design-brief-request',

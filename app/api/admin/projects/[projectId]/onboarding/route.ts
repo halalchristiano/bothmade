@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
+import { ONBOARDING_TYPES } from '@/lib/onboarding';
 
-const VALID_TYPES = ['text', 'textarea', 'select'];
+// The one list, shared with both sides of the form. It grew — "pick any"
+// and "yes or no" — and a route with its own copy silently rejected the new
+// ones with "a valid type is required", which named nothing.
+const VALID_TYPES = ONBOARDING_TYPES.map((t) => t.value) as string[];
 
 export async function GET(
   request: NextRequest,

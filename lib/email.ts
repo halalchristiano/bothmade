@@ -1872,6 +1872,58 @@ export async function sendProjectLiveEmail(input: {
 }
 
 /**
+ * "There are questions waiting for you, and we are held up until you answer."
+ *
+ * The onboarding form worked and did nothing. Adding a question wrote a row;
+ * nothing told the client, so they found it only by opening a tab they had no
+ * reason to open, and "awaiting answer" sat on the project indefinitely with
+ * no way to chase it.
+ *
+ * Says how many, says the team is waiting, and links straight to the login
+ * rather than to a page they have to navigate from. Under Section 6 these are
+ * Client Dependencies — a delay in providing one extends the timeline day for
+ * day — so being asked plainly is in their interest as much as ours.
+ */
+export async function sendOnboardingRequestEmail(input: {
+  to: string;
+  contactName: string | null;
+  projectName: string;
+  outstanding: number;
+  loginUrl: string;
+}): Promise<SendResult> {
+  const many = input.outstanding !== 1;
+
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `${input.outstanding} question${many ? 's' : ''} waiting — ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Over to you',
+      title: `We need ${input.outstanding} thing${many ? 's' : ''} from you`,
+      bodyHtml:
+        `<p>Hi ${esc(input.contactName) || 'there'},</p>` +
+        `<p>There ${many ? 'are' : 'is'} <strong style="color:#fff;">${
+          input.outstanding
+        } question${many ? 's' : ''}</strong> waiting on your dashboard for
+         <strong style="color:#fff;">${esc(input.projectName)}</strong>, and the team is held up
+         until ${many ? 'they are' : 'it is'} answered.</p>` +
+        `<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+           <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">Why we are asking</p>
+           <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.7);">
+             These are the things we cannot start without — access, content, and who decides what.
+             Most take a sentence. Answer what you can now and come back for the rest; each one
+             saves ${many ? 'them' : 'it'} being a phone call later.
+           </p>
+         </div>` +
+        `<p style="font-size:13px; color:rgba(255,255,255,0.5);">
+           Sign in below and the questions are on your project, under Onboarding.
+         </p>`,
+      ctaLabel: 'Sign in and answer them',
+      ctaUrl: input.loginUrl,
+    }),
+  });
+}
+
+/**
  * "We need the design brief before we can design anything."
  *
  * The client dashboard has always had a card asking for it, and nothing ever
