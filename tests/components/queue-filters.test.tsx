@@ -85,6 +85,13 @@ const shown = (name: string) => screen.queryAllByText(name).length > 0;
 beforeEach(() => {
   idCounter = 0;
   vi.restoreAllMocks();
+  /*
+   * The sort and the "sensible hour" toggle are remembered across sessions,
+   * which means across tests too — one test clicking "Biggest deal" left the
+   * next one rendering a flat list it never asked for. That is the same trap
+   * the nudge below exists for, and it caught itself here first.
+   */
+  localStorage.clear();
 });
 
 describe('the two filter bars', () => {
@@ -316,5 +323,49 @@ describe('filtering by state', () => {
 
     expect(shown('Florida Co')).toBe(true);
     expect(shown('Carolina Co')).toBe(false);
+  });
+});
+
+/**
+ * The setting that quietly undoes the ordering.
+ *
+ * "Biggest deal" and "Best time to call" drop the bands and return one flat
+ * list, and the choice is remembered across sessions. So a click from weeks
+ * ago keeps scattering the leads who opened your email through the middle of
+ * the page, with nothing on screen explaining why they are not at the top.
+ */
+describe('sorting away from most urgent', () => {
+  const openedRow = (over: Record<string, unknown> = {}) =>
+    row({ reason: 'opened', opens: 3, openBand: 'hot', openHeadline: 'Opened 3 times', ...over });
+
+  it('says so, and offers the sort back', async () => {
+    respondWith({
+      callable: [openedRow({ company: 'Reader', estimatedValue: 100000 }), row({ company: 'Big', estimatedValue: 3000000 })],
+    });
+    render(<QueueView />);
+    await screen.findAllByText('Big');
+
+    await userEvent.click(screen.getByRole('button', { name: /biggest deal/i }));
+    expect(screen.getByText(/1 lead has opened your email/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /sort by most urgent/i }));
+    expect(screen.queryByText(/opened your email\./i)).not.toBeInTheDocument();
+  });
+
+  it('stays quiet when nobody has opened anything', async () => {
+    respondWith({ callable: [row({ company: 'Plain' })] });
+    render(<QueueView />);
+    await screen.findAllByText('Plain');
+
+    await userEvent.click(screen.getByRole('button', { name: /biggest deal/i }));
+    expect(screen.queryByText(/opened your email\./i)).not.toBeInTheDocument();
+  });
+
+  it('stays quiet on the sort that already puts them first', async () => {
+    respondWith({ callable: [openedRow({ company: 'Reader' })] });
+    render(<QueueView />);
+    await screen.findAllByText('Reader');
+
+    expect(screen.queryByText(/spreads them through the list/i)).not.toBeInTheDocument();
   });
 });

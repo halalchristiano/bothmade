@@ -686,6 +686,9 @@ export function QueueView() {
   const searched = searchedCallable.filter(f.matches);
   const readyCount = searched.filter(callableNow).length;
   const visible = readyNow ? searched.filter(callableNow) : searched;
+  // Counted after every filter, so the nudge below never offers to reorder
+  // leads that are not on screen to begin with.
+  const openedInView = visible.filter((r) => r.reason === 'opened').length;
 
   // The same filters, or the header count says one thing and the list shows
   // another the moment a trade is picked.
@@ -845,6 +848,29 @@ export function QueueView() {
           </button>
         ))}
       </div>
+
+      {/*
+          The setting that quietly undoes the ordering.
+
+          Sorting by deal size or by hour is a deliberate override — it drops
+          the bands entirely and returns one flat list — and it is remembered
+          across sessions. So a choice made once, weeks ago, keeps scattering
+          the leads who opened your email through the middle of the page, and
+          nothing on screen said why. Only shown when it is actually costing
+          something: a non-urgent sort AND somebody who has opened it.
+      */}
+      {sortBy !== 'urgent' && openedInView > 0 && (
+        <p className="-mt-1 mb-2 text-xs text-amber-200/70">
+          {openedInView} {openedInView === 1 ? 'lead has' : 'leads have'} opened your email.{' '}
+          <button
+            onClick={() => setSortBy('urgent')}
+            className="font-semibold underline underline-offset-2 hover:text-white transition-colors"
+          >
+            Sort by most urgent
+          </button>{' '}
+          to put {openedInView === 1 ? 'it' : 'them'} at the top — this sort spreads them through the list.
+        </p>
+      )}
 
       {/* Worth · opened · trade · state · never rung. Every option says how
           many are behind it, so the row answers the question before it is
