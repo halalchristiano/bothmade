@@ -51,14 +51,22 @@ export interface OpenFacts {
 export interface OpenReading {
   band: OpenBand;
   /**
-   * Whether a person can be said to have opened this — and therefore whether
-   * the lead belongs on the call sheet at all.
+   * Whether this lead belongs on the call sheet at all — which is any open,
+   * full stop.
    *
-   * This is the line the whole call list now hangs off, so it is drawn
-   * conservatively: a mail server fetching the image on delivery is not a
-   * person, and neither is nothing at all. Anything beyond that prefetch —
-   * a second fetch, or a first one that arrives too late to be automatic —
-   * is somebody looking.
+   * This was drawn much tighter, on the argument that a mail server's fetch
+   * on delivery is not a person and a dial into it is wasted. That argument
+   * weighs the wrong two things against each other. The cost of ringing a
+   * business whose scanner opened the email is one call to a business you
+   * were going to call anyway — it is in your book and you emailed it. The
+   * cost of hiding a real reader is the best moment you will ever get to ring
+   * them, gone. Those are not close, and the tight rule was on the wrong side
+   * of them.
+   *
+   * So one open puts a lead on the sheet, and how good the evidence is
+   * decides where it sits inside the opened band rather than whether it is
+   * there at all. `score` carries that, and the headline says out loud which
+   * kind of open it was, so nobody is misled about what they are ringing.
    */
   callable: boolean;
   /**
@@ -214,19 +222,22 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
     band: 'delivered',
     // Never a confirmed reader. One fetch is one fetch, however late it
     // arrives — the whole argument of this module is that repetition is the
-    // signal and a single open is proof of delivery.
+    // signal and a single open is proof of delivery. This is what decides
+    // whether we may say "is reading it", and it is the only thing it decides.
     confirmedReader: false,
-    // One open counts as a person only when it did not arrive at machine
-    // speed. A prefetch on delivery proves the address works and nothing
-    // more, and calling on it is exactly the wasted dial the call sheet is
-    // now filtered to avoid.
-    callable: !firstLooksAutomatic,
+    // On the sheet regardless. An open is an open, and the business is worth
+    // a dial even when the fetch was its mail server — see the note on this
+    // field. What the speed of it changes is the ranking and the wording,
+    // both of which are immediately below.
+    callable: true,
     opens,
-    headline: firstLooksAutomatic ? 'Delivered — opened on arrival' : 'Opened once',
+    headline: firstLooksAutomatic ? 'Opened once — on arrival' : 'Opened once',
     nextStep: firstLooksAutomatic
-      ? 'It reached a real mailbox. That is all this proves — the open was fast enough to be their mail app, not them.'
-      : null,
-    score: 1,
+      ? 'Worth a call. Be aware the open was fast enough to be their mail server rather than them — it proves the address is live, which is more than most of your list.'
+      : 'Worth a call — it landed and somebody opened it, though only once so far.',
+    // Below every genuine reader, and a late open above a machine-speed one:
+    // inside the opened band the order is the strength of the evidence.
+    score: firstLooksAutomatic ? 1 : 3,
   };
 }
 

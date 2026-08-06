@@ -199,9 +199,13 @@ export async function GET() {
       if (lead.replyReceivedAt) {
         // Outranks a booked follow-up: they've moved, so the old plan is stale.
         reason = 'replied';
-      } else if (opens.confirmedReader) {
-        // Above the follow-up bands deliberately: this is evidence from this
-        // morning, and it goes cold in days.
+      } else if (opens.callable) {
+        // Any open, above the follow-up bands deliberately: this is evidence
+        // from this morning and it goes cold in days, where a date in a diary
+        // is a plan that will keep. Ranked inside the band by how strong the
+        // evidence is — repeat readers first, a single fetch on delivery
+        // last — so "opened" never means one thing on screen and another in
+        // the ordering.
         reason = 'opened';
       } else if (lead.emailDeliveryFailedAt) {
         reason = 'bounced'; // email can't reach them at all, so the date is moot
@@ -217,11 +221,18 @@ export async function GET() {
         reason = 'never-contacted';
       }
 
-      // Emailed, and no person has opened it. Not a call — evidence of
-      // nothing, and the whole reason the sheet was too long to work.
+      /*
+       * Emailed, and not one open on it. What the section heading has always
+       * said, and now what it actually holds.
+       *
+       * This used to lean on `callable` while `callable` excluded a single
+       * open, so a business that HAD opened the email sat in a list titled
+       * "Emailed, nobody has opened it" — off the sheet, and the heading was
+       * wrong about it. Zero opens is the only thing that belongs here.
+       */
       const emailedAndUnopened =
         !!lead.coldEmailSentAt &&
-        !opens.callable &&
+        opens.opens === 0 &&
         (reason === 'no-follow-up' || reason === 'never-contacted');
 
       return {

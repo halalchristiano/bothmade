@@ -69,10 +69,10 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
     classes: 'border-emerald-400/40 bg-emerald-400/[0.12] text-emerald-100',
   },
   opened: {
-    label: 'Reading your email right now — ring these',
-    short: 'They keep opening it',
+    label: 'They opened your email — ring these',
+    short: 'They opened your email',
     blurb:
-      "These have opened your cold email more than once and not written back. Most opened first. It is the strongest signal you get short of a reply, and it goes cold in days — one open on its own is only proof it arrived, so it is not in here.",
+      "These have opened your cold email and not written back. Most-opened first, so anyone who came back to it is at the very top — that is a person, and the signal goes cold in days. Further down are the ones opened once, where the fetch may have been their mail server; that still proves the address is live, which is more than the rest of your list, and it is still worth the call.",
     classes: 'border-orange-400/40 bg-orange-400/[0.12] text-orange-100',
   },
   bounced: {

@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * "They just opened it" — fired once, by the fetch that earns it.
+ * "They just opened it" — once per send, and honest about what it saw.
  *
- * Two failure modes matter more than the feature working. One alert per pixel
- * fetch would train everybody to ignore the alerts inside a day, and a mail
- * server's fetch-on-delivery announced as a person reading would send a rep to
- * ring somebody who has never seen the message. Both are pinned below.
+ * Every first open earns an alert, because an open is the difference between
+ * an address that works and one that never landed, and that is worth knowing
+ * whoever fetched the pixel. Two failure modes matter more than the feature
+ * working, and both are pinned below.
+ *
+ * One alert per pixel fetch would train everybody to ignore the alerts inside
+ * a day — a mailbox syncing on four devices must still produce one. And a
+ * mail server's fetch-on-delivery announced as a person reading would send a
+ * rep in expecting a live prospect. The answer to the second is the wording,
+ * not silence: an open is reported, and only repetition may be called reading.
  */
 
 const prisma = {
@@ -60,7 +66,7 @@ describe('the alert', () => {
     expect(result.sent).toBe(true);
     const mail = sendEmail.mock.calls[0][0] as unknown as { to: string; subject: string; html: string };
     expect(mail.to).toBe('evan@bothmade.studio');
-    expect(mail.subject).toMatch(/Ridgeline Roofing just opened/i);
+    expect(mail.subject).toMatch(/Ridgeline Roofing is reading/i);
     expect(mail.html).toContain('2 times');
     // The one thing the email exists to produce.
     expect(mail.html).toContain('+15125550142');
@@ -79,34 +85,39 @@ describe('the alert', () => {
     expect(posted.content).toContain('Ridgeline Roofing');
   });
 
-  /** The failure that would make every later alert worthless. */
-  it('stays silent for a mail server fetching the image on delivery', async () => {
+  /**
+   * The claim that must never be made.
+   *
+   * An open is worth telling somebody about — it is the difference between an
+   * address that works and one that never landed, and it is worth a dial. But
+   * a mail server fetching the image on delivery has not read anything, and
+   * an alert that says "is reading it" over that is the one thing that would
+   * make every later alert worthless. The fix is the wording, not silence.
+   */
+  it('still tells you about a mail server fetch, without calling it reading', async () => {
     prisma.lead.findUnique.mockResolvedValue(
       lead({ coldEmailOpens: 1, coldEmailOpenedAt: at(2000), coldEmailLastOpenedAt: at(2000) })
     );
 
     const result = await alertOnFirstRealOpen('lead_1');
 
-    expect(result.sent).toBe(false);
-    expect(result.reason).toMatch(/not a person/i);
-    expect(sendEmail).not.toHaveBeenCalled();
-    // Nothing claimed, so a later genuine open can still alert.
-    expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+    expect(result.sent).toBe(true);
+    const mail = sendEmail.mock.calls[0][0] as unknown as { subject: string; html: string };
+    expect(mail.subject).not.toMatch(/reading/i);
+    expect(mail.subject).toMatch(/opened/i);
+    expect(mail.html).not.toMatch(/is reading it/i);
+    // And it says what one open does and does not prove.
+    expect(mail.html).toMatch(/does not prove anybody read it/i);
   });
 
   /**
    * The one that went wrong in the wild.
    *
-   * Three alerts landed in one evening, every one of them reading "opened
-   * once", every one a mail scanner fetching the pixel a few minutes after
-   * delivery. The gate was `callable`, which passes any single open slow
-   * enough not to look automatic — a weaker test than the call sheet's own,
-   * so the alert announced a reader the app itself did not believe in and
-   * then sent somebody to the top of a list that lead was not on.
-   *
-   * One open proves the address is live. It is not a person.
+   * Three alerts landed in one evening, every one of them titled "X is
+   * reading it" over a single open, every one a mail scanner fetching the
+   * pixel minutes after delivery. Sending them was right; the words were not.
    */
-  it('stays silent for a single open, however late it arrives', async () => {
+  it('never says "reading it" on one open, however late it arrives', async () => {
     for (const delay of [3 * 60 * 60 * 1000, 26 * 60 * 60 * 1000]) {
       vi.clearAllMocks();
       prisma.lead.updateMany.mockResolvedValue({ count: 1 });
@@ -116,10 +127,10 @@ describe('the alert', () => {
 
       const result = await alertOnFirstRealOpen('lead_1');
 
-      expect(result.sent).toBe(false);
-      expect(sendEmail).not.toHaveBeenCalled();
-      // Nothing claimed, so the second open can still earn the alert.
-      expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+      expect(result.sent).toBe(true);
+      const mail = sendEmail.mock.calls[0][0] as unknown as { subject: string; html: string };
+      expect(mail.subject, `${delay}ms`).not.toMatch(/reading/i);
+      expect(mail.html, `${delay}ms`).not.toMatch(/is reading it/i);
     }
   });
 
@@ -138,7 +149,7 @@ describe('the alert', () => {
   /**
    * Delivery is the part that lags, not the scanner. A send that sits in a
    * queue for five minutes and is fetched on arrival used to clear the
-   * ninety-second window and read as a person.
+   * ninety-second window and get announced as a person.
    */
   it('treats a first open minutes after the send as the delivery', async () => {
     prisma.lead.findUnique.mockResolvedValue(
@@ -149,7 +160,11 @@ describe('the alert', () => {
       })
     );
 
-    expect((await alertOnFirstRealOpen('lead_1')).sent).toBe(false);
+    const result = await alertOnFirstRealOpen('lead_1');
+
+    expect(result.sent).toBe(true);
+    const mail = sendEmail.mock.calls[0][0] as unknown as { subject: string };
+    expect(mail.subject).not.toMatch(/reading/i);
   });
 
   it('does not alert twice for the same send', async () => {

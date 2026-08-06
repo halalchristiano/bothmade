@@ -10,12 +10,15 @@ import {
 /**
  * What the pixel is allowed to mean.
  *
- * The whole feature is a ranking: the leads at the top of Call HQ are chosen
- * by these bands, so an over-generous reading doesn't just mislabel a row, it
- * sends a rep to ring somebody whose mail server fetched an image. The tests
- * below pin the two claims that must never be made — that one open is a
- * reader, and that a fast open is a person — and the one that must always be
- * made: repeat opens go to the top, most-opened first.
+ * The whole feature is a ranking. Every open puts a lead on the call sheet —
+ * that argument is settled, and it is settled the generous way, because the
+ * cost of ringing a business whose scanner fetched an image is one call you
+ * were going to make anyway, and the cost of hiding a real reader is the best
+ * moment you will ever get.
+ *
+ * What the bands decide is the ORDER, and what the wording must never do is
+ * overclaim. The tests below pin both: repeat opens to the top, most-opened
+ * first; and never the words "reading it" over a single fetch.
  */
 
 const SENT = new Date('2026-08-06T09:00:00.000Z');
@@ -42,8 +45,10 @@ describe('what a single open is worth', () => {
     );
 
     expect(r.band).toBe('delivered');
+    expect(r.confirmedReader).toBe(false);
+    // The wording is where the honesty lives, now that the sheet takes it.
     expect(r.headline).not.toMatch(/read/i);
-    expect(r.nextStep).toMatch(/mailbox/i);
+    expect(r.nextStep).toMatch(/mail server/i);
   });
 
   it('still calls one slow open only an open', () => {
@@ -200,24 +205,45 @@ describe('the pixel address', () => {
 });
 
 /**
- * The line the call sheet now hangs off.
+ * The line the call sheet hangs off.
  *
- * `callable` decides whether a lead is worth a dial at all, so it is drawn
- * conservatively: nothing, or a mail server's fetch on delivery, is not a
- * person. Getting this wrong in one direction sends a rep to ring somebody who
- * has never seen the message; in the other it hides a live prospect.
+ * `callable` decides whether a lead is worth a dial at all, and it is drawn
+ * generously on purpose: any open at all. Only total silence stays off the
+ * sheet, because that is the case where there is genuinely nothing — no
+ * evidence the message was ever delivered, and a dial into it is a dial into
+ * an address that may not exist.
  */
 describe('worth a call', () => {
-  it('is false for silence', () => {
+  it('is false for silence — the one thing that is still off the sheet', () => {
     expect(readOpens(facts(), NOW).callable).toBe(false);
   });
 
-  it('is false for a fetch on delivery, and nothing since', () => {
+  /**
+   * This asserted the opposite until somebody pointed out what it costs.
+   *
+   * Ringing a business whose scanner opened the email is one call to a
+   * business you were going to call anyway. Hiding a real reader loses the
+   * best moment you will get. The second error is far more expensive, so a
+   * single open goes on the sheet and the ranking sorts out how good it is.
+   */
+  it('is true for a fetch on delivery — an open is an open', () => {
     const r = readOpens(
       facts({ coldEmailOpens: 1, coldEmailOpenedAt: at(3000), coldEmailLastOpenedAt: at(3000) }),
       NOW
     );
-    expect(r.callable).toBe(false);
+    expect(r.callable).toBe(true);
+    // On the sheet, but never claimed as a reader, and last in the band.
+    expect(r.confirmedReader).toBe(false);
+    expect(r.score).toBeLessThan(
+      readOpens(
+        facts({
+          coldEmailOpens: 1,
+          coldEmailOpenedAt: at(4 * 60 * 60 * 1000),
+          coldEmailLastOpenedAt: at(4 * 60 * 60 * 1000),
+        }),
+        NOW
+      ).score
+    );
   });
 
   it('is true once a second fetch follows the prefetch', () => {
@@ -334,7 +360,7 @@ describe('confirmed reader', () => {
  * delivery — so a queued send meant every scanner read as a person.
  */
 describe('how long an open still looks like the delivery', () => {
-  it('covers a send that sat in a queue for five minutes', () => {
+  it('reads a send that sat in a queue for five minutes as the delivery', () => {
     const r = readOpens(
       facts({
         coldEmailOpens: 1,
@@ -343,11 +369,14 @@ describe('how long an open still looks like the delivery', () => {
       }),
       NOW
     );
-    expect(r.band).toBe('delivered');
-    expect(r.callable).toBe(false);
+    // Still on the sheet — what the window changes is the wording and the
+    // ranking, not whether anybody gets to see the lead.
+    expect(r.callable).toBe(true);
+    expect(r.headline).toMatch(/on arrival/i);
+    expect(r.score).toBe(1);
   });
 
-  it('still lets a genuinely later single open onto the sheet', () => {
+  it('ranks a genuinely later single open above the delivery fetch', () => {
     const r = readOpens(
       facts({
         coldEmailOpens: 1,
@@ -358,5 +387,7 @@ describe('how long an open still looks like the delivery', () => {
     );
     expect(r.callable).toBe(true);
     expect(r.confirmedReader).toBe(false);
+    expect(r.headline).not.toMatch(/on arrival/i);
+    expect(r.score).toBe(3);
   });
 });

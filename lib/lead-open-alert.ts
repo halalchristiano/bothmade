@@ -63,20 +63,21 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
 
   const reading = readOpens(lead);
   /*
-   * Repetition, or nothing.
+   * Any open, because that is what was asked for — and it is right.
    *
-   * This used to fire on `callable`, which is true for a single open that
-   * merely arrived too slowly to look automatic. That is a weaker test than
-   * the call sheet's own — the sheet only calls a lead "opened" in the
-   * engaged and hot bands — so the alert was announcing a reader the app
-   * itself did not believe in, and then telling you to find them at the top
-   * of a list they were not on. Three of them landed in one evening, every
-   * one saying "opened once", every one a mail scanner.
+   * This briefly required repetition, on the grounds that a mail scanner is
+   * not news. The problem with that was never the volume, it was the wording:
+   * the alert said "is reading it" over a fetch that proved no such thing.
+   * Suppressing the alert fixes the lie by throwing away the fact, and the
+   * fact is worth having — an open is the difference between an address that
+   * works and one that never landed.
    *
-   * One open proves the address is live. That is worth knowing and is on the
-   * lead. It is not worth a notification.
+   * So it fires on every first open and the copy below tells you which kind
+   * you have got. One alert per send either way: the claim on
+   * coldEmailOpenNotifiedAt is what stops a mailbox that syncs on four
+   * devices turning into four notifications.
    */
-  if (!reading.confirmedReader) return { sent: false, reason: 'not a person yet' };
+  if (!reading.callable) return { sent: false, reason: 'not a person yet' };
 
   /*
    * The claim, and the check, in one statement.
@@ -96,14 +97,27 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
   const leadUrl = `${siteUrl}/admin/leads/${lead.id}`;
   const who = lead.contactName ? `${lead.contactName} at ${lead.company}` : lead.company;
   const times = reading.opens === 1 ? 'once' : `${reading.opens} times`;
+  /*
+   * Two different pieces of news, and they must not be worded the same.
+   *
+   * A confirmed reader has come back to the email — that is a person, and
+   * "is reading it" is a true sentence about them. A single open is an open:
+   * proof the address is live and somebody's mail system touched it, which
+   * is worth telling you and worth a dial, but saying "is reading it" over it
+   * is a claim the pixel cannot support. Both go on the sheet; only one gets
+   * to make that claim.
+   */
+  const reader = reading.confirmedReader;
 
   // In the app first, because it is the surface a rep already has open and it
   // costs nothing. Marked urgent so it sorts to the top of the thread.
   await postSystemMessage({
-    content: `${lead.company} opened your cold email (${times}). ${
+    content: `${lead.company} ${
+      reader ? `has opened your cold email ${times} — somebody is reading it` : 'opened your cold email'
+    }. ${
       lead.phone
-        ? `Call ${lead.phone} — they are at the top of the call sheet now.`
-        : 'No phone number on this lead, so they are under "No phone number on file" rather than on the call sheet. Reply to that email while they still have it open.'
+        ? `Call ${lead.phone} — they are ${reader ? 'at the top of' : 'on'} the call sheet now.`
+        : 'No phone number on this lead, so they are under "No phone number on file" rather than on the call sheet. Reply to that email while it is still in front of them.'
     }`,
     fromUserId: lead.assignedTo?.id ?? null,
     relatedLeadId: lead.id,
@@ -117,14 +131,18 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
   if (to) {
     await sendEmail({
       to,
-      subject: `${lead.company} just opened your email`,
+      subject: reader
+        ? `${lead.company} is reading your email`
+        : `${lead.company} opened your email`,
       html: renderShell({
         eyebrow: 'Opened',
-        title: `${lead.company} is reading it`,
+        title: reader ? `${lead.company} is reading it` : `${lead.company} opened it`,
         bodyHtml:
           `<p style="margin:0 0 14px;">${esc(who)} opened your cold email <strong>${esc(
             times
-          )}</strong>.</p>` +
+          )}</strong>.${
+            reader ? ' They have come back to it, which a mail server does not do.' : ''
+          }</p>` +
           /*
            * What to actually do, which is not the same sentence twice.
            *
@@ -137,12 +155,18 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
            */
           `<p style="margin:0 0 14px;">${
             lead.phone
-              ? `Their number is <strong>${esc(lead.phone)}</strong>. They are on the call sheet now, at the top.`
+              ? `Their number is <strong>${esc(lead.phone)}</strong>. They are on the call sheet now, ${
+                  reader ? 'at the top' : 'in the opened band'
+                }.`
               : 'There is <strong>no phone number</strong> on this lead, so they are not on the call sheet — they are under "No phone number on file". Reply to that email while they still have it open, and find a number when you can.'
           }</p>` +
-          `<p style="margin:0; font-size:13px; color:rgba(255,255,255,0.5);">One open means the message reached a live mailbox and somebody looked at it. It does not mean they read every word — but it is the best moment you will get to ${
-            lead.phone ? 'ring them' : 'land in front of them'
-          }.</p>`,
+          `<p style="margin:0; font-size:13px; color:rgba(255,255,255,0.5);">${
+            reader
+              ? `Opened more than once, across time. That is a person rather than a mail server, and it is the best moment you will get to ${
+                  lead.phone ? 'ring them' : 'land in front of them'
+                }.`
+              : 'One open proves the message cleared the spam filter and reached a live mailbox — which is more than most of your list. It does not prove anybody read it: a privacy proxy fetches images on delivery. Worth the call anyway.'
+          }</p>`,
         ctaLabel: 'Open the lead',
         ctaUrl: leadUrl,
         footerNote: 'Bothmade — sent because a lead opened your email.',
