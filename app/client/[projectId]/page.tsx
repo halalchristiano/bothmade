@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { warrantyState } from '@/lib/launch';
 import { AttachLink } from '@/components/AttachLink';
 import { AttachmentList } from '@/components/AttachmentCard';
 import { readAttachments, type Attachment } from '@/lib/attachments';
@@ -15,6 +16,7 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
+  KeyRound,
   Rocket,
   ExternalLink,
   PartyPopper,
@@ -119,6 +121,12 @@ interface Project {
   };
   estimatedCompletionDate: string | null;
   liveUrl: string | null;
+  /** The launch, as more than a URL — see lib/launch.ts. */
+  domainName?: string | null;
+  readyForLaunchAt?: string | null;
+  launchedAt?: string | null;
+  warrantyEndsAt?: string | null;
+  handoverAt?: string | null;
   /** Capability token for the public /status link — see lib/share-links.ts. */
   shareToken?: string;
   createdAt: string;
@@ -463,6 +471,10 @@ export default function ClientDashboard() {
   // is holding a project payload from before invoices existed.
   const invoices = project.invoices ?? [];
   const openableDeliverables = (project.deliverables ?? []).filter((f) => isOpenable(f));
+  // Section 16's thirty days. Computed from the stored end date rather than
+  // from the launch date, so a client reading their remaining cover here sees
+  // the same deadline the studio does.
+  const warranty = warrantyState(project.warrantyEndsAt);
 
   // The public status link carries a capability token, so the project ID
   // alone doesn't open it. Without the token there's nothing to share.
@@ -635,6 +647,51 @@ export default function ClientDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+            {/* Ready for launch — the beat before the beat.
+                Section 1 defines "Ready for Launch" as the state we have
+                confirmed in writing through this dashboard, and the client
+                had no way of seeing that confirmation. It is also the moment
+                the last payment falls due, so it is the one point in the
+                whole engagement where telling them exactly where they stand
+                matters most. */}
+            {project.readyForLaunchAt && !project.liveUrl && (
+              <motion.div
+                variants={fadeUp}
+                className="relative overflow-hidden rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-400/[0.10] via-orange-400/[0.05] to-purple-500/[0.08] p-8 backdrop-blur-xl md:p-10"
+              >
+                <div
+                  className="pointer-events-none absolute -top-28 right-0 h-64 w-64 rounded-full opacity-25 blur-[100px]"
+                  style={{ background: 'radial-gradient(circle, rgba(251,191,36,0.6), transparent 70%)' }}
+                />
+                <div className="relative">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
+                    <Rocket size={12} /> Ready for launch
+                  </span>
+                  <h2 className="mt-4 text-2xl font-bold tracking-tight md:text-3xl">
+                    {project.name} is built and ready to go live
+                  </h2>
+                  {/* Two different sentences, because telling somebody who
+                      has already paid in full that we are waiting on their
+                      payment is the fastest way to make a good moment into an
+                      email. */}
+                  <p className="mt-2 max-w-lg text-white/60">
+                    {project.balanceDue > 0
+                      ? 'Everything is finished and checked. The last step is switching it on, which we do as soon as the final payment clears — and then the site, the files, the accounts and the ownership of all of it are yours.'
+                      : 'Everything is finished, checked and paid for. We are switching it on now — the site, the files, the accounts and the ownership of all of it are yours.'}
+                  </p>
+                  <p className="mt-4 text-xs leading-relaxed text-white/35">
+                    Confirmed ready on{' '}
+                    {new Date(project.readyForLaunchAt).toLocaleDateString(undefined, {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                    {project.domainName && ` · going live on ${project.domainName}`}
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
             {/* Delivery moment — the actual "you're done" beat, not just
                 another line inside the routine status card. */}
             {project.statusStage >= 4 && (
@@ -686,10 +743,70 @@ export default function ClientDashboard() {
                     </motion.a>
                   )}
 
+                  {/* A celebration with no button on it.
+                      Stage 4 with no URL rendered confetti, a headline saying
+                      the project was live, and nothing to click — which is
+                      the one version of this card that makes somebody doubt
+                      the whole dashboard. */}
+                  {!project.liveUrl && (
+                    <p className="mx-auto max-w-md text-sm text-white/50">
+                      We are switching it on now. The link will appear here the moment it is up, and
+                      we will email you.
+                    </p>
+                  )}
+
                   {(project.deliverables.length > 0 || project.contractUrl) && (
                     <p className="text-xs text-white/35 mt-5">
                       Everything you need — deliverables and your signed agreement — is below.
                     </p>
+                  )}
+
+                  {/* What they are actually covered for, and until when.
+                      The launch email has been saying "the warranty period
+                      starts today" since it was written, against nothing the
+                      client could ever look up. */}
+                  {project.liveUrl && (
+                    <div className="mt-7 grid gap-2.5 text-left sm:grid-cols-2">
+                      <div
+                        className={`rounded-xl border p-4 ${
+                          warranty.active
+                            ? 'border-emerald-400/25 bg-emerald-400/[0.06]'
+                            : 'border-white/10 bg-white/[0.03]'
+                        }`}
+                      >
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-white/80">
+                          <ShieldCheck size={13} className={warranty.active ? 'text-emerald-300' : 'text-white/40'} />
+                          {warranty.active
+                            ? `Warranty — ${warranty.daysLeft} day${warranty.daysLeft === 1 ? '' : 's'} left`
+                            : 'Warranty'}
+                        </p>
+                        <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+                          {warranty.clientLine}
+                        </p>
+                      </div>
+
+                      <div
+                        className={`rounded-xl border p-4 ${
+                          project.handoverAt
+                            ? 'border-emerald-400/25 bg-emerald-400/[0.06]'
+                            : 'border-white/10 bg-white/[0.03]'
+                        }`}
+                      >
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-white/80">
+                          <KeyRound size={13} className={project.handoverAt ? 'text-emerald-300' : 'text-white/40'} />
+                          {project.handoverAt ? 'Everything handed over' : 'Handover'}
+                        </p>
+                        <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+                          {project.handoverAt
+                            ? `Credentials, source and documentation are yours as of ${new Date(
+                                project.handoverAt
+                              ).toLocaleDateString()} — along with the ownership of everything we built.`
+                            : project.balanceDue > 0
+                              ? 'The credentials, the source and the ownership all transfer once the balance clears. Until then the site is up and running and yours to use.'
+                              : 'Paid in full — the credentials, the source and the ownership are all yours. We will confirm here once they are with you.'}
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </motion.div>
@@ -811,7 +928,15 @@ export default function ClientDashboard() {
                   buys both sides something to measure the first concept
                   against, which is what turns "that's not what I wanted" from
                   an argument into a category. */}
-              {!project.designDirection?.signedAt && !project.designReview?.approvedAt && (
+              {/* …but only while there is still a design to brief.
+                  The condition was "no brief signed and no design approved",
+                  which stays true forever on a project that never used the
+                  brief — so a launched, handed-over site was asking its owner
+                  to fill in a design brief underneath the confetti. Anything
+                  past Design has nothing left to brief. */}
+              {!project.designDirection?.signedAt &&
+                !project.designReview?.approvedAt &&
+                project.statusStage <= 1 && (
                 <div className="relative mt-6 rounded-xl border border-purple-400/30 bg-purple-400/[0.06] p-5">
                   <p className="mb-1 text-sm font-semibold text-purple-200">
                     {project.designReview?.presentedAt
@@ -841,7 +966,7 @@ export default function ClientDashboard() {
                     />
                   )}
                 </div>
-              )}
+                )}
 
               {/* Once signed, it sits beside the design. They judge the concept
                   against it, and so do we. */}

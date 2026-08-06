@@ -8,6 +8,7 @@ import {
   LEAD_STATUS_LABELS,
   LEAD_ACTIVITY_TYPES,
   LEAD_ACTIVITY_LABELS,
+  leadActivityIsInternal,
   PAIN_POINTS,
   painPointSentence,
   parseSalesPoints,
@@ -65,6 +66,7 @@ import {
   FileText,
   FolderOpen,
   Eye,
+  Lock,
 } from 'lucide-react';
 import {
   ADD_ONS,
@@ -3205,44 +3207,74 @@ export default function LeadDetailPage() {
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-xl font-bold mb-4">Timeline</h2>
+            <h2 className="text-xl font-bold">Timeline</h2>
+            {/* Two kinds of entry sit in this list and they used to look the
+                same. An email or a proposal row is a receipt — a record that
+                something went out. A note, a call write-up or an objection is
+                our reading of this person, in our words, and usually blunter
+                than anything we would say to their face.
+                A rep skimming this before a call cannot be left to work out
+                which is which, and the lock is what says it: it marks the
+                rows that exist only in here. */}
+            <p className="mb-4 mt-1 flex items-center gap-1.5 text-[11px] text-white/35">
+              <Lock size={11} className="text-amber-300/70" />
+              marks our own words — those rows are internal, and nothing in them has been said to
+              this person
+            </p>
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
               {lead.activities.length === 0 && (
                 <p className="text-white/40 text-sm">No activity logged yet.</p>
               )}
-              {lead.activities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className={`p-4 rounded-lg bg-white/5 border-l-2 ${
-                    activity.type === 'objection' ? 'border-red-400/50' : 'border-sky-400/50'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-1">
-                    <span
-                      className={`text-xs font-semibold uppercase tracking-wide ${
-                        activity.type === 'objection' ? 'text-red-300' : 'text-sky-300'
-                      }`}
-                    >
-                      {LEAD_ACTIVITY_LABELS[activity.type]}
-                    </span>
-                    <span className="text-xs text-white/30">
-                      {new Date(activity.createdAt).toLocaleString()}
-                    </span>
+              {lead.activities.map((activity) => {
+                const internal = leadActivityIsInternal(activity.type);
+                const objection = activity.type === 'objection';
+                return (
+                  <div
+                    key={activity.id}
+                    className={`rounded-lg border-l-2 p-4 ${
+                      objection
+                        ? 'border-red-400/50 bg-red-400/[0.06]'
+                        : internal
+                          ? 'border-amber-400/50 bg-amber-400/[0.05]'
+                          : 'border-sky-400/50 bg-white/5'
+                    }`}
+                  >
+                    <div className="mb-1 flex items-start justify-between gap-3">
+                      <span
+                        className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${
+                          objection ? 'text-red-300' : internal ? 'text-amber-300' : 'text-sky-300'
+                        }`}
+                      >
+                        {internal && <Lock size={11} />}
+                        {LEAD_ACTIVITY_LABELS[activity.type]}
+                      </span>
+                      <span className="shrink-0 text-xs text-white/30">
+                        {new Date(activity.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-white/70 whitespace-pre-wrap">{activity.content}</p>
+                    {activity.url && (
+                      <a
+                        href={activity.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-block text-xs text-sky-300 hover:underline"
+                      >
+                        {activity.url}
+                      </a>
+                    )}
+                    <p className="mt-1.5 text-xs text-white/30">
+                      by {activity.createdBy?.name || 'Team'}
+                      {internal && (
+                        <span className="text-amber-300/50">
+                          {' '}
+                          · only visible here — never quote this back to them
+                        </span>
+                      )}
+                    </p>
                   </div>
-                  <p className="text-sm text-white/70 whitespace-pre-wrap">{activity.content}</p>
-                  {activity.url && (
-                    <a
-                      href={activity.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-sky-300 hover:underline mt-1 inline-block"
-                    >
-                      {activity.url}
-                    </a>
-                  )}
-                  <p className="text-xs text-white/30 mt-1">by {activity.createdBy?.name || 'Team'}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

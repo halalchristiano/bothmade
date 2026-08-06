@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   Palette,
   PenTool,
+  Rocket,
   PhoneCall,
   Receipt,
   Settings,
@@ -79,6 +80,16 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   // owe them the next round, their clock and the payment gate behind it have
   // both stopped) was the one nothing surfaced.
   { href: '/admin/design', label: 'Design', icon: PenTool, section: 'Delivery' },
+
+  // The last mile, which had no screen either. Going live was one text box on
+  // a project page holding the finished URL, so everything around it —
+  // whether the DNS is reachable, whether the forms have been tested, whether
+  // Payment 3 has cleared, when the warranty runs out — was carried in
+  // somebody's head or not at all. It sits next to Design because it is the
+  // same kind of thing: a stage with a sequence, that you want to see across
+  // every project at once rather than one project at a time.
+  { href: '/admin/deployment', label: 'Deployment', icon: Rocket, section: 'Delivery' },
+
   { href: '/admin/priorities', label: 'Priorities', icon: ListChecks, section: 'Delivery' },
   { href: '/admin/clients', label: 'Clients', icon: Building2, section: 'Delivery' },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, section: 'Delivery' },

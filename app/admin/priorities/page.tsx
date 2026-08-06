@@ -201,7 +201,16 @@ export default function PrioritiesPage() {
         );
       }
       for (const p of stats.readyToDeliver) {
-        add(p.id, 'deliver', p.company, `${p.name} is complete — add the live URL to unlock their delivery moment`);
+        // Points at the launch board rather than the project page now. "Add
+        // the live URL" was the whole of what going live meant when this line
+        // was written; the checks that stop it going wrong live on their own
+        // screen, and that is where somebody should land.
+        add(
+          p.id,
+          'deliver',
+          p.company,
+          `${p.name} is built and not live — check it off and ship it`
+        );
       }
       for (const h of stats.newHandoffs) {
         if (h.handoffAcknowledgedAt) continue;
@@ -309,7 +318,14 @@ export default function PrioritiesPage() {
                       key={row.id}
                       className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 transition-colors hover:bg-white/[0.04]"
                     >
-                      <Link href={`/admin/projects/${row.id}`} className="block">
+                      <Link
+                        href={
+                          row.band === 'deliver'
+                            ? `/admin/deployment/${row.id}`
+                            : `/admin/projects/${row.id}`
+                        }
+                        className="block"
+                      >
                         <p className="text-sm font-semibold text-white/90">{row.company}</p>
                         <p className="text-xs text-white/40 mt-0.5">{row.detail}</p>
                       </Link>

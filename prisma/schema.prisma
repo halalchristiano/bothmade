@@ -227,6 +227,45 @@ model Project {
   /// Bumped each time a design is presented. Round 1 is the original concept.
   designRound         Int @default(1)
 
+  // --- Launch -------------------------------------------------------------
+  // Everything about putting the thing live, which until now was one text
+  // box holding the finished URL.
+  //
+  // The contract is specific and none of it was recorded. "Ready for Launch"
+  // is defined as the state where the Agency "has confirmed in writing
+  // through the dashboard that it is ready to go live" — there was no such
+  // confirmation to make. Section 7 says nothing goes live until Payment 3
+  // clears. Exhibit A puts handover of credentials, source and documentation
+  // in the Launch phase. Section 16 starts a thirty-day Warranty Period at
+  // final delivery, and the launch email already tells the client it has
+  // started, against nothing that knows when it ends.
+
+  /// The domain the site goes live on, and what we know about reaching it.
+  /// A launch fails on DNS more often than on anything we build, and the
+  /// answers were sitting in a free-text onboarding reply nobody re-read.
+  domainName      String?
+  domainRegistrar String?
+  /// "we-control" | "client-controls" | "old-developer" | "unknown" | "none"
+  domainAccess    String?
+  hostingProvider String?
+  dnsNote         String? @db.Text
+
+  /// The go-live checklist, as { [key]: { done, at, by, note } }.
+  /// Kept as JSON for the same reason deliverables are: the list of checks
+  /// lives in code (lib/launch.ts) and changes without a migration.
+  launchChecklist Json @default("{}")
+
+  /// The written confirmation Section 1 requires before Payment 3 is raised.
+  readyForLaunchAt DateTime?
+  /// When it actually went live. `liveUrl` recorded that it had; nothing
+  /// recorded when, which is the date the warranty counts from.
+  launchedAt       DateTime?
+  /// Section 16's thirty days, computed once at launch and stored — a
+  /// deadline a client has been given must not move because a helper did.
+  warrantyEndsAt   DateTime?
+  /// Exhibit A's handover: credentials, source, documentation.
+  handoverAt       DateTime?
+
   // Hides this project from the Priorities list until the given date.
   //
   // A list of things needing attention with no way to say "seen it, not this

@@ -10,6 +10,7 @@ import { DIRECTION_STATEMENT, directionStatus } from '@/lib/design-direction';
 import { sendProjectLiveEmail } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { clientWantsEmail } from '@/lib/email-preferences';
+import { warrantyEndFrom } from '@/lib/launch';
 
 export async function GET(
   request: NextRequest,
@@ -121,6 +122,38 @@ export async function GET(
           totalPrice: project.totalPrice,
           estimatedCompletionDate: project.estimatedCompletionDate,
           liveUrl: project.liveUrl,
+          /*
+           * The launch, which used to be `liveUrl` and nothing else.
+           *
+           * These four are the client's as much as ours. The warranty end
+           * date especially: the launch email has been telling clients "the
+           * warranty period starts today" against nothing they could ever
+           * look up, which is a promise with no way to check it.
+           */
+          domainName: project.domainName,
+          readyForLaunchAt: project.readyForLaunchAt,
+          launchedAt: project.launchedAt,
+          warrantyEndsAt: project.warrantyEndsAt,
+          handoverAt: project.handoverAt,
+          /*
+           * And these are ours alone.
+           *
+           * One endpoint serves both dashboards, so a field added without
+           * thinking about which side is reading is a field the client gets
+           * too — and the DNS note says things like "their old developer
+           * still owns the account" and "cutover agreed for Tuesday, do not
+           * tell them until it works". The checklist is the same: it is our
+           * working state, including the checks we have not done yet.
+           */
+          ...(session.type === 'user'
+            ? {
+                domainRegistrar: project.domainRegistrar,
+                domainAccess: project.domainAccess,
+                hostingProvider: project.hostingProvider,
+                dnsNote: project.dnsNote,
+                launchChecklist: project.launchChecklist,
+              }
+            : {}),
           amountPaid,
           balanceDue: project.totalPrice - amountPaid,
           payments: project.payments,
@@ -308,8 +341,26 @@ export async function PUT(
      * week. Fires once, on the transition from no URL to a URL, so editing a
      * typo in it later does not announce the launch a second time.
      */
+    const launchedAt = new Date();
     const justWentLive = Boolean(updatedProject.liveUrl) && !project.liveUrl;
     if (justWentLive && updatedProject.liveUrl) {
+      /*
+       * When, not just whether.
+       *
+       * `liveUrl` recorded that a project had launched and nothing recorded
+       * the day — which is the day Section 16's thirty-day Warranty Period
+       * counts from, and the day the email going out below has been telling
+       * clients it starts. The end is computed once and stored, for the same
+       * reason the design review deadline is: a date a client has been given
+       * must not move because a helper changed later.
+       */
+      await prisma.project
+        .update({
+          where: { id: projectId },
+          data: { launchedAt: launchedAt, warrantyEndsAt: warrantyEndFrom(launchedAt) },
+        })
+        .catch((e) => console.error('Launch date not stamped:', e));
+
       try {
         const client = await prisma.client.findUnique({
           where: { id: project.clientId },

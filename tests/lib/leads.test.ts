@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_LEAD_STATUSES,
+  LEAD_ACTIVITY_SEEN_BY_LEAD,
+  LEAD_ACTIVITY_TYPES,
   LEAD_STATUSES,
   LEAD_STATUS_COLORS,
   LEAD_STATUS_LABELS,
@@ -10,6 +12,7 @@ import {
   advanceToContactedOnOutreach,
   buildFallbackColdEmailDraft,
   isFurtherAlong,
+  leadActivityIsInternal,
   isLeadActivityType,
   isLeadStatus,
   isPainPointKey,
@@ -242,6 +245,36 @@ describe('type guards', () => {
     for (const [key, label] of Object.entries(PAIN_POINTS)) {
       expect(isPainPointKey(key)).toBe(true);
       expect(label).toBeTruthy();
+    }
+  });
+});
+
+describe('leadActivityIsInternal', () => {
+  // The question is not "does the lead know this happened" but "could I read
+  // this text out to them". A call log is our summary of what they said, in
+  // our words — so it is internal even though they were on the call.
+  it('treats our own write-ups as internal', () => {
+    expect(leadActivityIsInternal('note')).toBe(true);
+    expect(leadActivityIsInternal('call')).toBe(true);
+    expect(leadActivityIsInternal('objection')).toBe(true);
+  });
+
+  it('treats what was actually sent to them as theirs', () => {
+    expect(leadActivityIsInternal('email')).toBe(false);
+    expect(leadActivityIsInternal('proposal')).toBe(false);
+    expect(leadActivityIsInternal('loom')).toBe(false);
+  });
+
+  // Erring this way hides something on a screen only we can see. Erring the
+  // other way is how a private note gets quoted back to a customer.
+  it('calls an unrecognised type internal rather than guessing', () => {
+    expect(leadActivityIsInternal('whatever')).toBe(true);
+    expect(leadActivityIsInternal('')).toBe(true);
+  });
+
+  it('covers every activity type, so a new one cannot default silently', () => {
+    for (const type of LEAD_ACTIVITY_TYPES) {
+      expect(typeof LEAD_ACTIVITY_SEEN_BY_LEAD[type]).toBe('boolean');
     }
   });
 });

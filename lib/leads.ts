@@ -215,6 +215,39 @@ export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
   objection: 'Objection',
 };
 
+/**
+ * Whether the lead has read the words in this entry.
+ *
+ * The timeline mixes two things that look identical and are not. An email or
+ * a proposal is text the lead has in their inbox. A note, a call write-up, an
+ * objection — those are ours: our summary of what they said, in our words,
+ * often blunter than anything we would put in front of them.
+ *
+ * Nothing distinguished them, so the whole timeline read as a record of the
+ * conversation, and the failure mode is a rep skim-reading it before a call
+ * and quoting our own private summary back at the person it is about.
+ *
+ * A call is deliberately internal. The lead knows the call happened; they
+ * have never seen "sounded like he's shopping us against two others". The
+ * question this answers is not "does the lead know about this" but "could I
+ * read this text out to them", and for a call log the answer is no.
+ */
+export const LEAD_ACTIVITY_SEEN_BY_LEAD: Record<LeadActivityType, boolean> = {
+  note: false,
+  call: false,
+  objection: false,
+  email: true,
+  proposal: true,
+  loom: true,
+};
+
+export function leadActivityIsInternal(type: string): boolean {
+  // An unrecognised type is treated as internal. Guessing wrong in that
+  // direction hides something from a screen only we can see; guessing wrong
+  // the other way is how a private note gets quoted to a customer.
+  return !(isLeadActivityType(type) && LEAD_ACTIVITY_SEEN_BY_LEAD[type]);
+}
+
 export const LOST_REASON_PRESETS = [
   'Went with a competitor',
   'Too expensive',
