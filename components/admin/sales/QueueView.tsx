@@ -62,52 +62,54 @@ interface CallRow {
 
 const REASONS: Record<CallReason, { label: string; short: string; blurb: string; classes: string }> = {
   replied: {
-    label: 'They wrote back — ring these first',
-    short: 'They replied to you',
+    label: 'They wrote back',
+    short: 'Replied',
     blurb:
-      "Someone at these businesses answered your email. They are the warmest leads you have and they go cold fastest — call them before anything else on this page.",
+      'Someone at these businesses answered your email. Warmest leads you have, and they go cold fastest — call them before anything else on this page.',
     classes: 'border-emerald-400/40 bg-emerald-400/[0.12] text-emerald-100',
   },
   opened: {
-    label: 'They opened your email — ring these',
-    short: 'They opened your email',
+    label: 'They opened your email',
+    short: 'Opened it',
     blurb:
-      "These have opened your cold email and not written back. Most-opened first, so anyone who came back to it is at the very top — that is a person, and the signal goes cold in days. Further down are the ones opened once, where the fetch may have been their mail server; that still proves the address is live, which is more than the rest of your list, and it is still worth the call.",
+      'Opened your cold email and did not write back. Most-opened first: anyone who came back to it is at the very top, and that is a person. Lower down are the ones opened once, which may have been their mail server — that still proves the address is live, and is still worth the call.',
     classes: 'border-orange-400/40 bg-orange-400/[0.12] text-orange-100',
   },
   bounced: {
-    label: 'Email bounced — phone is the only way in',
-    short: "Their email is dead — must call",
-    blurb: "These addresses are dead. Nothing you send will arrive, so they can only be reached by ringing.",
+    label: 'Their email is dead — phone is the only way in',
+    short: 'Email bounced',
+    blurb: 'These addresses bounced. Nothing you send will arrive, so the phone is the only route left.',
     classes: 'border-red-400/30 bg-red-400/[0.07] text-red-200',
   },
   overdue: {
-    label: 'Follow-up overdue',
-    short: "You're late getting back to them",
-    blurb: 'You said you would get back to these and the date has passed. Do these first.',
+    label: 'You said you would call, and the date has passed',
+    short: 'Overdue',
+    blurb: 'You promised these people a follow-up and the day went by. A broken promise is the fastest way to lose a warm lead.',
     classes: 'border-amber-400/30 bg-amber-400/[0.07] text-amber-200',
   },
   today: {
-    label: 'Due today',
-    short: "You said you'd call today",
+    label: 'You said you would call today',
+    short: 'Due today',
     blurb: 'Booked in for today.',
     classes: 'border-sky-400/30 bg-sky-400/[0.07] text-sky-200',
   },
   'no-follow-up': {
-    label: 'Contacted, but nothing booked',
-    short: "Contacted once, then nothing",
-    blurb: "Reached out at some point and no next step was ever set. This is the pile that quietly rots.",
+    label: 'Reached out once, then nothing was booked',
+    short: 'No next step',
+    blurb:
+      'You emailed or rang these at some point and no next date was ever set, so nothing will bring them back up on its own. This is the pile that quietly rots.',
     classes: 'border-purple-400/25 bg-purple-400/[0.06] text-purple-200',
   },
   'never-contacted': {
-    label: 'Not contacted yet',
-    short: "Nobody has spoken to them",
-    blurb: 'Fresh leads nobody has spoken to.',
+    label: 'Nobody has ever contacted these',
+    short: 'Never contacted',
+    blurb:
+      'No email sent, no call logged, nothing. Straight off an import and untouched — the only band on this page where you are starting from scratch.',
     classes: 'border-white/15 bg-white/[0.04] text-white/70',
   },
   scheduled: {
     label: 'Booked for a later date',
-    short: "Booked for later",
+    short: 'Booked for later',
     blurb: "Not on today's list — they have a follow-up date in the future.",
     classes: 'border-white/15 bg-white/[0.04] text-white/70',
   },
@@ -139,6 +141,15 @@ const OPEN_BANDS = [
   { min: 3, label: '3+' },
   { min: 5, label: '5+' },
 ];
+
+/**
+ * The bands that start expanded.
+ *
+ * Both are evidence from today that goes cold within days, and both are short
+ * — which is the test: a band earns being open if you would act on it before
+ * you finished scrolling past it.
+ */
+const OPEN_BY_DEFAULT = new Set<CallReason>(['replied', 'opened']);
 
 const ORDER: CallReason[] = [
   'replied',
@@ -459,6 +470,41 @@ export function QueueView() {
   // business to actually ring now — which the order alone can't, because the
   // most urgent lead is often one where it's the middle of the night.
   const [showBreakdown, setShowBreakdown] = useState(false);
+  /*
+   * Which bands are open.
+   *
+   * Only the ones worth acting on this minute start open — a reply and an
+   * open are both short lists and both decay in days. Everything else is a
+   * pile you work through deliberately, and having all seven expanded meant a
+   * page nobody could reach the bottom of.
+   *
+   * Stored as the set of bands whose state differs from that default, so a
+   * band added later gets a sensible default rather than inheriting whatever
+   * was in somebody's browser last year.
+   */
+  const [flippedBands, setFlippedBands] = useState<Set<CallReason>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem('bothmade_call_list_bands');
+      return new Set(raw ? (JSON.parse(raw) as CallReason[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const isBandOpen = (reason: CallReason) =>
+    OPEN_BY_DEFAULT.has(reason) !== flippedBands.has(reason);
+  const toggleBand = (reason: CallReason) =>
+    setFlippedBands((prev) => {
+      const next = new Set(prev);
+      if (next.has(reason)) next.delete(reason);
+      else next.add(reason);
+      try {
+        localStorage.setItem('bothmade_call_list_bands', JSON.stringify([...next]));
+      } catch {
+        /* a browser refusing storage is not a reason to refuse the click */
+      }
+      return next;
+    });
   // Restored from last session so switching to "biggest deal first" sticks
   // around instead of quietly resetting every time the page is left and
   // come back to.
@@ -1021,27 +1067,57 @@ export function QueueView() {
         </div>
       )}
 
-      <div className="mt-6 space-y-7">
+      <div className="mt-6 space-y-3">
         {grouped.map(({ reason, rows }) => {
           const meta = REASONS[reason];
+          /*
+           * Collapsed unless it is something you would act on now.
+           *
+           * Seven bands open at once made a page you could not reach the
+           * bottom of, and the two that matter — they wrote back, they opened
+           * it — were the shortest. So the urgent bands start open and the
+           * long tail starts shut, every one of them one tap away, and the
+           * choice is remembered. A flat sort has one band and it is the list
+           * itself, so it is never collapsed.
+           */
+          const open = flat || isBandOpen(reason);
           return (
             <section key={reason}>
-              <div className={`rounded-xl border px-3.5 py-2.5 mb-3 ${flat ? 'border-white/15 bg-white/[0.04] text-white/70' : meta.classes}`}>
+              <button
+                onClick={() => !flat && toggleBand(reason)}
+                aria-expanded={open}
+                className={`w-full text-left rounded-xl border px-3.5 py-2.5 transition-colors ${
+                  flat ? 'border-white/15 bg-white/[0.04] text-white/70' : `${meta.classes} hover:brightness-125`
+                }`}
+              >
                 <p className="text-sm font-bold flex items-center gap-1.5">
                   {!flat && reason === 'bounced' && <MailX size={14} />}
                   {!flat && reason === 'overdue' && <AlertTriangle size={14} />}
                   {flat ? (sortBy === 'value' ? 'Biggest deals first' : 'Best time to call first') : meta.label}
                   <span className="ml-1 opacity-60 font-semibold">({rows.length})</span>
+                  {!flat && (
+                    <ChevronRight
+                      size={15}
+                      className={`ml-auto shrink-0 opacity-70 transition-transform ${open ? 'rotate-90' : ''}`}
+                    />
+                  )}
                 </p>
+                {/* The explanation is the point of the band, so it stays
+                    readable when shut — that is when somebody is deciding
+                    whether to open it. */}
                 <p className="text-xs opacity-70 mt-0.5 leading-relaxed">
                   {flat
                     ? 'Urgency grouping is off while this sort is on — switch back to "Most urgent" to see it.'
                     : meta.blurb}
                 </p>
-              </div>
+              </button>
 
-              <div className="space-y-2">
-                {rows.map((row) => {
+              {/* Not rendered rather than hidden. On a book this size a
+                  collapsed band is usually the biggest one on the page, and
+                  building several hundred rows to then display:none them is
+                  the cost this whole change exists to avoid. */}
+              <div className="space-y-2 mt-3" data-testid={`band-rows-${reason}`}>
+                {(open ? rows : []).map((row) => {
                   const lt = leadLocalTime(row.phone, new Date(nowTick));
                   const timeColour =
                     lt?.callability === 'good'
@@ -1054,12 +1130,16 @@ export function QueueView() {
                       key={row.id}
                       className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3.5 min-w-0"
                     >
-                      {/* On the row, not just the band header — the header
-                          disappears the moment a different sort is chosen. */}
+                      {/* Only when the band header is gone. Inside a band it
+                          restated the heading two lines above it on every
+                          single row, which is most of why the page read as an
+                          undifferentiated wall. */}
                       <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                        <Badge tone={REASON_TONE[row.reason]} solid>
-                          {REASONS[row.reason].short}
-                        </Badge>
+                        {flat && (
+                          <Badge tone={REASON_TONE[row.reason]} solid>
+                            {REASONS[row.reason].short}
+                          </Badge>
+                        )}
                         {/* The count travels with the row rather than living
                             in the band header, which disappears the moment a
                             different sort is chosen — and "opened 6 times" is

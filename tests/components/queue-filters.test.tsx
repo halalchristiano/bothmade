@@ -343,7 +343,7 @@ describe('sorting away from most urgent', () => {
       callable: [openedRow({ company: 'Reader', estimatedValue: 100000 }), row({ company: 'Big', estimatedValue: 3000000 })],
     });
     render(<QueueView />);
-    await screen.findAllByText('Big');
+    await screen.findByRole('button', { name: /biggest deal/i });
 
     await userEvent.click(screen.getByRole('button', { name: /biggest deal/i }));
     expect(screen.getByText(/1 lead has opened your email/i)).toBeInTheDocument();
@@ -367,5 +367,107 @@ describe('sorting away from most urgent', () => {
     await screen.findAllByText('Reader');
 
     expect(screen.queryByText(/spreads them through the list/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Seven bands, all expanded, on a book of a thousand leads.
+ *
+ * The page had no bottom. Worse, the two bands worth acting on this minute —
+ * they wrote back, they opened it — are the shortest, so they were a sliver
+ * above hundreds of rows of "nobody has contacted these". Collapsing is not a
+ * tidy-up here; it is what makes the ordering visible at all.
+ */
+describe('collapsing the bands', () => {
+  const inBand = (reason: string, company: string) => row({ reason, company });
+
+  it('starts with the urgent bands open and the long tail shut', async () => {
+    respondWith({
+      callable: [
+        inBand('opened', 'Opened Lead'),
+        inBand('replied', 'Replied Lead'),
+        inBand('never-contacted', 'Cold Lead'),
+        inBand('no-follow-up', 'Stale Lead'),
+      ],
+    });
+    render(<QueueView />);
+    await screen.findAllByText('Replied Lead');
+
+    expect(within(screen.getByTestId('band-rows-opened')).getByText('Opened Lead')).toBeInTheDocument();
+    expect(screen.getByTestId('band-rows-never-contacted')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('band-rows-no-follow-up')).toBeEmptyDOMElement();
+  });
+
+  it('opens a band on click and shuts it again', async () => {
+    respondWith({ callable: [inBand('never-contacted', 'Cold Lead')] });
+    render(<QueueView />);
+    const header = await screen.findByRole('button', { name: /nobody has ever contacted these/i });
+    // Scoped to the band. The "call this one" card at the top repeats
+    // whoever leads the sheet whatever the bands are doing.
+    const band = () => screen.getByTestId('band-rows-never-contacted');
+
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(within(band()).queryByText('Cold Lead')).not.toBeInTheDocument();
+
+    await userEvent.click(header);
+    expect(within(band()).getByText('Cold Lead')).toBeInTheDocument();
+
+    await userEvent.click(header);
+    expect(within(band()).queryByText('Cold Lead')).not.toBeInTheDocument();
+  });
+
+  /** The count is the reason you would open it, so it must show when shut. */
+  it('shows the count and the explanation while collapsed', async () => {
+    respondWith({
+      callable: [inBand('never-contacted', 'A'), inBand('never-contacted', 'B')],
+    });
+    render(<QueueView />);
+    const header = await screen.findByRole('button', { name: /nobody has ever contacted these/i });
+
+    expect(within(header).getByText('(2)')).toBeInTheDocument();
+    expect(within(header).getByText(/no email sent, no call logged/i)).toBeInTheDocument();
+  });
+
+  it('remembers what was opened', async () => {
+    respondWith({ callable: [inBand('never-contacted', 'Cold Lead')] });
+    const first = render(<QueueView />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /nobody has ever contacted these/i })
+    );
+    first.unmount();
+
+    render(<QueueView />);
+    expect(await screen.findAllByText('Cold Lead')).not.toHaveLength(0);
+  });
+
+  /** A flat sort has no bands to collapse — the list IS the band. */
+  it('never hides rows when the urgency grouping is off', async () => {
+    respondWith({ callable: [inBand('never-contacted', 'Cold Lead')] });
+    render(<QueueView />);
+    await screen.findByRole('button', { name: /biggest deal/i });
+    await userEvent.click(screen.getByRole('button', { name: /biggest deal/i }));
+
+    expect(shown('Cold Lead')).toBe(true);
+  });
+});
+
+describe('the label on a row', () => {
+  it('does not repeat the band heading directly above it', async () => {
+    respondWith({ callable: [row({ reason: 'never-contacted', company: 'Cold Lead' })] });
+    render(<QueueView />);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /nobody has ever contacted these/i })
+    );
+
+    expect(screen.queryByText('Never contacted')).not.toBeInTheDocument();
+  });
+
+  it('shows it once the bands are gone', async () => {
+    respondWith({ callable: [row({ reason: 'never-contacted', company: 'Cold Lead' })] });
+    render(<QueueView />);
+    await screen.findByRole('button', { name: /biggest deal/i });
+    await userEvent.click(screen.getByRole('button', { name: /biggest deal/i }));
+
+    expect(screen.getByText('Never contacted')).toBeInTheDocument();
   });
 });
