@@ -5,6 +5,7 @@ import { forbiddenResponse, requirePrincipal, unauthorizedResponse } from '@/lib
 import { amountPaidTowardProject } from '@/lib/billing';
 import { ensureInstalments } from '@/lib/instalments';
 import { revisionState } from '@/lib/design-feedback';
+import { designStage } from '@/lib/design-stages';
 import { DIRECTION_STATEMENT, directionStatus } from '@/lib/design-direction';
 
 export async function GET(
@@ -183,6 +184,13 @@ export async function GET(
             // considered list instead of firing off three emails, and the day
             // a round becomes billable is never a surprise.
             round: project.designRound,
+            // What this round is called, and what it means — one vocabulary,
+            // shared with the email, so a client is never told "revision 1"
+            // in one place and "initial design" in the other.
+            stage: designStage(project.designRound),
+            // Where the design actually is. Without it the dashboard asked
+            // them to approve something it could not show them.
+            designUrl: project.designUrl,
             revisions: revisionState(project.designRevisionsUsed),
           },
           // The brief they wrote and signed before we designed anything, and

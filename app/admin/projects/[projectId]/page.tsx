@@ -97,6 +97,8 @@ interface ProjectDetail {
     reviewEndsAt: string | null;
     approvedAt: string | null;
     deemed: boolean;
+    round?: number;
+    designUrl?: string | null;
   };
   contractUrl?: string | null;
 }

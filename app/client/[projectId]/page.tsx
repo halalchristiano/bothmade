@@ -103,6 +103,10 @@ interface Project {
     approvedAt: string | null;
     deemed: boolean;
     round?: number;
+    /** What this round is called and what it means — lib/design-stages.ts. */
+    stage?: { round: number; label: string; meaning: string; billable: boolean };
+    /** Where the design actually is, when there is a link to open. */
+    designUrl?: string | null;
     revisions?: {
       used: number;
       included: number;
@@ -902,7 +906,32 @@ export default function ClientDashboard() {
                   clause both unfair and unarguable. */}
               {project.designReview?.presentedAt && !project.designReview.approvedAt && (
                 <div className="relative mt-6 rounded-xl border border-sky-400/30 bg-sky-400/[0.07] p-5">
-                  <p className="mb-1 text-sm font-semibold text-sky-200">Your design is ready to review</p>
+                  <p className="mb-1 text-sm font-semibold text-sky-200">
+                    {project.designReview.stage?.label
+                      ? `${project.designReview.stage.label} — ready to review`
+                      : 'Your design is ready to review'}
+                  </p>
+                  {/* What this round is, before what they have to do about it.
+                      The concept is not a revision, and a client who thinks it
+                      is believes they have spent half their allowance by
+                      opening the email. */}
+                  {project.designReview.stage?.meaning && (
+                    <p className="mb-3 text-sm text-white/55">{project.designReview.stage.meaning}</p>
+                  )}
+                  {/* The design itself. This is the one thing the card was
+                      missing: it asked for approval of something it gave no
+                      way to look at. */}
+                  {project.designReview.designUrl && (
+                    <a
+                      href={project.designReview.designUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mb-4 inline-flex items-center gap-2 rounded-lg border border-sky-400/40 bg-sky-400/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-400/20"
+                    >
+                      View the design
+                      <ExternalLink size={14} />
+                    </a>
+                  )}
                   <p className="text-sm text-white/70">
                     Have a look and tell us what you think
                     {project.designReview.reviewEndsAt && (
@@ -981,6 +1010,20 @@ export default function ClientDashboard() {
                       ? "The review period passed without us hearing back, so the design is approved and we're building it. If anything about it isn't right, tell us — we'd always rather know now."
                       : "You've approved the design — we're building it."}
                   </p>
+                  {/* Still reachable afterwards. "Approved" is exactly when
+                      somebody wants to show it to whoever else needs to see
+                      it, and it used to disappear at that moment. */}
+                  {project.designReview.designUrl && (
+                    <a
+                      href={project.designReview.designUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-emerald-200 hover:text-emerald-100"
+                    >
+                      View the approved design
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
                 </div>
               )}
 

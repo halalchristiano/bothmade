@@ -3,8 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { buildTemplatedEmail } from '@/lib/send-templated-email';
 import { composeOnly, type ComposedEmail } from '@/lib/email-preview';
-import { mockupRequestEmail, renderShell, sendMockupEmail } from '@/lib/email';
-import { escMultiline, escParagraphs } from '@/lib/html';
+import { mockupRequestEmail, renderShell, sendDesignPresentedEmail, sendMockupEmail } from '@/lib/email';
+import { designStage } from '@/lib/design-stages';
+import { reviewNoticeLine, startReview } from '@/lib/design-approval';
+import { escMultiline, escParagraphs, normalizeUrl } from '@/lib/html';
 import { clientMockupLink } from '@/lib/mockups';
 import { findDesigner } from '@/lib/notify';
 import { parseSalesPoints } from '@/lib/leads';
@@ -131,6 +133,48 @@ async function buildPreview(
         note: lead.salesNote,
       });
       return [{ to: [designer.email], subject: mail.subject, html: mail.html }];
+    }
+
+    case 'design-review': {
+      const projectId = segmentAfter(path, 'projects');
+      if (!projectId) return [];
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: {
+          id: true,
+          name: true,
+          designRound: true,
+          designUrl: true,
+          designPresentedAt: true,
+          client: { select: { email: true, contactName: true } },
+        },
+      });
+      if (!project) return [];
+      // The round the send will advance to, not the one it is on — the same
+      // arithmetic the route does, so the preview names what they will read.
+      const round = project.designRound + (project.designPresentedAt ? 1 : 0);
+      const stage = designStage(round);
+      const { endsAt } = startReview(new Date());
+      const reviewEndsLabel = endsAt.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      });
+      const typed = typeof payload.designUrl === 'string' ? payload.designUrl.trim() : '';
+      return composeOnly(() =>
+        sendDesignPresentedEmail({
+          to: project.client.email,
+          contactName: project.client.contactName,
+          projectName: project.name,
+          noticeLine: reviewNoticeLine(endsAt),
+          reviewEndsLabel,
+          dashboardUrl: `${resolveSiteUrl()}/client/${project.id}`,
+          note: typeof payload.note === 'string' && payload.note.trim() ? payload.note.trim() : null,
+          stageLabel: stage.label,
+          stageMeaning: stage.meaning,
+          designUrl: (typed && normalizeUrl(typed)) || project.designUrl,
+        })
+      );
     }
 
     case 'follow-up': {

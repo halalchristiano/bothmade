@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { forbiddenResponse, requirePrincipal } from '@/lib/middleware';
 import { notifyAdminsDesignApprovedByClient } from '@/lib/notify';
+import { sendDesignApprovedEmail } from '@/lib/email';
+import { clientWantsEmail } from '@/lib/email-preferences';
+import { designStage } from '@/lib/design-stages';
+import { resolveSiteUrl } from '@/lib/site-url';
 
 /**
  * The client approving their own design.
@@ -35,7 +39,9 @@ export async function POST(
         status: true,
         designPresentedAt: true,
         designApprovedAt: true,
-        client: { select: { company: true } },
+        designRound: true,
+        designUrl: true,
+        client: { select: { company: true, email: true, contactName: true, emailPreferences: true } },
       },
     });
     if (!project) {
@@ -82,6 +88,26 @@ export async function POST(
       projectName: project.name,
       company: project.client.company,
     }).catch((error) => console.error(`Design approval notify failed for ${projectId}:`, error));
+
+    /*
+     * And back to the client, in writing.
+     *
+     * They pressed a button and heard nothing, which is the moment somebody
+     * starts wondering whether it worked. It also has to say what their
+     * approval just did: under Section 7 this is what makes the second
+     * instalment fall due, and a client who learns that from the invoice has
+     * been ambushed by a term they agreed to.
+     */
+    if (clientWantsEmail(project.client.emailPreferences, 'statusUpdates')) {
+      await sendDesignApprovedEmail({
+        to: project.client.email,
+        contactName: project.client.contactName,
+        projectName: project.name,
+        stageLabel: designStage(project.designRound).label,
+        dashboardUrl: `${resolveSiteUrl()}/client/${projectId}`,
+        designUrl: project.designUrl,
+      }).catch((error) => console.error(`Design approved email failed for ${projectId}:`, error));
+    }
 
     return NextResponse.json({ success: true, approvedAt: now }, { status: 200 });
   } catch (error) {

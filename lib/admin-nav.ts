@@ -8,6 +8,7 @@ import {
   ListChecks,
   MessagesSquare,
   Palette,
+  PenTool,
   PhoneCall,
   Receipt,
   Settings,
@@ -72,6 +73,12 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   // search, which returns projects to every staff account.
   { href: '/admin/billing', label: 'Billing', icon: Receipt, section: 'One-off charges' },
 
+  // The design conversation is a sequence — send it, wait, read what came
+  // back, send the next one — and it had no screen. Where a project stood was
+  // answerable only by opening it, so the expensive state (they answered, we
+  // owe them the next round, their clock and the payment gate behind it have
+  // both stopped) was the one nothing surfaced.
+  { href: '/admin/design', label: 'Design', icon: PenTool, section: 'Delivery' },
   { href: '/admin/priorities', label: 'Priorities', icon: ListChecks, section: 'Delivery' },
   { href: '/admin/clients', label: 'Clients', icon: Building2, section: 'Delivery' },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban, section: 'Delivery' },

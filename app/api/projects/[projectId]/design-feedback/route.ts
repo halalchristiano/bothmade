@@ -11,6 +11,7 @@ import {
 import { sendDesignFeedbackAckEmail } from '@/lib/email';
 import { clientWantsEmail } from '@/lib/email-preferences';
 import { notifyAdminsDesignFeedback } from '@/lib/notify';
+import { nextDesignStage } from '@/lib/design-stages';
 
 /**
  * "Not yet" — with reasons, sorted.
@@ -124,13 +125,16 @@ export async function POST(
     });
 
     const state = revisionState(usedAfter);
+    // What they will be sent next. Named rather than left as "the next
+    // version", so a client knows where they are in a sequence they agreed to.
+    const nextLabel = nextDesignStage(project.designRound).label;
 
     await prisma.projectUpdate
       .create({
         data: {
           projectId,
           title: 'Your feedback is with us',
-          description: acknowledgement(t, state),
+          description: acknowledgement(t, state, nextLabel),
           statusStage: project.status,
           userId: null,
         },
@@ -157,7 +161,7 @@ export async function POST(
         to: project.client.email,
         contactName: project.client.contactName,
         projectName: project.name,
-        body: acknowledgement(t, state),
+        body: acknowledgement(t, state, nextLabel),
         dashboardUrl: `/client/${projectId}`,
       }).catch((error) => console.error(`Design feedback ack email failed for ${projectId}:`, error));
     }
@@ -168,7 +172,7 @@ export async function POST(
         feedbackId: feedback.id,
         consumedRound: spends,
         revisions: state,
-        acknowledgement: acknowledgement(t, state),
+        acknowledgement: acknowledgement(t, state, nextLabel),
       },
       { status: 201 }
     );

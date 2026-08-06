@@ -1711,10 +1711,28 @@ export async function sendDesignPresentedEmail(input: {
   reviewEndsLabel: string;
   dashboardUrl: string;
   note: string | null;
+  /** "Initial design", "Revision 1", "Revision 2" — see lib/design-stages.ts. */
+  stageLabel?: string;
+  /** What that round is, in a client's words rather than the contract's. */
+  stageMeaning?: string;
+  /** Where the design actually is, when there is a link to give them. */
+  designUrl?: string | null;
 }): Promise<SendResult> {
   const bodyHtml = `
     <p>Hi ${esc(input.contactName) || 'there'},</p>
-    <p>The design for <strong style="color:#fff;">${esc(input.projectName)}</strong> is ready for you to look at.</p>
+    <p>The ${esc(input.stageLabel)?.toLowerCase() || 'design'} for <strong style="color:#fff;">${esc(
+      input.projectName
+    )}</strong> is ready for you to look at.</p>
+    ${
+      input.stageMeaning
+        ? `<div style="background:rgba(125,211,252,0.08); border:1px solid rgba(125,211,252,0.25); border-radius:12px; padding:16px 18px; margin:18px 0;">
+             <p style="margin:0 0 4px 0; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(125,211,252,0.8);">${esc(
+               input.stageLabel
+             ) || 'Where this sits'}</p>
+             <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.78);">${esc(input.stageMeaning)}</p>
+           </div>`
+        : ''
+    }
     ${input.note ? `<p style="border-left:2px solid rgba(125,211,252,0.6); padding-left:16px; color:rgba(255,255,255,0.75);">${esc(input.note)}</p>` : ''}
     <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
       <p style="margin:0 0 4px 0; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.35);">Please review by</p>
@@ -1745,12 +1763,79 @@ export async function sendDesignPresentedEmail(input: {
 
   return sendEmailDetailed({
     to: input.to,
-    subject: `Your design is ready — please review by ${input.reviewEndsLabel}`,
+    subject: `${input.stageLabel || 'Your design'} is ready — please review by ${input.reviewEndsLabel}`,
     html: renderShell({
-      eyebrow: 'Design review',
+      eyebrow: input.stageLabel || 'Design review',
       title: `${input.projectName} — ready for your review`,
-      bodyHtml,
-      ctaLabel: 'See the design',
+      bodyHtml:
+        bodyHtml +
+        // The design itself, not only the dashboard it is reachable from. The
+        // main button goes to the dashboard because that is where the two
+        // answer buttons live and where the clock is visible; this is for the
+        // person who just wants to look at the work.
+        (input.designUrl
+          ? `<p style="margin:18px 0 0; font-size:14px;">
+               <a href="${safeUrl(input.designUrl)}" style="color:#7dd3fc;">Open the design itself →</a>
+             </p>`
+          : ''),
+      ctaLabel: 'Open your dashboard to answer',
+      ctaUrl: input.dashboardUrl,
+    }),
+  });
+}
+
+/**
+ * "You've approved it — here is what happens now."
+ *
+ * A client pressed a button and then heard nothing, which is the moment a
+ * person starts wondering whether the button worked. It also has to say what
+ * their approval just did: under Section 7, Design Approval is what makes
+ * Payment 2 fall due, and a client who finds that out from an invoice has
+ * been ambushed by a term they agreed to.
+ *
+ * The design link goes with it, because "approved" is exactly when somebody
+ * wants to forward it to whoever else needs to see it.
+ */
+export async function sendDesignApprovedEmail(input: {
+  to: string;
+  contactName: string | null;
+  projectName: string;
+  stageLabel: string;
+  dashboardUrl: string;
+  designUrl?: string | null;
+  /** True when nobody pressed anything and the review period simply lapsed. */
+  deemed?: boolean;
+}): Promise<SendResult> {
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `Design approved — ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Design approved',
+      title: `${input.projectName} — approved, and we're building`,
+      bodyHtml:
+        `<p>Hi ${esc(input.contactName) || 'there'},</p>` +
+        (input.deemed
+          ? `<p>The review period on the ${esc(
+              input.stageLabel
+            ).toLowerCase()} has passed without us hearing back, so under the review period in Section 4 of your agreement it counts as approved and we have started building.</p>
+             <p style="font-size:14px; color:rgba(255,255,255,0.65);">If something about it isn't right, tell us anyway — we would always rather know now than after it is built.</p>`
+          : `<p>Thank you — the ${esc(
+              input.stageLabel
+            ).toLowerCase()} is approved and we have started building it.</p>`) +
+        `<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+           <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">What happens now</p>
+           <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.7);">
+             Design approval is the point where the second instalment falls due — that is Section 7 of
+             your agreement, and it is the same for every project. The invoice follows separately.
+             Build starts once it clears, and you will see the stage move on your dashboard.
+           </p>
+         </div>` +
+        (input.designUrl
+          ? `<p style="margin:0; font-size:14px;">
+               <a href="${safeUrl(input.designUrl)}" style="color:#7dd3fc;">The approved design →</a>
+             </p>`
+          : ''),
+      ctaLabel: 'Open your dashboard',
       ctaUrl: input.dashboardUrl,
     }),
   });

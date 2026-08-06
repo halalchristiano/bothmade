@@ -5,6 +5,8 @@ import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { reviewNoticeLine, startReview } from '@/lib/design-approval';
 import { sendDesignPresentedEmail } from '@/lib/email';
+import { designStage } from '@/lib/design-stages';
+import { normalizeUrl } from '@/lib/html';
 
 /**
  * Start the Section 4 review clock by telling the client their design is
@@ -35,6 +37,7 @@ export async function POST(
     const body = (await request.json().catch(() => null)) as {
       note?: unknown;
       notifyClient?: unknown;
+      designUrl?: unknown;
     } | null;
 
     const project = await prisma.project.findUnique({
@@ -46,6 +49,7 @@ export async function POST(
         designPresentedAt: true,
         designApprovedAt: true,
         designRound: true,
+        designUrl: true,
         client: { select: { email: true, contactName: true, company: true } },
       },
     });
@@ -77,11 +81,28 @@ export async function POST(
      * exist yet.
      */
     const isRepresentation = Boolean(project.designPresentedAt);
+    const round = project.designRound + (isRepresentation ? 1 : 0);
+    const stage = designStage(round);
+
+    /*
+     * The design itself, saved with the clock that starts over it.
+     *
+     * Section 4 runs the review period from when a Deliverable "is made
+     * available" — so the thing being made available belongs on the record
+     * that starts the clock, not in a separate message. Without it the
+     * client's dashboard asked them to approve something it could not show.
+     */
+    const designUrl =
+      typeof body?.designUrl === 'string' && body.designUrl.trim()
+        ? normalizeUrl(body.designUrl.trim())
+        : null;
+
     await prisma.project.update({
       where: { id: projectId },
       data: {
         designPresentedAt: presentedAt,
         designReviewEndsAt: endsAt,
+        ...(designUrl ? { designUrl } : {}),
         ...(isRepresentation ? { designRound: { increment: 1 } } : {}),
       },
     });
@@ -102,6 +123,9 @@ export async function POST(
         reviewEndsLabel,
         dashboardUrl: `${resolveSiteUrl()}/client/${project.id}`,
         note,
+        stageLabel: stage.label,
+        stageMeaning: stage.meaning,
+        designUrl: designUrl ?? project.designUrl,
       }).catch((error) => {
         console.error(`Design presented email failed for ${projectId}:`, error);
         return { sent: false };
@@ -115,8 +139,9 @@ export async function POST(
       .create({
         data: {
           projectId,
-          title: 'Your design is ready to review',
+          title: `${stage.label} — ready to review`,
           description:
+            `${stage.meaning}\n\n` +
             (note ? `${note}\n\n` : '') +
             `Take a look and tell us what you think by ${reviewEndsLabel}. If we haven't heard from you by then, we'll take it as approved and start building.`,
           statusStage: project.status,
@@ -126,7 +151,7 @@ export async function POST(
       .catch((error) => console.error(`Design presented timeline entry failed for ${projectId}:`, error));
 
     return NextResponse.json(
-      { success: true, presentedAt, reviewEndsAt: endsAt, reviewEndsLabel, emailSent },
+      { success: true, presentedAt, reviewEndsAt: endsAt, reviewEndsLabel, emailSent, stage },
       { status: 200 }
     );
   } catch (error) {

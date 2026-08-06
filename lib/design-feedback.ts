@@ -1,3 +1,4 @@
+import { revisionAllowanceLine } from '@/lib/design-stages';
 /**
  * What the client says when the answer is "not yet".
  *
@@ -156,12 +157,17 @@ export function revisionState(used: number, included = INCLUDED_REVISION_ROUNDS)
     included,
     remaining,
     nextIsBillable: remaining === 0,
-    clientLine:
-      remaining === 0
-        ? `You've used both of the revision rounds included in your project. We'll still read everything below — we'll just come back to you before we start, so there are no surprises.`
-        : `This is revision ${safeUsed + 1} of the ${included} included in your project${
-            remaining === 1 ? ' — this is the last included round' : ''
-          }.`,
+    /*
+     * What they have left, not what they are looking at.
+     *
+     * This used to read "This is revision 1 of the 2 included" underneath the
+     * original concept — which tells a client they have spent half their
+     * allowance before saying a word about it. Exhibit A is explicit that the
+     * concept is not a revision: "an original visual design concept for
+     * review; up to two (2) rounds of revisions". What a round is called now
+     * comes from designStage(); this line only reports the allowance.
+     */
+    clientLine: revisionAllowanceLine(safeUsed),
   };
 }
 
@@ -262,7 +268,18 @@ export function triage(items: FeedbackItem[]): FeedbackTriage {
  * happens next rather than merely confirming receipt. A form that swallows a
  * carefully written list in silence teaches people to phone instead.
  */
-export function acknowledgement(t: FeedbackTriage, state: RevisionState): string {
+export function acknowledgement(
+  t: FeedbackTriage,
+  state: RevisionState,
+  /**
+   * What they will be sent next — "Revision 1", "Revision 2".
+   *
+   * Naming it is the difference between "we'll be in touch" and a client who
+   * knows exactly where they are in a sequence they agreed to. Optional so
+   * older callers keep the generic sentence rather than breaking.
+   */
+  nextStageLabel?: string
+): string {
   const parts: string[] = [];
   const total = t.notAsAgreed.length + t.changes.length + t.newScope.length;
   parts.push(
@@ -319,6 +336,8 @@ export function acknowledgement(t: FeedbackTriage, state: RevisionState): string
   parts.push(
     comingBackFirst
       ? "Nothing here is lost — we've got all of it written down."
+      : nextStageLabel
+      ? `We're working on ${nextStageLabel.toLowerCase()} now and we'll send it over as soon as it's ready.`
       : "We'll be back with the next version shortly."
   );
   return parts.join(' ');

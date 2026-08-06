@@ -180,6 +180,16 @@ model Project {
   // by accident after a page reload forgets the button was already used.
   lastPaymentReminderSentAt DateTime?
 
+  // Where the design actually is — the Figma file, the preview build, the
+  // folder. Whatever the client is being asked to look at.
+  //
+  // Without it, "your design is ready to review" was a deadline with nothing
+  // attached: the dashboard asked for approval of something it could not
+  // show, and the link travelled separately by hand. The review period only
+  // starts when a deliverable is "made available" under Section 4, so the
+  // thing being made available belongs on the record that starts the clock.
+  designUrl String?
+
   // --- The Section 4 review clock -----------------------------------------
   // Payment 2 is due on Design Approval, "including deemed approval under
   // Section 4" — five Business Days of client silence after a design is

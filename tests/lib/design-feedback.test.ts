@@ -64,23 +64,36 @@ describe('consumesRound', () => {
   });
 });
 
+/**
+ * These used to assert the opposite, and the assertion was the bug.
+ *
+ * `clientLine` was written as "This is revision N of the 2 included" and
+ * shown under whatever the client was looking at — including the opening
+ * concept, which told them they had spent half their allowance before saying
+ * a word. Exhibit A is explicit: "an original visual design concept for
+ * review; up to two (2) rounds of revisions". The concept is not one of them.
+ *
+ * What a round is called now comes from designStage(). This line only ever
+ * reports the allowance, so it cannot mislabel the thing on screen.
+ */
 describe('revisionState', () => {
-  it('counts the first submission as revision 1 of 2', () => {
+  it('does not spend a round before the client has asked for anything', () => {
     const s = revisionState(0);
     expect(s.remaining).toBe(2);
     expect(s.nextIsBillable).toBe(false);
-    expect(s.clientLine).toMatch(/revision 1 of the 2/i);
+    expect(s.clientLine).not.toMatch(/revision 1/i);
+    expect(s.clientLine).toMatch(/both rounds .* still available/i);
   });
 
-  it('warns on the last included round', () => {
-    expect(revisionState(1).clientLine).toMatch(/last included round/i);
+  it('says how many are left once one has actually been used', () => {
+    expect(revisionState(1).clientLine).toMatch(/one is left/i);
   });
 
   it('says plainly when both are gone, without threatening a bill', () => {
     const s = revisionState(2);
     expect(s.remaining).toBe(0);
     expect(s.nextIsBillable).toBe(true);
-    expect(s.clientLine).toMatch(/used both/i);
+    expect(s.clientLine).toMatch(/both .* have been used/i);
     expect(s.clientLine).toMatch(/come back to you/i);
   });
 

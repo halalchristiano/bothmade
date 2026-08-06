@@ -6,7 +6,9 @@ import { resolveSiteUrl } from '@/lib/site-url';
 import { formatCentsExact } from '@/lib/pricing';
 import { hasLapsed } from '@/lib/design-approval';
 import { chaseState } from '@/lib/payment-chase';
-import { sendPaymentChaseEmail } from '@/lib/email';
+import { sendDesignApprovedEmail, sendPaymentChaseEmail } from '@/lib/email';
+import { clientWantsEmail } from '@/lib/email-preferences';
+import { designStage } from '@/lib/design-stages';
 import { notifyAdminsDesignDeemedApproved, notifyAdminsPaymentNeedsCall } from '@/lib/notify';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
@@ -60,7 +62,11 @@ export async function GET(request: NextRequest) {
         status: true,
         designPresentedAt: true,
         designReviewEndsAt: true,
-        client: { select: { company: true } },
+        designRound: true,
+        designUrl: true,
+        client: {
+          select: { company: true, email: true, contactName: true, emailPreferences: true },
+        },
         instalments: {
           where: { trigger: 'design-approval' },
           select: { label: true, amountCents: true, status: true },
@@ -107,6 +113,26 @@ export async function GET(request: NextRequest) {
         paymentLabel: unbilled?.label ?? null,
         amountLabel: unbilled ? formatCentsExact(unbilled.amountCents) : null,
       }).catch((error) => console.error(`Deemed approval notify failed for ${project.id}:`, error));
+
+      /*
+       * And the client is told, on the day it happens.
+       *
+       * Deemed approval is the clause that most protects the studio, and it
+       * is only defensible if the client finds out from us rather than from
+       * an invoice. It says what it means, that the second instalment falls
+       * due, and that we would still rather hear it if something is wrong.
+       */
+      if (clientWantsEmail(project.client.emailPreferences, 'statusUpdates')) {
+        await sendDesignApprovedEmail({
+          to: project.client.email,
+          contactName: project.client.contactName,
+          projectName: project.name,
+          stageLabel: designStage(project.designRound).label,
+          dashboardUrl: `${resolveSiteUrl()}/client/${project.id}`,
+          designUrl: project.designUrl,
+          deemed: true,
+        }).catch((error) => console.error(`Deemed approval email failed for ${project.id}:`, error));
+      }
 
       result.deemed++;
     }
