@@ -15,6 +15,7 @@ import {
   Flame,
   Headset,
   HelpCircle,
+  Eye,
 } from 'lucide-react';
 import { SearchFilter, matchesSearch, Badge } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
@@ -24,6 +25,7 @@ import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 
 type CallReason =
   | 'replied'
+  | 'opened'
   | 'bounced'
   | 'overdue'
   | 'today'
@@ -44,6 +46,11 @@ interface CallRow {
   emailDeliveryFailedReason: string | null;
   salesNote: string | null;
   reason: CallReason;
+  /** Cold-email opens, as recorded. See lib/lead-opens.ts. */
+  opens: number;
+  openBand: 'silent' | 'delivered' | 'engaged' | 'hot';
+  openHeadline: string;
+  openNextStep: string | null;
   assignedTo: { name: string | null } | null;
   lastActivity: { type: string; content: string; createdAt: string } | null;
 }
@@ -55,6 +62,13 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
     blurb:
       "Someone at these businesses answered your email. They are the warmest leads you have and they go cold fastest — call them before anything else on this page.",
     classes: 'border-emerald-400/40 bg-emerald-400/[0.12] text-emerald-100',
+  },
+  opened: {
+    label: 'Reading your email right now — ring these',
+    short: 'They keep opening it',
+    blurb:
+      "These have opened your cold email more than once and not written back. Most opened first. It is the strongest signal you get short of a reply, and it goes cold in days — one open on its own is only proof it arrived, so it is not in here.",
+    classes: 'border-orange-400/40 bg-orange-400/[0.12] text-orange-100',
   },
   bounced: {
     label: 'Email bounced — phone is the only way in',
@@ -94,11 +108,22 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
   },
 };
 
-const ORDER: CallReason[] = ['replied', 'bounced', 'overdue', 'today', 'no-follow-up', 'never-contacted'];
+const ORDER: CallReason[] = [
+  'replied',
+  'opened',
+  'bounced',
+  'overdue',
+  'today',
+  'no-follow-up',
+  'never-contacted',
+];
 
 /** Same semantics as REASONS[...].classes, expressed as Badge tones for the per-row chip. */
 const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'purple' | 'neutral'> = {
   replied: 'emerald',
+  // Amber rather than a colour of its own: the Badge palette has five tones
+  // and inventing a sixth for one band is how a UI stops meaning anything.
+  opened: 'amber',
   bounced: 'red',
   overdue: 'amber',
   today: 'sky',
@@ -681,10 +706,20 @@ export function QueueView() {
                     >
                       {/* On the row, not just the band header — the header
                           disappears the moment a different sort is chosen. */}
-                      <div className="mb-2">
+                      <div className="mb-2 flex flex-wrap items-center gap-1.5">
                         <Badge tone={REASON_TONE[row.reason]} solid>
                           {REASONS[row.reason].short}
                         </Badge>
+                        {/* The count travels with the row rather than living
+                            in the band header, which disappears the moment a
+                            different sort is chosen — and "opened 6 times" is
+                            the fact a rep opens the call with. */}
+                        {row.opens > 0 && (
+                          <Badge tone={row.openBand === 'hot' ? 'amber' : 'neutral'}>
+                            <Eye size={10} className="inline -mt-0.5 mr-1" />
+                            {row.opens}×
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="flex items-start justify-between gap-3">
@@ -713,6 +748,13 @@ export function QueueView() {
                         <p className="text-xs mt-2 leading-relaxed">
                           {lt.time && <span className={`font-semibold ${timeColour}`}>{lt.time} their time — </span>}
                           <span className="text-white/40">{lt.advice}</span>
+                        </p>
+                      )}
+
+                      {row.reason === 'opened' && (
+                        <p className="text-xs text-orange-200/85 mt-1.5 leading-relaxed break-words">
+                          {row.openHeadline}
+                          {row.openNextStep ? ` — ${row.openNextStep}` : ''}
                         </p>
                       )}
 

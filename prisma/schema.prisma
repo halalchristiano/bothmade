@@ -488,6 +488,18 @@ model Lead {
   coldEmailDraft  String?
   coldEmailSentAt DateTime?
 
+  // Did the cold email actually land, and did anyone come back to it?
+  //
+  // A one-pixel image on the cold email writes these three. Counts and
+  // timestamps only — what they are allowed to mean is decided at read time
+  // in lib/lead-opens.ts, because a single open is proof of delivery and
+  // nothing more, while five opens across two days is a phone call.
+  coldEmailOpens        Int       @default(0)
+  /// First fetch of the pixel. Kept, never overwritten, so a machine-speed
+  /// open on delivery stays distinguishable from a person reading it later.
+  coldEmailOpenedAt     DateTime?
+  coldEmailLastOpenedAt DateTime?
+
   // The second email in the same voice: what gets sent with the mockup, once
   // they've replied. Written at research time alongside the cold email so the
   // two read as one conversation rather than a bespoke opener followed by a

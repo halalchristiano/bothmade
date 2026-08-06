@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
+import { readOpens } from '@/lib/lead-opens';
 
 /**
  * The day's call list, in the order it should be worked.
@@ -10,15 +11,18 @@ import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
  * next", which is a different question and the one a rep asks every morning.
  * Ordering is deliberate:
  *
- *  1. Bounced email — the only way to reach these is the phone, and they're
+ *  1. Opened the cold email more than once — they are reading it right now
+ *     and have not written back. The strongest buying signal short of a
+ *     reply, and it decays within days.
+ *  2. Bounced email — the only way to reach these is the phone, and they're
  *     currently the easiest leads to forget entirely because nothing failed
  *     visibly.
- *  2. Follow-up overdue — a promise already broken, and the fastest way to
+ *  3. Follow-up overdue — a promise already broken, and the fastest way to
  *     lose a warm lead.
- *  3. Follow-up due today.
- *  4. Contacted by email, never rung, no follow-up booked — the pile that
+ *  4. Follow-up due today.
+ *  5. Contacted by email, never rung, no follow-up booked — the pile that
  *     silently accumulates.
- *  5. Never contacted at all.
+ *  6. Never contacted at all.
  *
  * Won and lost are excluded. Leads with no phone number are returned
  * separately rather than dropped, so it's obvious they need an address
@@ -38,6 +42,12 @@ const MAX_ROWS = 2000;
 export type CallReason =
   /** They wrote back. Nothing outranks this. */
   | 'replied'
+  /**
+   * They keep opening the email. Ranked above a booked follow-up on purpose:
+   * a date in a diary is a plan, and somebody reading your email this morning
+   * is happening now. See lib/lead-opens.ts for why one open does not qualify.
+   */
+  | 'opened'
   | 'bounced'
   | 'overdue'
   | 'today'
@@ -48,17 +58,19 @@ export type CallReason =
 
 const REASON_RANK: Record<CallReason, number> = {
   replied: 0,
-  bounced: 1,
-  overdue: 2,
-  today: 3,
-  'no-follow-up': 4,
-  'never-contacted': 5,
-  scheduled: 6,
+  opened: 1,
+  bounced: 2,
+  overdue: 3,
+  today: 4,
+  'no-follow-up': 5,
+  'never-contacted': 6,
+  scheduled: 7,
 };
 
 /** The bands that make up the call list. `scheduled` is counted, not called. */
 const CALLABLE_REASONS: CallReason[] = [
   'replied',
+  'opened',
   'bounced',
   'overdue',
   'today',
@@ -111,6 +123,9 @@ export async function GET() {
         replyReceivedAt: true,
         emailDeliveryFailedReason: true,
         coldEmailSentAt: true,
+        coldEmailOpens: true,
+        coldEmailOpenedAt: true,
+        coldEmailLastOpenedAt: true,
         salesNote: true,
         updatedAt: true,
         assignedTo: { select: { name: true } },
@@ -147,12 +162,21 @@ export async function GET() {
       const hasBeenContacted =
         !!lead.coldEmailSentAt || lead.activities.length > 0 || lead.status !== 'new';
 
+      // What the pixel says about this one. Derived, never stored — the
+      // wording on the row and the position in the queue come from the same
+      // call, so they cannot drift apart.
+      const opens = readOpens(lead);
+
       // First match wins, and the branches are exhaustive — every lead gets
       // exactly one reason, so the counts below can be trusted to add up.
       let reason: CallReason;
       if (lead.replyReceivedAt) {
         // Outranks a booked follow-up: they've moved, so the old plan is stale.
         reason = 'replied';
+      } else if (opens.band === 'hot' || opens.band === 'engaged') {
+        // Above the follow-up bands deliberately: this is evidence from this
+        // morning, and it goes cold in days.
+        reason = 'opened';
       } else if (lead.emailDeliveryFailedAt) {
         reason = 'bounced'; // email can't reach them at all, so the date is moot
       } else if (lead.nextFollowUpAt && lead.nextFollowUpAt < startOfToday) {
@@ -167,7 +191,17 @@ export async function GET() {
         reason = 'never-contacted';
       }
 
-      return { ...lead, reason, lastActivity: lead.activities[0] ?? null, activities: undefined };
+      return {
+        ...lead,
+        reason,
+        opens: opens.opens,
+        openBand: opens.band,
+        openHeadline: opens.headline,
+        openNextStep: opens.nextStep,
+        openScore: opens.score,
+        lastActivity: lead.activities[0] ?? null,
+        activities: undefined,
+      };
     });
 
     // Every reason is counted, including the one that keeps a lead off the
@@ -192,6 +226,12 @@ export async function GET() {
     due.sort((a, b) => {
       const byReason = REASON_RANK[a.reason] - REASON_RANK[b.reason];
       if (byReason !== 0) return byReason;
+      // Inside the opened band, most-opened first — that is the whole point
+      // of the band. Applied before hotLead, because a hand-set flag is
+      // somebody's opinion from last week and this is what happened today.
+      if (a.reason === 'opened' && b.reason === 'opened' && a.openScore !== b.openScore) {
+        return b.openScore - a.openScore;
+      }
       if (a.hotLead !== b.hotLead) return a.hotLead ? -1 : 1;
       // Oldest follow-up first within a band — the longest-waiting lead is
       // the one most at risk.

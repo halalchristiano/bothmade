@@ -17,6 +17,7 @@ import {
   type PainPointKey,
 } from '@/lib/leads';
 import { SALES_TEMPLATES } from '@/lib/sales-templates';
+import { readOpens } from '@/lib/lead-opens';
 import { findGlossaryTerms } from '@/lib/glossary';
 import { buildCallScript, callScriptToText, painPointPitch } from '@/lib/call-script';
 import { personalise, priceToTotal, type PlaybookEntry, type PricedItem } from '@/lib/playbook-seed';
@@ -158,6 +159,9 @@ interface LeadDetail {
   qualifiedAt: string | null;
   coldEmailDraft: string | null;
   coldEmailSentAt: string | null;
+  coldEmailOpens: number;
+  coldEmailOpenedAt: string | null;
+  coldEmailLastOpenedAt: string | null;
   mockupEmailDraft: string | null;
   personalizedObservation: string | null;
   emailDeliveryFailedAt: string | null;
@@ -1506,11 +1510,36 @@ export default function LeadDetailPage() {
               <Send size={15} />
             </button>
           )}
-          {(lead.coldEmailSentAt || coldDraftSent) && (
-            <span title="Cold email sent" className="flex items-center justify-center w-9 h-9 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-300/70">
-              <CheckCircle2 size={15} />
-            </span>
-          )}
+          {(lead.coldEmailSentAt || coldDraftSent) &&
+            (() => {
+              // "Sent" was all this said, which is the least interesting half
+              // of the story — whether anybody opened it is the half that
+              // decides whether to ring them today.
+              const reading = readOpens(lead);
+              if (reading.opens === 0) {
+                return (
+                  <span
+                    title={`Cold email sent. ${reading.headline}${reading.nextStep ? ` — ${reading.nextStep}` : ''}`}
+                    className="flex items-center justify-center w-9 h-9 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-300/70"
+                  >
+                    <CheckCircle2 size={15} />
+                  </span>
+                );
+              }
+              const hot = reading.band === 'hot';
+              return (
+                <span
+                  title={`${reading.headline}${reading.nextStep ? ` — ${reading.nextStep}` : ''}`}
+                  className={`flex items-center gap-1 h-9 px-3 rounded-full border text-xs font-semibold ${
+                    hot
+                      ? 'bg-orange-400/15 border-orange-400/35 text-orange-200'
+                      : 'bg-emerald-400/10 border-emerald-400/20 text-emerald-300/80'
+                  }`}
+                >
+                  <Eye size={14} /> {reading.opens}×
+                </span>
+              );
+            })()}
           <button
             onClick={() => setComposingEmail(true)}
             className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"

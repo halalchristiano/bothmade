@@ -9,6 +9,8 @@ import { createGmailOAuthBatchClient } from '@/lib/gmail-oauth';
 import { decryptSecret } from '@/lib/crypto';
 import { buildFallbackColdEmailDraft, advanceToContactedOnOutreach } from '@/lib/leads';
 import { FALLBACK_SENDER_NAME, renderColdEmail } from '@/lib/cold-email';
+import { leadOpenPixelUrl } from '@/lib/lead-opens';
+import { resolveSiteUrl } from '@/lib/site-url';
 
 const MAX_LEADS = 200;
 
@@ -100,6 +102,10 @@ export async function POST(request: NextRequest) {
         bodyHtml,
         footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
         footerAvatarUrl: sender.avatarUrl,
+        // One pixel, so the silence afterwards can be read. Without it every
+        // unanswered lead looks the same as every other one and they get
+        // called in whatever order the list happens to be in.
+        trackingPixelUrl: leadOpenPixelUrl(resolveSiteUrl(), lead.id),
       });
 
       const result = await sendAsUser(
@@ -131,6 +137,12 @@ export async function POST(request: NextRequest) {
             status: advanceToContactedOnOutreach(lead.status),
             emailDeliveryFailedAt: null,
             emailDeliveryFailedReason: null,
+            // A resend starts the count again. Opens of the previous email
+            // are not evidence about this one, and leaving them would put a
+            // lead at the top of the queue for something it did last month.
+            coldEmailOpens: 0,
+            coldEmailOpenedAt: null,
+            coldEmailLastOpenedAt: null,
           },
         })
         .catch(() => null);
