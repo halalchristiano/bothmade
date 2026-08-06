@@ -151,6 +151,8 @@ interface LiveMockup {
   viewCount: number;
   responseNote: string | null;
   expired: boolean;
+  sendFailedAt: string | null;
+  sendFailedReason: string | null;
   lead: {
     id: string;
     company: string;
@@ -162,6 +164,9 @@ interface LiveMockup {
     mockupFolderUrl: string | null;
   };
 }
+
+/** A send that failed, whatever the row's status says. */
+const FAILED_TONE = 'border-red-400/35 bg-red-400/[0.07]';
 
 const LIVE_TONE: Record<string, string> = {
   draft: 'border-amber-400/30 bg-amber-400/[0.06]',
@@ -256,10 +261,25 @@ export default function MockupQueuePage() {
   const liveVisible = [...live]
     .filter((m) => matchesSearch(search, m.lead.company, m.lead.contactName))
     .sort((a, b) => {
-      const rank = (s: string) =>
-        s === 'draft' ? 0 : s === 'approved' ? 1 : s === 'changes_requested' ? 2 : s === 'viewed' ? 3 : 4;
-      return rank(a.status) - rank(b.status);
+      // A send that failed outranks everything: the client has heard nothing,
+      // and one click fixes it. Then unsent, then whatever the client said.
+      const rank = (m: LiveMockup) =>
+        m.sendFailedAt
+          ? -1
+          : m.status === 'draft'
+            ? 0
+            : m.status === 'approved'
+              ? 1
+              : m.status === 'changes_requested'
+                ? 2
+                : m.status === 'viewed'
+                  ? 3
+                  : 4;
+      return rank(a) - rank(b);
     });
+  // Named rather than inlined: the summary line at the top of the page says
+  // how many, and the count has to be the one the list is actually showing.
+  const failedCount = liveVisible.filter((m) => m.sendFailedAt).length;
   const sortedByWait = [...visible].sort((a, b) => {
     if (a.hotLead !== b.hotLead) return a.hotLead ? -1 : 1;
     return (daysWaiting(a.mockupRequestedAt) ?? 0) - (daysWaiting(b.mockupRequestedAt) ?? 0) > 0 ? -1 : 1;
@@ -277,7 +297,9 @@ export default function MockupQueuePage() {
               : `${leads.length} ${leads.length === 1 ? 'lead is' : 'leads are'} waiting on a mockup, longest-waiting and hot leads first.`
             : liveVisible.length === 0
               ? 'Nothing built yet. Attach a mockup above and it lands here ready to send.'
-              : `${liveVisible.length} built. Unsent first, then anything the client has opened — those are warm, ring them.`}
+              : failedCount > 0
+                ? `${failedCount} did not reach anybody — those are at the top. Then unsent, then anything the client has opened.`
+                : `${liveVisible.length} built. Unsent first, then anything the client has opened — those are warm, ring them.`}
         </p>
       </div>
 
@@ -331,7 +353,9 @@ export default function MockupQueuePage() {
           {liveVisible.map((m) => (
             <div
               key={m.id}
-              className={`rounded-xl border p-4 ${LIVE_TONE[m.status] ?? 'border-white/10 bg-white/[0.03]'}`}
+              className={`rounded-xl border p-4 ${
+                m.sendFailedAt ? FAILED_TONE : LIVE_TONE[m.status] ?? 'border-white/10 bg-white/[0.03]'
+              }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -342,7 +366,14 @@ export default function MockupQueuePage() {
                     {m.lead.company}
                     <ExternalLink size={11} className="opacity-40" />
                   </Link>
-                  <p className="text-xs mt-0.5 text-white/55">{m.signal}</p>
+                  <p className={`text-xs mt-0.5 ${m.sendFailedAt ? 'text-red-300' : 'text-white/55'}`}>
+                    {m.signal}
+                  </p>
+                  {/* The provider's own words. "Domain is not verified" names
+                      the fix; "could not send" sends somebody hunting. */}
+                  {m.sendFailedAt && m.sendFailedReason && (
+                    <p className="mt-1 text-xs text-white/45">{m.sendFailedReason}</p>
+                  )}
                   {m.responseNote && (
                     <p className="mt-2 text-xs italic text-white/60">&ldquo;{m.responseNote}&rdquo;</p>
                   )}
@@ -389,16 +420,18 @@ export default function MockupQueuePage() {
                     }}
                     aria-expanded={sendingOpenId === m.id}
                     className={
-                      m.status === 'draft' || m.expired
+                      m.sendFailedAt || m.status === 'draft' || m.expired
                         ? 'rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90 transition-opacity'
                         : 'rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/5 transition-colors'
                     }
                   >
                     {sendingOpenId === m.id
                       ? 'Cancel'
-                      : m.status === 'draft'
-                        ? 'Send to client'
-                        : 'Send again'}
+                      : m.sendFailedAt
+                        ? 'Try again'
+                        : m.status === 'draft'
+                          ? 'Send to client'
+                          : 'Send again'}
                   </button>
                 </div>
               </div>

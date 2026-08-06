@@ -193,6 +193,8 @@ const BASE: LeadMockupDTO = {
   uploadedByName: 'Kiana',
   status: 'draft',
   shareToken: 'tok',
+  sendFailedAt: null,
+  sendFailedReason: null,
   sentAt: null,
   firstViewedAt: null,
   lastViewedAt: null,
@@ -247,6 +249,50 @@ describe('the one line a rep reads', () => {
       'Link expired — re-send to reopen it'
     );
   });
+
+  /**
+   * The row is stamped sent *before* the send goes out — it has to be, or the
+   * tracked link 404s on a client who was mailed it. That made a failed send
+   * read exactly like a delivered one: "Sent today, not opened yet", on a
+   * client who had never been written to. A rep reading that waits, then
+   * chases somebody who never heard from us, while the fix is one click.
+   */
+  it('says the email failed, on a row that is stamped as sent', () => {
+    const failed = {
+      ...BASE,
+      status: 'sent' as const,
+      sentAt: '2026-08-10T09:00:00Z',
+      sendFailedAt: '2026-08-10T09:00:01Z',
+    };
+
+    expect(mockupSignal(failed, NOW)).toMatch(/failed to send/i);
+    expect(mockupSignal(failed, NOW)).not.toMatch(/not opened/i);
+  });
+
+  it('says it whatever the row otherwise looks like', () => {
+    for (const extra of [
+      { status: 'sent' as const, expired: true },
+      { status: 'sent' as const, sentAt: '2026-06-01T09:00:00Z' },
+    ]) {
+      expect(
+        mockupSignal({ ...BASE, ...extra, sendFailedAt: '2026-08-10T09:00:01Z' }, NOW)
+      ).toMatch(/failed to send/i);
+    }
+  });
+
+  /**
+   * Except what the client themselves said. An approval is the most valuable
+   * thing this table holds, and a stale failure from an earlier send must
+   * never be shown over it.
+   */
+  it('never talks over something the client has actually said', () => {
+    expect(
+      mockupSignal({ ...BASE, status: 'approved', sendFailedAt: '2026-08-01T09:00:00Z' }, NOW)
+    ).toBe('Approved by the client');
+    expect(
+      mockupSignal({ ...BASE, status: 'changes_requested', sendFailedAt: '2026-08-01T09:00:00Z' }, NOW)
+    ).toBe('They asked for changes');
+  });
 });
 
 describe('link expiry', () => {
@@ -275,5 +321,61 @@ describe('statuses', () => {
     for (const s of ['SENT', 'opened', '', null, undefined, 7]) {
       expect(isMockupStatus(s)).toBe(false);
     }
+  });
+});
+
+/**
+ * The two writes around a send, and the one rule between them: a mockup can
+ * never be showing a failure and a success at the same time. Somebody reading
+ * the card has to be able to trust which of the two it is.
+ */
+describe('recording what happened to a send', () => {
+  it('clears an earlier failure when a re-send is stamped', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'm1' });
+    vi.doMock('@/lib/prisma', () => ({
+      prisma: {
+        leadMockup: { findUnique: vi.fn().mockResolvedValue({ status: 'sent' }), update },
+      },
+    }));
+    vi.resetModules();
+    const { markMockupSent } = await import('@/lib/mockups');
+
+    await markMockupSent('m1', new Date('2026-08-11T09:00:00Z'));
+
+    // Cleared on the stamp, not on the success: the stamp runs before every
+    // send, so a re-send that works must not leave last time's failure up.
+    expect(update.mock.calls[0][0].data).toMatchObject({
+      sendFailedAt: null,
+      sendFailedReason: null,
+    });
+    vi.doUnmock('@/lib/prisma');
+    vi.resetModules();
+  });
+
+  it('writes the provider’s own words, so the reason names the fix', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'm1' });
+    vi.doMock('@/lib/prisma', () => ({ prisma: { leadMockup: { update } } }));
+    vi.resetModules();
+    const { markMockupSendFailed } = await import('@/lib/mockups');
+
+    await markMockupSendFailed('m1', 'The mail provider refused it: domain is not verified');
+
+    expect(update.mock.calls[0][0].data.sendFailedReason).toContain('domain is not verified');
+    expect(update.mock.calls[0][0].data.sendFailedAt).toBeInstanceOf(Date);
+    vi.doUnmock('@/lib/prisma');
+    vi.resetModules();
+  });
+
+  /** Losing the note about a failure must not also lose the send's response. */
+  it('survives the database refusing the write', async () => {
+    vi.doMock('@/lib/prisma', () => ({
+      prisma: { leadMockup: { update: vi.fn().mockRejectedValue(new Error('gone')) } },
+    }));
+    vi.resetModules();
+    const { markMockupSendFailed } = await import('@/lib/mockups');
+
+    await expect(markMockupSendFailed('m1', 'nope')).resolves.toBeNull();
+    vi.doUnmock('@/lib/prisma');
+    vi.resetModules();
   });
 });

@@ -47,6 +47,9 @@ export interface LeadMockupItem {
   expired?: boolean;
   respondedAt?: string | null;
   responseNote?: string | null;
+  /** Set when the last send failed — the link is live, the email is not. */
+  sendFailedAt?: string | null;
+  sendFailedReason?: string | null;
 }
 
 /** How each status reads on screen, and what it should look like. */
@@ -76,6 +79,8 @@ function asDTO(m: LeadMockupItem): LeadMockupDTO {
     expired: m.expired ?? false,
     respondedAt: m.respondedAt ?? null,
     responseNote: m.responseNote ?? null,
+    sendFailedAt: m.sendFailedAt ?? null,
+    sendFailedReason: m.sendFailedReason ?? null,
   };
 }
 
@@ -232,7 +237,13 @@ function MockupRow({
   };
 
   const status: MockupStatus = mockup.status ?? 'draft';
-  const style = STATUS_STYLE[status];
+  // A send that failed overrides the badge. The row says "sent" — it is
+  // stamped before the send, so the tracked link works — and a badge that
+  // agreed with it would be the only thing on screen still claiming this
+  // reached anybody.
+  const style = mockup.sendFailedAt
+    ? { label: 'Failed to send', classes: 'border-red-400/40 bg-red-400/10 text-red-200' }
+    : STATUS_STYLE[status];
   const signal = mockupSignal(asDTO(mockup));
   const trackedUrl = mockup.shareToken
     ? `${typeof window === 'undefined' ? '' : window.location.origin}/m/${mockup.shareToken}`

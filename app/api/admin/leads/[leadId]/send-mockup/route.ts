@@ -7,6 +7,7 @@ import { resolveSiteUrl } from '@/lib/site-url';
 import { isValidEmail } from '@/lib/validation';
 import {
   clientMockupLink,
+  markMockupSendFailed,
   markMockupSent,
   mockupInclude,
   recordLeadMockup,
@@ -135,6 +136,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       note: existing?.note ?? '',
       observation: lead.personalizedObservation,
     });
+
+    /*
+     * A failure, recorded on the row rather than only in the response.
+     *
+     * The row was stamped sent a moment ago — it has to be, or the tracked
+     * link 404s — so without this the mockup reads "Sent today, not opened
+     * yet" for a client who was never written to, and the honest error
+     * disappears on the next reload.
+     */
+    if (!result.sent) {
+      await markMockupSendFailed(mockupId, result.reason);
+    }
 
     await prisma.leadActivity
       .create({

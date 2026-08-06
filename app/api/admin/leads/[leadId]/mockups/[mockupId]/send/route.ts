@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isFurtherAlong } from '@/lib/leads';
 import { sendMockupEmail } from '@/lib/email';
-import { markMockupSent, mockupInclude, toMockupDTO } from '@/lib/mockups';
+import { markMockupSendFailed, markMockupSent, mockupInclude, toMockupDTO } from '@/lib/mockups';
 
 /**
  * Send a mockup to the client, on a link the studio can see through.
@@ -63,6 +63,13 @@ export async function POST(
       note: mockup.note,
       observation: lead.personalizedObservation,
     });
+
+    // The row was stamped sent a moment ago, because the tracked link 404s
+    // otherwise. Without this it would read "Sent today, not opened yet" for
+    // a client who was never written to.
+    if (!result.sent) {
+      await markMockupSendFailed(mockup.id, result.reason);
+    }
 
     await prisma.leadActivity
       .create({

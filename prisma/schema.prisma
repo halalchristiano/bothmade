@@ -243,7 +243,7 @@ model Project {
   teamNotes           TeamNote[]
   onboardingQuestions OnboardingQuestion[]
   payments            Payment[]
-  instalments Instalment[]
+  instalments         Instalment[]
   invoices            Invoice[]
   recurringOffers     RecurringOffer[]
   changeOrders        ChangeOrder[]
@@ -398,7 +398,7 @@ model Lead {
   // actually goes in the email. `mockupUrl` above stays what it has always
   // held in practice, the Vercel subdomain, which is ours to navigate to
   // quickly and is never sent to anybody.
-  mockupFolderUrl   String?
+  mockupFolderUrl String?
 
   // A PDF export of the mockup is another version of it, not a different
   // kind of thing, so it lives in the `mockups` list with a fileName set
@@ -504,7 +504,7 @@ model Lead {
   // cancellation, pro-rata charging — instead of the B2B form. A checkbox on
   // the proposal, because by the time anyone is reading the contract it is
   // too late for the contract to change shape.
-  isConsumer Boolean @default(false)
+  isConsumer          Boolean @default(false)
   // Ad-hoc items Evan adds beyond the fixed catalogue — a name and a price he
   // sets himself. Stored as-is (not looked up against ADD_ONS) since these
   // don't correspond to any catalogue key. [{ label: string, priceCents: int }]
@@ -514,10 +514,10 @@ model Lead {
   // contract on the sign-and-pay page, right before checkout. Between them
   // these answer the four questions anyone disputing a clickwrap asks: who
   // agreed, to what, when, and from where.
-  agreementSignedAt DateTime?
-  agreementIp       String?
-  agreementHash     String? // sha256 of the exact contract text + statement shown at signing
-  signedContractUrl String? // saved PDF copy of what they actually agreed to
+  agreementSignedAt   DateTime?
+  agreementIp         String?
+  agreementHash       String? // sha256 of the exact contract text + statement shown at signing
+  signedContractUrl   String? // saved PDF copy of what they actually agreed to
   // The name the client typed to sign. The checkbox alone is a click; a
   // typed name is the affirmative act, and it's the only part of the record
   // that says who was at the keyboard rather than which link was opened.
@@ -610,6 +610,18 @@ model LeadMockup {
   firstViewedAt DateTime?
   lastViewedAt  DateTime?
   viewCount     Int       @default(0)
+
+  // Why this is stamped sent and yet nobody received it.
+  //
+  // sentAt is set *before* the send, because the tracked link 404s while the
+  // row is a draft — so a link that goes out against an unstamped row is one
+  // the client cannot open. That left a failed send indistinguishable from a
+  // delivered one: the card read "Sent today, not opened yet" and the real
+  // error lived only in the response, gone on the next reload. Set when a
+  // send fails and cleared when one succeeds, so the two states can never
+  // both be true.
+  sendFailedAt     DateTime?
+  sendFailedReason String?   @db.Text
 
   // A prospect who went quiet keeps a live link to unpaid work forever
   // otherwise. Null means no expiry, for a mockup that was never sent.
@@ -878,17 +890,17 @@ model Invoice {
   issuedBy    User?   @relation("InvoiceIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
   sentToEmail String?
 
-  paidAt    DateTime?
-  voidedAt  DateTime?
+  paidAt   DateTime?
+  voidedAt DateTime?
 
   // --- Life after issue ---------------------------------------------------
   // Why an invoice changed, and who changed it. Required by the routes, not
   // by the column: an invoice that moved for no recorded reason is the
   // hardest thing to explain a year later, and the person who could explain
   // it is never in the room.
-  voidReason  String?
-  voidedById  String?
-  voidedBy    User?   @relation("InvoiceVoider", fields: [voidedById], references: [id], onDelete: SetNull)
+  voidReason String?
+  voidedById String?
+  voidedBy   User?   @relation("InvoiceVoider", fields: [voidedById], references: [id], onDelete: SetNull)
 
   // Cumulative, because refunds can be partial and can happen more than once.
   // The ceiling is amountCents, checked against this rather than against the
@@ -906,8 +918,8 @@ model Invoice {
   refundedById   String?
   refundedBy     User?     @relation("InvoiceRefunder", fields: [refundedById], references: [id], onDelete: SetNull)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   payments Payment[]
 
@@ -1172,10 +1184,10 @@ model RecurringOffer {
   // not also be the thing that authorizes signing up for a monthly charge.
   token String @unique @default(dbgenerated("(replace((gen_random_uuid())::text, '-'::text, ''::text) || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
 
-  sentAt      DateTime  @default(now())
-  acceptedAt  DateTime?
-  declinedAt  DateTime?
-  canceledAt  DateTime?
+  sentAt     DateTime  @default(now())
+  acceptedAt DateTime?
+  declinedAt DateTime?
+  canceledAt DateTime?
 
   stripeCheckoutSessionId String? @unique
   stripeSubscriptionId    String? @unique
@@ -1204,7 +1216,7 @@ model RecurringPayment {
   offerId String
   offer   RecurringOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
-  amount Int // cents actually charged, after the discount
+  amount         Int // cents actually charged, after the discount
   // What the same month would have cost at the standard rate — kept so the
   // invoice can show the saving rather than just a smaller number.
   standardAmount Int

@@ -60,6 +60,9 @@ export interface LeadMockupDTO {
   expired: boolean;
   respondedAt: string | null;
   responseNote: string | null;
+  /** Set when the last send failed. The link is live; the email is not. */
+  sendFailedAt: string | null;
+  sendFailedReason: string | null;
 }
 
 interface MockupRow {
@@ -77,6 +80,8 @@ interface MockupRow {
   viewCount?: number;
   expiresAt?: Date | null;
   respondedAt?: Date | null;
+  sendFailedAt?: Date | null;
+  sendFailedReason?: string | null;
   responseNote?: string | null;
 }
 
@@ -100,6 +105,8 @@ export function toMockupDTO(m: MockupRow): LeadMockupDTO {
     expired: mockupLinkExpired({ expiresAt: m.expiresAt ?? null }),
     respondedAt: m.respondedAt?.toISOString() ?? null,
     responseNote: m.responseNote ?? null,
+    sendFailedAt: m.sendFailedAt?.toISOString() ?? null,
+    sendFailedReason: m.sendFailedReason ?? null,
   };
 }
 
@@ -113,6 +120,13 @@ export function toMockupDTO(m: MockupRow): LeadMockupDTO {
 export function mockupSignal(m: LeadMockupDTO, now: Date = new Date()): string {
   if (m.status === 'approved') return 'Approved by the client';
   if (m.status === 'changes_requested') return 'They asked for changes';
+  /*
+   * Above everything except what the client has already said, because it is
+   * the only line here that means the client has never heard from us. Read as
+   * "sent, not opened", a rep waits, then chases a person who was never
+   * written to — while the fix is to send it again, which takes one click.
+   */
+  if (m.sendFailedAt) return 'Failed to send — nobody received this. Send it again.';
   if (m.expired) return 'Link expired — re-send to reopen it';
   if (m.viewCount > 0) {
     const last = m.lastViewedAt ? new Date(m.lastViewedAt) : null;
@@ -287,8 +301,39 @@ export async function markMockupSent(mockupId: string, at: Date = new Date()) {
       ...(settled ? {} : { status: 'sent' }),
       sentAt: at,
       expiresAt: mockupExpiryFrom(at),
+      // Cleared here rather than only on success, because this runs before
+      // every send: a re-send that works must not leave last time's failure
+      // showing, and a re-send that fails writes its own reason a moment
+      // later. The two states can never both be true.
+      sendFailedAt: null,
+      sendFailedReason: null,
     },
   });
+}
+
+/**
+ * The send did not happen, on a row that says it did.
+ *
+ * `markMockupSent` stamps `sentAt` *before* the send goes out, deliberately —
+ * the tracked link 404s while the row is still a draft, so a link mailed
+ * against an unstamped row is one the client cannot open. The cost was that a
+ * failed send looked exactly like a delivered one: the card read "Sent today,
+ * not opened yet", the real error lived in the response and was gone on the
+ * next reload, and the pipeline counted work delivered to nobody.
+ *
+ * The stamp stays. This is what sits next to it and says so, so the rep chases
+ * the mail rather than the client.
+ */
+export async function markMockupSendFailed(mockupId: string, reason: string) {
+  return prisma.leadMockup
+    .update({
+      where: { id: mockupId },
+      data: { sendFailedAt: new Date(), sendFailedReason: reason.slice(0, 2000) },
+    })
+    .catch((e) => {
+      console.error('Mockup send failure not recorded:', e);
+      return null;
+    });
 }
 
 /**
