@@ -145,6 +145,59 @@ Mockup email:
 - The sign-off is exactly "[Sender Name]" on its own line at the end, with nothing after it.
 - Plain text. Paragraphs separated by blank lines.`;
 
+/**
+ * What is usually true of a trade, so a thin row still produces a sharp email.
+ *
+ * A scrape gives you "Dental practice, Austin, 4.9, 312 reviews" and nothing
+ * else. Written from that alone, an email has one move left: say something
+ * vague about their online presence, which is the exact email everybody else
+ * sends. But the structural problem in a category is genuinely knowable
+ * without visiting the site — a cosmetic practice really does get chosen at
+ * eleven at night on a phone, and a builder's portfolio really is the whole
+ * product shown as thumbnails.
+ *
+ * These are handed over as what is true of the trade, explicitly not as
+ * something anybody observed about this business. The distinction is the
+ * whole point: "most practices lose the after-hours booking" is a claim about
+ * dentistry, and "your booking page is broken" is a claim about them that
+ * nobody checked.
+ */
+const TRADE_NOTES: Array<{ match: RegExp; note: string }> = [
+  {
+    match:
+      /plastic surgery|cosmetic|med ?spa|medspa|aesthetic|dermatolog|dental|dentist|orthodont|fertility|ivf|hair (?:restoration|transplant)|wellness clinic|vein|weight loss/i,
+    note: `High-ticket elective care. What is usually true of this trade: the decision gets made late at night on a phone, by someone who has already read the reviews and now wants to see results and a price bracket before they will speak to anyone. The before-and-after gallery is the product and it is usually three clicks deep, unfilterable by procedure, and unusable on a phone. Booking a consultation usually means a phone number and office hours, so the decision made at eleven at night has nowhere to go and is gone by morning. Price is usually absent entirely, which reads as expensive rather than as discreet.`,
+  },
+  {
+    match:
+      /home ?build|custom home|remodel|renovat|kitchen|bath|pool|landscap|hardscape|roof|window|door|deck|patio|outdoor living|construction|contractor|design ?build/i,
+    note: `High-ticket home work. What is usually true of this trade: the portfolio is the entire product and it is usually shown as a grid of thumbnails with no way to sort by budget, style or scope — so a homeowner with a specific project cannot find the one job that looks like theirs, which is the only thing that would convince them. Process and timeline are usually missing, which is what people are actually frightened of. The enquiry form usually asks for a name and a message and nothing about the project, so every lead arrives unqualified and the first call is spent finding out whether it was ever real.`,
+  },
+  {
+    match:
+      /law|legal|attorney|solicitor|accounting|accountant|cpa|tax|wealth|financial (?:advis|planning)|insurance|consult|agency|clinic|medical (?:practice|group)|veterinar/i,
+    note: `Professional services. What is usually true of this trade: the website talks about the firm — years in practice, the team, the values — when the visitor arrived with a situation and wants to know whether this firm handles it and what happens next. Case types and outcomes are usually buried in a menu. There is usually no way to say what your situation is before speaking to somebody, so the intake call does triage that a form could have done, and the enquiries that arrive are a mix nobody has sorted.`,
+  },
+  {
+    match:
+      /manufactur|industrial|fabricat|supply|distribut|wholesale|equipment|machin|steel|metal|plastics|packaging|components/i,
+    note: `A manufacturer or distributor. What is usually true of this trade: the catalogue is bigger than a website can show as a list of pages. Products multiply across sizes, materials, finishes and grades into hundreds of valid combinations, and a specifier is not reading — they are narrowing, on a number they already hold. Spec data usually lives in PDFs that cannot be searched or filtered, and availability, which is the entire reason to call a distributor, usually appears nowhere at all.`,
+  },
+  {
+    match: /hvac|plumb|electric|pest|clean|restoration|garage|fenc|solar|septic|paving|tree|moving/i,
+    note: `Home services. What is usually true of this trade: the job is urgent when it is bought, so whoever answers first wins — and the site usually offers a phone number and a contact form that goes to an inbox. Service area is usually a paragraph rather than something checkable, so half the enquiries are outside it. Financing and pricing bands are usually absent, which is what stops a big job being approved on the spot.`,
+  },
+  {
+    match: /restaurant|cafe|bar|hotel|resort|event|cater|salon|barber|spa|gym|fitness|studio|yoga/i,
+    note: `Hospitality and appointment-led business. What is usually true of this trade: the menu, the price list or the schedule is the page everybody wants and it is usually a PDF, an image, or on somebody else's platform. Booking usually leaves the site. The photography is usually the strongest asset on hand and the smallest thing on the page.`,
+  },
+];
+
+function tradeNote(lead: LeadFactsForWriting): string | null {
+  const haystack = [lead.industry, lead.company].filter(Boolean).join(' ');
+  return TRADE_NOTES.find((t) => t.match.test(haystack))?.note ?? null;
+}
+
 /** What the model is allowed to see, as prose it can actually use. */
 function factSheet(lead: LeadFactsForWriting): string {
   const lines: string[] = [`Business: ${lead.company}`];
@@ -251,6 +304,7 @@ export async function writeLeadEmails(lead: LeadFactsForWriting): Promise<Writte
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set');
 
   const client = new Anthropic({ apiKey });
+  const trade = tradeNote(lead);
 
   const response = await client.messages.create({
     model: 'claude-opus-5',
@@ -263,7 +317,22 @@ export async function writeLeadEmails(lead: LeadFactsForWriting): Promise<Writte
     messages: [
       {
         role: 'user',
-        content: `Write both emails for this business. Use only these facts.\n\n${factSheet(lead)}`,
+        content: [
+          'Write both emails for this business. Use only these facts.',
+          '',
+          factSheet(lead),
+          trade
+            ? [
+                '',
+                'BACKGROUND ON THE TRADE — read this, do not quote it.',
+                'This is what is usually true of businesses like this one. Nobody has checked whether it is true of THIS one, so you may write about the problem as something that happens in their trade, and you may not state it as something you saw on their website.',
+                '',
+                trade,
+              ].join('\n')
+            : '',
+        ]
+          .join('\n')
+          .trim(),
       },
     ],
   });

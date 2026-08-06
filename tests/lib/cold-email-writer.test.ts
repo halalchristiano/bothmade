@@ -174,3 +174,43 @@ describe('availability', () => {
     expect(canWriteEmails()).toBe(true);
   });
 });
+
+/**
+ * A scrape gives you "Dental practice, Austin, 4.9, 312 reviews" and nothing
+ * else. Written from that alone an email has one move left — something vague
+ * about their online presence — which is the exact email everybody else
+ * sends. The trade notes are what stop that, and the line they must not cross
+ * is stating a category truth as something somebody checked.
+ */
+describe('what is true of the trade', () => {
+  it('hands over the note for the trade it recognises', async () => {
+    await writeLeadEmails({ ...LEAD, industry: 'Cosmetic dentistry' });
+
+    const prompt = create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toMatch(/late at night on a phone/i);
+    expect(prompt).toMatch(/do not quote it/i);
+    // The distinction the whole thing rests on.
+    expect(prompt).toMatch(/may not state it as something you saw/i);
+  });
+
+  it('picks the trade from the company name when there is no industry', async () => {
+    await writeLeadEmails({ company: 'Hillcrest Custom Home Builders' });
+
+    const prompt = create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toMatch(/portfolio is the entire product/i);
+  });
+
+  it('sends no trade note at all rather than the wrong one', async () => {
+    await writeLeadEmails({ company: 'Norbrook Holdings' });
+
+    const prompt = create.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).not.toMatch(/BACKGROUND ON THE TRADE/);
+  });
+
+  it('tells a manufacturer apart from a clinic', async () => {
+    await writeLeadEmails({ company: 'Ohio Gratings', industry: 'Metal bar grating manufacturing' });
+    const manufacturer = create.mock.calls[0][0].messages[0].content as string;
+    expect(manufacturer).toMatch(/catalogue is bigger than a website/i);
+    expect(manufacturer).not.toMatch(/before-and-after/i);
+  });
+});
