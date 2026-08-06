@@ -194,6 +194,10 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
   const [reassignTargetId, setReassignTargetId] = useState('');
   const [reassigning, setReassigning] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
+  const [writingEmails, setWritingEmails] = useState(false);
+  const [writeResult, setWriteResult] = useState<{ written: number; failed: number; note: string } | null>(
+    null
+  );
   // Saved views: a search plus a sort, under a name. Local to the browser on
   // purpose — "my cold-call list" is a personal habit, not shared config.
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -466,6 +470,48 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
       }
     } finally {
       setSendingColdDrafts(false);
+    }
+  };
+
+  /**
+   * Write the two emails for a batch of leads.
+   *
+   * The book is a thousand businesses and the ones that reply are the ones
+   * somebody wrote an email for. Nobody types a thousand, so most leads got
+   * the generic template — this is the gap closed, in batches, from what
+   * research already put on each lead. Nothing sends: the drafts land on the
+   * leads and the send stays where it was, behind its preview.
+   */
+  const handleWriteEmails = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setWritingEmails(true);
+    setWriteResult(null);
+    try {
+      const res = await fetch('/api/admin/leads/write-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setWriteResult({ written: 0, failed: ids.length, note: data.error || 'Could not write them.' });
+        return;
+      }
+      // Skipped leads are reported, never silently counted as done — the
+      // whole point is knowing which ones still have no email.
+      const skipped = (data.results || []).filter((r: { ok: boolean }) => !r.ok);
+      setWriteResult({
+        written: data.written,
+        failed: data.failed,
+        note: skipped
+          .slice(0, 3)
+          .map((r: { company: string; reason?: string }) => `${r.company}: ${r.reason}`)
+          .join(' · '),
+      });
+      await load();
+    } finally {
+      setWritingEmails(false);
     }
   };
 
@@ -829,6 +875,22 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
         </p>
       )}
 
+      {writeResult && (
+        <div className="rounded-xl border border-purple-400/25 bg-purple-400/[0.07] px-5 py-3 mb-4 flex items-start justify-between gap-4">
+          <p className="text-sm text-purple-100">
+            <strong>{writeResult.written}</strong> written
+            {writeResult.failed > 0 && <span className="text-white/60"> · {writeResult.failed} left alone</span>}
+            {writeResult.note && <span className="block text-xs text-white/45 mt-1">{writeResult.note}</span>}
+          </p>
+          <button
+            onClick={() => setWriteResult(null)}
+            className="text-xs text-white/40 hover:text-white transition-colors shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {selected.size > 0 && (
         <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 px-5 py-3 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -858,6 +920,21 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                   {sendingColdDrafts ? 'Sending...' : `Send prepared cold emails (${selectedReadyToSend.length})`}
                 </button>
               )}
+              {/* One model call per lead, in batches — the emails land as
+                  drafts and nothing goes out. */}
+              <button
+                onClick={handleWriteEmails}
+                disabled={writingEmails || selected.size > 60}
+                title={
+                  selected.size > 60
+                    ? 'Sixty at a time — select fewer and run it again.'
+                    : 'Writes a cold email and a mockup email for each selected lead, from its research. Nothing is sent.'
+                }
+                className="inline-flex items-center gap-2 rounded-xl border border-purple-400/30 bg-purple-400/10 px-4 py-2 text-sm font-semibold text-purple-200 hover:bg-purple-400/20 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                <Sparkles size={14} />
+                {writingEmails ? 'Writing…' : `Write emails (${selected.size})`}
+              </button>
               <BrandButton
                 variant="quiet"
                 onClick={() => setShowBulkEmail(true)}
