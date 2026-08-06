@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { alertOnFirstRealOpen } from '@/lib/lead-open-alert';
 
 /**
  * The open pixel on a cold email.
@@ -74,7 +75,7 @@ export async function GET(
      * A raw UPDATE matching no rows is a no-op rather than an error, so a
      * crawled or mangled URL costs one query and no log noise.
      */
-    await prisma.$executeRaw`
+    const written = await prisma.$executeRaw`
       UPDATE "leads"
          SET "coldEmailOpenedAt" = COALESCE("coldEmailOpenedAt", NOW()),
              "coldEmailLastOpenedAt" = NOW(),
@@ -82,6 +83,20 @@ export async function GET(
        WHERE "id" = ${leadId}
          AND "coldEmailSentAt" IS NOT NULL
     `;
+
+    /*
+     * Tell somebody, if this is the fetch that earned it.
+     *
+     * Awaited rather than left running, because a serverless function stops
+     * executing the moment it responds and a floating promise here would be
+     * killed roughly half the time — an alert that fires when the platform
+     * feels like it is worse than no alert. The cost is a few hundred
+     * milliseconds on an image load inside a mail client, which nobody sees,
+     * and the response below is returned no matter what happens in here.
+     */
+    if (written > 0) {
+      await alertOnFirstRealOpen(leadId);
+    }
   } catch (error) {
     console.error('Lead open pixel failed:', error);
   }

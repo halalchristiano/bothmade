@@ -142,6 +142,9 @@ export function QueueView() {
   const router = useRouter();
   const [callable, setCallable] = useState<CallRow[]>([]);
   const [noPhone, setNoPhone] = useState<CallRow[]>([]);
+  /** Emailed, never opened by a person. Deliberately not on the sheet. */
+  const [noSignal, setNoSignal] = useState<CallRow[]>([]);
+  const [showNoSignal, setShowNoSignal] = useState(false);
   const [scheduledHot, setScheduledHot] = useState<CallRow[]>([]);
   const [meta, setMeta] = useState<{
     totalOpen: number;
@@ -245,6 +248,7 @@ export function QueueView() {
       if (data.success) {
         setCallable(data.callable);
         setNoPhone(data.noPhone);
+        setNoSignal(data.noSignal || []);
         setScheduledHot(data.scheduledHot ?? []);
         setMeta({
           totalOpen: data.totalOpen ?? 0,
@@ -384,6 +388,7 @@ export function QueueView() {
   const readyCount = searched.filter(callableNow).length;
   const visible = readyNow ? searched.filter(callableNow) : searched;
   const visibleNoPhone = noPhone.filter(match);
+  const visibleNoSignal = noSignal.filter(match);
   const visibleScheduledHot = scheduledHot.filter(match);
 
   const RANK = { good: 0, okay: 1, bad: 2 } as const;
@@ -870,6 +875,51 @@ export function QueueView() {
               </Link>
             ))}
           </div>
+        </section>
+      )}
+
+      {/*
+          Off the sheet, and said out loud.
+
+          These were emailed and no person has opened it, so ringing them is a
+          dial into silence — but a list that silently shrank by two hundred
+          rows would read as a bug, and the count is the fastest read there is
+          on whether a send landed at all. Collapsed, counted, one click away.
+      */}
+      {visibleNoSignal.length > 0 && (
+        <section className="mt-8">
+          <button
+            onClick={() => setShowNoSignal((v) => !v)}
+            className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 hover:bg-white/[0.05] transition-colors"
+          >
+            <p className="text-sm font-bold text-white/70 flex items-center gap-1.5">
+              <MailX size={14} /> Emailed, nobody has opened it
+              <span className="ml-1 opacity-60">({visibleNoSignal.length})</span>
+              <span className="ml-auto text-xs font-medium text-white/40">
+                {showNoSignal ? 'Hide' : 'Show anyway'}
+              </span>
+            </p>
+            <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
+              Kept off the call sheet on purpose — there is no evidence anybody has seen the message, so a
+              call is a dial into silence. They move to the top by themselves the moment one of them opens
+              it. A lot of these at once usually means the send had a deliverability problem rather than
+              two hundred bad prospects.
+            </p>
+          </button>
+          {showNoSignal && (
+            <div className="space-y-2 mt-3">
+              {visibleNoSignal.map((row) => (
+                <Link
+                  key={row.id}
+                  href={`/admin/leads/${row.id}`}
+                  className="block rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 hover:bg-white/[0.05] transition-colors min-w-0"
+                >
+                  <p className="text-sm font-semibold text-white/80 break-words">{row.company}</p>
+                  <p className="text-xs text-white/35 mt-0.5">{row.openHeadline}</p>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

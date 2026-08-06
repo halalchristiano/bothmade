@@ -27,6 +27,19 @@ import { readOpens } from '@/lib/lead-opens';
  * Won and lost are excluded. Leads with no phone number are returned
  * separately rather than dropped, so it's obvious they need an address
  * finding rather than looking like they don't exist.
+ *
+ * ## What is deliberately NOT on it
+ *
+ * A lead that was emailed and has never been opened by a person. Those used
+ * to sit in the "contacted, nothing booked" band and made up most of the
+ * sheet — hundreds of dials into businesses with no evidence anybody has even
+ * seen the message. They are returned as `noSignal` instead: counted, listed,
+ * one click from being worked, and off the list of people to ring today.
+ *
+ * The exceptions stay callable, because for them a missing open means nothing:
+ * a lead that replied, one whose address bounced (the phone is the only way
+ * in), one with a follow-up you promised, and one that was never emailed at
+ * all.
  */
 // High enough that a real book of business fits comfortably, low enough to
 // stay a cheap query. Truncation is reported rather than hidden.
@@ -191,9 +204,17 @@ export async function GET() {
         reason = 'never-contacted';
       }
 
+      // Emailed, and no person has opened it. Not a call — evidence of
+      // nothing, and the whole reason the sheet was too long to work.
+      const emailedAndUnopened =
+        !!lead.coldEmailSentAt &&
+        !opens.callable &&
+        (reason === 'no-follow-up' || reason === 'never-contacted');
+
       return {
         ...lead,
         reason,
+        emailedAndUnopened,
         opens: opens.opens,
         openBand: opens.band,
         openHeadline: opens.headline,
@@ -204,16 +225,25 @@ export async function GET() {
       };
     });
 
-    // Every reason is counted, including the one that keeps a lead off the
-    // list, so the page can show a breakdown that reconciles with the total.
+    const due = rows.filter((r) => r.reason !== 'scheduled');
+
+    // Split before anything is counted, so nothing that comes off the sheet
+    // can still be counted onto it further down.
+    const noSignal = due.filter((r) => r.emailedAndUnopened);
+    const worthCalling = due.filter((r) => !r.emailedAndUnopened);
+
+    // Counted from what is actually shown. The breakdown drives the filter
+    // chips, and a chip reading "Contacted, nothing booked (212)" over a list
+    // of nine is the kind of quiet lie that makes a rep stop trusting the
+    // page — the ones held back are reported as their own number instead.
     const breakdown = Object.fromEntries(
       ([...CALLABLE_REASONS, 'scheduled'] as CallReason[]).map((r) => [
         r,
-        rows.filter((x) => x.reason === r).length,
+        r === 'scheduled'
+          ? rows.filter((x) => x.reason === r).length
+          : worthCalling.filter((x) => x.reason === r).length,
       ])
     ) as Record<CallReason, number>;
-
-    const due = rows.filter((r) => r.reason !== 'scheduled');
 
     // Hot leads booked for later are correctly excluded from today's call
     // list — but "not on the list" shouldn't mean "invisible". A rep glancing
@@ -223,7 +253,7 @@ export async function GET() {
       .sort((a, b) => (a.nextFollowUpAt?.getTime() ?? Infinity) - (b.nextFollowUpAt?.getTime() ?? Infinity))
       .slice(0, 20);
 
-    due.sort((a, b) => {
+    worthCalling.sort((a, b) => {
       const byReason = REASON_RANK[a.reason] - REASON_RANK[b.reason];
       if (byReason !== 0) return byReason;
       // Inside the opened band, most-opened first — that is the whole point
@@ -248,15 +278,23 @@ export async function GET() {
         // out of the callable list so nobody re-dials it, but still surface it
         // under "can't reach" so it doesn't silently vanish and can be given a
         // new number.
-        callable: due.filter((r) => r.phone && !r.phoneInvalidAt),
-        noPhone: due.filter((r) => !r.phone || r.phoneInvalidAt),
+        callable: worthCalling.filter((r) => r.phone && !r.phoneInvalidAt),
+        noPhone: worthCalling.filter((r) => !r.phone || r.phoneInvalidAt),
+        /*
+         * Emailed and unopened. Off the sheet, not out of the system: a rep
+         * who wants to work them can, and the count is what tells you whether
+         * a batch landed at all. A hundred of these in one morning is a
+         * deliverability problem, not a hundred bad prospects.
+         */
+        noSignal,
+        noSignalCount: noSignal.length,
         scheduledHot,
         // What the numbers on screen actually mean.
         totalOpen,
         callsToday,
         breakdown,
         scheduledLater: breakdown.scheduled,
-        noPhoneCount: due.filter((r) => !r.phone || r.phoneInvalidAt).length,
+        noPhoneCount: worthCalling.filter((r) => !r.phone || r.phoneInvalidAt).length,
         truncated: leads.length >= MAX_ROWS,
         // The banner's "one tap" reconnect button can't do anything when the
         // deployment has no OAuth credentials — without this it promised a

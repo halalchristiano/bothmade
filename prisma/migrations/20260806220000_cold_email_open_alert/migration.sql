@@ -1,0 +1,12 @@
+-- Opens were recorded and ranked, and nobody was told.
+--
+-- The counts have been landing on the lead and re-ordering Call HQ since the
+-- pixel shipped, but only for whoever thought to open Call HQ. A prospect
+-- reading your email three times this morning is the shortest-lived signal in
+-- the pipeline and it was sitting behind a page nobody had a reason to refresh.
+--
+-- This column is the claim ticket for the alert: the first pixel fetch that
+-- proves a person rather than a mail server sets it, and it is checked inside
+-- the same statement that sets it, so two mail clients syncing the same
+-- message cannot both send the alert. Cleared on a resend with the counters.
+ALTER TABLE "leads" ADD COLUMN "coldEmailOpenNotifiedAt" TIMESTAMP(3);

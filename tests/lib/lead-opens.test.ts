@@ -198,3 +198,68 @@ describe('the pixel address', () => {
     expect(leadOpenPixelUrl('https://x.dev', 'a/b?c')).toBe('https://x.dev/o/a%2Fb%3Fc');
   });
 });
+
+/**
+ * The line the call sheet now hangs off.
+ *
+ * `callable` decides whether a lead is worth a dial at all, so it is drawn
+ * conservatively: nothing, or a mail server's fetch on delivery, is not a
+ * person. Getting this wrong in one direction sends a rep to ring somebody who
+ * has never seen the message; in the other it hides a live prospect.
+ */
+describe('worth a call', () => {
+  it('is false for silence', () => {
+    expect(readOpens(facts(), NOW).callable).toBe(false);
+  });
+
+  it('is false for a fetch on delivery, and nothing since', () => {
+    const r = readOpens(
+      facts({ coldEmailOpens: 1, coldEmailOpenedAt: at(3000), coldEmailLastOpenedAt: at(3000) }),
+      NOW
+    );
+    expect(r.callable).toBe(false);
+  });
+
+  it('is true once a second fetch follows the prefetch', () => {
+    const r = readOpens(
+      facts({
+        coldEmailOpens: 2,
+        coldEmailOpenedAt: at(3000),
+        coldEmailLastOpenedAt: at(2 * 60 * 60 * 1000),
+      }),
+      NOW
+    );
+    expect(r.callable).toBe(true);
+  });
+
+  it('is true for one open that arrives too late to be a machine', () => {
+    const r = readOpens(
+      facts({
+        coldEmailOpens: 1,
+        coldEmailOpenedAt: at(4 * 60 * 60 * 1000),
+        coldEmailLastOpenedAt: at(4 * 60 * 60 * 1000),
+      }),
+      NOW
+    );
+    expect(r.callable).toBe(true);
+  });
+
+  it('is true for every band that puts a lead on the sheet', () => {
+    for (const opens of [2, 3, 6]) {
+      const r = readOpens(
+        facts({
+          coldEmailOpens: opens,
+          coldEmailOpenedAt: at(60 * 60 * 1000),
+          coldEmailLastOpenedAt: at(20 * 60 * 60 * 1000),
+        }),
+        NOW
+      );
+      expect(r.callable).toBe(true);
+      expect(['engaged', 'hot']).toContain(r.band);
+    }
+  });
+
+  it('is false for a lead nobody has emailed', () => {
+    expect(readOpens(facts({ coldEmailSentAt: null }), NOW).callable).toBe(false);
+  });
+});

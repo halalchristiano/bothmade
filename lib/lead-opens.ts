@@ -50,6 +50,17 @@ export interface OpenFacts {
 
 export interface OpenReading {
   band: OpenBand;
+  /**
+   * Whether a person can be said to have opened this — and therefore whether
+   * the lead belongs on the call sheet at all.
+   *
+   * This is the line the whole call list now hangs off, so it is drawn
+   * conservatively: a mail server fetching the image on delivery is not a
+   * person, and neither is nothing at all. Anything beyond that prefetch —
+   * a second fetch, or a first one that arrives too late to be automatic —
+   * is somebody looking.
+   */
+  callable: boolean;
   /** Opens, as recorded. Shown as-is — never rounded or "corrected". */
   opens: number;
   /** What can honestly be said, in one line, on a row in the queue. */
@@ -115,6 +126,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
   if (!sentAt) {
     return {
       band: 'silent',
+      callable: false,
       opens: 0,
       headline: 'No cold email sent yet',
       nextStep: null,
@@ -127,6 +139,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
     const concerning = waited > SILENCE_CONCERNING_AFTER_MS;
     return {
       band: 'silent',
+      callable: false,
       opens: 0,
       headline: concerning ? 'Sent, and nothing came back at all' : 'Sent — nothing back yet',
       nextStep: concerning
@@ -152,6 +165,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
   if (humanOpens >= 4 || (humanOpens >= 2 && returned)) {
     return {
       band: 'hot',
+      callable: true,
       opens,
       headline: `Opened ${opens} times${returned ? ', and came back to it' : ''}`,
       nextStep: 'Call today. Somebody is reading this repeatedly and has not written back.',
@@ -162,6 +176,7 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
   if (humanOpens >= 2 || returned) {
     return {
       band: 'engaged',
+      callable: true,
       opens,
       headline: `Opened ${opens} times`,
       nextStep: 'Worth a call — it landed and it was read more than once.',
@@ -171,6 +186,11 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
 
   return {
     band: 'delivered',
+    // One open counts as a person only when it did not arrive at machine
+    // speed. A prefetch on delivery proves the address works and nothing
+    // more, and calling on it is exactly the wasted dial the call sheet is
+    // now filtered to avoid.
+    callable: !firstLooksAutomatic,
     opens,
     headline: firstLooksAutomatic ? 'Delivered — opened on arrival' : 'Opened once',
     nextStep: firstLooksAutomatic

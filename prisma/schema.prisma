@@ -494,11 +494,15 @@ model Lead {
   // timestamps only — what they are allowed to mean is decided at read time
   // in lib/lead-opens.ts, because a single open is proof of delivery and
   // nothing more, while five opens across two days is a phone call.
-  coldEmailOpens        Int       @default(0)
+  coldEmailOpens          Int       @default(0)
+  /// Claimed by the first pixel fetch that proves a person rather than a mail
+  /// server, so the "they opened it" alert fires once per send instead of once
+  /// per image load. Cleared on a resend along with the counters.
+  coldEmailOpenNotifiedAt DateTime?
   /// First fetch of the pixel. Kept, never overwritten, so a machine-speed
   /// open on delivery stays distinguishable from a person reading it later.
-  coldEmailOpenedAt     DateTime?
-  coldEmailLastOpenedAt DateTime?
+  coldEmailOpenedAt       DateTime?
+  coldEmailLastOpenedAt   DateTime?
 
   // The second email in the same voice: what gets sent with the mockup, once
   // they've replied. Written at research time alongside the cold email so the

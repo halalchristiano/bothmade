@@ -143,6 +143,9 @@ export async function POST(request: NextRequest) {
             coldEmailOpens: 0,
             coldEmailOpenedAt: null,
             coldEmailLastOpenedAt: null,
+            // The next email is a new question and deserves its own answer,
+            // so the alert is armed again along with the counters.
+            coldEmailOpenNotifiedAt: null,
           },
         })
         .catch(() => null);
