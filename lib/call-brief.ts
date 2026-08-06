@@ -33,6 +33,10 @@ export interface CallBriefLead {
   painPoints: string | PainPointKey[];
   estimateLowCents: number | null;
   estimateHighCents: number | null;
+  /** The one-line verdict from the research CSV. Optional so older callers still compile. */
+  personalizedObservation?: string | null;
+  /** The written assessment of the site they have now. */
+  currentSiteAssessment?: string | null;
   assignedTo?: { name: string | null } | null;
 }
 
@@ -87,10 +91,28 @@ export function buildLeadBrief(lead: CallBriefLead): CallBrief {
     isCustom: false,
   });
 
+  /*
+   * The research we already hold, when nobody filled in the numbered columns.
+   *
+   * A lead imported from a research CSV carries a one-line verdict on the
+   * business and often a written assessment of its site — but the brief only
+   * ever read the numbered painPointN columns, so a thousand leads with real
+   * research on them produced a script with no reason to call in it. The rep
+   * got an opening line, a price, and nothing in between.
+   *
+   * So the observation becomes the lead pain point when there is nothing
+   * better. It is weaker than a point somebody priced deliberately, which is
+   * why it only ever runs last — but it is a sentence about THIS business,
+   * which beats the checklist's generic wording, so when it exists it goes
+   * first and the checklist tags follow it as the other things noticed.
+   */
+  const observed = observationAsPoint(lead);
+  const checklistAsPoints = checklistPains.map((k) =>
+    asPoint(PAIN_POINTS[k], PAIN_POINT_BRIEFS[k]?.problem ?? null)
+  );
+
   const pains =
-    writtenPains.length > 0
-      ? writtenPains
-      : checklistPains.map((k) => asPoint(PAIN_POINTS[k], PAIN_POINT_BRIEFS[k]?.problem ?? null));
+    writtenPains.length > 0 ? writtenPains : [...observed, ...checklistAsPoints];
   const essentials =
     writtenNeeds.length > 0
       ? writtenNeeds
@@ -113,4 +135,34 @@ export function buildLeadBrief(lead: CallBriefLead): CallBrief {
   });
 
   return { script, low, high, pains, essentials, upsells };
+}
+
+/**
+ * The imported one-liner, turned into something the script can open with.
+ *
+ * `personalizedObservation` is written as a verdict ("No pricing anywhere and
+ * the gallery is eleven phone photos") rather than a label, so it is used as
+ * the point itself and the site assessment becomes the explanation beneath
+ * it. Where only the assessment exists, that is the point — a long sentence
+ * in the lead slot still beats an empty script.
+ *
+ * Returns an array so the caller can spread it: none of this is guaranteed to
+ * be there, and a lead with neither field should add nothing rather than a
+ * point with no text in it.
+ */
+function observationAsPoint(lead: CallBriefLead): SalesPoint[] {
+  const observation = lead.personalizedObservation?.trim() || '';
+  const assessment = lead.currentSiteAssessment?.trim() || '';
+  const point = observation || assessment;
+  if (!point) return [];
+
+  return [
+    {
+      point,
+      // Never repeat the assessment underneath itself when it IS the point.
+      explanation: observation && assessment ? assessment : null,
+      priceCents: null,
+      isCustom: false,
+    },
+  ];
 }

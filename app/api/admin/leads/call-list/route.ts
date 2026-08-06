@@ -141,6 +141,10 @@ export async function GET() {
         // the same pitch twenty times, which is worth more than working the
         // list in whatever order it arrived.
         industry: true,
+        // Territory. A rep working the phone books a morning by state far more
+        // often than by anything else, and "sensible hour there" answers a
+        // different question — it says when, not where.
+        region: true,
         coldEmailOpenedAt: true,
         coldEmailLastOpenedAt: true,
         salesNote: true,
@@ -151,6 +155,11 @@ export async function GET() {
           take: 1,
           select: { type: true, content: true, createdAt: true },
         },
+        // Counted rather than inferred from `activities`, which only carries
+        // the single most recent row: a lead rung twice and then emailed looks
+        // never-rung through that window. This is the number "not tried yet"
+        // has to be built on.
+        _count: { select: { activities: { where: { type: 'call' } } } },
       },
       // Ordered so that if the cap is ever reached, what survives is what
       // matters: bounced first, then whoever has been waiting longest.
@@ -224,8 +233,10 @@ export async function GET() {
         openHeadline: opens.headline,
         openNextStep: opens.nextStep,
         openScore: opens.score,
+        timesCalled: lead._count.activities,
         lastActivity: lead.activities[0] ?? null,
         activities: undefined,
+        _count: undefined,
       };
     });
 

@@ -666,6 +666,14 @@ export async function POST(request: NextRequest) {
         originalWebsite: true,
         currentSiteAssessment: true,
         personalizedObservation: true,
+        // The four columns the call brief is built out of. Absent from this
+        // list they were absent from `current`, so the enrichment loop's
+        // `field in current` guard silently dropped them — a backfill of the
+        // research that makes a call script worth reading landed nowhere.
+        painPoints: true,
+        customPainPoints: true,
+        essentialPoints: true,
+        upsellPoints: true,
         coldEmailDraft: true,
         mockupEmailDraft: true,
         salesNote: true,

@@ -73,6 +73,12 @@ const HELD = {
   employeeCount: null,
   locationCount: null,
   annualRevenueCents: null,
+  // Empty, like every lead that has ever been imported — no research CSV has
+  // carried these columns, which is why the call brief was blank.
+  painPoints: '',
+  customPainPoints: null,
+  essentialPoints: null,
+  upsellPoints: null,
 };
 
 const updatesFrom = () =>
@@ -161,6 +167,56 @@ describe('re-importing a business we already hold', () => {
     expect(data.success).toBe(true);
     expect(data.count).toBe(0);
     expect(data.enrichedNames).toContain('Normandy Remodeling');
+  });
+
+  /**
+   * The columns the call script is built out of.
+   *
+   * They were missing from the read that decides what counts as blank, so
+   * every one of them failed the `field in current` guard and a backfill of
+   * the research that makes a brief worth reading landed nowhere at all — the
+   * import reported success and changed nothing.
+   */
+  it('fills in the pain points a call brief is built from', async () => {
+    const res = await importLeads(
+      request([
+        {
+          company: 'Normandy Remodeling',
+          email: 'info@normandyremodeling.com',
+          painPoints: 'no-booking,not-mobile-friendly',
+          painPoint1: 'No pricing anywhere: every enquiry starts with a haggle.',
+          essentialPoint1: 'Project galleries: filterable by room.',
+          upsellPoint1: 'Booking that works out of hours.',
+        },
+      ])
+    );
+
+    expect((await res.json()).enriched).toBe(1);
+    const { data } = updatesFrom()[0];
+    expect(data.painPoints).toBe('no-booking,not-mobile-friendly');
+    expect(data.customPainPoints).toContain('No pricing anywhere');
+    expect(data.essentialPoints).toContain('Project galleries');
+    expect(data.upsellPoints).toContain('Booking that works out of hours');
+  });
+
+  it('leaves pain points somebody already wrote alone', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      { ...HELD, customPainPoints: 'Something a human decided on a call' },
+    ]);
+
+    await importLeads(
+      request([
+        {
+          company: 'Normandy Remodeling',
+          email: 'info@normandyremodeling.com',
+          painPoint1: 'A worse guess from a spreadsheet.',
+          phone: '(630) 455-5600',
+        },
+      ])
+    );
+
+    expect(updatesFrom()[0].data).not.toHaveProperty('customPainPoints');
+    expect(updatesFrom()[0].data.phone).toBe('(630) 455-5600');
   });
 
   it('still creates the businesses in the same file that are genuinely new', async () => {

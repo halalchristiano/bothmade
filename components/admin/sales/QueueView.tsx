@@ -16,6 +16,7 @@ import {
   Headset,
   HelpCircle,
   Eye,
+  PhoneOff,
 } from 'lucide-react';
 import { SearchFilter, matchesSearch, Badge } from '@/components/admin/ui';
 import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
@@ -43,6 +44,9 @@ interface CallRow {
   hotLead: boolean;
   estimatedValue: number | null;
   industry: string | null;
+  region: string | null;
+  /** Calls actually logged against this lead, ever. Not "activities". */
+  timesCalled: number;
   nextFollowUpAt: string | null;
   emailDeliveryFailedReason: string | null;
   salesNote: string | null;
@@ -146,6 +150,248 @@ const ORDER: CallReason[] = [
   'never-contacted',
 ];
 
+/** The things a row can be filtered on. Named so a count can exclude its own. */
+type FilterKey = 'value' | 'opens' | 'industry' | 'region' | 'untried';
+
+/**
+ * One set of filters, owned by whoever calls this.
+ *
+ * A hook rather than component state because there are now two lists that
+ * each need their own: the call sheet, and the far bigger pile of leads that
+ * were emailed and never opened. Sharing one set meant narrowing the sheet to
+ * $20k+ dentists silently narrowed the unopened list too, and widening it to
+ * dig through the unopened pile threw away the sheet you had set up. They ask
+ * different questions and now answer them separately.
+ */
+function useRowFilters() {
+  const [minValue, setMinValue] = useState(0);
+  const [minOpens, setMinOpens] = useState(0);
+  const [industry, setIndustry] = useState('');
+  const [region, setRegion] = useState('');
+  const [untried, setUntried] = useState(false);
+
+  const test: Record<FilterKey, (r: CallRow) => boolean> = {
+    value: (r) => (r.estimatedValue ?? 0) >= minValue * 100,
+    opens: (r) => r.opens >= minOpens,
+    industry: (r) => !industry || r.industry === industry,
+    region: (r) => !region || r.region === region,
+    untried: (r) => !untried || r.timesCalled === 0,
+  };
+  const KEYS = Object.keys(test) as FilterKey[];
+
+  /*
+   * Every filter except one. This is what makes the number beside each option
+   * mean something: "$20k+ (14)" has to be the count you would get by
+   * clicking it, with whatever else is already on still applied — not the
+   * count across the whole book, which is a different and useless number.
+   */
+  const matchesExcept = (r: CallRow, except?: FilterKey) =>
+    KEYS.every((k) => k === except || test[k](r));
+
+  return {
+    minValue,
+    setMinValue,
+    minOpens,
+    setMinOpens,
+    industry,
+    setIndustry,
+    region,
+    setRegion,
+    untried,
+    setUntried,
+    matches: (r: CallRow) => matchesExcept(r),
+    matchesExcept,
+    on: minValue > 0 || minOpens > 0 || !!industry || !!region || untried,
+    clear: () => {
+      setMinValue(0);
+      setMinOpens(0);
+      setIndustry('');
+      setRegion('');
+      setUntried(false);
+    },
+  };
+}
+
+type RowFilters = ReturnType<typeof useRowFilters>;
+
+/** Options for a select, biggest group first, counted against the other filters. */
+function groupCounts(
+  rows: CallRow[],
+  f: RowFilters,
+  key: FilterKey,
+  pick: (r: CallRow) => string | null
+): Array<[string, number]> {
+  return Object.entries(
+    rows
+      .filter((r) => f.matchesExcept(r, key))
+      .reduce<Record<string, number>>((acc, r) => {
+        const v = pick(r);
+        if (v) acc[v] = (acc[v] ?? 0) + 1;
+        return acc;
+      }, {})
+  ).sort((a, b) => b[1] - a[1]);
+}
+
+/**
+ * Worth how much · read it how often · what trade · where · tried yet.
+ *
+ * `rows` is the list this bar filters, already narrowed by the search box, so
+ * the counts move with the search too. `showOpens` is off for the unopened
+ * pile, where every row has nought opens by definition and a band of open
+ * counts would be five buttons that all say the same thing.
+ */
+function FilterBar({
+  rows,
+  f,
+  showOpens = true,
+  compact = false,
+  testId,
+}: {
+  rows: CallRow[];
+  f: RowFilters;
+  showOpens?: boolean;
+  compact?: boolean;
+  /** Which of the two bars this is — the lists are otherwise identical. */
+  testId: string;
+}) {
+  const trades = groupCounts(rows, f, 'industry', (r) => r.industry);
+  const regions = groupCounts(rows, f, 'region', (r) => r.region);
+  const untriedCount = rows.filter((r) => f.matchesExcept(r, 'untried') && r.timesCalled === 0).length;
+
+  const pill = (active: boolean, tone: 'emerald' | 'amber' | 'sky') =>
+    `rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-30 ${
+      active
+        ? tone === 'emerald'
+          ? 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200'
+          : tone === 'amber'
+            ? 'border-amber-400/40 bg-amber-400/15 text-amber-200'
+            : 'border-sky-400/40 bg-sky-400/15 text-sky-200'
+        : 'border-white/12 text-white/50 hover:bg-white/5'
+    }`;
+
+  const label = 'text-[11px] uppercase tracking-wide text-white/35 mr-0.5';
+  const select =
+    'rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1 text-xs font-semibold text-white/60 focus:outline-none focus:ring-2 focus:ring-sky-400/50';
+
+  return (
+    <div
+      data-testid={testId}
+      className={`rounded-2xl border border-white/10 bg-white/[0.02] px-3.5 py-3 ${
+        compact ? 'mb-3' : 'mb-4'
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={label}>Worth</span>
+          {VALUE_BANDS.map((band) => {
+            const n = rows.filter(
+              (r) => f.matchesExcept(r, 'value') && (r.estimatedValue ?? 0) >= band.min * 100
+            ).length;
+            return (
+              <button
+                key={band.min}
+                onClick={() => f.setMinValue(band.min)}
+                disabled={n === 0 && band.min > 0}
+                className={pill(f.minValue === band.min, 'emerald')}
+              >
+                {band.label} <span className="opacity-55">({n})</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {showOpens && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={label}>Opened</span>
+            {OPEN_BANDS.map((band) => {
+              const n = rows.filter((r) => f.matchesExcept(r, 'opens') && r.opens >= band.min).length;
+              return (
+                <button
+                  key={band.min}
+                  onClick={() => f.setMinOpens(band.min)}
+                  disabled={n === 0 && band.min > 0}
+                  title={
+                    band.min === 0
+                      ? 'Everyone on the sheet'
+                      : `Opened your email at least ${band.min} ${band.min === 1 ? 'time' : 'times'}`
+                  }
+                  className={`inline-flex items-center gap-1 ${pill(f.minOpens === band.min, 'amber')}`}
+                >
+                  {band.min > 0 && <Eye size={10} />}
+                  {band.label} <span className="opacity-55">({n})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {trades.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            <span className={label}>Trade</span>
+            <select
+              aria-label="Trade"
+              value={f.industry}
+              onChange={(e) => f.setIndustry(e.target.value)}
+              className={select}
+            >
+              <option value="" className="bg-raised">
+                Every trade ({trades.reduce((n, [, c]) => n + c, 0)})
+              </option>
+              {trades.map(([name, count]) => (
+                <option key={name} value={name} className="bg-raised">
+                  {name} ({count})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {regions.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            <span className={label}>State</span>
+            <select
+              aria-label="State"
+              value={f.region}
+              onChange={(e) => f.setRegion(e.target.value)}
+              className={select}
+            >
+              <option value="" className="bg-raised">
+                Everywhere ({regions.reduce((n, [, c]) => n + c, 0)})
+              </option>
+              {regions.map(([name, count]) => (
+                <option key={name} value={name} className="bg-raised">
+                  {name} ({count})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* The pile that quietly grows: emailed, listed, never actually rung. */}
+        {untriedCount > 0 && (
+          <button
+            onClick={() => f.setUntried(!f.untried)}
+            title="Nobody has logged a call against these — not one attempt"
+            className={`inline-flex items-center gap-1 ${pill(f.untried, 'sky')}`}
+          >
+            <PhoneOff size={11} />
+            Never rung <span className="opacity-55">({untriedCount})</span>
+          </button>
+        )}
+
+        {f.on && (
+          <button
+            onClick={f.clear}
+            className="ml-auto text-xs font-semibold text-white/40 hover:text-white transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Same semantics as REASONS[...].classes, expressed as Badge tones for the per-row chip. */
 const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'purple' | 'neutral'> = {
   replied: 'emerald',
@@ -198,9 +444,17 @@ export function QueueView() {
    * Every option carries its own count, so the filter row doubles as the
    * answer to how many there are before anything is clicked.
    */
-  const [minValue, setMinValue] = useState(0);
-  const [minOpens, setMinOpens] = useState(0);
-  const [industry, setIndustry] = useState('');
+  const f = useRowFilters();
+  /*
+   * The unopened pile gets its own set, on purpose.
+   *
+   * Digging through it is a different job from working the call sheet: you go
+   * in to find out whether a send landed at all, and to pull the few big ones
+   * out by hand. You want to do that WITHOUT disturbing the sheet you had
+   * already set up — and with one shared set of filters each of those two
+   * jobs undid the other.
+   */
+  const nf = useRowFilters();
   // Choosing controls. The list knows the right order; these let a rep pick a
   // business to actually ring now — which the order alone can't, because the
   // most urgent lead is often one where it's the middle of the night.
@@ -426,47 +680,18 @@ export function QueueView() {
   // couldn't read its area code would quietly lose work.
   const callableNow = (r: CallRow) => (leadLocalTime(r.phone, now)?.callability ?? 'okay') !== 'bad';
 
-  // Money first, because it is the filter that changes which leads matter
-  // rather than which order they come in.
-  const overValue = (r: CallRow) => (r.estimatedValue ?? 0) >= minValue * 100;
-  const overOpens = (r: CallRow) => r.opens >= minOpens;
-  const inIndustry = (r: CallRow) => !industry || r.industry === industry;
-
-  const searched = callable.filter(
-    (r) => match(r) && overValue(r) && overOpens(r) && inIndustry(r)
-  );
+  // Searched first, so every count in the filter bar moves with the search
+  // box too rather than describing a list that isn't on screen.
+  const searchedCallable = callable.filter(match);
+  const searched = searchedCallable.filter(f.matches);
   const readyCount = searched.filter(callableNow).length;
   const visible = readyNow ? searched.filter(callableNow) : searched;
 
-  /*
-   * Counts for the chips, each measured against the *other* filters rather
-   * than against the whole list. A chip reading "$20k+ (14)" that yields four
-   * rows because an industry filter is also on is a number nobody can act on.
-   */
-  const countAtValue = (dollars: number) =>
-    callable.filter((r) => match(r) && overOpens(r) && inIndustry(r) && (r.estimatedValue ?? 0) >= dollars * 100)
-      .length;
-  const countAtOpens = (n: number) =>
-    callable.filter((r) => match(r) && overValue(r) && inIndustry(r) && r.opens >= n).length;
-
-  // Only the industries actually in front of you, biggest first — a select
-  // listing every trade in the database would mostly be empty options.
-  const industries = Object.entries(
-    callable
-      .filter((r) => match(r) && overValue(r) && overOpens(r))
-      .reduce<Record<string, number>>((acc, r) => {
-        if (r.industry) acc[r.industry] = (acc[r.industry] ?? 0) + 1;
-        return acc;
-      }, {})
-  ).sort((a, b) => b[1] - a[1]);
-
-  const filtersOn = minValue > 0 || minOpens > 0 || Boolean(industry);
   // The same filters, or the header count says one thing and the list shows
   // another the moment a trade is picked.
-  const visibleNoPhone = noPhone.filter(
-    (r) => match(r) && overValue(r) && overOpens(r) && inIndustry(r)
-  );
-  const visibleNoSignal = noSignal.filter(match);
+  const visibleNoPhone = noPhone.filter((r) => match(r) && f.matches(r));
+  const searchedNoSignal = noSignal.filter(match);
+  const visibleNoSignal = searchedNoSignal.filter(nf.matches);
   const visibleScheduledHot = scheduledHot.filter(match);
 
   const RANK = { good: 0, okay: 1, bad: 2 } as const;
@@ -610,93 +835,10 @@ export function QueueView() {
         ))}
       </div>
 
-      {/* Worth how much · read it how often · what trade. Every option says
-          how many are behind it, so the row answers the question before it is
+      {/* Worth · opened · trade · state · never rung. Every option says how
+          many are behind it, so the row answers the question before it is
           clicked. */}
-      <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] px-3.5 py-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] uppercase tracking-wide text-white/35 mr-0.5">Worth</span>
-            {VALUE_BANDS.map((band) => {
-              const n = countAtValue(band.min);
-              return (
-                <button
-                  key={band.min}
-                  onClick={() => setMinValue(band.min)}
-                  disabled={n === 0 && band.min > 0}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-30 ${
-                    minValue === band.min
-                      ? 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200'
-                      : 'border-white/12 text-white/50 hover:bg-white/5'
-                  }`}
-                >
-                  {band.label} <span className="opacity-55">({n})</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] uppercase tracking-wide text-white/35 mr-0.5">Opened</span>
-            {OPEN_BANDS.map((band) => {
-              const n = countAtOpens(band.min);
-              return (
-                <button
-                  key={band.min}
-                  onClick={() => setMinOpens(band.min)}
-                  disabled={n === 0 && band.min > 0}
-                  title={
-                    band.min === 0
-                      ? 'Everyone on the sheet'
-                      : `Opened your email at least ${band.min} ${band.min === 1 ? 'time' : 'times'}`
-                  }
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-30 ${
-                    minOpens === band.min
-                      ? 'border-amber-400/40 bg-amber-400/15 text-amber-200'
-                      : 'border-white/12 text-white/50 hover:bg-white/5'
-                  }`}
-                >
-                  {band.min > 0 && <Eye size={10} />}
-                  {band.label} <span className="opacity-55">({n})</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {industries.length > 1 && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] uppercase tracking-wide text-white/35">Trade</span>
-              <select
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                className="rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1 text-xs font-semibold text-white/60 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-              >
-                <option value="" className="bg-raised">
-                  Every trade ({industries.reduce((n, [, c]) => n + c, 0)})
-                </option>
-                {industries.map(([name, count]) => (
-                  <option key={name} value={name} className="bg-raised">
-                    {name} ({count})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {filtersOn && (
-            <button
-              onClick={() => {
-                setMinValue(0);
-                setMinOpens(0);
-                setIndustry('');
-              }}
-              className="ml-auto text-xs font-semibold text-white/40 hover:text-white transition-colors"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      </div>
+      <FilterBar rows={searchedCallable} f={f} testId="call-sheet-filters" />
 
       {nextUp && (
         <div className="mb-5 rounded-2xl border border-sky-400/25 bg-sky-400/[0.07] p-4">
@@ -1052,7 +1194,10 @@ export function QueueView() {
           rows would read as a bug, and the count is the fastest read there is
           on whether a send landed at all. Collapsed, counted, one click away.
       */}
-      {visibleNoSignal.length > 0 && (
+      {/* Gated on the unfiltered count, so narrowing this section to nothing
+          can't take its own filter bar off screen with it and strand whoever
+          set the filter. */}
+      {searchedNoSignal.length > 0 && (
         <section className="mt-8">
           <button
             onClick={() => setShowNoSignal((v) => !v)}
@@ -1060,7 +1205,7 @@ export function QueueView() {
           >
             <p className="text-sm font-bold text-white/70 flex items-center gap-1.5">
               <MailX size={14} /> Emailed, nobody has opened it
-              <span className="ml-1 opacity-60">({visibleNoSignal.length})</span>
+              <span className="ml-1 opacity-60">({searchedNoSignal.length})</span>
               <span className="ml-auto text-xs font-medium text-white/40">
                 {showNoSignal ? 'Hide' : 'Show anyway'}
               </span>
@@ -1073,17 +1218,57 @@ export function QueueView() {
             </p>
           </button>
           {showNoSignal && (
-            <div className="space-y-2 mt-3">
-              {visibleNoSignal.map((row) => (
-                <Link
-                  key={row.id}
-                  href={`/admin/leads/${row.id}`}
-                  className="block rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 hover:bg-white/[0.05] transition-colors min-w-0"
-                >
-                  <p className="text-sm font-semibold text-white/80 break-words">{row.company}</p>
-                  <p className="text-xs text-white/35 mt-0.5">{row.openHeadline}</p>
-                </Link>
-              ))}
+            <div className="mt-3">
+              {/*
+                  Its own filters, and no open-count band — every row in here
+                  has nought opens by definition, so those five buttons would
+                  all return the same list.
+
+                  Biggest first rather than most urgent: nothing in here has an
+                  urgency signal, so the only honest way to order it is by what
+                  the deal is worth. That is also how you use it — pull the
+                  handful worth chasing by another route out of the pile.
+              */}
+              <FilterBar
+                rows={searchedNoSignal}
+                f={nf}
+                showOpens={false}
+                compact
+                testId="no-signal-filters"
+              />
+              {visibleNoSignal.length === 0 ? (
+                <p className="text-xs text-white/35 py-2">
+                  None of these {searchedNoSignal.length} match those filters.{' '}
+                  <button onClick={nf.clear} className="font-semibold text-white/60 hover:text-white">
+                    Clear them
+                  </button>
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {[...visibleNoSignal]
+                    .sort((a, b) => (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0))
+                    .map((row) => (
+                      <Link
+                        key={row.id}
+                        href={`/admin/leads/${row.id}`}
+                        className="block rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 hover:bg-white/[0.05] transition-colors min-w-0"
+                      >
+                        <p className="text-sm font-semibold text-white/80 break-words">
+                          {row.company}
+                          {row.estimatedValue ? (
+                            <span className="ml-1.5 font-normal text-white/40">
+                              {formatCents(row.estimatedValue)}
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-white/35 mt-0.5">
+                          {row.openHeadline}
+                          {row.region ? ` · ${row.region}` : ''}
+                        </p>
+                      </Link>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </section>

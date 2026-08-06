@@ -46,6 +46,11 @@ interface LeadDetail {
   painPoints: PainPointKey[];
   estimateLowCents: number | null;
   estimateHighCents: number | null;
+  // What a research import actually fills in. The brief falls back to these
+  // when nobody has written numbered pain points, which is every imported
+  // lead — see lib/call-brief.ts.
+  personalizedObservation: string | null;
+  currentSiteAssessment: string | null;
   assignedTo?: { name: string | null } | null;
   activities: { id: string; type: string; content: string; createdAt: string; createdBy?: { name: string | null } | null }[];
   mockupUrl?: string | null;
