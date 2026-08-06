@@ -305,6 +305,36 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
   const downloadTemplate = () =>
     downloadCsv('bothmade-leads-template.csv', `${toCsv(TEMPLATE_HEADERS, [])}\n`);
 
+  /**
+   * The columns a scrape actually comes with.
+   *
+   * A thousand-row export off a scraping tool has none of the written work in
+   * it — no observation, no pain points, no cold email — and asking someone
+   * to map it onto forty columns is how a good list sits in a downloads
+   * folder for a month. These eleven are what a scrape has and what the email
+   * writer needs, in the order it wants them.
+   */
+  const downloadScraperTemplate = () =>
+    downloadCsv(
+      'bothmade-scrape-template.csv',
+      `${toCsv(
+        [
+          'company',
+          'email',
+          'phone',
+          'website',
+          'industry',
+          'city',
+          'state',
+          'googleRating',
+          'googleReviewCount',
+          'estimatedValue',
+          'siteVerdict',
+        ],
+        []
+      )}\n`
+    );
+
   // The same sheet with one business filled in properly — open it, see the
   // shape, replace the contents.
   const downloadExample = () =>
@@ -441,12 +471,34 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
                     <Download size={12} /> Filled example
                   </button>
                   <button
+                    onClick={downloadScraperTemplate}
+                    className="flex items-center gap-1.5 rounded-lg border border-purple-400/25 bg-purple-400/[0.08] px-2.5 py-1.5 text-[11px] font-medium text-purple-200 hover:bg-purple-400/15 transition-colors"
+                  >
+                    <Download size={12} /> Scrape columns
+                  </button>
+                  <button
                     onClick={downloadTemplate}
                     className="flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] font-medium text-white/70 hover:bg-white/5 hover:text-white transition-colors"
                   >
                     <Download size={12} /> Blank
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                  Bringing a scrape in
+                </p>
+                <p className="mt-1.5 text-xs text-white/45 leading-relaxed">
+                  Up to a thousand rows a file. A scrape has none of the written work in it, and it does
+                  not need to: import it, select the new leads on the list, and press{' '}
+                  <span className="text-purple-200">Write emails</span> — each one gets a cold email and
+                  a mockup email built from whatever the scrape did carry. The more of{' '}
+                  <code className="text-sky-300">industry</code>,{' '}
+                  <code className="text-sky-300">googleReviewCount</code> and{' '}
+                  <code className="text-sky-300">siteVerdict</code> you bring, the less generic those
+                  emails are.
+                </p>
               </div>
 
               <div className="mt-3 border-t border-white/10 pt-3">

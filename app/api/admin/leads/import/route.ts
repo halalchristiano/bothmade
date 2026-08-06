@@ -12,7 +12,13 @@ import { resolvePointPrices, sizeCompany } from '@/lib/lead-pricing';
 import { normalizeMockupUrl } from '@/lib/mockups';
 import type { PlaybookEntry } from '@/lib/playbook-seed';
 
-const MAX_ROWS = 500;
+/**
+ * A scrape comes off the tool in thousands, and splitting one into files by
+ * hand is exactly the kind of chore that ends with a batch imported twice or
+ * not at all. A thousand rows is one create per row inside a transaction —
+ * heavier than the old cap and still comfortably inside a request.
+ */
+const MAX_ROWS = 1000;
 
 // Strips everything but letters/digits so "Public email", "public_email" and
 // "email" all collapse to the same comparable key regardless of spacing,
@@ -426,8 +432,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Max ${MAX_ROWS} rows per import` }, { status: 400 });
     }
 
-    // Fetched once for the whole file rather than per row — an 500-row import
-    // would otherwise run 500 identical queries to price the same catalogue.
+    // Fetched once for the whole file rather than per row — a 1,000-row import
+    // would otherwise run 1,000 identical queries to price the same catalogue.
     const [playbookRows, teamMembers] = await Promise.all([
       prisma.salesPlaybookItem.findMany(),
       prisma.user.findMany({ select: { id: true, email: true, name: true } }),

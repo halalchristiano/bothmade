@@ -198,6 +198,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
   const [writeResult, setWriteResult] = useState<{ written: number; failed: number; note: string } | null>(
     null
   );
+  const [writeProgress, setWriteProgress] = useState<{ done: number; total: number } | null>(null);
   // Saved views: a search plus a sort, under a name. Local to the browser on
   // purpose — "my cold-call list" is a personal habit, not shared config.
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -474,44 +475,63 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
   };
 
   /**
-   * Write the two emails for a batch of leads.
+   * Write the two emails for every selected lead.
    *
    * The book is a thousand businesses and the ones that reply are the ones
    * somebody wrote an email for. Nobody types a thousand, so most leads got
-   * the generic template — this is the gap closed, in batches, from what
-   * research already put on each lead. Nothing sends: the drafts land on the
-   * leads and the send stays where it was, behind its preview.
+   * the generic template — this closes that gap from what research already
+   * put on each lead. Nothing sends: the drafts land on the leads and the
+   * send stays where it was, behind its preview.
+   *
+   * Chunked because each lead is a model call: sixty is what one request can
+   * finish inside a serverless timeout, and a thousand in one go would spend
+   * the money and come back with nothing. The loop is here rather than in the
+   * route so a long run reports progress while it happens — and so that a
+   * failure at lead 400 keeps the 399 already written.
    */
-  const handleWriteEmails = async () => {
-    const ids = Array.from(selected);
+  const WRITE_BATCH = 60;
+
+  const handleWriteEmails = async (targets: LeadRow[]) => {
+    const ids = targets.map((l) => l.id);
     if (ids.length === 0) return;
     setWritingEmails(true);
     setWriteResult(null);
+    setWriteProgress({ done: 0, total: ids.length });
+
+    let written = 0;
+    let failed = 0;
+    const notes: string[] = [];
+
     try {
-      const res = await fetch('/api/admin/leads/write-emails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadIds: ids }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setWriteResult({ written: 0, failed: ids.length, note: data.error || 'Could not write them.' });
-        return;
+      for (let i = 0; i < ids.length; i += WRITE_BATCH) {
+        const batch = ids.slice(i, i + WRITE_BATCH);
+        const res = await fetch('/api/admin/leads/write-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadIds: batch }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          // Stop rather than hammer through the same failure a dozen more
+          // times — a missing API key does not fix itself on batch four.
+          notes.push(data.error || 'Could not write them.');
+          failed += ids.length - i;
+          break;
+        }
+        written += data.written ?? 0;
+        failed += data.failed ?? 0;
+        // Skipped leads are named, never silently counted as done — the whole
+        // point is knowing which ones still have no email.
+        for (const r of (data.results || []).filter((x: { ok: boolean }) => !x.ok)) {
+          if (notes.length < 3) notes.push(`${r.company}: ${r.reason}`);
+        }
+        setWriteProgress({ done: Math.min(i + WRITE_BATCH, ids.length), total: ids.length });
       }
-      // Skipped leads are reported, never silently counted as done — the
-      // whole point is knowing which ones still have no email.
-      const skipped = (data.results || []).filter((r: { ok: boolean }) => !r.ok);
-      setWriteResult({
-        written: data.written,
-        failed: data.failed,
-        note: skipped
-          .slice(0, 3)
-          .map((r: { company: string; reason?: string }) => `${r.company}: ${r.reason}`)
-          .join(' · '),
-      });
+      setWriteResult({ written, failed, note: notes.join(' · ') });
       await load();
     } finally {
       setWritingEmails(false);
+      setWriteProgress(null);
     }
   };
 
@@ -922,18 +942,21 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
               )}
               {/* One model call per lead, in batches — the emails land as
                   drafts and nothing goes out. */}
+              {/* One model call per lead, run sixty at a time until the
+                  selection is done. The drafts land on the leads; nothing
+                  goes out. */}
               <button
-                onClick={handleWriteEmails}
-                disabled={writingEmails || selected.size > 60}
-                title={
-                  selected.size > 60
-                    ? 'Sixty at a time — select fewer and run it again.'
-                    : 'Writes a cold email and a mockup email for each selected lead, from its research. Nothing is sent.'
-                }
+                onClick={() => handleWriteEmails(selectedLeads)}
+                disabled={writingEmails}
+                title="Writes a cold email and a mockup email for each selected lead, from its research. Nothing is sent."
                 className="inline-flex items-center gap-2 rounded-xl border border-purple-400/30 bg-purple-400/10 px-4 py-2 text-sm font-semibold text-purple-200 hover:bg-purple-400/20 disabled:opacity-50 transition-colors whitespace-nowrap"
               >
                 <Sparkles size={14} />
-                {writingEmails ? 'Writing…' : `Write emails (${selected.size})`}
+                {writingEmails
+                  ? writeProgress
+                    ? `Writing ${writeProgress.done}/${writeProgress.total}…`
+                    : 'Writing…'
+                  : `Write emails (${selected.size})`}
               </button>
               <BrandButton
                 variant="quiet"
