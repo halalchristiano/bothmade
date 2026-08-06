@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { writeEmails } from './engine2.mjs';
 
-const HEADERS = ['company','email','industry','city','state','country','originalWebsite','source','status',
+const HEADERS = ['company','email','phone','industry','city','state','country','originalWebsite','source','status',
   'personalisedColdEmail','mockupEmail','personalizedObservation','salesNote','tags','leadScore',
   'estimatedValue','lowestEstimate','highestEstimate','dateAdded'];
 
@@ -22,9 +22,13 @@ const mailed = new Set(
 );
 
 const rows = readFileSync('harvest7.tsv','utf8').split('\n').filter(Boolean).map((l) => {
-  const [company, email, domain, niche, city, state, source] = l.split('\t');
+  // An eighth column, when the harvest captured one. Every search that finds
+  // an address prints a phone number beside it and the first eight runs threw
+  // it away — which is how a lead the pixel flagged as reading your email
+  // ended up in "no phone number on file".
+  const [company, email, domain, niche, city, state, source, phone] = l.split('\t');
   return { company: company.trim(), email: email.trim(), domain: domain.trim(), niche: niche.trim(),
-           city: city.trim(), state: state.trim(), verified: source.trim() };
+           city: city.trim(), state: state.trim(), verified: source.trim(), phone: (phone||'').trim() };
 });
 
 const cell = (v='') => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v);
@@ -47,6 +51,7 @@ for (const r of rows) {
   out.push({
     company: r.company,
     email: r.email,
+    phone: r.phone,
     industry: r.niche,
     city: r.city,
     state: r.state,

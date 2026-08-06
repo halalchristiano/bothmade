@@ -293,6 +293,8 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{
     count: number;
+    enriched?: number;
+    enrichedNames?: string[];
     skipped: number;
     duplicates: number;
     customPoints: Array<{ company: string; point: string; priceCents: number }>;
@@ -404,6 +406,16 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
               Imported <strong>{result.count}</strong> lead{result.count === 1 ? '' : 's'}
               {result.skipped > 0 ? ` (skipped ${result.skipped} row${result.skipped === 1 ? '' : 's'} missing a company name)` : ''}.
             </p>
+            {/* The rows that were not new and were not wasted either. */}
+            {(result.enriched ?? 0) > 0 && (
+              <p className="text-xs text-emerald-300/90 mt-2 leading-relaxed">
+                Filled in missing details on <strong>{result.enriched}</strong> lead
+                {result.enriched === 1 ? '' : 's'} you already had
+                {result.enrichedNames?.length ? ` — ${result.enrichedNames.join(', ')}` : ''}
+                {(result.enriched ?? 0) > (result.enrichedNames?.length ?? 0) ? ' and others' : ''}. Only
+                empty fields were touched; nothing you had already written was overwritten.
+              </p>
+            )}
             {result.duplicates > 0 && (
               <p className="text-xs text-amber-300/80 mt-2 leading-relaxed">
                 {result.duplicates} {result.duplicates === 1 ? 'business was' : 'businesses were'} already in your

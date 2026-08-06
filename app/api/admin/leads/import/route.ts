@@ -645,22 +645,103 @@ export async function POST(request: NextRequest) {
     // past each other on punctuation alone.
     const companyKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const existing = await prisma.lead.findMany({
-      select: { email: true, company: true },
+      select: {
+        id: true,
+        email: true,
+        company: true,
+        // Everything a second, richer file might legitimately fill in. Read
+        // so the enrichment below can tell an empty field from one somebody
+        // has already thought about.
+        phone: true,
+        altPhone: true,
+        contactName: true,
+        contactRole: true,
+        industry: true,
+        address: true,
+        city: true,
+        region: true,
+        postalCode: true,
+        country: true,
+        timezone: true,
+        originalWebsite: true,
+        currentSiteAssessment: true,
+        personalizedObservation: true,
+        coldEmailDraft: true,
+        mockupEmailDraft: true,
+        salesNote: true,
+        notes: true,
+        estimatedValue: true,
+        estimateLowCents: true,
+        estimateHighCents: true,
+        leadScore: true,
+        googleRating: true,
+        googleReviewCount: true,
+        googleMapsUrl: true,
+        instagramUrl: true,
+        facebookUrl: true,
+        linkedinUrl: true,
+        yearFounded: true,
+        employeeCount: true,
+        locationCount: true,
+        annualRevenueCents: true,
+      },
     });
+    const existingByEmail = new Map(
+      existing.filter((l) => l.email).map((l) => [l.email!.toLowerCase(), l])
+    );
+    const existingByCompany = new Map(existing.map((l) => [companyKey(l.company), l]));
     const seenEmails = new Set(
       existing.map((l) => l.email?.toLowerCase()).filter((e): e is string => !!e)
     );
     const seenCompanies = new Set(existing.map((l) => companyKey(l.company)));
 
+    /*
+     * A second file about businesses we already hold is not waste.
+     *
+     * Every duplicate row used to be dropped, which is right for a re-import
+     * of the same list and wrong for the case that actually keeps happening:
+     * a later, richer file — phone numbers this time, or a written site
+     * verdict — landing on leads that were imported without them. The whole
+     * file came back as "every row is already in your leads" and the new
+     * columns went in the bin.
+     *
+     * So a duplicate now fills the blanks. Only the blanks: a field somebody
+     * has already typed into is never overwritten by a spreadsheet, because
+     * the spreadsheet does not know what happened on the phone last Tuesday.
+     * A row that adds nothing new is still counted as a plain duplicate, so
+     * the number on screen keeps meaning what it meant.
+     */
     let duplicates = 0;
     const duplicateNames: string[] = [];
+    const enrichments: Array<{ id: string; company: string; data: Record<string, unknown> }> = [];
+
+    const blank = (value: unknown) =>
+      value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+
     const deduped = toCreate.filter((row) => {
       const email = row.email?.toLowerCase();
       const key = companyKey(row.company);
       const isDup = email ? seenEmails.has(email) : seenCompanies.has(key);
       if (isDup) {
-        duplicates++;
-        if (duplicateNames.length < 5) duplicateNames.push(row.company);
+        const current = (email && existingByEmail.get(email)) || existingByCompany.get(key);
+        const fill: Record<string, unknown> = {};
+        if (current) {
+          for (const [field, incoming] of Object.entries(row)) {
+            // `mockups` is a nested create and `status` is a stage somebody
+            // may have moved by hand — neither is a blank to be filled.
+            if (field === 'mockups' || field === 'status' || field === 'assignedToId') continue;
+            if (blank(incoming)) continue;
+            if (!(field in current)) continue;
+            if (!blank((current as Record<string, unknown>)[field])) continue;
+            fill[field] = incoming;
+          }
+        }
+        if (current && Object.keys(fill).length > 0) {
+          enrichments.push({ id: current.id, company: row.company, data: fill });
+        } else {
+          duplicates++;
+          if (duplicateNames.length < 5) duplicateNames.push(row.company);
+        }
         return false;
       }
       // Guard against the same row appearing twice within this one file too.
@@ -669,10 +750,40 @@ export async function POST(request: NextRequest) {
       return true;
     });
 
+    // Applied before the "nothing to do" bail-outs below, so a file that is
+    // entirely enrichment still does its work.
+    if (enrichments.length > 0) {
+      await prisma
+        .$transaction(
+          enrichments.map((e) => prisma.lead.update({ where: { id: e.id }, data: e.data }))
+        )
+        .catch((err) => console.error('Lead enrichment failed:', err));
+    }
+
+    if (deduped.length === 0 && enrichments.length > 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          count: 0,
+          enriched: enrichments.length,
+          enrichedNames: enrichments.slice(0, 5).map((e) => e.company),
+          skipped,
+          duplicates,
+          duplicateNames,
+          customPoints: [],
+          customPointCount: 0,
+        },
+        { status: 200 }
+      );
+    }
+
     if (deduped.length === 0 && duplicates > 0) {
       return NextResponse.json(
         {
           error: `Every row is already in your leads — nothing new to add. (${duplicates} duplicate${duplicates === 1 ? '' : 's'})`,
+          // Always present, so a caller reading `enriched` never has to
+          // wonder whether zero means none or means an older response shape.
+          enriched: 0,
           duplicates,
           duplicateNames,
         },
@@ -716,6 +827,8 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         count: created.length,
+        enriched: enrichments.length,
+        enrichedNames: enrichments.slice(0, 5).map((e) => e.company),
         skipped,
         duplicates,
         duplicateNames,
