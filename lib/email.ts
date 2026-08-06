@@ -1192,6 +1192,71 @@ export async function sendInstalmentEmail(params: {
  * that sells the deal.
  */
 /**
+ * The second email, sent alongside the receipt: a link to the longer form.
+ *
+ * The enquiry form on the website has to be short or people abandon it. This
+ * is where the thorough questions live, and it goes out immediately because
+ * the moment somebody has just decided to contact you is the moment they are
+ * most willing to answer them.
+ *
+ * Two separate emails rather than one: the receipt is a confirmation and this
+ * is a request, and a message that does both tends to achieve neither. It is
+ * also the one a client forwards to whoever actually knows the answers.
+ */
+/**
+ * Where the brief form lives, as the client sees it in their inbox.
+ *
+ * `enquiryform.bothmade.studio/<token>` once that domain is added to the
+ * Vercel project (next.config.ts rewrites it onto the same page), because a
+ * short address on an obviously-named host is easier to trust than a deep
+ * path — and this is a link somebody is being asked to type answers into.
+ *
+ * Falls back to the canonical path on the main site, so the link in an email
+ * is never broken by the domain not having been set up yet. Set
+ * `ENQUIRY_FORM_URL` to switch it over.
+ */
+export function briefFormUrl(shareToken: string): string {
+  const host = process.env.ENQUIRY_FORM_URL?.trim().replace(/\/+$/, '');
+  return host ? `${host}/${shareToken}` : `${resolveSiteUrl()}/f/${shareToken}`;
+}
+
+export async function sendBriefFormInvite(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  shareToken: string;
+}): Promise<SendResult> {
+  const formUrl = briefFormUrl(input.shareToken);
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `A few questions before we call — ${input.company}`,
+    html: renderShell({
+      eyebrow: 'One more thing',
+      title: 'Tell us what you actually need',
+      bodyHtml:
+        `<p style="margin:0 0 14px;">Hi ${esc(input.contactName) || 'there'},</p>` +
+        `<p style="margin:0 0 16px;">
+           Separately from the confirmation we just sent: this is a short form that tells us
+           what is missing and what you want instead. It is nearly all tick boxes and takes
+           about two minutes.
+         </p>` +
+        `<p style="margin:0 0 16px;">
+           Filling it in means the call starts with what you need rather than twenty minutes
+           of us asking. If you would rather just talk, ignore this — we will ring either way.
+         </p>` +
+        `<p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">
+           No prices on it. What things cost depends on the answers, which is a conversation
+           rather than a number guessed at from a form.
+         </p>`,
+      ctaLabel: 'Answer the questions',
+      ctaUrl: formUrl,
+      footerNote: `${COMPANY_NAME} — you asked us to get in touch through bothmade.studio.`,
+    }),
+  });
+}
+
+/**
  * The daily follow-up to somebody who enquired and went quiet.
  *
  * Short on purpose: a long email on day nine reads as desperation, and the

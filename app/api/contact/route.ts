@@ -7,6 +7,7 @@ import { escapeHtml } from '@/lib/html';
 import { COMPANY_EMAIL, COMPANY_NAME, COMPANY_WEBSITE } from '@/lib/company';
 import { findSalesRep, notifyRepInboundEnquiry, type SalesRep } from '@/lib/notify';
 import { buildSalesNote, parseProblems, recommendedWork, toOptions } from '@/lib/contact-enquiry';
+import { briefFormUrl, sendBriefFormInvite } from '@/lib/email';
 import type { PainPointKey } from '@/lib/leads';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
@@ -174,7 +175,7 @@ async function recordEnquiry(
       data: {
         leadId: existing.id,
         type: 'note',
-        content: `Contact form submission from bothmade.studio\n\n${detail}`,
+        content: `Client used the contact form again.\n\n${detail}`,
       },
     });
     // They came to us — the strongest buying signal there is, and the sales
@@ -247,7 +248,7 @@ async function recordEnquiry(
       data: {
         leadId: created.id,
         type: 'note',
-        content: `Enquiry from bothmade.studio\n\n${detail}`,
+        content: `Client used the contact form to enquire.\n\n${detail}`,
       },
     })
     .catch((e) => console.error('Inbound enquiry activity not written:', e));
@@ -626,9 +627,9 @@ export async function POST(request: NextRequest) {
              }
              ${optionsHtml}
              <p style="margin:0;">
-               ${rep?.name ? `${escapeHtml(rep.name)} will read this and reply` : "We'll reply"}
-               within 24 hours — usually sooner. Reply to this email if you want to add
-               anything in the meantime.
+               A member of the sales team will read this and reply within 24 hours —
+               usually sooner. Reply to this email if you want to add anything in the
+               meantime.
              </p>`,
           footerNote: `${COMPANY_NAME} — ${COMPANY_WEBSITE}`,
         }),
@@ -641,6 +642,66 @@ export async function POST(request: NextRequest) {
       // Worth knowing: the customer got the mail, but info@ has no record of
       // having sent it, so a reply will look like it came out of nowhere.
       console.warn('Acknowledgement sent via Resend — not in the info@ Sent folder');
+    }
+
+    /*
+     * The second email, sent alongside the receipt.
+     *
+     * Both of these, and the enquiry itself, go on the lead's timeline as
+     * they happen — "used the contact form", "sent the receipt", "sent the
+     * form, waiting on them", "filled it in". A rep opening the lead should
+     * be able to read what has happened to this person in order, rather than
+     * inferring it from which columns are populated.
+     *
+     * Needs the lead to exist, because the form link is that lead's own
+     * token; if the CRM write failed there is nothing to send them to.
+     */
+    if (recorded) {
+      // Its own try, deliberately. Everything above this line has already
+      // happened — the lead is saved, the studio has been told, the customer
+      // has their receipt. Anything that goes wrong from here is a second
+      // email that did not send, and a visitor who is shown "something went
+      // wrong" for that will fill the form in again and again.
+      try {
+        await prisma.leadActivity
+          .create({
+            data: {
+              leadId: recorded.leadId,
+              type: 'email',
+              content: ack.ok
+                ? `Client was sent the receipt for their enquiry (${cleanEmail}).`
+                : `Receipt to ${cleanEmail} did not send.`,
+            },
+          })
+          .catch((e) => console.error('Receipt activity not written:', e));
+
+        const lead = await prisma.lead
+          .findUnique({ where: { id: recorded.leadId }, select: { shareToken: true } })
+          .catch(() => null);
+
+        if (lead) {
+          const invite = await sendBriefFormInvite({
+            toEmail: cleanEmail,
+            contactName: cleanName,
+            company: cleanCompany || cleanName,
+            shareToken: lead.shareToken,
+          });
+          await prisma.leadActivity
+            .create({
+              data: {
+                leadId: recorded.leadId,
+                type: 'email',
+                content: invite.sent
+                  ? 'Client was sent the brief form. Waiting on them to fill it in.'
+                  : `Brief form to ${cleanEmail} did not send${invite.reason ? ` (${invite.reason})` : ''}.`,
+                url: briefFormUrl(lead.shareToken),
+              },
+            })
+            .catch((e) => console.error('Brief form activity not written:', e));
+        }
+      } catch (e) {
+        console.error('Brief form step failed after the enquiry was saved:', e);
+      }
     }
 
     return NextResponse.json(

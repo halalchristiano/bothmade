@@ -172,6 +172,34 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  /**
+   * The enquiry form on its own subdomain.
+   *
+   * The link a client is emailed after enquiring reads
+   * `enquiryform.bothmade.studio/<token>` rather than `bothmade.studio/f/<token>`
+   * — a shorter, more obviously legitimate address for a link somebody is
+   * being asked to click and type answers into.
+   *
+   * A rewrite rather than a redirect, so the address stays that way in the
+   * bar while the same `app/f/[token]` page serves it. Scoped by `has: host`,
+   * so nothing on the main domain can be affected by it, and the token
+   * pattern is pinned to the 64 hex characters a `shareToken` actually is —
+   * without that, a request for `/favicon.ico` on this host would be looked
+   * up as a lead.
+   *
+   * Requires `enquiryform.bothmade.studio` to be added as a domain on the
+   * Vercel project; until it is, the canonical `/f/<token>` path still works.
+   */
+  async rewrites() {
+    return [
+      {
+        source: "/:token([a-f0-9]{32,64})",
+        has: [{ type: "host", value: "enquiryform.bothmade.studio" }],
+        destination: "/f/:token",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

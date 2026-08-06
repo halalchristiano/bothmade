@@ -16,6 +16,8 @@ vi.mock('resend', () => ({
 }));
 
 const leadFindFirst = vi.fn();
+/** Reads back the new lead's `shareToken`, which the brief-form link is built from. */
+const leadFindUnique = vi.fn();
 const leadCreate = vi.fn();
 const leadUpdate = vi.fn();
 const activityCreate = vi.fn();
@@ -32,6 +34,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     lead: {
       findFirst: (...args: unknown[]) => leadFindFirst(...args),
+      findUnique: (...args: unknown[]) => leadFindUnique(...args),
       create: (...args: unknown[]) => leadCreate(...args),
       update: (...args: unknown[]) => leadUpdate(...args),
     },
@@ -102,6 +105,22 @@ function freshIp() {
 
 const EVAN = { id: 'user_evan', email: 'evan@bothmade.studio', name: 'Evan' };
 
+/**
+ * Who a Resend call is addressed to. The route hands it a string; lib/email
+ * hands it a one-element array — so a test that reads `.to` raw sees two
+ * different shapes for the same thing.
+ */
+const recipientOf = (mail: { to: string | string[] }) =>
+  Array.isArray(mail.to) ? mail.to[0] : mail.to;
+
+/**
+ * The group notification, as distinct from the two emails that go to the
+ * person who wrote in. Both kinds reach Resend, so a bare call count would
+ * conflate "the studio was told" with "the enquirer got their form link".
+ */
+const studioNotifications = () =>
+  send.mock.calls.map(([mail]) => mail).filter((mail) => recipientOf(mail) !== VALID.email);
+
 beforeEach(() => {
   vi.stubEnv('RESEND_API_KEY', 'test-key');
   vi.stubEnv('STUDIO_INBOX', '');
@@ -110,6 +129,7 @@ beforeEach(() => {
   send.mockReset().mockResolvedValue({ error: null });
   sendEmail.mockReset().mockResolvedValue(true);
   leadFindFirst.mockReset().mockResolvedValue(null);
+  leadFindUnique.mockReset().mockResolvedValue({ shareToken: 'tok_1' });
   leadCreate.mockReset().mockResolvedValue({ id: 'lead_1' });
   leadUpdate.mockReset().mockResolvedValue({ id: 'lead_1' });
   activityCreate.mockReset().mockResolvedValue({ id: 'act_1' });
@@ -128,12 +148,12 @@ describe('POST /api/contact — where the message goes', () => {
     // One message each rather than one message listing all three. This mail
     // replies to the customer, so a shared To: header would hand them every
     // studio address the first time anyone hit Reply-all.
-    expect(send.mock.calls.map(([mail]) => mail.to)).toEqual([
+    expect(studioNotifications().map((mail) => mail.to)).toEqual([
       'info@bothmade.studio',
       'evan@bothmade.studio',
       'kiana@bothmade.studio',
     ]);
-    for (const [mail] of send.mock.calls) {
+    for (const mail of studioNotifications()) {
       expect(typeof mail.to).toBe('string');
       // Hitting reply has to reach the person who wrote in, not the studio.
       expect(mail.replyTo).toBe(VALID.email);
@@ -169,11 +189,13 @@ describe('POST /api/contact — where the message goes', () => {
     await POST(request(VALID, freshIp()));
 
     expect(leadCreate).not.toHaveBeenCalled();
-    expect(activityCreate).toHaveBeenCalledOnce();
     expect(activityCreate.mock.calls[0][0].data).toMatchObject({
       leadId: 'lead_existing',
       type: 'note',
     });
+    expect(activityCreate.mock.calls[0][0].data.content).toContain(
+      'Client used the contact form again.'
+    );
     // Writing in unprompted is a buying signal the sales views sort on.
     expect(leadUpdate.mock.calls[0][0].data.replyReceivedAt).toBeInstanceOf(Date);
   });
@@ -183,10 +205,89 @@ describe('POST /api/contact — where the message goes', () => {
 
     await POST(request(VALID, freshIp()));
 
-    expect(send.mock.calls.map(([mail]) => mail.to)).toEqual([
+    expect(studioNotifications().map((mail) => mail.to)).toEqual([
       'hello@example.com',
       'second@example.com',
     ]);
+  });
+});
+
+/**
+ * Two emails leave for the enquirer, not one: a receipt saying we have it, and
+ * a link to the longer form that writes their own brief. They are separate
+ * because a message that both confirms and asks tends to achieve neither — and
+ * because the second is the one a business owner forwards to whoever actually
+ * knows the answers.
+ */
+describe('POST /api/contact — the brief form invite', () => {
+  const inviteToSender = () =>
+    send.mock.calls.map(([mail]) => mail).find((mail) => recipientOf(mail) === VALID.email);
+
+  it('sends the enquirer a link to their own form', async () => {
+    await POST(request(VALID, freshIp()));
+
+    const invite = inviteToSender();
+    expect(invite).toBeTruthy();
+    expect(invite.html).toContain('https://bothmade.studio/f/tok_1');
+  });
+
+  /** The promise the email makes about the form it links to. */
+  it('promises no prices, and shows none', async () => {
+    await POST(request(VALID, freshIp()));
+
+    expect(inviteToSender().html).not.toMatch(/\$\d|£\d/);
+  });
+
+  it('links to the enquiry-form subdomain once that domain is configured', async () => {
+    vi.stubEnv('ENQUIRY_FORM_URL', 'https://enquiryform.bothmade.studio');
+
+    await POST(request(VALID, freshIp()));
+
+    expect(inviteToSender().html).toContain('https://enquiryform.bothmade.studio/tok_1');
+  });
+
+  /**
+   * The sequence a rep reads on the lead: they wrote in, we acknowledged it,
+   * we asked the questions, and we are waiting. Order matters — a timeline
+   * that lists these the other way round describes a different conversation.
+   */
+  it('writes each step to the timeline as it happens', async () => {
+    await POST(request(VALID, freshIp()));
+
+    expect(activityCreate.mock.calls.map(([arg]) => arg.data.content)).toEqual([
+      expect.stringContaining('Client used the contact form to enquire.'),
+      expect.stringContaining('Client was sent the receipt'),
+      expect.stringContaining('Client was sent the brief form. Waiting on them'),
+    ]);
+  });
+
+  /**
+   * A timeline that says "sent" when nothing was sent is worse than no
+   * timeline: the rep reads it, assumes the client is ignoring them, and
+   * chases somebody who never heard from us.
+   */
+  it('says so on the timeline when the form did not send, rather than claiming it did', async () => {
+    send.mockResolvedValue({ error: { message: 'domain not verified' } });
+
+    await POST(request(VALID, freshIp()));
+
+    const written = activityCreate.mock.calls.map(([arg]) => arg.data.content);
+    expect(written.at(-1)).toContain('did not send');
+    expect(written.at(-1)).not.toContain('Waiting on them');
+  });
+
+  /**
+   * Everything worth having has already happened by the time this runs. A
+   * visitor shown "something went wrong" because a second email failed will
+   * fill the form in again, and the studio gets the same enquiry twice.
+   */
+  it('still confirms to the visitor when the second email throws', async () => {
+    leadFindUnique.mockRejectedValue(new Error('connection reset'));
+
+    const res = await POST(request(VALID, freshIp()));
+
+    expect(res.status).toBe(200);
+    expect(leadCreate).toHaveBeenCalledOnce();
   });
 });
 
@@ -419,12 +520,18 @@ describe('POST /api/contact — the acknowledgement', () => {
     expect(ack.html).toContain('Kiana Arabpour');
   });
 
-  it('names what they asked about and who is replying', async () => {
+  /**
+   * "A member of the sales team", never a name. Naming the rep in an automatic
+   * receipt promises the client a specific person before anybody has picked
+   * the lead up, and reads as a lie the moment somebody else rings.
+   */
+  it('names what they asked about, and promises the team rather than a person', async () => {
     await POST(request(VALID, freshIp()));
 
     const ack = ackTo(VALID.email);
     expect(ack.html).toContain('Web');
-    expect(ack.html).toContain('Evan');
+    expect(ack.html).toContain('A member of the sales team');
+    expect(ack.html).not.toContain('Evan');
   });
 
   it('puts their company in the subject, so it is not identical every send', async () => {

@@ -53,6 +53,20 @@ export const RATE_LIMITS = {
   /** Quote/interest submissions — unchanged. */
   interest: { max: 5, windowMs: 10 * 60 * 1000 },
   /**
+   * The brief form a client is emailed after enquiring.
+   *
+   * Its own budget rather than sharing the contact form's, because the two
+   * happen back to back on purpose: somebody enquires, gets the form in the
+   * same minute, and fills it in. On the contact form's budget of three, the
+   * enquiry itself spends one and a single correction to an answer spends the
+   * rest — so the person we just asked to answer is told to try again later.
+   *
+   * Looser than contact, too. Writing on the form requires holding a lead's
+   * unguessable token, so this is not an open endpoint; the limit is here to
+   * stop a runaway retry, not to keep strangers out.
+   */
+  briefForm: { max: 12, windowMs: 10 * 60 * 1000 },
+  /**
    * Tidying a call note. Staff-only and already behind a login, so this is
    * not about abuse — it is the one endpoint in the app that bills per
    * request, and a stuck retry loop on a page someone left open should cost

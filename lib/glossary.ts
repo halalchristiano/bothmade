@@ -199,6 +199,96 @@ export const SALES_GLOSSARY: GlossaryEntry[] = [
     sayIt: 'How many people land on your site and immediately leave.',
   },
   {
+    term: 'WCAG',
+    plain:
+      "The international rulebook for making a website usable by people with a disability — readable by a screen reader, operable without a mouse, legible without perfect eyesight.",
+    sayIt: 'Making sure your site works for people who cannot use a mouse or need bigger text.',
+    aliases: ['accessibility audit', 'accessibility'],
+  },
+  {
+    term: 'uptime SLA',
+    plain:
+      "A written promise about how much of the time the site will be up, with money back if it is not. Without one, 'we aim for reliable' is all you have.",
+    sayIt: "If it goes down more than we promised, you get money back — it's in writing.",
+    aliases: ['service level agreement', 'uptime guarantee'],
+  },
+  {
+    term: 'SSO',
+    plain:
+      "Single sign-on — staff log in once with the account they already have (Google, Microsoft) instead of yet another password to forget.",
+    sayIt: 'Your team signs in with their work account, no new password to remember.',
+    aliases: ['single sign-on'],
+  },
+  {
+    term: 'white-label',
+    plain:
+      "One system quietly serving several brands, each looking like its own product with its own logo and its own separate data.",
+    sayIt: 'The same system, sold under different brand names, kept completely apart.',
+    aliases: ['multi-tenant'],
+  },
+  {
+    term: 'WebGL',
+    plain:
+      "The technology that lets a browser draw proper 3D — something a customer can spin, resize and look inside, without downloading anything.",
+    sayIt: 'Customers can turn it around and look at it properly, right there in the browser.',
+    aliases: ['3D'],
+  },
+  {
+    term: 'push notification',
+    plain:
+      "A message that arrives on a phone's lock screen from your app, without email or a text message in between.",
+    sayIt: 'You reach them on their phone directly, without paying a platform for it.',
+    aliases: ['push notifications'],
+  },
+  {
+    term: 'managed hosting',
+    plain:
+      "Somewhere for the site to live, looked after by us — the servers, the updates, the certificates. When it breaks it is our phone that rings.",
+    sayIt: 'We keep it online and fix it when it breaks, so you never have to.',
+    aliases: ['hosting'],
+  },
+  {
+    term: 'data migration',
+    plain:
+      "Moving what you already have — pages, products, customers — onto the new system, so launch day does not start from an empty shelf.",
+    sayIt: 'Everything you have now comes with you instead of being retyped.',
+    aliases: ['content migration'],
+  },
+  {
+    term: 'App Store Optimization',
+    plain:
+      "The listing work that decides whether anyone finds your app once it is published — the name, the description, the screenshots people judge it on.",
+    sayIt: 'Making sure people actually find your app once it is in the store.',
+    aliases: ['ASO', 'app store submission'],
+  },
+  {
+    term: 'authentication',
+    plain:
+      "Proving somebody is who they say they are before letting them in — the sign-up, the login, the password reset.",
+    sayIt: 'Everyone gets their own login and only sees their own information.',
+    aliases: ['user accounts', 'auth'],
+  },
+  {
+    term: 'admin dashboard',
+    plain:
+      "A private screen where your team changes the things that need changing, without ringing a developer or touching the database.",
+    sayIt: 'A back office where your team runs the day-to-day themselves.',
+    aliases: ['admin panel'],
+  },
+  {
+    term: 'e-commerce',
+    plain: 'Selling online — a product list, a basket, and a way to take the money.',
+    sayIt: 'Customers can buy from you at two in the morning without you being awake.',
+    aliases: ['ecommerce'],
+  },
+  {
+    term: 'subscription',
+    plain:
+      "Charging the same customer every month automatically, instead of chasing a new sale each time.",
+    sayIt: 'The same customer pays every month without anyone having to ask.',
+    aliases: ['recurring billing', 'memberships'],
+  },
+  {
     term: 'organic',
     plain: "Traffic that arrives through unpaid search results, as opposed to from ads.",
     sayIt: 'People finding you on Google without you paying per click.',
