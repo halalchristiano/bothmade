@@ -690,6 +690,17 @@ export function QueueView() {
   // The same filters, or the header count says one thing and the list shows
   // another the moment a trade is picked.
   const visibleNoPhone = noPhone.filter((r) => match(r) && f.matches(r));
+  /*
+   * Reading your email, and no number to ring.
+   *
+   * The alert email promises the call sheet — and the call sheet is built from
+   * leads that have a phone number, so these landed at the very bottom of the
+   * page under a heading about missing numbers, which is not where anybody was
+   * told to look. They are still not callable, so they do not join the sheet;
+   * what changes is that the section says so and sorts above the pile nobody
+   * has opened.
+   */
+  const readingNoPhone = visibleNoPhone.filter((r) => r.reason === 'opened');
   const searchedNoSignal = noSignal.filter(match);
   const visibleNoSignal = searchedNoSignal.filter(nf.matches);
   const visibleScheduledHot = scheduledHot.filter(match);
@@ -1194,6 +1205,75 @@ export function QueueView() {
           rows would read as a bug, and the count is the fastest read there is
           on whether a send landed at all. Collapsed, counted, one click away.
       */}
+      {visibleNoPhone.length > 0 && (
+        <section className="mt-8">
+          <div
+            className={`rounded-xl border px-3.5 py-2.5 mb-3 ${
+              readingNoPhone.length > 0
+                ? 'border-amber-400/35 bg-amber-400/[0.08]'
+                : 'border-white/10 bg-white/[0.03]'
+            }`}
+          >
+            <p className="text-sm font-bold text-white/70 flex items-center gap-1.5">
+              <CalendarClock size={14} /> No phone number on file
+              <span className="ml-1 opacity-60">({visibleNoPhone.length})</span>
+            </p>
+            {/*
+                Said separately, because it is a different instruction.
+
+                A lead that has just opened your email and has no number is the
+                most valuable row on this page and the only one you cannot ring.
+                It used to sit in here unremarked, under a blurb telling you to
+                find a number some time — while the alert email had promised it
+                would be at the top of the call sheet. Reply to them now; find
+                the number afterwards.
+            */}
+            {readingNoPhone.length > 0 ? (
+              <p className="text-xs text-amber-200/80 mt-0.5 leading-relaxed">
+                {readingNoPhone.length === 1
+                  ? 'One of these is reading your email right now'
+                  : `${readingNoPhone.length} of these are reading your email right now`}{' '}
+                and there is no number to ring. Reply to that email while it is still open — that is the
+                whole opportunity. The rest are due a contact with nothing to dial.
+              </p>
+            ) : (
+              <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
+                These are due a contact but there is nothing to ring. Find a number, or email them instead.
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            {visibleNoPhone.map((row) => {
+              const reading = row.reason === 'opened';
+              return (
+                <Link
+                  key={row.id}
+                  href={`/admin/leads/${row.id}`}
+                  className={`block rounded-xl border p-3 transition-colors min-w-0 ${
+                    reading
+                      ? 'border-amber-400/30 bg-amber-400/[0.06] hover:bg-amber-400/[0.1]'
+                      : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]'
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-white/80 break-words flex items-center gap-1.5">
+                    {row.company}
+                    {reading && (
+                      <Badge tone="amber">
+                        <Eye size={10} /> {row.opens}×
+                      </Badge>
+                    )}
+                  </p>
+                  <p className="text-xs text-white/35 mt-0.5">
+                    {reading ? row.openHeadline : REASONS[row.reason].label}
+                    {row.email ? ` · ${row.email}` : ' · no email either'}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Gated on the unfiltered count, so narrowing this section to nothing
           can't take its own filter bar off screen with it and strand whoever
           set the filter. */}
@@ -1274,34 +1354,6 @@ export function QueueView() {
         </section>
       )}
 
-      {visibleNoPhone.length > 0 && (
-        <section className="mt-8">
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 mb-3">
-            <p className="text-sm font-bold text-white/70 flex items-center gap-1.5">
-              <CalendarClock size={14} /> No phone number on file
-              <span className="ml-1 opacity-60">({visibleNoPhone.length})</span>
-            </p>
-            <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
-              These are due a contact but there is nothing to ring. Find a number, or email them instead.
-            </p>
-          </div>
-          <div className="space-y-2">
-            {visibleNoPhone.map((row) => (
-              <Link
-                key={row.id}
-                href={`/admin/leads/${row.id}`}
-                className="block rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 hover:bg-white/[0.05] transition-colors min-w-0"
-              >
-                <p className="text-sm font-semibold text-white/80 break-words">{row.company}</p>
-                <p className="text-xs text-white/35 mt-0.5">
-                  {REASONS[row.reason].label}
-                  {row.email ? ` · ${row.email}` : ' · no email either'}
-                </p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

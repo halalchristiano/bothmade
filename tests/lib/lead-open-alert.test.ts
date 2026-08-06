@@ -143,6 +143,42 @@ describe('the alert', () => {
     expect(claim.where).toMatchObject({ id: 'lead_1', coldEmailOpenNotifiedAt: null });
   });
 
+  /**
+   * The alert told everybody the lead was "on the call sheet now, at the top"
+   * whether or not there was a number to ring. The call sheet is built from
+   * leads that HAVE a phone number — one without lands under "No phone number
+   * on file" — so a rep opened Call HQ, looked at the top, and the business
+   * the alert had just named was not there.
+   */
+  it('does not promise the call sheet when there is no number to ring', async () => {
+    prisma.lead.findUnique.mockResolvedValue(lead({ phone: null }));
+
+    await alertOnFirstRealOpen('lead_1');
+
+    const mail = sendEmail.mock.calls[0][0] as unknown as { html: string };
+    expect(mail.html).not.toMatch(/at the top/i);
+    expect(mail.html).toMatch(/no phone number/i);
+    // The move that does exist, while the signal is live.
+    expect(mail.html).toMatch(/reply to that email/i);
+
+    const posted = postSystemMessage.mock.calls[0][0] as unknown as { content: string };
+    expect(posted.content).not.toMatch(/top of the call sheet/i);
+    expect(posted.content).toMatch(/reply/i);
+  });
+
+  it('still sends them to the top of the sheet when there is a number', async () => {
+    prisma.lead.findUnique.mockResolvedValue(lead());
+
+    await alertOnFirstRealOpen('lead_1');
+
+    const mail = sendEmail.mock.calls[0][0] as unknown as { html: string };
+    expect(mail.html).toMatch(/top/i);
+    expect(mail.html).toContain('+15125550142');
+    expect((postSystemMessage.mock.calls[0][0] as unknown as { content: string }).content).toMatch(
+      /call sheet/i
+    );
+  });
+
   it('still posts to the thread when the lead has no owner to email', async () => {
     prisma.lead.findUnique.mockResolvedValue(lead({ assignedTo: null }));
 

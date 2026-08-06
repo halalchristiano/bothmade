@@ -239,6 +239,68 @@ describe('never rung', () => {
   });
 });
 
+/**
+ * A lead that is reading your email and has no number to ring.
+ *
+ * The alert email says to go and look at the call sheet. The call sheet is
+ * built from leads that have a phone number, so this one was filed in the last
+ * section on the page under a heading about missing numbers, unremarked, below
+ * a collapsed pile of businesses that had never opened anything. The rep was
+ * told to look at the top and it was at the bottom.
+ */
+describe('reading your email, no number to ring', () => {
+  const reader = (over: Record<string, unknown> = {}) =>
+    row({
+      phone: null,
+      reason: 'opened',
+      opens: 3,
+      openBand: 'hot',
+      openHeadline: 'Opened 3 times',
+      ...over,
+    });
+
+  it('says what to do instead of leaving it unremarked', async () => {
+    respondWith({ noPhone: [reader({ company: 'Silent Reader' })] });
+    render(<QueueView />);
+
+    expect(await screen.findByText(/reading your email right now/i)).toBeInTheDocument();
+    expect(screen.getByText(/reply to that email while it is still open/i)).toBeInTheDocument();
+  });
+
+  it('shows the open count on the row', async () => {
+    respondWith({ noPhone: [reader({ company: 'Silent Reader' })] });
+    render(<QueueView />);
+    await screen.findByText('Silent Reader');
+
+    expect(screen.getByText('3×')).toBeInTheDocument();
+    expect(screen.getByText(/opened 3 times/i)).toBeInTheDocument();
+  });
+
+  it('sorts above the pile nobody has opened', async () => {
+    respondWith({
+      noPhone: [reader({ company: 'Silent Reader' })],
+      noSignal: [row({ company: 'Never Opened', reason: 'no-follow-up' })],
+    });
+    render(<QueueView />);
+    await screen.findByText('Silent Reader');
+
+    const order = screen.getByText('Silent Reader').compareDocumentPosition(
+      screen.getByText(/emailed, nobody has opened it/i)
+    );
+    // Node.DOCUMENT_POSITION_FOLLOWING — the unopened pile comes after.
+    expect(order & 4).toBeTruthy();
+  });
+
+  it('keeps the plain wording when none of them are reading it', async () => {
+    respondWith({ noPhone: [row({ phone: null, company: 'Just Due' })] });
+    render(<QueueView />);
+    await screen.findByText('Just Due');
+
+    expect(screen.getByText(/there is nothing to ring/i)).toBeInTheDocument();
+    expect(screen.queryByText(/reading your email right now/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('filtering by state', () => {
   it('narrows to one territory', async () => {
     respondWith({

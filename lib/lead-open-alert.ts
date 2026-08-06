@@ -89,8 +89,10 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
   // costs nothing. Marked urgent so it sorts to the top of the thread.
   await postSystemMessage({
     content: `${lead.company} opened your cold email (${times}). ${
-      lead.phone ? `Call ${lead.phone} — they are` : 'They are'
-    } at the top of the call sheet now.`,
+      lead.phone
+        ? `Call ${lead.phone} — they are at the top of the call sheet now.`
+        : 'No phone number on this lead, so they are under "No phone number on file" rather than on the call sheet. Reply to that email while they still have it open.'
+    }`,
     fromUserId: lead.assignedTo?.id ?? null,
     relatedLeadId: lead.id,
     urgent: true,
@@ -111,12 +113,24 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
           `<p style="margin:0 0 14px;">${esc(who)} opened your cold email <strong>${esc(
             times
           )}</strong>.</p>` +
+          /*
+           * What to actually do, which is not the same sentence twice.
+           *
+           * This used to promise the call sheet either way. The call sheet is
+           * built from leads that HAVE a number — one without lands under "No
+           * phone number on file" at the bottom of the page, so a rep went
+           * looking for a lead that was never going to be where they were
+           * told. Say where it is, and give the move that exists: they are
+           * reading the email right now, so reply to it.
+           */
           `<p style="margin:0 0 14px;">${
             lead.phone
-              ? `Their number is <strong>${esc(lead.phone)}</strong>.`
-              : 'There is no phone number on this lead — the address is all we have.'
-          } They are on the call sheet now, at the top.</p>` +
-          `<p style="margin:0; font-size:13px; color:rgba(255,255,255,0.5);">One open means the message reached a live mailbox and somebody looked at it. It does not mean they read every word — but it is the best moment you will get to ring them.</p>`,
+              ? `Their number is <strong>${esc(lead.phone)}</strong>. They are on the call sheet now, at the top.`
+              : 'There is <strong>no phone number</strong> on this lead, so they are not on the call sheet — they are under "No phone number on file". Reply to that email while they still have it open, and find a number when you can.'
+          }</p>` +
+          `<p style="margin:0; font-size:13px; color:rgba(255,255,255,0.5);">One open means the message reached a live mailbox and somebody looked at it. It does not mean they read every word — but it is the best moment you will get to ${
+            lead.phone ? 'ring them' : 'land in front of them'
+          }.</p>`,
         ctaLabel: 'Open the lead',
         ctaUrl: leadUrl,
         footerNote: 'Bothmade — sent because a lead opened your email.',
