@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { uninvoicedPayments } from '@/lib/stage-gates';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { MOCKUPS_TO_BUILD_WHERE } from '@/lib/mockups';
 
 /**
  * The dashboard, reduced to the three questions a two-person studio actually
@@ -184,7 +185,9 @@ export async function GET() {
         },
       }),
 
-      prisma.lead.count({ where: { mockupRequested: true, mockupUrl: null, mockupFolderUrl: null } }),
+      // The same clause the Mockups page lists, so the badge and the page it
+      // links to can never disagree.
+      prisma.lead.count({ where: MOCKUPS_TO_BUILD_WHERE }),
 
       /**
        * Work that is finished and sitting there.

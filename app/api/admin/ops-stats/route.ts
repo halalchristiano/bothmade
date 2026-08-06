@@ -4,6 +4,7 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { projectBalance, type BalanceInstalment } from '@/lib/billing';
 import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
+import { MOCKUPS_TO_BUILD_WHERE } from '@/lib/mockups';
 
 const RANGE_LABELS: Record<StatsRange, string> = {
   week: 'This Week',
@@ -127,7 +128,7 @@ export async function GET(request: Request) {
     });
 
     const pendingMockups = await prisma.lead.findMany({
-      where: { mockupRequested: true, mockupUrl: null, mockupFolderUrl: null },
+      where: MOCKUPS_TO_BUILD_WHERE,
       orderBy: { mockupRequestedAt: 'asc' },
       take: 10,
       select: { id: true, company: true, mockupRequestedAt: true },

@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { normalizeUrl } from '@/lib/html';
 
@@ -84,6 +85,29 @@ interface MockupRow {
   sendFailedReason?: string | null;
   responseNote?: string | null;
 }
+
+/**
+ * What "still to build" means, in one place.
+ *
+ * Three screens counted it three different ways, so the dashboard could say
+ * "1 mockup to build" while the Mockups page listed several. Two of them
+ * required `mockupUrl: null`, which quietly excluded every lead that already
+ * has a preview deployment standing but no client folder — work that is very
+ * much still to do, and exactly the work the Mockups page shows.
+ *
+ * The folder is the deliverable. A preview deployment is a password-protected
+ * subdomain we look at; it is not something anybody has been given. So a lead
+ * is still to build while it has no folder, and it counts as work at all once
+ * somebody has either asked for a mockup or already started one.
+ *
+ * Used by the Mockups page, the dashboard's Deliver lane, and the ops stats.
+ * A number that disagrees with itself across three screens is a number people
+ * stop trusting on all three.
+ */
+export const MOCKUPS_TO_BUILD_WHERE: Prisma.LeadWhereInput = {
+  mockupFolderUrl: null,
+  OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
+};
 
 export const mockupInclude = { uploadedBy: { select: { name: true } } } as const;
 

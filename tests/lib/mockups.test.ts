@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
 
 /**
  * Attaching a mockup is the moment a deal stops waiting on design, so it
@@ -36,6 +37,7 @@ const {
   mockupExpiryFrom,
   mockupLinkExpired,
   mockupSignal,
+  MOCKUPS_TO_BUILD_WHERE,
 } = await import('@/lib/mockups');
 type LeadMockupDTO = import('@/lib/mockups').LeadMockupDTO;
 
@@ -377,5 +379,55 @@ describe('recording what happened to a send', () => {
     await expect(markMockupSendFailed('m1', 'nope')).resolves.toBeNull();
     vi.doUnmock('@/lib/prisma');
     vi.resetModules();
+  });
+});
+
+/**
+ * One definition of "still to build", read by three screens.
+ *
+ * The dashboard's Deliver lane said "1 mockup to build" while the Mockups
+ * page it links to listed several. Two of the three counters required
+ * `mockupUrl: null`, which silently excluded every lead that already has a
+ * preview deployment standing but no client folder — work very much still to
+ * do, and exactly what the Mockups page shows. A number that disagrees with
+ * itself across three screens is a number people stop trusting on all three.
+ */
+describe('what counts as still to build', () => {
+  it('is the absence of a client folder, not the absence of a preview', () => {
+    expect(MOCKUPS_TO_BUILD_WHERE).toEqual({
+      mockupFolderUrl: null,
+      OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
+    });
+  });
+
+  /**
+   * The preview deployment is a password-protected subdomain we look at. It
+   * is not something anybody has been given, so having one is not "built" —
+   * and requiring it to be absent is what made the counts disagree.
+   */
+  it('does not exclude a lead that already has a preview standing', () => {
+    expect(JSON.stringify(MOCKUPS_TO_BUILD_WHERE)).not.toContain('"mockupUrl":null');
+  });
+
+  it('is the same object every screen reads, not a copy per screen', async () => {
+    const [queue, today, ops] = await Promise.all([
+      readFile('app/api/admin/leads/mockup-queue/route.ts', 'utf8'),
+      readFile('app/api/admin/today/route.ts', 'utf8'),
+      readFile('app/api/admin/ops-stats/route.ts', 'utf8'),
+    ]);
+
+    for (const [name, source] of [
+      ['the Mockups page', queue],
+      ["the dashboard's Deliver lane", today],
+      ['the ops stats', ops],
+    ] as const) {
+      expect(source, `${name} should count with MOCKUPS_TO_BUILD_WHERE`).toContain(
+        'MOCKUPS_TO_BUILD_WHERE'
+      );
+      // The shape that caused the disagreement, in any of its spellings.
+      expect(source, `${name} still has its own idea of "to build"`).not.toMatch(
+        /mockupRequested:\s*true,\s*mockupUrl:\s*null/
+      );
+    }
   });
 });

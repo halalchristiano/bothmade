@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { mockupInclude, mockupSignal, toMockupDTO } from '@/lib/mockups';
+import { MOCKUPS_TO_BUILD_WHERE, mockupInclude, mockupSignal, toMockupDTO } from '@/lib/mockups';
 
 /**
  * Every lead waiting on a mockup, oldest request first — the dashboard widget
@@ -34,10 +34,7 @@ export async function GET() {
      * too, and previously appeared on neither tab.
      */
     const leads = await prisma.lead.findMany({
-      where: {
-        mockupFolderUrl: null,
-        OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
-      },
+      where: MOCKUPS_TO_BUILD_WHERE,
       orderBy: { mockupRequestedAt: 'asc' },
       select: {
         id: true,
