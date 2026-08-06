@@ -35,7 +35,10 @@ export type BriefAnswerKey =
   | 'priority'
   | 'authority'
   | 'timing'
-  | 'consequence';
+  | 'consequence'
+  | 'look'
+  | 'feel'
+  | 'audience';
 
 export const BRIEF_QUESTIONS: BriefQuestion[] = [
   {
@@ -106,12 +109,77 @@ export const BRIEF_QUESTIONS: BriefQuestion[] = [
       { value: 'Nothing much', label: 'Honestly, nothing much — it just bothers me' },
     ],
   },
+  /*
+   * How it should look, asked at the enquiry rather than three weeks later.
+   *
+   * These are the same three things the design brief asks before anybody
+   * opens a design tool — the look, the feeling, who it is talking to. Asked
+   * here they cost the client one more tap while they are already answering,
+   * and they mean the concept starts from something they said rather than
+   * from a guess. They are a starting point and the brief still gets signed
+   * properly; nothing here fixes the direction.
+   */
+  {
+    key: 'look',
+    question: 'Which of these is closest to how you want it to look?',
+    hint: 'A starting point, not a decision — we go through this properly before designing.',
+    options: [
+      { value: 'Clean and minimal', label: 'Clean and minimal — lots of space, nothing shouting' },
+      { value: 'Bold and modern', label: 'Bold and modern — big type, strong colour' },
+      { value: 'Warm and traditional', label: 'Warm and traditional — established, trustworthy' },
+      { value: 'Premium and understated', label: 'Premium and understated — quiet, expensive-looking' },
+      { value: 'Not sure yet', label: 'No idea — show me options' },
+    ],
+  },
+  {
+    key: 'feel',
+    question: 'When somebody lands on it, what should they think?',
+    options: [
+      { value: 'These people are the experts', label: 'These people know what they are doing' },
+      { value: 'This is a big, established company', label: 'This is a serious, established company' },
+      { value: 'These people are easy to deal with', label: 'These people would be easy to deal with' },
+      { value: 'This is good value', label: 'This is good value for money' },
+      { value: 'This is the premium option', label: 'This is the expensive one, and worth it' },
+    ],
+  },
+  {
+    key: 'audience',
+    question: 'Who is it mostly for?',
+    hint: 'It changes the wording, the layout and how much explaining it has to do.',
+    options: [
+      { value: 'Local customers', label: 'Local customers finding us nearby' },
+      { value: 'Other businesses', label: 'Other businesses' },
+      { value: 'A national audience', label: 'Customers anywhere in the country' },
+      { value: 'Existing customers', label: 'Mostly people who already use us' },
+      { value: 'A mix', label: 'A real mix' },
+    ],
+  },
+];
+
+/**
+ * What the new site has to let people actually do.
+ *
+ * The problem tick boxes say what is wrong; these say what "fixed" looks
+ * like, which is a different question and the one that decides scope. Tick
+ * boxes rather than radio because real answers are several of these at once.
+ */
+export const WANTED_CAPABILITIES: Array<{ key: string; label: string }> = [
+  { key: 'book', label: 'Book or request an appointment without ringing' },
+  { key: 'quote', label: 'Ask for a quote or estimate' },
+  { key: 'buy', label: 'Buy something and pay for it' },
+  { key: 'browse-work', label: 'See examples of our work' },
+  { key: 'prices', label: 'Find out what things cost' },
+  { key: 'find-us', label: 'Find us on Google in the first place' },
+  { key: 'self-serve', label: 'Answer their own questions without emailing us' },
+  { key: 'accounts', label: 'Log in and see their own information' },
 ];
 
 /** What comes back off the form, before it is trusted. */
 export interface BriefSubmission {
   problems: PainPointKey[];
   answers: Partial<Record<BriefAnswerKey, string>>;
+  /** Keys from WANTED_CAPABILITIES — what the new site has to let people do. */
+  wants: string[];
   extra: string;
 }
 
@@ -138,9 +206,15 @@ export function parseBriefSubmission(body: unknown): BriefSubmission {
     }
   }
 
+  const offered = new Set(WANTED_CAPABILITIES.map((c) => c.key));
+  const wants = Array.isArray(raw.wants)
+    ? [...new Set(raw.wants.filter((w): w is string => typeof w === 'string' && offered.has(w)))]
+    : [];
+
   return {
     problems,
     answers,
+    wants,
     extra: typeof raw.extra === 'string' ? raw.extra.trim().slice(0, 4000) : '',
   };
 }
@@ -176,10 +250,37 @@ export function briefToLeadFields(submission: BriefSubmission): {
     lines.push('What they say is wrong:');
     for (const key of problems) lines.push(`• ${PAIN_POINTS[key]}`);
   }
+  // What "fixed" looks like, which is the half that decides scope. The
+  // problems say what hurts; these say what the thing has to do instead.
+  if (submission.wants.length > 0) {
+    lines.push('');
+    lines.push('What it has to let people do:');
+    for (const key of submission.wants) {
+      const item = WANTED_CAPABILITIES.find((c) => c.key === key);
+      if (item) lines.push(`• ${item.label}`);
+    }
+  }
   const priority = labelFor('priority', answers.priority);
   if (priority) {
     lines.push('');
     lines.push(`Fix first: ${priority}`);
+  }
+  /*
+   * The look, in their words, at the moment they were willing to answer.
+   *
+   * Whoever builds the concept reads this before opening a design tool, and
+   * it is the difference between a first version aimed at something they
+   * said and one aimed at a guess.
+   */
+  const look = labelFor('look', answers.look);
+  const feel = labelFor('feel', answers.feel);
+  const audience = labelFor('audience', answers.audience);
+  if (look || feel || audience) {
+    lines.push('');
+    lines.push('How they want it to come across:');
+    if (look) lines.push(`• Look: ${look}`);
+    if (feel) lines.push(`• Should say: ${feel}`);
+    if (audience) lines.push(`• Mostly for: ${audience}`);
   }
   if (extra) {
     lines.push('');
@@ -202,6 +303,7 @@ export function briefToLeadFields(submission: BriefSubmission): {
 export function isWorthRecording(submission: BriefSubmission): boolean {
   return (
     submission.problems.length > 0 ||
+    submission.wants.length > 0 ||
     Object.keys(submission.answers).length > 0 ||
     submission.extra.length > 0
   );

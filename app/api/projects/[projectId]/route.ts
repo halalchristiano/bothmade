@@ -7,6 +7,9 @@ import { ensureInstalments } from '@/lib/instalments';
 import { revisionState } from '@/lib/design-feedback';
 import { designStage } from '@/lib/design-stages';
 import { DIRECTION_STATEMENT, directionStatus } from '@/lib/design-direction';
+import { sendProjectLiveEmail } from '@/lib/email';
+import { resolveSiteUrl } from '@/lib/site-url';
+import { clientWantsEmail } from '@/lib/email-preferences';
 
 export async function GET(
   request: NextRequest,
@@ -184,6 +187,9 @@ export async function GET(
             // considered list instead of firing off three emails, and the day
             // a round becomes billable is never a surprise.
             round: project.designRound,
+            // So the admin panel can offer "ask them for it" when the brief
+            // that design is supposed to answer has never been filled in.
+            briefSignedAt: project.designDirection?.signedAt ?? null,
             // What this round is called, and what it means — one vocabulary,
             // shared with the email, so a client is never told "revision 1"
             // in one place and "initial design" in the other.
@@ -292,6 +298,49 @@ export async function PUT(
             : undefined,
       },
     });
+
+    /*
+     * The launch, said out loud.
+     *
+     * Setting the live URL lit up a delivery moment on the client's dashboard
+     * and told them nothing — so the one email in the whole engagement that is
+     * unambiguously good news arrived only if they happened to log in that
+     * week. Fires once, on the transition from no URL to a URL, so editing a
+     * typo in it later does not announce the launch a second time.
+     */
+    const justWentLive = Boolean(updatedProject.liveUrl) && !project.liveUrl;
+    if (justWentLive && updatedProject.liveUrl) {
+      try {
+        const client = await prisma.client.findUnique({
+          where: { id: project.clientId },
+          select: { email: true, contactName: true, emailPreferences: true },
+        });
+        const owed = await prisma.instalment.count({
+          where: { projectId, status: { not: 'paid' } },
+        });
+        if (client && clientWantsEmail(client.emailPreferences, 'statusUpdates')) {
+          await sendProjectLiveEmail({
+            to: client.email,
+            contactName: client.contactName,
+            projectName: updatedProject.name,
+            liveUrl: updatedProject.liveUrl,
+            dashboardUrl: `${resolveSiteUrl()}/client/${projectId}`,
+            balanceOutstanding: owed > 0,
+          });
+        }
+        await prisma.projectUpdate.create({
+          data: {
+            projectId,
+            title: 'Your project is live',
+            description: `It's live at ${updatedProject.liveUrl}. Everything stays on your dashboard — the agreement, the invoices, and a message thread that reaches us directly.`,
+            statusStage: updatedProject.status,
+            userId: session.type === 'user' ? session.userId : null,
+          },
+        });
+      } catch (e) {
+        console.error('Launch announcement failed after the URL was saved:', e);
+      }
+    }
 
     if (body.acknowledgeHandoff === true && !project.handoffAcknowledgedAt && project.convertedFromLeadId) {
       const lead = await prisma.lead.findUnique({ where: { id: project.convertedFromLeadId } });

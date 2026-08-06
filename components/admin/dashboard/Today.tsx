@@ -110,6 +110,8 @@ interface TodayData {
       client: { company: string };
     }>;
     mockupRequests: number;
+    /** Answered by the client, waiting on us to send the next round. */
+    designsOwed: Array<{ id: string; company: string; since: string; nextStage: string }>;
     /** Folder attached, nothing sent. Finished work nobody is chasing. */
     mockupsBuiltNotSent: Array<{
       id: string;
@@ -349,6 +351,110 @@ export function Today() {
     };
   })();
 
+/**
+ * The things somebody is waiting on us for, pinned above everything else.
+ *
+ * The three lanes below are ordered by the shape of the work — sell it, get
+ * paid, ship it — which is right for browsing and wrong for the four or five
+ * items where a person on the other end has stopped and cannot move until we
+ * do something. Those were scattered one lane each, and the expensive ones
+ * are the quietest: a mockup request nobody built, a design round we owe
+ * after the client answered, finished work never sent.
+ *
+ * Every row here has the same shape — somebody is blocked on us, and one
+ * click unblocks them. It renders nothing at all when that is not true,
+ * because a permanent band that usually says "all clear" is a band people
+ * stop seeing.
+ */
+function WaitingOnUs({
+  sell,
+  deliver,
+}: {
+  sell: TodayData['sell'];
+  deliver: TodayData['deliver'];
+}) {
+  const rows: Array<{ key: string; icon: typeof Palette; text: string; href: string; cta: string }> = [];
+
+  for (const f of deliver.unreadDesignFeedback) {
+    const days = daysSince(f.createdAt);
+    rows.push({
+      key: `fb-${f.id}`,
+      icon: Eye,
+      text: `${f.project.client.company} sent design feedback${days > 0 ? ` ${days}d ago` : ''} — nobody has read it`,
+      href: `/admin/projects/${f.project.id}`,
+      cta: 'Read it',
+    });
+  }
+  for (const d of deliver.designsOwed ?? []) {
+    const days = daysSince(d.since);
+    rows.push({
+      key: `dz-${d.id}`,
+      icon: Palette,
+      text: `${d.company} is waiting on ${d.nextStage.toLowerCase()}${days > 0 ? ` — ${days}d` : ''}`,
+      href: `/admin/projects/${d.id}`,
+      cta: 'Send it',
+    });
+  }
+  if (deliver.mockupRequests > 0) {
+    rows.push({
+      key: 'mk-req',
+      icon: Palette,
+      text: `${deliver.mockupRequests} mockup${deliver.mockupRequests === 1 ? '' : 's'} requested and not built`,
+      href: '/admin/mockup-queue',
+      cta: 'Build it',
+    });
+  }
+  for (const m of deliver.mockupsBuiltNotSent) {
+    rows.push({
+      key: `mk-${m.id}`,
+      icon: Send,
+      text: `${m.company} — mockup ready, never sent`,
+      href: `/admin/leads/${m.id}`,
+      cta: 'Send it',
+    });
+  }
+  for (const m of sell.approvedMockups) {
+    rows.push({
+      key: `ap-${m.id}`,
+      icon: CheckCircle2,
+      text: `${m.lead.company} approved their mockup — they are waiting on a proposal`,
+      href: `/admin/leads/${m.lead.id}`,
+      cta: 'Open the deal',
+    });
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.05] p-4">
+      <p className="mb-2.5 font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
+        Waiting on us — {rows.length}
+      </p>
+      <div className="space-y-1.5">
+        {rows.slice(0, 6).map((row) => {
+          const Icon = row.icon;
+          return (
+            <Link
+              key={row.key}
+              href={row.href}
+              className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5 transition-colors hover:bg-white/[0.06]"
+            >
+              <span className="flex min-w-0 items-center gap-2.5 text-sm text-white/85">
+                <Icon size={14} className="shrink-0 text-amber-300" />
+                <span className="truncate">{row.text}</span>
+              </span>
+              <span className="shrink-0 text-xs font-semibold text-amber-200">{row.cta} →</span>
+            </Link>
+          );
+        })}
+        {rows.length > 6 && (
+          <p className="pt-1 text-xs text-white/35">and {rows.length - 6} more, in the lanes below.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
   return (
     <div className="space-y-4">
       {/* One sentence, one button. Everything else on this page is detail. */}
@@ -365,6 +471,8 @@ export function Today() {
           <ArrowRight size={15} />
         </Link>
       </div>
+
+      <WaitingOnUs sell={sell} deliver={deliver} />
 
       <div className="grid gap-3 lg:grid-cols-3">
         <Lane

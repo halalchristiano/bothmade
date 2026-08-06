@@ -3,7 +3,14 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { buildTemplatedEmail } from '@/lib/send-templated-email';
 import { composeOnly, type ComposedEmail } from '@/lib/email-preview';
-import { mockupRequestEmail, renderShell, sendDesignPresentedEmail, sendMockupEmail } from '@/lib/email';
+import {
+  mockupRequestEmail,
+  renderShell,
+  sendDesignBriefRequestEmail,
+  sendDesignPresentedEmail,
+  sendMockupEmail,
+  sendProjectLiveEmail,
+} from '@/lib/email';
 import { designStage } from '@/lib/design-stages';
 import { reviewNoticeLine, startReview } from '@/lib/design-approval';
 import { escMultiline, escParagraphs, normalizeUrl } from '@/lib/html';
@@ -173,6 +180,47 @@ async function buildPreview(
           stageLabel: stage.label,
           stageMeaning: stage.meaning,
           designUrl: (typed && normalizeUrl(typed)) || project.designUrl,
+        })
+      );
+    }
+
+    case 'design-brief-request': {
+      const projectId = segmentAfter(path, 'projects');
+      if (!projectId) return [];
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true, client: { select: { email: true, contactName: true } } },
+      });
+      if (!project) return [];
+      return composeOnly(() =>
+        sendDesignBriefRequestEmail({
+          to: project.client.email,
+          contactName: project.client.contactName,
+          projectName: project.name,
+          briefUrl: `${resolveSiteUrl()}/client/${project.id}`,
+        })
+      );
+    }
+
+    case 'project-live': {
+      const projectId = segmentAfter(path, 'projects');
+      if (!projectId) return [];
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true, client: { select: { email: true, contactName: true } } },
+      });
+      if (!project) return [];
+      const owed = await prisma.instalment.count({
+        where: { projectId, status: { not: 'paid' } },
+      });
+      return composeOnly(() =>
+        sendProjectLiveEmail({
+          to: project.client.email,
+          contactName: project.client.contactName,
+          projectName: project.name,
+          liveUrl: String(payload.liveUrl ?? ''),
+          dashboardUrl: `${resolveSiteUrl()}/client/${project.id}`,
+          balanceOutstanding: owed > 0,
         })
       );
     }

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
 
 /**
  * Nothing leaves this application without somebody seeing it first.
@@ -249,5 +250,40 @@ describe('asking for a mockup', () => {
   it('is a PATCH — the POST on that path is something else entirely', () => {
     expect(sendRouteFor(path, 'PATCH')).not.toBeNull();
     expect(sendRouteFor(path, 'POST')).toBeNull();
+  });
+});
+
+describe('the rest of the chain', () => {
+  /**
+   * Two steps in the engagement sent the client nothing at all, and both were
+   * found by walking the chain rather than by anybody complaining.
+   *
+   * The launch — the one unambiguously good email in the whole engagement —
+   * lit up a delivery moment on the dashboard and told nobody. And the design
+   * brief, which is a Client Dependency under Section 6, was offered on their
+   * dashboard and never asked for, so a project could sit waiting on a form
+   * the client did not know existed.
+   */
+  it('stops on the launch announcement, and on nothing else that endpoint saves', () => {
+    const path = '/api/projects/proj_1';
+
+    expect(sendRouteFor(path, 'PATCH', { liveUrl: 'https://northgatedental.com' })).not.toBeNull();
+    expect(sendRouteFor(path, 'PATCH', { name: 'Renamed' })).toBeNull();
+    expect(sendRouteFor(path, 'PATCH', { liveUrl: '' })).toBeNull();
+    expect(sendRouteFor(path, 'PATCH', { timeline: '8 weeks' })).toBeNull();
+  });
+
+  it('stops on asking a client for their design brief', () => {
+    expect(sendRouteFor('/api/admin/projects/proj_1/design-brief-request', 'POST')).not.toBeNull();
+  });
+
+  /** Every named preview kind has to be one the endpoint can actually build. */
+  it('names only previews the endpoint knows how to build', async () => {
+    const source = await readFile('app/api/admin/email/preview/route.ts', 'utf8');
+
+    for (const spec of SEND_ROUTES) {
+      if (!spec.preview) continue;
+      expect(source, `no preview builder for "${spec.preview}"`).toContain(`case '${spec.preview}'`);
+    }
   });
 });

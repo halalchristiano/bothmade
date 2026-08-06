@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ENQUIRY_PROBLEMS } from '@/lib/contact-enquiry';
-import { BRIEF_QUESTIONS, type BriefAnswerKey } from '@/lib/client-brief-form';
+import { BRIEF_QUESTIONS, WANTED_CAPABILITIES, type BriefAnswerKey } from '@/lib/client-brief-form';
 import type { PainPointKey } from '@/lib/leads';
 
 /**
@@ -32,6 +32,8 @@ export function BriefForm({
 }) {
   const [problems, setProblems] = useState<PainPointKey[]>(initialProblems);
   const [answers, setAnswers] = useState<Partial<Record<BriefAnswerKey, string>>>({});
+  /** What the new site has to let people do — the other half of the problems. */
+  const [wants, setWants] = useState<string[]>([]);
   const [extra, setExtra] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -39,9 +41,14 @@ export function BriefForm({
 
   const toggleProblem = (key: PainPointKey) =>
     setProblems((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const toggleWant = (key: string) =>
+    setWants((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   const answered =
-    problems.length > 0 || Object.keys(answers).length > 0 || extra.trim().length > 0;
+    problems.length > 0 ||
+    wants.length > 0 ||
+    Object.keys(answers).length > 0 ||
+    extra.trim().length > 0;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +62,7 @@ export function BriefForm({
       const res = await fetch(`/api/public/brief/${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ problems, answers, extra }),
+        body: JSON.stringify({ problems, wants, answers, extra }),
       });
       if (res.ok) setSent(true);
       else {
@@ -113,6 +120,37 @@ export function BriefForm({
                   className="mt-1 h-4 w-4 shrink-0 accent-sky-400 cursor-pointer"
                 />
                 <span className="leading-snug">{problem.ask}</span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      {/* What "fixed" looks like. The problems above say what hurts; this
+          says what the thing has to do instead, which is a different
+          question and the one that decides what gets built. */}
+      <fieldset className="border-0 p-0 m-0">
+        <legend className="text-lg font-semibold mb-1">
+          What should the new one let people do?
+        </legend>
+        <p className="text-sm text-white/40 mb-5">Tick everything that matters. Most people tick a few.</p>
+        <div className="grid sm:grid-cols-2 gap-x-6">
+          {WANTED_CAPABILITIES.map((item) => {
+            const checked = wants.includes(item.key);
+            return (
+              <label
+                key={item.key}
+                className={`flex items-start gap-3 py-2.5 cursor-pointer transition-colors ${
+                  checked ? 'text-white' : 'text-white/55 hover:text-white/80'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleWant(item.key)}
+                  className="mt-1 h-4 w-4 shrink-0 accent-sky-400 cursor-pointer"
+                />
+                <span className="leading-snug">{item.label}</span>
               </label>
             );
           })}

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { uninvoicedPayments } from '@/lib/stage-gates';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { MOCKUPS_TO_BUILD_WHERE } from '@/lib/mockups';
+import { nextDesignStage } from '@/lib/design-stages';
 
 /**
  * The dashboard, reduced to the three questions a two-person studio actually
@@ -44,6 +45,7 @@ export async function GET() {
       activeProjects,
       stalledProjects,
       mockupRequests,
+      designsOwed,
       mockupsBuiltNotSent,
       unreadDesignFeedback,
     ] = await Promise.all([
@@ -190,6 +192,34 @@ export async function GET() {
       prisma.lead.count({ where: MOCKUPS_TO_BUILD_WHERE }),
 
       /**
+       * A design the client has answered, waiting on us to send the next
+       * round.
+       *
+       * Presented, then their feedback cleared the deadline — so their review
+       * clock has stopped, and the payment gate behind Design Approval has
+       * stopped with it. Nothing chases us for this, which is exactly why it
+       * belongs at the top of the screen rather than inside a project.
+       */
+      prisma.project
+        .findMany({
+          where: {
+            designPresentedAt: { not: null },
+            designReviewEndsAt: null,
+            designApprovedAt: null,
+            status: { not: 'complete' },
+          },
+          orderBy: { updatedAt: 'asc' },
+          take: 5,
+          select: {
+            id: true,
+            designRound: true,
+            updatedAt: true,
+            client: { select: { company: true } },
+          },
+        })
+        .catch(() => []),
+
+      /**
        * Work that is finished and sitting there.
        *
        * The folder is put together, the link goes on the lead, and then the
@@ -268,6 +298,14 @@ export async function GET() {
           activeProjects,
           stalledProjects,
           mockupRequests,
+          // Named with the round the client is waiting for, so the dashboard
+          // can say "owes Revision 1" rather than "owes a design".
+          designsOwed: designsOwed.map((p) => ({
+            id: p.id,
+            company: p.client.company,
+            since: p.updatedAt,
+            nextStage: nextDesignStage(p.designRound).label,
+          })),
           mockupsBuiltNotSent,
           // Blocking, and silent until now: their clock has stopped and the
           // project cannot move until somebody here reads this.

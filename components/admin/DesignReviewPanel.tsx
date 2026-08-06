@@ -27,6 +27,8 @@ import { designStage, nextDesignStage } from '@/lib/design-stages';
 
 export interface DesignReview {
   presentedAt: string | null;
+  /** Whether the client has filled in the design brief we design against. */
+  briefSignedAt?: string | null;
   reviewEndsAt: string | null;
   approvedAt: string | null;
   deemed: boolean;
@@ -86,6 +88,31 @@ export function DesignReviewPanel({
       );
       setNote('');
       setDesignUrl('');
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const askForBrief = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/design-brief-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || 'Something went wrong.');
+        return;
+      }
+      setNotice(
+        data?.sent
+          ? 'Asked — the brief form is on their dashboard and they know it now.'
+          : 'Recorded, but the email did not go out. Tell them yourself.'
+      );
       onChanged();
     } finally {
       setBusy(false);
@@ -181,6 +208,30 @@ export function DesignReviewPanel({
 
   return (
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
+      {/* The brief comes first, and nothing ever asked for it.
+          The client's dashboard has always offered the form; nobody told them
+          it was there. It is a Client Dependency under Section 6 — a delay in
+          providing one extends the timeline day for day — so designing
+          without it means guessing, and guessing is what spends revision
+          rounds. */}
+      {!review.briefSignedAt && !review.presentedAt && (
+        <div className="mb-3 rounded-lg border border-purple-400/25 bg-purple-400/[0.07] p-3">
+          <p className="text-xs font-semibold text-purple-200">No design brief yet</p>
+          <p className="mt-0.5 text-xs text-white/50">
+            The first design would be our guess rather than their brief. Their dashboard has the
+            form; nothing has told them it is there.
+          </p>
+          <button
+            type="button"
+            onClick={askForBrief}
+            disabled={busy}
+            className="mt-2 rounded-lg border border-purple-400/40 bg-purple-400/10 px-3 py-1.5 text-xs font-semibold text-purple-100 transition-colors hover:bg-purple-400/20 disabled:opacity-40"
+          >
+            Ask them for it
+          </button>
+        </div>
+      )}
+
       <p className="flex items-center gap-1.5 text-sm font-semibold">
         {awaitingNextRound ? (
           <>

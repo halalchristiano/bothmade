@@ -1796,6 +1796,106 @@ export async function sendDesignPresentedEmail(input: {
  * The design link goes with it, because "approved" is exactly when somebody
  * wants to forward it to whoever else needs to see it.
  */
+/**
+ * "Your project is live."
+ *
+ * The end of the whole chain, and it was silent. Setting the live URL lit up
+ * a delivery moment on the client's dashboard and told them nothing — so the
+ * one email in the entire engagement that is unambiguously good news only
+ * arrived if they happened to log in that week.
+ *
+ * Says what is now theirs, and what happens next, because "we are finished"
+ * is also the moment a client wonders who to ring when something breaks.
+ */
+export async function sendProjectLiveEmail(input: {
+  to: string;
+  contactName: string | null;
+  projectName: string;
+  liveUrl: string;
+  dashboardUrl: string;
+  /** True while any instalment is still outstanding — Section 7. */
+  balanceOutstanding?: boolean;
+}): Promise<SendResult> {
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `${input.projectName} is live`,
+    html: renderShell({
+      eyebrow: 'Launched',
+      title: `${input.projectName} is live`,
+      bodyHtml:
+        `<p>Hi ${esc(input.contactName) || 'there'},</p>` +
+        `<p>It's live. <a href="${safeUrl(input.liveUrl)}" style="color:#7dd3fc;">${esc(
+          input.liveUrl
+        )}</a> — go and have a look.</p>` +
+        `<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+           <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">What happens now</p>
+           <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.7);">
+             Everything stays on your dashboard — the agreement, the invoices, and a message thread
+             that reaches us directly. If anything looks wrong, tell us there rather than sitting on
+             it; the warranty period in Section 16 of your agreement starts today.
+           </p>
+         </div>` +
+        (input.balanceOutstanding
+          ? `<p style="font-size:13px; color:rgba(255,255,255,0.55);">
+               There is still a balance outstanding on the project. Under Section 7 the final
+               handover — files, exports and transfers — completes once it clears; the site itself
+               is up and running either way.
+             </p>`
+          : `<p style="font-size:13px; color:rgba(255,255,255,0.55);">
+               Paid in full, so everything is yours: the files, the accounts, all of it. Ask on the
+               dashboard whenever you need a copy.
+             </p>`),
+      ctaLabel: 'Open your dashboard',
+      ctaUrl: input.dashboardUrl,
+    }),
+  });
+}
+
+/**
+ * "We need the design brief before we can design anything."
+ *
+ * The client dashboard has always had a card asking for it, and nothing ever
+ * told them the card was there. Design is the next milestone and the brief is
+ * a Client Dependency under Section 6 — delays in providing one extend the
+ * timeline day for day — so a project could sit waiting on a form the client
+ * did not know existed, with the clock running against them.
+ */
+export async function sendDesignBriefRequestEmail(input: {
+  to: string;
+  contactName: string | null;
+  projectName: string;
+  briefUrl: string;
+}): Promise<SendResult> {
+  return sendEmailDetailed({
+    to: input.to,
+    subject: `Before we design anything — ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Design brief',
+      title: 'What should it look like?',
+      bodyHtml:
+        `<p>Hi ${esc(input.contactName) || 'there'},</p>` +
+        `<p>We know what <strong style="color:#fff;">${esc(
+          input.projectName
+        )}</strong> has to do. This is the other half — what it should look and feel like.</p>` +
+        `<div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+           <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">It takes about five minutes</p>
+           <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.7);">
+             A few sites you like and why, a few you don't, three words for how it should feel, and
+             anything that is already fixed — your logo, your colours, a typeface we have to design
+             around. The "why" is the half that matters: two people send the same reference meaning
+             opposite things by it.
+           </p>
+         </div>` +
+        `<p style="font-size:13px; color:rgba(255,255,255,0.55);">
+           We can start without it, but the first design would be our guess rather than your brief —
+           and guessing is what spends revision rounds.
+         </p>`,
+      ctaLabel: 'Fill in the design brief',
+      ctaUrl: input.briefUrl,
+    }),
+  });
+}
+
 export async function sendDesignApprovedEmail(input: {
   to: string;
   contactName: string | null;

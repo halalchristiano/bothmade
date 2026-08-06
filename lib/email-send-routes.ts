@@ -101,6 +101,20 @@ export const SEND_ROUTES: SendRouteSpec[] = [
   { match: /^\/api\/admin\/projects\/[^/]+\/instalments$/, action: 'Email the instalment to pay' },
   { match: /^\/api\/admin\/projects\/[^/]+\/payment-reminder$/, action: 'Send the payment reminder' },
   {
+    match: /^\/api\/admin\/projects\/[^/]+\/design-brief-request$/,
+    action: 'Ask the client for their design brief',
+    preview: 'design-brief-request',
+  },
+  {
+    // Setting the live URL announces the launch. Every other field on this
+    // endpoint — the name, the timeline, the deliverables — mails nobody.
+    match: /^\/api\/projects\/[^/]+$/,
+    methods: ['PATCH'],
+    when: (body) => typeof body.liveUrl === 'string' && body.liveUrl.trim().length > 0,
+    action: 'Publish the live URL, and tell the client it has launched',
+    preview: 'project-live',
+  },
+  {
     match: /^\/api\/admin\/projects\/[^/]+\/design-review$/,
     action: 'Send the design for review, and start the five-day clock',
     preview: 'design-review',
