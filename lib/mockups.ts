@@ -106,6 +106,10 @@ interface MockupRow {
  */
 export const MOCKUPS_TO_BUILD_WHERE: Prisma.LeadWhereInput = {
   mockupFolderUrl: null,
+  // Already delivered by hand. The work is done; it simply did not go out
+  // through the button, and a queue that cannot be told that keeps showing
+  // finished work as outstanding forever.
+  mockupSentManuallyAt: null,
   OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
 };
 

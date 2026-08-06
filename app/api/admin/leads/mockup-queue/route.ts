@@ -90,6 +90,7 @@ export async function GET() {
               email: true,
               mockupUrl: true,
               mockupFolderUrl: true,
+              mockupSentManuallyAt: true,
             },
           },
         },

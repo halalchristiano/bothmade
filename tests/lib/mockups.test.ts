@@ -396,6 +396,8 @@ describe('what counts as still to build', () => {
   it('is the absence of a client folder, not the absence of a preview', () => {
     expect(MOCKUPS_TO_BUILD_WHERE).toEqual({
       mockupFolderUrl: null,
+      // Work already delivered by hand is finished, not outstanding.
+      mockupSentManuallyAt: null,
       OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
     });
   });
@@ -429,5 +431,37 @@ describe('what counts as still to build', () => {
         /mockupRequested:\s*true,\s*mockupUrl:\s*null/
       );
     }
+  });
+});
+
+/**
+ * Delivered, just not through here.
+ *
+ * The send button mails the folder on a tracked link, and the email it writes
+ * says the mockup is "a working preview, not a picture of one". True almost
+ * every time; once it was not, so the right call was a written email and the
+ * button was deliberately not pressed — which left finished work sitting on
+ * the build queue as outstanding forever, because the only thing that could
+ * clear it was the button that should not have been used.
+ */
+describe('a mockup sent by hand', () => {
+  it('comes off the build queue', () => {
+    expect(MOCKUPS_TO_BUILD_WHERE).toMatchObject({ mockupSentManuallyAt: null });
+  });
+
+  /**
+   * It is a third state, not a synonym for either of the other two. The queue
+   * has to be able to tell "still to do" from "done, elsewhere" — and from
+   * "done, here", which is the only one with a tracked link behind it.
+   */
+  it('is still only excluded on the folder being absent, not instead of it', () => {
+    expect(MOCKUPS_TO_BUILD_WHERE).toMatchObject({
+      mockupFolderUrl: null,
+      mockupSentManuallyAt: null,
+    });
+    expect(MOCKUPS_TO_BUILD_WHERE.OR).toEqual([
+      { mockupRequested: true },
+      { mockupUrl: { not: null } },
+    ]);
   });
 });

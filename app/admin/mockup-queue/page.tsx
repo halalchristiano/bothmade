@@ -162,6 +162,8 @@ interface LiveMockup {
     email: string | null;
     mockupUrl: string | null;
     mockupFolderUrl: string | null;
+    /** Marked delivered outside the system — no email, no tracked link. */
+    mockupSentManuallyAt?: string | null;
   };
 }
 
@@ -185,6 +187,8 @@ export default function MockupQueuePage() {
   /** Which card has its send panel open. One at a time — this is a list. */
   const [sendingOpenId, setSendingOpenId] = useState<string | null>(null);
   const [sendNotice, setSendNotice] = useState<{ id: string; tone: 'ok' | 'error'; text: string } | null>(null);
+  /** Which lead is being asked "are you sure you sent that yourself?". */
+  const [confirmingByHand, setConfirmingByHand] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const load = async () => {
@@ -242,6 +246,34 @@ export default function MockupQueuePage() {
       await load();
     } catch {
       setSendNotice({ id: m.id, tone: 'error', text: 'Could not reach the server — try again.' });
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  /**
+   * Delivered, just not through here.
+   *
+   * Takes the lead off the build queue without pretending an email went from
+   * this system. Two clicks rather than one: a stray press removes work from
+   * the only list that would have reminded anybody it existed.
+   */
+  const markSentByHand = async (leadId: string) => {
+    setSendingId(leadId);
+    setSendNotice(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${leadId}/mockup-sent-by-hand`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setSendNotice({ id: leadId, tone: 'error', text: data?.error ?? 'Could not record that.' });
+        return;
+      }
+      setConfirmingByHand(null);
+      await load();
     } finally {
       setSendingId(null);
     }
@@ -433,6 +465,30 @@ export default function MockupQueuePage() {
                           ? 'Send to client'
                           : 'Send again'}
                   </button>
+                  {/* Same third state as the build queue: this one went out by
+                      hand, so stamp it rather than sending a second copy. */}
+                  {m.status === 'draft' && !m.lead.mockupSentManuallyAt && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirmingByHand === m.lead.id
+                          ? markSentByHand(m.lead.id)
+                          : setConfirmingByHand(m.lead.id)
+                      }
+                      disabled={sendingId === m.lead.id}
+                      className={`rounded-lg border px-2.5 py-1.5 text-xs transition-colors disabled:opacity-40 ${
+                        confirmingByHand === m.lead.id
+                          ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
+                          : 'border-white/15 text-white/50 hover:bg-white/5'
+                      }`}
+                    >
+                      {sendingId === m.lead.id
+                        ? 'Recording…'
+                        : confirmingByHand === m.lead.id
+                          ? 'Sure? Nothing gets emailed'
+                          : 'Sent it myself'}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -564,6 +620,56 @@ export default function MockupQueuePage() {
                   submitLabel="Attach folder"
                   placeholder="drive.google.com/drive/folders/..."
                 />
+
+                {/* The third state.
+                    The send button mails the folder on a tracked link and
+                    says the mockup is "a working preview, not a picture of
+                    one" — true almost every time, and once it was not, so
+                    the right call was a written email and the button was
+                    deliberately not pressed. That left finished work sitting
+                    here as outstanding forever, because the only thing that
+                    could clear it was the button that should not have been
+                    used. Two clicks, because a stray press removes work from
+                    the one list that would have reminded anybody it existed. */}
+                <div className="mt-3 border-t border-white/[0.06] pt-3">
+                  {confirmingByHand === lead.id ? (
+                    <div className="rounded-lg border border-amber-400/25 bg-amber-400/[0.06] p-3">
+                      <p className="text-xs text-white/70">
+                        This takes {lead.company} off the queue without sending anything. Use it when
+                        you have already sent the mockup yourself — there will be no tracked link, so
+                        nothing will record them opening it.
+                      </p>
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => markSentByHand(lead.id)}
+                          disabled={sendingId === lead.id}
+                          className="rounded-lg bg-amber-400/90 px-3 py-1.5 text-xs font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-40"
+                        >
+                          {sendingId === lead.id ? 'Recording…' : 'Yes — I sent it myself'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingByHand(null)}
+                          className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/5"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {sendNotice?.id === lead.id && sendNotice.tone === 'error' && (
+                        <p className="mt-2 text-xs text-red-300">{sendNotice.text}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingByHand(lead.id)}
+                      className="text-xs text-white/40 transition-colors hover:text-white/70"
+                    >
+                      Already sent this one yourself? Mark it done →
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );

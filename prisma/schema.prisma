@@ -410,6 +410,21 @@ model Lead {
   // quickly and is never sent to anybody.
   mockupFolderUrl String?
 
+  // Sent by hand, outside the system.
+  //
+  // The send button mails the folder on a tracked link and is right almost
+  // every time. It is wrong in the case it cannot cover — a client who needed
+  // something the standard wording would have described inaccurately, so it
+  // went out as a written email instead. Without a way to say so, that lead
+  // sat on the build queue as outstanding work forever, because the only
+  // thing that could clear it was the button deliberately not used.
+  //
+  // Recorded rather than inferred, and with a note, because "delivered, just
+  // not through here" is a different fact from "delivered" and from "still to
+  // do", and only the first one is true.
+  mockupSentManuallyAt   DateTime?
+  mockupSentManuallyNote String?   @db.Text
+
   // A PDF export of the mockup is another version of it, not a different
   // kind of thing, so it lives in the `mockups` list with a fileName set
   // rather than in a column of its own. The link is the better thing to
