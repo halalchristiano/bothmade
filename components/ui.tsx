@@ -294,20 +294,52 @@ export function CountUp({
   const reduceMotion = useReducedMotion();
   const inView = useInView(ref, { once: true, margin: '-15% 0px' });
 
-  const match = value.match(/^([^0-9]*)([\d.]+)(.*)$/);
-  const target = match ? parseFloat(match[2]) : 0;
-  const decimals = match ? (match[2].split('.')[1] ?? '').length : 0;
+  /**
+   * Thousands separators are part of the number, not a suffix.
+   *
+   * The old pattern stopped at the first comma, so "$9,000" split into a "9"
+   * to animate and a literal ",000" to hold still — and the resting state
+   * rendered "$" + "0" + ",000". A client's own dashboard told them their
+   * project was worth $0,000.
+   */
+  const match = value.match(/^([^0-9]*)([\d,]*\d(?:\.\d+)?)(.*)$/);
+  const rawNumber = match ? match[2].replace(/,/g, '') : '';
+  const target = rawNumber ? parseFloat(rawNumber) : 0;
+  const decimals = rawNumber.includes('.') ? rawNumber.split('.')[1].length : 0;
+  const grouped = Boolean(match && match[2].includes(','));
+
+  const format = (n: number) =>
+    grouped
+      ? n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+      : n.toFixed(decimals);
 
   const springValue = useSpring(0, { stiffness: 60, damping: 18, mass: 0.8 });
-  const [display, setDisplay] = useState('0');
+  const [display, setDisplay] = useState(() => format(0));
+
+  /**
+   * Animate even if the observer never fires.
+   *
+   * useInView with a -15% margin does not report an element that is already
+   * on screen at first paint in every browser, and "once: true" means one
+   * miss is permanent. That left the number stuck at its starting value
+   * forever on a tall window — which for a money figure is not a missing
+   * animation, it is a wrong number sitting on a client's screen. The timer
+   * is the floor: the roll-up happens either way.
+   */
+  const [forced, setForced] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setForced(true), 700);
+    return () => clearTimeout(t);
+  }, []);
+  const active = inView || forced;
 
   useMotionValueEvent(springValue, 'change', (v) => {
-    setDisplay(v.toFixed(decimals));
+    setDisplay(format(v));
   });
 
   useEffect(() => {
-    if (inView && target !== 0) springValue.set(target);
-  }, [inView, target, springValue]);
+    if (active && target !== 0) springValue.set(target);
+  }, [active, target, springValue]);
 
   if (!match || reduceMotion) {
     return (
@@ -320,7 +352,7 @@ export function CountUp({
   return (
     <span ref={ref} className={`tabular-nums ${className}`} style={style}>
       {match[1]}
-      {inView ? display : '0'}
+      {active ? display : format(0)}
       {match[3]}
     </span>
   );
