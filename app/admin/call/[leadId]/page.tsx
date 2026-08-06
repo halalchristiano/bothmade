@@ -203,7 +203,6 @@ export default function CallCockpit() {
       const followUp = buildFollowUpDraft(outcome.key, {
         company: lead.company,
         contactName: lead.contactName,
-        senderName: lead.assignedTo?.name ?? null,
         essentials: brief?.essentials ?? [],
         low: brief?.low ?? null,
         high: brief?.high ?? null,

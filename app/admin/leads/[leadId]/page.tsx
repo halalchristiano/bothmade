@@ -698,7 +698,6 @@ export default function LeadDetailPage() {
     return buildFollowUpDraft(key, {
       company: lead.company,
       contactName: lead.contactName,
-      senderName: lead.assignedTo?.name ?? null,
       essentials: parseSalesPoints(lead.essentialPoints),
       low: lead.estimateLowCents,
       high: lead.estimateHighCents,

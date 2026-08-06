@@ -24,7 +24,6 @@ export interface FollowUpDraft {
 export interface FollowUpContext {
   company: string;
   contactName: string | null;
-  senderName: string | null;
   essentials: SalesPoint[];
   low: number | null;
   high: number | null;
@@ -34,8 +33,18 @@ const firstName = (full: string | null): string => full?.trim().split(/\s+/)[0] 
 
 export function buildFollowUpDraft(outcomeKey: string, ctx: FollowUpContext): FollowUpDraft | null {
   const who = firstName(ctx.contactName);
-  const me = ctx.senderName?.trim().split(/\s+/)[0] || 'Evan';
-  const sign = `\n\nThanks,\n${ctx.senderName?.trim() || me}\nBothmade`;
+
+  /*
+   * Signed by the studio, not by a person.
+   *
+   * This used to sign with the lead's assigned rep, on the reasoning that the
+   * owner is the one following up. They are not always: one of us made the
+   * call, the other owned the lead, and the email went out in the wrong
+   * person's name to somebody who had just been speaking to the first. There
+   * is no field here that reliably knows who is sending — so rather than
+   * guess at a name and be wrong in front of a customer, it signs with none.
+   */
+  const sign = `\n\nThanks,\nBothmade`;
 
   const bullets = ctx.essentials
     .slice(0, 4)
@@ -92,9 +101,17 @@ export function buildFollowUpDraft(outcomeKey: string, ctx: FollowUpContext): Fo
         subject: `Following up on our chat — ${ctx.company}`,
         body:
           `Hi ${who},\n\n` +
-          `Good speaking with you earlier. Putting the main points in writing so you've got them.\n\n` +
-          `From what we talked about, the things that would make the biggest difference are:\n\n` +
-          `${bullets || '• (add the two or three things you discussed)'}\n\n` +
+          // The whole middle of this email, or none of it.
+          //
+          // It used to promise the main points and then print "• (add the two
+          // or three things you discussed)" underneath — an instruction to
+          // the sender, sent to the client. Removing just the bracket leaves
+          // an email that promises a list and gives none, which is no better,
+          // so the opening line goes with it.
+          (bullets
+            ? `Good speaking with you earlier. Putting the main points in writing so you've got them.\n\n` +
+              `From what we talked about, the things that would make the biggest difference are:\n\n${bullets}\n\n`
+            : `Good speaking with you earlier — glad we got to talk it through.\n\n`) +
           `${priceLine ? priceLine + '\n\n' : ''}` +
           `Any questions, just reply here or give me a ring.` +
           sign,
@@ -107,7 +124,10 @@ export function buildFollowUpDraft(outcomeKey: string, ctx: FollowUpContext): Fo
         body:
           `Hi ${who},\n\n` +
           `Thanks for your time earlier. Here's what I'd suggest, based on what you told me.\n\n` +
-          `${bullets || '• (list the main pieces you agreed on)'}\n\n` +
+          // Same placeholder ("• (list the main pieces you agreed on)"), same
+          // file, same person hitting it tomorrow. Gone for the same reason.
+          // Nothing dangles without it: the price and the terms follow.
+          (bullets ? `${bullets}\n\n` : '') +
           `${priceLine ? priceLine + '\n\n' : ''}` +
           `That's half up front and half on delivery. Nothing is locked in until you're happy with the detail.\n\n` +
           `Have a read and tell me what you think — happy to adjust the scope if some of it isn't a priority right now.` +
