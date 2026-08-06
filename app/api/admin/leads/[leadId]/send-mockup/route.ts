@@ -88,7 +88,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       orderBy: { createdAt: 'desc' },
     });
     const mockupId =
-      existing?.id ?? (await recordLeadMockup({ leadId, url: link, userId: session.userId })).mockup.id;
+      existing?.id ??
+      (
+        await recordLeadMockup({
+          leadId,
+          url: link,
+          userId: session.userId,
+          // The folder already has a column. Caching it as the "latest
+          // mockup" would overwrite the preview build with it and put both
+          // links back in one field.
+          cacheAsLatest: false,
+        })
+      ).mockup.id;
 
     // Stamped before the send: an email that goes out against a row still
     // marked draft is a link the client can open and the tracker will 404.

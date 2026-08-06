@@ -190,12 +190,24 @@ export async function recordLeadMockup({
   fileName = null,
   note = '',
   userId,
+  cacheAsLatest = true,
 }: {
   leadId: string;
   url: string;
   fileName?: string | null;
   note?: string;
   userId: string;
+  /**
+   * Whether to point the lead's `mockupUrl` cache at this version.
+   *
+   * True for an attach, which is what that column is a cache of. False when
+   * the URL already lives in a column of its own — sending the client folder
+   * would otherwise overwrite the preview build with the folder link and put
+   * both links back in one field, which is the whole thing the folder column
+   * exists to prevent. Caught by sending against a real database; nothing in
+   * the types objects to it.
+   */
+  cacheAsLatest?: boolean;
 }): Promise<{ mockup: LeadMockupDTO; index: number; alreadyAttached: boolean }> {
   const existing = await prisma.leadMockup.findMany({
     where: { leadId },
@@ -220,7 +232,10 @@ export async function recordLeadMockup({
 
   const lead = await prisma.lead.update({
     where: { id: leadId },
-    data: { mockupUrl: url, mockupDeliveredAt: created.createdAt },
+    data: {
+      ...(cacheAsLatest ? { mockupUrl: url } : {}),
+      mockupDeliveredAt: created.createdAt,
+    },
   });
 
   // The first mockup is the answer to a request someone flagged as urgent —

@@ -67,3 +67,74 @@ describe('clientMockupLink', () => {
     );
   });
 });
+
+/**
+ * Found by running a send against a real database, not by reading the code.
+ *
+ * recordLeadMockup caches whatever it is handed into the lead's `mockupUrl`,
+ * which is right for an attach — that column is a cache of the latest
+ * attached version. It is wrong for the folder send: the folder has a column
+ * of its own, and caching it there overwrote the preview build with the
+ * folder link, putting both links back in one field. Which is the entire
+ * thing the second column exists to prevent.
+ */
+describe('recordLeadMockup', () => {
+  const leadUpdate =
+    vi.fn<(args: { where: unknown; data: Record<string, unknown> }) => Promise<unknown>>();
+
+  const load = async () => {
+    vi.resetModules();
+    leadUpdate.mockReset();
+    leadUpdate.mockResolvedValue({ id: 'l1', company: 'Monogram' });
+    vi.doMock('@/lib/prisma', () => ({
+      prisma: {
+        leadMockup: {
+          findMany: vi.fn(async () => []),
+          create: vi.fn(async () => ({
+            id: 'm1',
+            url: 'https://drive.google.com/drive/folders/1A2b3C4d5E6f',
+            fileName: null,
+            note: '',
+            status: 'draft',
+            shareToken: 't',
+            viewCount: 0,
+            createdAt: new Date(),
+            sentAt: null,
+            firstViewedAt: null,
+            lastViewedAt: null,
+            expiresAt: null,
+            respondedAt: null,
+            responseNote: null,
+            uploadedBy: null,
+          })),
+        },
+        lead: { update: leadUpdate },
+        teamMessage: { updateMany: vi.fn(async () => ({})), create: vi.fn(async () => ({})) },
+      },
+    }));
+    return (await import('@/lib/mockups')).recordLeadMockup;
+  };
+
+  const args = {
+    leadId: 'l1',
+    url: 'https://drive.google.com/drive/folders/1A2b3C4d5E6f',
+    userId: 'u1',
+  };
+
+  it('leaves the preview build alone when the URL already has a column', async () => {
+    const record = await load();
+    await record({ ...args, cacheAsLatest: false });
+
+    const data = leadUpdate.mock.calls[0]?.[0]?.data ?? {};
+    expect(data).not.toHaveProperty('mockupUrl');
+    // The delivery stamp still moves — something was delivered.
+    expect(data).toHaveProperty('mockupDeliveredAt');
+  });
+
+  it('still caches by default, so attaching a version is unchanged', async () => {
+    const record = await load();
+    await record(args);
+
+    expect(leadUpdate.mock.calls[0]?.[0]?.data?.mockupUrl).toBe(args.url);
+  });
+});
