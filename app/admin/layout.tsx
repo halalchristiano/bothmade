@@ -7,6 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Search, Bell, LogOut, Menu, X, Command } from 'lucide-react';
 import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
 import { Wordmark } from '@/components/Wordmark';
+import { useAdminPoll } from '@/lib/use-admin-poll';
 import { SendGuard } from '@/components/admin/SendGuard';
 
 /*
@@ -307,19 +308,10 @@ function NotificationBell() {
   const menuId = useId();
   const reduceMotion = useReducedMotion();
 
-  useEffect(() => {
-    const load = () => {
-      fetch('/api/admin/notifications')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data?.success) setItems(data.items);
-        })
-        .catch(() => {});
-    };
-    load();
-    const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  useAdminPoll('/api/admin/notifications', 30000, (data) => {
+    const payload = data as { success?: boolean; items?: NotificationItem[] };
+    if (payload?.success && payload.items) setItems(payload.items);
+  }, { onUnauthorized: () => router.push('/admin/login') });
 
   const close = (returnFocus = false) => {
     setOpen(false);
@@ -439,21 +431,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Unread chat: live on an interval, not only when the route changes — a
   // user sitting on one page all morning still sees the badge move.
-  useEffect(() => {
-    if (pathname === '/admin/login') return;
-    const load = () => {
-      fetch('/api/admin/team-messages/unread-count')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data?.success) setUnreadCount(data.count);
-        })
-        .catch(() => {});
-    };
-    load();
-    const interval = setInterval(load, 20000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname === '/admin/login']);
+  useAdminPoll(
+    '/api/admin/team-messages/unread-count',
+    20000,
+    (data) => {
+      const payload = data as { success?: boolean; count?: number };
+      if (payload?.success && typeof payload.count === 'number') setUnreadCount(payload.count);
+    },
+    {
+      enabled: pathname !== '/admin/login',
+      // Sent to the login page rather than left on a screen where every
+      // button will fail. This is also what stops the loop: an expired tab
+      // used to sit here answering 401 six times a minute, all night.
+      onUnauthorized: () => router.push('/admin/login'),
+    }
+  );
 
   // Close the mobile sheets on navigation.
   useEffect(() => {
