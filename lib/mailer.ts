@@ -5,6 +5,7 @@ import { sanitizeEmailAddress, sanitizeSubject } from '@/lib/html';
 import { sendEmail as sendViaResend } from '@/lib/email';
 import { sendAsDelegatedUser, isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient, sendViaGmailOAuth, type GmailOAuthClient } from '@/lib/gmail-oauth';
+import { captureForPreview } from '@/lib/email-preview';
 
 export interface SenderIdentity {
   name: string | null;
@@ -91,6 +92,13 @@ export async function sendAsUser(
     subject: sanitizeSubject(rawEmail.subject),
     html: rawEmail.html,
   };
+
+  // Previewing: hand it over rather than sending, before any of the four
+  // transports below is touched. Reported as delegated because that is the
+  // path a configured deployment takes, and the caller logs which one it was.
+  if (captureForPreview({ to: [email.to], subject: email.subject, html: email.html })) {
+    return { ok: true, sentVia: 'delegated' };
+  }
 
   if (sender.email && isDomainDelegationConfigured()) {
     const sent = await sendAsDelegatedUser(sender.email, {

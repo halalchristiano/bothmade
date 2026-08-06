@@ -6,6 +6,7 @@ import { COMPANY_ADDRESS_INLINE, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/compa
 // Leaf module — imports only googleapis and gmail-mime — so pulling it in
 // here does not create a cycle with lib/mailer.ts, which imports this file.
 import { isDomainDelegationConfigured, sendAsDelegatedUser } from '@/lib/gmail-delegated';
+import { captureForPreview } from '@/lib/email-preview';
 import {
   esc,
   escMultiline,
@@ -115,6 +116,32 @@ export type SendResult = { sent: true } | { sent: false; reason: string };
 
 export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
   const recipients = sanitizeEmailAddresses(Array.isArray(data.to) ? data.to : [data.to]);
+
+  /*
+   * Previewing. Hand the message over and report success.
+   *
+   * Before the empty-recipient check below, and before anything touches
+   * Gmail or Resend: a preview of an email addressed to nobody still has to
+   * render, because "who is this going to" is one of the things the person
+   * confirming it is checking.
+   *
+   * Reporting success is deliberate — callers branch on the result and log
+   * what they did, and a preview that made every caller take its failure
+   * path would show the operator an email nobody is about to send.
+   */
+  if (
+    captureForPreview({
+      to: recipients,
+      subject: sanitizeSubject(data.subject),
+      html: data.html,
+      replyTo: data.replyTo ? sanitizeEmailAddress(data.replyTo) : null,
+      attachments: data.attachments?.map((a) => a.filename),
+    })
+  ) {
+    return { sent: true };
+  }
+
+
   if (recipients.length === 0) {
     console.error('Email send skipped: no valid recipient address', {
       attempted: Array.isArray(data.to) ? data.to.length : 1,

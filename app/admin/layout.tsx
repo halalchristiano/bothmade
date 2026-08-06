@@ -7,6 +7,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Search, Bell, LogOut, Menu, X, Command } from 'lucide-react';
 import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
 import { Wordmark } from '@/components/Wordmark';
+import { SendGuard } from '@/components/admin/SendGuard';
 
 /*
  * The shell, take three.
@@ -639,6 +640,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             and iOS Safari responds by zooming the whole page out — which reads
             as "everything is squashed into the left with dead space beside it". */}
         <main className="lg:pl-64 relative w-full min-w-0 overflow-x-hidden">{children}</main>
+
+        {/* In front of every send in the admin, on every screen, whether or
+            not the button that made the request knows it is here. */}
+        <SendGuard />
       </div>
     </AdminSessionContext.Provider>
   );
