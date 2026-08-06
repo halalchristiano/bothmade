@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/payment-clock",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/enquiry-nudge",
+      "schedule": "0 15 * * *"
     }
   ]
 }

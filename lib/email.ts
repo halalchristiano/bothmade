@@ -1192,6 +1192,44 @@ export async function sendInstalmentEmail(params: {
  * that sells the deal.
  */
 /**
+ * The daily follow-up to somebody who enquired and went quiet.
+ *
+ * Short on purpose: a long email on day nine reads as desperation, and the
+ * only job of this one is to be easy to reply to. The unsubscribe is not
+ * buried in grey six-point type at the bottom — it is a plain sentence in the
+ * body, because these go out every day and somebody who wants them to stop
+ * should not have to hunt.
+ */
+export async function sendEnquiryNudge(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  shareToken: string;
+  dayNumber: number;
+  copy: { subject: string; opening: string; closing: string };
+}): Promise<SendResult> {
+  const stopUrl = `${resolveSiteUrl()}/stop/${input.shareToken}`;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: input.copy.subject,
+    html: renderShell({
+      eyebrow: 'Following up',
+      title: input.copy.subject,
+      bodyHtml:
+        `<p style="margin:0 0 14px;">Hi ${esc(input.contactName) || 'there'},</p>` +
+        `<p style="margin:0 0 16px;">${esc(input.copy.opening)}</p>` +
+        `<p style="margin:0 0 22px;">${esc(input.copy.closing)}</p>` +
+        `<p style="margin:0; font-size:13px; color:rgba(255,255,255,0.45);">
+           Would you rather we stopped? <a href="${stopUrl}" style="color:rgba(255,255,255,0.75);">One click here</a>
+           and you will not hear from us again — no form, no login, nothing to explain.
+         </p>`,
+      footerNote: `${COMPANY_NAME} — you asked us to get in touch through bothmade.studio.`,
+    }),
+  });
+}
+
+/**
  * The body of the mockup email, on its own so it can be read without a send.
  *
  * Exported because the send itself fans out across delegated Gmail, per-user
