@@ -553,7 +553,18 @@ const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'pur
  * that all answered the same question, which is a large part of why the
  * dashboard went unopened: nothing told you which one was the front door.
  */
-export function QueueView() {
+/**
+ * `refreshToken` is bumped by the sales screen after companies are added.
+ *
+ * The board and the list took it from the day it existed; this one did not,
+ * and it is the default lens — so the most common thing anybody does on this
+ * screen (add companies, from the queue, because the queue is what opens) put
+ * the new rows in front of nobody. The shell's own comment said "whichever
+ * lens is mounted reloads"; two of the three did.
+ *
+ * Optional, because Call HQ renders this on its own and has nothing to bump.
+ */
+export function QueueView({ refreshToken = 0 }: { refreshToken?: number } = {}) {
   const router = useRouter();
   const [callable, setCallable] = useState<CallRow[]>([]);
   const [noPhone, setNoPhone] = useState<CallRow[]>([]);
@@ -799,7 +810,7 @@ export function QueueView() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshToken]);
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 60_000);

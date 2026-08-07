@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Headset, KanbanSquare, PhoneCall, UserPlus, Users } from 'lucide-react';
 import { BrandButton, Kicker, PageIn, PageTitle } from '@/components/admin/ui';
@@ -50,6 +50,9 @@ function isView(value: string | null): value is View {
   return value === 'queue' || value === 'board' || value === 'list';
 }
 
+const PANEL_ID = 'sales-lens';
+const tabId = (key: View) => `sales-tab-${key}`;
+
 export default function SalesPage() {
   const router = useRouter();
   const [view, setView] = useState<View>('queue');
@@ -57,6 +60,7 @@ export default function SalesPage() {
   // Incremented after a lead is created so whichever lens is mounted reloads
   // without the shell needing to know how any of them fetch.
   const [refreshToken, setRefreshToken] = useState(0);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // Read off window rather than useSearchParams() so the page needs no
   // Suspense boundary to prerender — same reason the sign-and-pay page does
@@ -88,6 +92,30 @@ export default function SalesPage() {
     const url = new URL(window.location.href);
     url.searchParams.set('view', next);
     window.history.replaceState(null, '', url.toString());
+  }, []);
+
+  /*
+   * Arrows move focus between the tabs; Enter or Space selects.
+   *
+   * Manual activation rather than automatic, because each lens fetches when
+   * it mounts — arrowing across the set with automatic activation would fire
+   * three requests to look at one. Home and End are part of the same pattern
+   * and cost nothing to honour.
+   */
+  const onTabKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const current = tabRefs.current.findIndex((el) => el === document.activeElement);
+    if (current === -1) return;
+
+    const last = VIEWS.length - 1;
+    let next: number | null = null;
+    if (e.key === 'ArrowRight') next = current === last ? 0 : current + 1;
+    else if (e.key === 'ArrowLeft') next = current === 0 ? last : current - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = last;
+    if (next === null) return;
+
+    e.preventDefault();
+    tabRefs.current[next]?.focus();
   }, []);
 
   const active = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
@@ -123,37 +151,72 @@ export default function SalesPage() {
         </div>
       </div>
 
+      {/*
+        `role="tablist"` was already here, and none of what it promises was.
+        Declaring the role tells a screen reader user this is a tab set — that
+        arrows will move between the tabs, that one Tab press gets past them,
+        and that each one owns a panel — and then none of it was true. Saying
+        "tab" without the behaviour is worse than three plain buttons, because
+        the three buttons at least behave the way they announce.
+      */}
       <div
         role="tablist"
         aria-label="Sales views"
+        onKeyDown={onTabKeyDown}
         className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1 mb-6"
       >
-        {VIEWS.map((v) => {
+        {VIEWS.map((v, i) => {
           const Icon = v.icon;
           const selected = v.key === view;
           return (
             <button
               key={v.key}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
+              id={tabId(v.key)}
               role="tab"
               aria-selected={selected}
+              aria-controls={PANEL_ID}
+              /*
+               * Roving: only the selected tab is in the page's tab order, so
+               * one press of Tab moves from the tab set into the lens rather
+               * than walking all three. That is the whole point of the role.
+               */
+              tabIndex={selected ? 0 : -1}
               onClick={() => choose(v.key)}
               className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
                 selected ? 'bg-white/[0.09] text-white' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'
               }`}
             >
-              <Icon size={15} />
+              <Icon size={15} aria-hidden="true" />
               {v.label}
             </button>
           );
         })}
       </div>
 
-      {/* Mounted one at a time on purpose: each lens polls or fetches on
-          mount, and three of them running behind hidden tabs is three times
-          the load for two views nobody is looking at. */}
-      {view === 'queue' && <QueueView />}
-      {view === 'board' && <BoardView refreshToken={refreshToken} />}
-      {view === 'list' && <ListView refreshToken={refreshToken} />}
+      {/*
+        One panel that swaps, rather than three that hide: each lens fetches
+        on mount, and three of them running behind hidden tabs is three times
+        the load for two views nobody is looking at. `aria-labelledby` follows
+        the selected tab so the region is still named by the thing that opened
+        it.
+      */}
+      <div
+        id={PANEL_ID}
+        role="tabpanel"
+        aria-labelledby={tabId(view)}
+        // Focusable so the panel is reachable from the tab set even when what
+        // is inside it starts with plain text — several of these lenses open
+        // on a heading and a count.
+        tabIndex={0}
+        className="outline-none"
+      >
+        {view === 'queue' && <QueueView refreshToken={refreshToken} />}
+        {view === 'board' && <BoardView refreshToken={refreshToken} />}
+        {view === 'list' && <ListView refreshToken={refreshToken} />}
+      </div>
 
       {showAdd && (
         <QuickAddLeadModal
