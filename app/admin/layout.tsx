@@ -69,7 +69,10 @@ function NavLinks({
       {groupSections(items).map((group) => (
         <div key={group.section || 'top'} className={group.section ? 'pt-5' : ''}>
           {group.section && (
-            <p className="px-3 pb-2 text-[10px] font-mono uppercase tracking-[0.4em] text-white/25">
+            // Matched to Kicker. 0.4em mono caps is a texture rather than a
+            // label — at that spacing the word stops being read and starts
+            // being looked at, which is a strange thing to ask of a signpost.
+            <p className="px-3 pb-2 text-2xs font-medium uppercase tracking-[0.16em] text-white/25">
               {group.section}
             </p>
           )}
@@ -83,12 +86,12 @@ function NavLinks({
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative flex items-center gap-3 rounded-lg pl-3 pr-3 text-sm font-medium transition-all ${
+                  className={`relative flex items-center gap-3 rounded-lg pl-3 pr-3 text-sm transition-[background-color,color] duration-150 ease-ui ${
                     compact ? 'py-2.5' : 'py-3'
                   } ${
                     active
-                      ? 'text-white bg-white/[0.05]'
-                      : 'text-white/45 hover:text-white hover:bg-white/[0.03]'
+                      ? 'bg-white/[0.06] font-medium text-white shadow-e1'
+                      : 'font-normal text-white/45 hover:bg-white/[0.03] hover:text-white/85'
                   }`}
                 >
                   {/* The one gradient element per screen. */}
@@ -98,10 +101,24 @@ function NavLinks({
                       className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-gradient-to-b from-sky-400 to-purple-500"
                     />
                   )}
-                  <Icon size={17} strokeWidth={2} className={active ? 'text-sky-300' : ''} />
+                  {/* Lighter stroke on the resting rows: a column of sixteen
+                      icons at full weight is a wall of pictograms competing
+                      with the labels beside them. The current one thickens,
+                      which is another way of saying which one you are on. */}
+                  <Icon
+                    size={17}
+                    strokeWidth={active ? 2 : 1.75}
+                    className={active ? 'text-sky-300' : 'text-white/40'}
+                  />
                   {item.label}
                   {isChat && unreadCount > 0 && (
-                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded bg-gradient-to-r from-sky-400 to-purple-500 text-[10px] font-bold text-black px-1.5">
+                    // A count is information, not decoration. The gradient
+                    // belongs to the active-item bar; a second one three rows
+                    // down makes neither of them mean anything.
+                    <span
+                      data-numeric
+                      className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-400/20 px-1.5 text-2xs font-semibold text-sky-200"
+                    >
                       {unreadCount}
                     </span>
                   )}
@@ -631,21 +648,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           // otherwise announced "navigation" twice — this one and the mobile
           // sheet — with nothing to tell them apart.
           aria-label="Main"
-          className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-white/[0.08] bg-ink z-40"
+          // Sunk half a step below the content rather than sharing its plane.
+          // A sidebar is the frame, not another panel on the wall; when both
+          // are the same colour the eye has to use the 1px rule to work out
+          // where the page starts, which is a job a surface should do for it.
+          className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-white/[0.06] bg-[#070510] lg:flex"
         >
-          <Link href="/admin/dashboard" className="flex items-center gap-2.5 px-6 h-16 shrink-0 border-b border-white/[0.08]">
+          <Link
+            href="/admin/dashboard"
+            className="flex h-16 shrink-0 items-center gap-2.5 border-b border-white/[0.06] px-6"
+          >
             <Wordmark className="text-xl" />
           </Link>
 
-          <div className="px-4 mt-4 mb-3">
+          <div className="mt-4 mb-3 px-4">
             <button
               onClick={() => setPaletteOpen(true)}
-              className="w-full flex items-center gap-2 pl-3 pr-2 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white/30 hover:text-white/60 hover:border-white/20 transition-colors"
+              className="flex w-full items-center gap-2 rounded-lg border border-white/[0.08] bg-black/25 py-2 pl-3 pr-2 text-sm text-white/30 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] transition-[border-color,color] duration-150 ease-ui hover:border-white/[0.16] hover:text-white/60"
               aria-label="Search (Cmd+K)"
             >
               <Search size={15} />
               <span className="flex-1 text-left">Search…</span>
-              <kbd className="flex items-center gap-0.5 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-white/30">
+              <kbd className="flex items-center gap-0.5 rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-2xs text-white/30">
                 <Command size={9} />K
               </kbd>
             </button>
