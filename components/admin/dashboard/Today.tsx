@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -225,193 +225,6 @@ function Quiet({ text }: { text: string }) {
   );
 }
 
-export function Today({
-  refreshSignal = 0,
-  onSettled,
-}: {
-  /**
-   * Bumped by the dashboard's refresh control. This card is the one thing on
-   * the page that is always on screen, and it used to load once on mount and
-   * never again — so "Updated 2m ago" sat above a list that could be hours
-   * old, and the button next to it refreshed only the collapsible breakdown
-   * underneath. A refresh control that visibly skips the card above it is
-   * worse than none, because the stale list now looks confirmed.
-   */
-  refreshSignal?: number;
-  /** The load finished: a timestamp on success, null on failure. */
-  onSettled?: (at: Date | null) => void;
-} = {}) {
-  const router = useRouter();
-  const [data, setData] = useState<TodayData | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    /*
-     * The browser's midnight goes with the request.
-     *
-     * Without it the server counted a UTC day, which for anyone working US
-     * hours rolls over mid-evening — so an afternoon of calls read as
-     * yesterday and this page said "1 call logged today" to somebody who had
-     * made twelve. See lib/day-window.ts.
-     *
-     * Recomputed per load rather than captured once: a tab left open across
-     * midnight would otherwise keep asking for yesterday.
-     */
-    fetch(`/api/admin/today?dayStart=${encodeURIComponent(localDayStartParam())}`)
-      .then((res) => {
-        if (res.status === 401) {
-          router.push('/admin/login');
-          return null;
-        }
-        return res.ok ? res.json() : null;
-      })
-      .then((body) => {
-        if (cancelled) return;
-        if (body?.success) {
-          setData(body);
-          setFailed(false);
-          onSettled?.(new Date());
-        } else {
-          setFailed(true);
-          onSettled?.(null);
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setFailed(true);
-        onSettled?.(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // `onSettled` is deliberately not a dependency — it is a fresh closure on
-    // every parent render, and including it would refetch on each one.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, refreshSignal]);
-
-  if (failed) {
-    return (
-      <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-4 text-sm text-amber-200/80">
-        Couldn&apos;t load today&apos;s view — the detail below still works.
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="grid gap-3 lg:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-64 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
-        ))}
-      </div>
-    );
-  }
-
-  const { sell, money, deliver } = data;
-
-  // The single sentence at the top. Ranked by what costs the most to ignore:
-  // a client who has said yes and is waiting, then money already invoiced,
-  // then a warm prospect going cold.
-  const headline = (() => {
-    /**
-     * Top of the list, above the money.
-     *
-     * Everything below this is something WE can act on whenever we get to it.
-     * This is a client who has stopped and is waiting on us — their review
-     * clock stopped when they sent it, so nothing moves and no gate opens
-     * until somebody reads it. It is also the one item here with a person on
-     * the other end wondering whether we received it.
-     */
-    if (deliver.unreadDesignFeedback.length > 0) {
-      const f = deliver.unreadDesignFeedback[0];
-      const waiting = daysSince(f.createdAt);
-      return {
-        text:
-          deliver.unreadDesignFeedback.length === 1
-            ? `${f.project.client.company} sent design feedback${waiting > 0 ? ` ${waiting} day${waiting === 1 ? '' : 's'} ago` : ''} and nobody has read it.`
-            : `${deliver.unreadDesignFeedback.length} clients have sent design feedback nobody has read.`,
-        href: `/admin/projects/${f.project.id}`,
-        cta: 'Read it',
-      };
-    }
-    if (sell.approvedMockups.length > 0) {
-      return {
-        text: `${sell.approvedMockups[0].lead.company} approved their mockup. Send the proposal.`,
-        href: `/admin/leads/${sell.approvedMockups[0].lead.id}`,
-        cta: 'Open the deal',
-      };
-    }
-    /**
-     * Above the chase list on purpose. An invoice that's out and unpaid is
-     * waiting on somebody else; money past its gate that nobody has invoiced
-     * is waiting on us, takes one click, and is the only kind of missing
-     * revenue that is entirely our own doing.
-     */
-    if (money.uninvoiced.length > 0) {
-      const first = money.uninvoiced[0];
-      return {
-        text:
-          money.uninvoiced.length === 1
-            ? `${first.company} passed ${first.claim} and ${formatCents(first.amountCents)} was never invoiced.`
-            : `${formatCents(money.uninvoicedTotalCents)} across ${money.uninvoiced.length} payments has passed its gate and never been invoiced.`,
-        href: `/admin/projects/${first.projectId}`,
-        cta: 'Invoice it',
-      };
-    }
-    if (money.dueInstalments.length > 0) {
-      const total = money.dueInstalments.reduce((s, i) => s + i.amountCents, 0);
-      return {
-        text: `${formatCents(total)} invoiced and unpaid across ${money.dueInstalments.length} payment${
-          money.dueInstalments.length === 1 ? '' : 's'
-        }.`,
-        href: `/admin/projects/${money.dueInstalments[0].project.id}`,
-        cta: 'Chase it',
-      };
-    }
-    if (sell.openedMockups.length > 0) {
-      return {
-        text: `${sell.openedMockups[0].lead.company} has been through their mockup. Ring them while it's fresh.`,
-        href: `/admin/call/${sell.openedMockups[0].lead.id}`,
-        cta: 'Call now',
-      };
-    }
-    if (sell.overdueFollowUps.length > 0) {
-      return {
-        text: `${sell.overdueFollowUps.length} follow-up${
-          sell.overdueFollowUps.length === 1 ? ' is' : 's are'
-        } overdue.`,
-        // ?start=1 — "Start calling" opens the top of the queue rather than
-        // the Call HQ page, which is what the words on the button promise.
-        href: '/admin/call?start=1',
-        cta: 'Start calling',
-      };
-    }
-    // Last, but never skipped. Leaving this out let the headline announce
-    // "nothing overdue and nothing waiting" directly above a lane listing a
-    // proposal sitting unsigned — a page contradicting itself in one glance.
-    if (sell.unsignedProposals.length > 0) {
-      const oldest = sell.unsignedProposals[0];
-      const days = daysSince(oldest.updatedAt);
-      return {
-        text:
-          days === 0
-            ? `${oldest.company} got their proposal today. Nothing signed yet.`
-            : `${oldest.company} has had their proposal ${days} day${days === 1 ? '' : 's'} and hasn't signed.`,
-        href: `/admin/leads/${oldest.id}`,
-        cta: 'Chase it',
-      };
-    }
-    return {
-      text:
-        sell.callsToday > 0
-          ? `${sell.callsToday} call${sell.callsToday === 1 ? '' : 's'} logged today and nothing outstanding. Good day.`
-          : 'Nothing overdue and nothing waiting. Go find some leads.',
-      href: '/admin/sales',
-      cta: 'Open Sales',
-    };
-  })();
-
 /**
  * What the phones did today, per person.
  *
@@ -618,6 +431,251 @@ function WaitingOnUs({
     </div>
   );
 }
+
+/**
+ * How often this re-asks on its own.
+ *
+ * The refresh control drives this card now, which fixed a button that visibly
+ * skipped it. What that does not fix is nobody pressing anything: this is the
+ * page most likely to be left open from nine in the morning until six, and a
+ * card headed "Right now" was answering with whenever the tab was opened.
+ *
+ * A minute is well inside the resolution anyone works at here, and the request
+ * is a single round trip. Background tabs are skipped entirely and refetched
+ * the moment they come forward, which is the stale case that actually bites.
+ */
+const AUTO_REFRESH_MS = 60_000;
+
+export function Today({
+  refreshSignal = 0,
+  onSettled,
+}: {
+  /**
+   * Bumped by the dashboard's refresh control. This card is the one thing on
+   * the page that is always on screen, and it used to load once on mount and
+   * never again — so "Updated 2m ago" sat above a list that could be hours
+   * old, and the button next to it refreshed only the collapsible breakdown
+   * underneath. A refresh control that visibly skips the card above it is
+   * worse than none, because the stale list now looks confirmed.
+   */
+  refreshSignal?: number;
+  /** The load finished: a timestamp on success, null on failure. */
+  onSettled?: (at: Date | null) => void;
+} = {}) {
+  const router = useRouter();
+  const [data, setData] = useState<TodayData | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  /*
+   * Four guards a re-fetching card needs and a fetch-once one did not.
+   *
+   * Never two requests in flight; never replace a good screen with an error
+   * because one refresh out of sixty happened to fail; never keep asking once
+   * the session is gone; and nothing `load` closes over may be recreated per
+   * render, since it is the dependency of both effects below and it sets
+   * state — that combination is a loop looking for an excuse.
+   */
+  const inFlight = useRef(false);
+  const hasData = useRef(false);
+  /*
+   * The brake from lib/use-admin-poll.ts, which exists because the admin's
+   * other background loops did not have it: a tab left open overnight kept
+   * polling on the same timer after its cookie expired, every request came
+   * back 401, and nothing ever gave up — thousands of them a day per
+   * abandoned tab. That hook isn't used here because this card also reports
+   * back to its parent and needs a first-load failure state, neither of which
+   * it exposes; the one lesson worth copying is this flag.
+   */
+  const sessionGone = useRef(false);
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const settledRef = useRef(onSettled);
+  settledRef.current = onSettled;
+
+  const load = useCallback(async () => {
+    if (inFlight.current || sessionGone.current) return;
+    inFlight.current = true;
+    try {
+      /*
+       * The browser's midnight goes with the request.
+       *
+       * Without it the server counted a UTC day, which for anyone working US
+       * hours rolls over mid-evening — so an afternoon of calls read as
+       * yesterday and this page said "1 call logged today" to somebody who had
+       * made twelve. See lib/day-window.ts.
+       *
+       * Recomputed per load rather than captured once: a tab left open across
+       * midnight would otherwise keep asking for yesterday.
+       */
+      const res = await fetch(`/api/admin/today?dayStart=${encodeURIComponent(localDayStartParam())}`);
+      if (res.status === 401 || res.status === 403) {
+        // Final, not a blip: every later tick would be the identical 401.
+        sessionGone.current = true;
+        routerRef.current.push('/admin/login');
+        return;
+      }
+      const body = res.ok ? await res.json() : null;
+      if (body?.success) {
+        hasData.current = true;
+        setData(body);
+        setFailed(false);
+        settledRef.current?.(new Date());
+      } else if (!hasData.current) {
+        setFailed(true);
+        settledRef.current?.(null);
+      }
+    } catch {
+      if (!hasData.current) {
+        setFailed(true);
+        settledRef.current?.(null);
+      }
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
+
+  // First load, and every time the dashboard's refresh control asks.
+  useEffect(() => {
+    load();
+  }, [load, refreshSignal]);
+
+  useEffect(() => {
+    const tick = () => {
+      // No polling a tab nobody is looking at; `visibilitychange` also fires
+      // on hide, where this is deliberately a no-op. Coming back into view
+      // refreshes straight away rather than waiting out an interval that
+      // elapsed while nobody could see it.
+      if (!document.hidden) load();
+    };
+    const id = setInterval(tick, AUTO_REFRESH_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [load]);
+
+  if (failed) {
+    return (
+      <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-4 text-sm text-amber-200/80">
+        Couldn&apos;t load today&apos;s view — the detail below still works.
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="grid gap-3 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-64 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
+        ))}
+      </div>
+    );
+  }
+
+  const { sell, money, deliver } = data;
+
+  // The single sentence at the top. Ranked by what costs the most to ignore:
+  // a client who has said yes and is waiting, then money already invoiced,
+  // then a warm prospect going cold.
+  const headline = (() => {
+    /**
+     * Top of the list, above the money.
+     *
+     * Everything below this is something WE can act on whenever we get to it.
+     * This is a client who has stopped and is waiting on us — their review
+     * clock stopped when they sent it, so nothing moves and no gate opens
+     * until somebody reads it. It is also the one item here with a person on
+     * the other end wondering whether we received it.
+     */
+    if (deliver.unreadDesignFeedback.length > 0) {
+      const f = deliver.unreadDesignFeedback[0];
+      const waiting = daysSince(f.createdAt);
+      return {
+        text:
+          deliver.unreadDesignFeedback.length === 1
+            ? `${f.project.client.company} sent design feedback${waiting > 0 ? ` ${waiting} day${waiting === 1 ? '' : 's'} ago` : ''} and nobody has read it.`
+            : `${deliver.unreadDesignFeedback.length} clients have sent design feedback nobody has read.`,
+        href: `/admin/projects/${f.project.id}`,
+        cta: 'Read it',
+      };
+    }
+    if (sell.approvedMockups.length > 0) {
+      return {
+        text: `${sell.approvedMockups[0].lead.company} approved their mockup. Send the proposal.`,
+        href: `/admin/leads/${sell.approvedMockups[0].lead.id}`,
+        cta: 'Open the deal',
+      };
+    }
+    /**
+     * Above the chase list on purpose. An invoice that's out and unpaid is
+     * waiting on somebody else; money past its gate that nobody has invoiced
+     * is waiting on us, takes one click, and is the only kind of missing
+     * revenue that is entirely our own doing.
+     */
+    if (money.uninvoiced.length > 0) {
+      const first = money.uninvoiced[0];
+      return {
+        text:
+          money.uninvoiced.length === 1
+            ? `${first.company} passed ${first.claim} and ${formatCents(first.amountCents)} was never invoiced.`
+            : `${formatCents(money.uninvoicedTotalCents)} across ${money.uninvoiced.length} payments has passed its gate and never been invoiced.`,
+        href: `/admin/projects/${first.projectId}`,
+        cta: 'Invoice it',
+      };
+    }
+    if (money.dueInstalments.length > 0) {
+      const total = money.dueInstalments.reduce((s, i) => s + i.amountCents, 0);
+      return {
+        text: `${formatCents(total)} invoiced and unpaid across ${money.dueInstalments.length} payment${
+          money.dueInstalments.length === 1 ? '' : 's'
+        }.`,
+        href: `/admin/projects/${money.dueInstalments[0].project.id}`,
+        cta: 'Chase it',
+      };
+    }
+    if (sell.openedMockups.length > 0) {
+      return {
+        text: `${sell.openedMockups[0].lead.company} has been through their mockup. Ring them while it's fresh.`,
+        href: `/admin/call/${sell.openedMockups[0].lead.id}`,
+        cta: 'Call now',
+      };
+    }
+    if (sell.overdueFollowUps.length > 0) {
+      return {
+        text: `${sell.overdueFollowUps.length} follow-up${
+          sell.overdueFollowUps.length === 1 ? ' is' : 's are'
+        } overdue.`,
+        // ?start=1 — "Start calling" opens the top of the queue rather than
+        // the Call HQ page, which is what the words on the button promise.
+        href: '/admin/call?start=1',
+        cta: 'Start calling',
+      };
+    }
+    // Last, but never skipped. Leaving this out let the headline announce
+    // "nothing overdue and nothing waiting" directly above a lane listing a
+    // proposal sitting unsigned — a page contradicting itself in one glance.
+    if (sell.unsignedProposals.length > 0) {
+      const oldest = sell.unsignedProposals[0];
+      const days = daysSince(oldest.updatedAt);
+      return {
+        text:
+          days === 0
+            ? `${oldest.company} got their proposal today. Nothing signed yet.`
+            : `${oldest.company} has had their proposal ${days} day${days === 1 ? '' : 's'} and hasn't signed.`,
+        href: `/admin/leads/${oldest.id}`,
+        cta: 'Chase it',
+      };
+    }
+    return {
+      text:
+        sell.callsToday > 0
+          ? `${sell.callsToday} call${sell.callsToday === 1 ? '' : 's'} logged today and nothing outstanding. Good day.`
+          : 'Nothing overdue and nothing waiting. Go find some leads.',
+      href: '/admin/sales',
+      cta: 'Open Sales',
+    };
+  })();
 
   return (
     <div className="space-y-4">

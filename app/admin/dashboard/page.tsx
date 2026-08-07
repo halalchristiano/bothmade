@@ -28,7 +28,6 @@ import {
   Palette,
   Phone,
   Mail,
-  RefreshCw,
   ExternalLink,
   ListChecks,
   BarChart3,
@@ -46,6 +45,7 @@ import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarC
 import { Today } from '@/components/admin/dashboard/Today';
 import { NotificationGuide } from '@/components/admin/dashboard/NotificationGuide';
 import { localDayStartParam } from '@/lib/day-window';
+import { RefreshIndicator, formatRelativeTime } from '@/components/admin/dashboard/RefreshIndicator';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 import { USER_ROLE_LABELS, type UserRole } from '@/lib/roles';
@@ -57,48 +57,6 @@ const RANGE_OPTIONS: Array<{ value: StatsRange; label: string }> = [
   { value: 'month', label: 'Month' },
   { value: 'quarter', label: 'Quarter' },
 ];
-
-function formatRelativeTime(date: Date): string {
-  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
-  if (seconds < 10) return 'just now';
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return date.toLocaleDateString();
-}
-
-function RefreshIndicator({
-  lastUpdated,
-  refreshing,
-  onRefresh,
-}: {
-  lastUpdated: Date | null;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  const [, forceTick] = useState(0);
-
-  // Re-render every 30s so the "Xm ago" label stays current without a refetch.
-  useEffect(() => {
-    const id = setInterval(() => forceTick((n) => n + 1), 30000);
-    return () => clearInterval(id);
-  }, []);
-
-  return (
-    <button
-      onClick={onRefresh}
-      disabled={refreshing}
-      className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-60"
-      title="Refresh dashboard data"
-      aria-label="Refresh dashboard data"
-    >
-      <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
-      {refreshing ? 'Refreshing…' : lastUpdated ? `Updated ${formatRelativeTime(lastUpdated)}` : ''}
-    </button>
-  );
-}
 
 /**
  * Opens the client's own status page in a new tab — the fastest way to see
@@ -206,12 +164,14 @@ interface OpsStats {
     daysSinceWeAsked: number | null;
     shareToken: string | null;
   }>;
+  /** Invoiced and unpaid only, biggest first — see OverdueBalancesCard. */
   overdueBalances: Array<{
     id: string;
     name: string;
     company: string;
     balanceDue: number;
     lastPaymentReminderSentAt: string | null;
+    shareToken: string | null;
   }>;
   projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
   awaitingSignatureCount: number;
@@ -1020,6 +980,73 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
 }
 
 /**
+ * Money that is out the door and hasn't come back.
+ *
+ * The API has computed this on every load for as long as it has existed — it
+ * pulls every payment and every instalment for every live project and runs
+ * projectBalance() over each one — and then nothing rendered it. A dashboard
+ * about "delivery, clients and money" had no answer to who owes us money,
+ * while paying the full cost of working it out.
+ *
+ * Only invoiced-and-unpaid appears here. Money still behind a gate isn't late,
+ * and money past its gate that was never invoiced is our job rather than
+ * theirs — the Today panel's "Earned, unbilled" covers that one, and mixing
+ * the two is how a chase list turns into a list nobody chases.
+ */
+function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = balances.slice(0, visible);
+  const total = balances.reduce((sum, b) => sum + b.balanceDue, 0);
+
+  return (
+    <Card className="p-6" glow={balances.length > 0 ? 'amber' : undefined}>
+      <CardHeader
+        icon={Wallet}
+        tone="amber"
+        title="Invoiced and unpaid"
+        subtitle="Out the door and not back yet — biggest first"
+        action={
+          balances.length > 0 ? (
+            <span className="text-sm font-semibold text-amber-300">{formatCents(total)}</span>
+          ) : undefined
+        }
+      />
+      {balances.length === 0 ? (
+        <EmptyState icon={Wallet} text="Nothing invoiced is outstanding." tone="clear" />
+      ) : (
+        <>
+          <div className="space-y-0.5">
+            {shown.map((b) => (
+              <ListRow
+                key={b.id}
+                href={`/admin/projects/${b.id}`}
+                title={b.company}
+                // When we last chased, because that — not the amount — is what
+                // decides whether to chase again today.
+                subtitle={
+                  b.lastPaymentReminderSentAt
+                    ? `Last reminded ${formatRelativeTime(new Date(b.lastPaymentReminderSentAt))}`
+                    : 'Never reminded'
+                }
+                trailing={
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-sm font-semibold tabular-nums text-amber-300">
+                      {formatCents(b.balanceDue)}
+                    </span>
+                    <OpenStatusButton projectId={b.id} shareToken={b.shareToken} />
+                  </div>
+                }
+              />
+            ))}
+          </div>
+          <ShowMoreButton remaining={balances.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+/**
  * Projects stalled because the client hasn't come back, kept apart from the
  * ones stalled on us. Same symptom, opposite action: these need chasing, not
  * working on, and a rep-style guilt list buries that distinction.
@@ -1321,6 +1348,10 @@ function OpsDashboard({
 
       </div>
 
+      <div className="mb-5">
+        <OverdueBalancesCard balances={stats.overdueBalances ?? []} />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <ActivityFeedCard activity={stats.activityFeed} />
 
@@ -1551,7 +1582,9 @@ export default function AdminDashboardPage() {
         <p className="text-white/40">Sell it, get paid for it, ship it — in that order.</p>
       </div>
 
-      {/* What you can act on, before any of the detail. */}
+      {/* What you can act on, before any of the detail. It keeps itself
+          current on its own timer; `refreshToken` only means the breakdown's
+          refresh control refreshes the whole page rather than half of it. */}
       <div className="mb-5">
         <Today
           refreshSignal={retryCount}

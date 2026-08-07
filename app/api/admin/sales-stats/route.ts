@@ -69,29 +69,38 @@ export async function GET(request: Request) {
     const periodStart = getPeriodStart(range, now);
     const staleThreshold = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
 
-    // "My" leads: assigned to me, or unassigned (so nothing falls through the cracks).
-    const mine = { OR: [{ assignedToId: session.userId }, { assignedToId: null }] };
-
     /*
-     * One pass over the leads, thirteen columns of the hundred-odd on the
-     * row.
+     * One book, one set of numbers.
+     *
+     * This used to answer for "my" leads — assigned to me, plus everything
+     * unassigned — while the Today panel directly above it on the same page
+     * counts the whole studio. So a lead assigned to the other person appeared
+     * in the Sell lane and was silently missing from Do This Next; pipeline
+     * value, conversion rate and the commission log all differed by account;
+     * and "Activity Logged" counted only yours, a few hundred pixels under a
+     * team-wide "12 dialled".
+     *
+     * Two people working one book comparing screens got two different answers
+     * to "how are we doing" and neither was wrong, which is the worst way for
+     * a shared scoreboard to fail. Ownership still matters — it decides who
+     * calls — but it is a property of a lead, not a lens on the numbers, and
+     * the per-lead views (/admin/sales, /admin/call) are where it belongs.
+     *
+     * One pass over the leads, thirteen columns of the hundred-odd on the row.
      *
      * This was four queries: every lead, then every won lead, then every lost
-     * lead, then a count of the ones created this period. `mine` carries no
-     * status filter, so the won and lost queries were re-fetching rows the
-     * first query had already returned — the same table walked three times to
-     * produce three views of one result set, and a fourth time to count a
-     * subset of it. Everything downstream is JS filtering over the whole
-     * list anyway, so the split bought nothing.
+     * lead, then a count of the ones created this period — the same table
+     * walked three times to produce three views of one result set, and a
+     * fourth time to count a subset of it. Everything downstream is JS
+     * filtering over the whole list anyway, so the split bought nothing.
      *
      * Selecting explicitly matters as much as the query count here: a Lead
      * carries notes, pain points, the address block and the whole enrichment
      * side, none of which this endpoint reads. Dragging all of it across the
      * wire once per dashboard open, per range change, was the bulk of the cost.
      */
-    const [allMine, activityInPeriod] = await Promise.all([
+    const [allLeads, activityInPeriod] = await Promise.all([
       prisma.lead.findMany({
-        where: mine,
         select: {
           id: true,
           company: true,
@@ -111,17 +120,15 @@ export async function GET(request: Request) {
           lostAt: true,
         },
       }),
-      prisma.leadActivity.count({
-        where: { createdAt: { gte: periodStart }, createdById: session.userId },
-      }),
+      prisma.leadActivity.count({ where: { createdAt: { gte: periodStart } } }),
     ]);
 
-    const wonAllTime = allMine.filter((l) => l.status === 'won');
-    const lostAllTime = allMine.filter((l) => l.status === 'lost');
-    const newInPeriod = allMine.filter((l) => l.createdAt >= periodStart).length;
+    const wonAllTime = allLeads.filter((l) => l.status === 'won');
+    const lostAllTime = allLeads.filter((l) => l.status === 'lost');
+    const newInPeriod = allLeads.filter((l) => l.createdAt >= periodStart).length;
 
     const pipeline = ACTIVE_STATUSES.map((status) => {
-      const leads = allMine.filter((l) => l.status === status);
+      const leads = allLeads.filter((l) => l.status === status);
       const value = leads.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
       return { status, count: leads.length, value };
     });
@@ -162,7 +169,7 @@ export async function GET(request: Request) {
       lostReasonCounts[reason] = (lostReasonCounts[reason] || 0) + 1;
     }
 
-    const active = allMine.filter((l) => ACTIVE_STATUSES.includes(l.status));
+    const active = allLeads.filter((l) => ACTIVE_STATUSES.includes(l.status));
 
     /*
      * When somebody last actually contacted this lead.
@@ -215,7 +222,7 @@ export async function GET(request: Request) {
       .filter((l) => l.contractStatus === 'sent')
       .sort((a, b) => sentOn(a).getTime() - sentOn(b).getTime());
 
-    const leadsInPeriod = allMine.filter((l) => l.createdAt >= periodStart);
+    const leadsInPeriod = allLeads.filter((l) => l.createdAt >= periodStart);
     const sourceMap: Record<string, { total: number; won: number }> = {};
     for (const l of leadsInPeriod) {
       const source = l.source?.trim() || 'Unknown';

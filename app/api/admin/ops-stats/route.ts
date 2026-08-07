@@ -304,9 +304,27 @@ export async function GET(request: Request) {
         gatedCents: balance.gatedCents,
         statusStage: p.statusStage,
         lastPaymentReminderSentAt: p.lastPaymentReminderSentAt,
+        // The chase list opens the client's own status page, and that page is
+        // a capability link — without the token every button on it 404s.
+        shareToken: p.shareToken,
       };
     });
-    const overdueBalances = balances;
+    /*
+     * Only the projects that actually owe something.
+     *
+     * This was `= balances`, i.e. every live project, most of them owing
+     * nothing. Nothing on the dashboard rendered it so the mistake stayed
+     * invisible there, but /admin/priorities iterates this list straight into
+     * rows — so a paid-up project in good health produced "$0.00 invoiced and
+     * still unpaid" on the priorities screen, and enough of them to bury the
+     * projects that genuinely owe money.
+     *
+     * dueNowCents, not remaining or unbilled: this is the chase list, and the
+     * only figure on it that somebody else is late paying.
+     */
+    const overdueBalances = balances
+      .filter((b) => b.balanceDue > 0)
+      .sort((a, b) => b.balanceDue - a.balanceDue);
     const projectsAwaitingReply = activeProjects
       .filter((p) => p.messages.length > 0 && !p.messages[0].isFromAdmin && !snoozed(p))
       .map((p) => ({
