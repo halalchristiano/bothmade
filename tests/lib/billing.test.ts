@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_CHARGE_CENTS,
   amountPaidTowardProject,
+  describeChargeBlocker,
   dollarsToCents,
   formatInvoiceNumber,
   gateReached,
@@ -310,5 +311,83 @@ describe('instalment gates', () => {
   it('opens the final payment at Launch', () => {
     expect(gateReached('ready-for-launch', 2)).toBe(false);
     expect(gateReached('ready-for-launch', 3)).toBe(true);
+  });
+});
+
+/**
+ * The Charge button used to go dead and say nothing.
+ *
+ * Every one of the five reasons it could be disabled is a sentence
+ * readChargeDraft() already writes well, and none of them was ever seen —
+ * because the thing that would have submitted the request was the thing
+ * switched off. A disabled control with no reason reads as a broken page
+ * rather than as an unfinished form.
+ */
+describe('describeChargeBlocker', () => {
+  const ready = {
+    hasCustomer: true,
+    description: 'Second round of homepage design',
+    lines: [{ label: 'Design round', amount: '1200' }],
+  };
+
+  it('says nothing when the charge is ready to go', () => {
+    expect(describeChargeBlocker(ready)).toBeNull();
+  });
+
+  /*
+   * Ordered the way the form is filled, so it names the next thing to do
+   * rather than the worst thing wrong. An empty form has three problems and
+   * only one useful sentence.
+   */
+  it('names the next thing to do, not every thing wrong', () => {
+    expect(
+      describeChargeBlocker({ hasCustomer: false, description: '', lines: [{ label: '', amount: '' }] })
+    ).toContain('Pick the customer');
+
+    expect(
+      describeChargeBlocker({ ...ready, description: '   ', lines: [{ label: '', amount: '' }] })
+    ).toContain('what the charge is for');
+  });
+
+  /*
+   * A number that won't parse is a different problem from a number that is
+   * missing, and "amount above zero" sends somebody hunting for a zero they
+   * never typed. Three decimal places and a stray letter both land here.
+   */
+  it('tells the difference between a bad amount and a missing one', () => {
+    expect(describeChargeBlocker({ ...ready, lines: [{ label: 'Design', amount: '250.999' }] })).toContain(
+      'at most two decimal places'
+    );
+    expect(describeChargeBlocker({ ...ready, lines: [{ label: 'Design', amount: '12o0' }] })).toContain(
+      'at most two decimal places'
+    );
+    expect(describeChargeBlocker({ ...ready, lines: [{ label: 'Design', amount: '' }] })).toContain(
+      'description and an amount above zero'
+    );
+    expect(describeChargeBlocker({ ...ready, lines: [{ label: '', amount: '250' }] })).toContain(
+      'description and an amount above zero'
+    );
+  });
+
+  it('repeats the floor and the ceiling in the same words the server uses', () => {
+    expect(describeChargeBlocker({ ...ready, lines: [{ label: 'Tiny', amount: '0.50' }] })).toContain(
+      'at least $1'
+    );
+
+    const tooBig = describeChargeBlocker({
+      ...ready,
+      lines: [{ label: 'Typo', amount: '500000' }],
+    });
+    expect(tooBig).toContain('$500,000');
+    expect(tooBig).toContain('extra zero');
+  });
+
+  /*
+   * A thousands separator is how anybody actually types four figures, and
+   * dollarsToCents already strips it. Rejecting it here would be the form
+   * disagreeing with the parser that accepts it.
+   */
+  it('accepts an amount typed the way a person types it', () => {
+    expect(describeChargeBlocker({ ...ready, lines: [{ label: 'Design', amount: '$1,200.00' }] })).toBeNull();
   });
 });

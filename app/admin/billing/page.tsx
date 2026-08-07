@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Receipt, Plus, X } from 'lucide-react';
 import { Badge, BrandButton, Card, CardHeader, EmptyState, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
-import { MAX_CHARGE_CENTS, MIN_CHARGE_CENTS, dollarsToCents } from '@/lib/billing';
+import { MAX_CHARGE_CENTS, MIN_CHARGE_CENTS, describeChargeBlocker, dollarsToCents } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
 import {
@@ -256,6 +256,19 @@ function BillingWorkspace() {
     total <= MAX_CHARGE_CENTS &&
     !submitting;
 
+  /*
+   * The same five conditions, as a sentence.
+   *
+   * canSubmit above is the boolean the button needs; this is what the person
+   * needs. Kept as one function in lib/billing.ts rather than five inline
+   * ternaries so the wording cannot drift from the server's own refusals.
+   */
+  const blocker = describeChargeBlocker({
+    hasCustomer: Boolean(projectId),
+    description,
+    lines,
+  });
+
   const submit = async (confirmDuplicate = false) => {
     setError('');
     setResult(null);
@@ -488,6 +501,12 @@ function BillingWorkspace() {
               ? `Yes — charge ${formatCentsExact(total)} again`
               : `Charge ${formatCentsExact(total)}`}
           </BrandButton>
+
+          {/* What is still needed, in the muted tone of guidance rather than
+              the red of an error — nothing has gone wrong, the form is just
+              unfinished. Hidden once the button works, so it never becomes
+              furniture people stop reading. */}
+          {blocker && !error && <p className="mt-2.5 text-xs text-white/35">{blocker}</p>}
 
           {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
 

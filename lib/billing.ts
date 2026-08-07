@@ -251,6 +251,65 @@ export function dollarsToCents(input: string): number | null {
   return Number.isSafeInteger(cents) ? cents : null;
 }
 
+/**
+ * Why the Charge button won't go, in the words the person at the keyboard
+ * needs — or null when it will.
+ *
+ * The form used to disable the button and say nothing. Every one of the five
+ * reasons it could be dead is a sentence readChargeDraft() already writes
+ * beautifully, and none of them were ever seen, because the button that would
+ * have submitted the request was the thing switched off. So somebody typing
+ * "1,200" into an amount field with a stray character in it, or leaving the
+ * heading blank, got a grey rectangle and no explanation — and a disabled
+ * control with no reason reads as a broken page, not as an unfinished form.
+ *
+ * Ordered the way the form is filled, so it names the next thing to do rather
+ * than the worst thing wrong.
+ */
+export function describeChargeBlocker(input: {
+  hasCustomer: boolean;
+  description: string;
+  /** Exactly as typed, before any parsing — an unparseable amount is its own message. */
+  lines: Array<{ label: string; amount: string }>;
+}): string | null {
+  if (!input.hasCustomer) {
+    return 'Pick the customer this is for.';
+  }
+  if (!input.description.trim()) {
+    return 'Say what the charge is for — it becomes the invoice heading and the email subject.';
+  }
+
+  const parsed = input.lines.map((line) => ({
+    label: line.label.trim(),
+    raw: line.amount.trim(),
+    cents: dollarsToCents(line.amount),
+  }));
+
+  // A number that won't parse is a different problem from a number that is
+  // missing, and "amount above zero" sends somebody hunting for a zero they
+  // didn't type. Three decimal places and a stray letter both land here.
+  if (parsed.some((line) => line.raw !== '' && line.cents === null)) {
+    return 'Amounts look like 250 or 250.00 — digits, and at most two decimal places.';
+  }
+  if (parsed.some((line) => !line.label || line.cents === null || line.cents <= 0)) {
+    return 'Every line needs a description and an amount above zero.';
+  }
+
+  const total = parsed.reduce((sum, line) => sum + (line.cents ?? 0), 0);
+  if (total < MIN_CHARGE_CENTS) {
+    return 'The total has to be at least $1 — cards reject anything smaller.';
+  }
+  if (total > MAX_CHARGE_CENTS) {
+    return `That totals ${(total / 100).toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    })}. Amounts are in dollars — check for an extra zero.`;
+  }
+
+  return null;
+}
+
 /** The filename a client sees on the attachment, not a path we control. */
 export function invoiceFilename(number: string): string {
   return `${number.replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
