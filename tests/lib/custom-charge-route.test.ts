@@ -93,6 +93,25 @@ beforeEach(() => {
   prisma.user.findUnique.mockResolvedValue({ name: 'Evan', email: 'evan@bothmade.studio' });
   put.mockResolvedValue({ url: 'https://blob.test/invoices/custom/inv_1-abc.pdf' });
   paymentLinksCreate.mockResolvedValue({ id: 'plink_1', url: 'https://pay.stripe.test/plink_1' });
+
+  /*
+   * Re-armed every test, like the two above them.
+   *
+   * These two are declared in their `vi.mock` factories rather than up here,
+   * so they were the only collaborators nothing reset — and three tests below
+   * push them into a failure mode permanently (`mockRejectedValue`,
+   * `mockResolvedValue({ sent: false })`). `vi.clearAllMocks()` clears call
+   * history and leaves implementations alone, so once one of those ran, every
+   * later test in the file got a PDF builder that throws and a mailer that
+   * reports failure.
+   *
+   * It passed only because of the order the tests happen to be written in.
+   * Running the file with `--sequence.shuffle` failed three of them — and the
+   * next person to add a test above the "when half of it fails" block, or to
+   * move one, would have got that failure with no idea why.
+   */
+  vi.mocked(buildCustomChargeInvoicePdf).mockResolvedValue(new Uint8Array([1, 2, 3]));
+  vi.mocked(sendCustomChargeEmail).mockResolvedValue({ sent: true });
 });
 
 describe('authorisation', () => {

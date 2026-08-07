@@ -299,13 +299,28 @@ export default function TeamPage() {
         ) : (
           <ul className="divide-y divide-white/[0.06]">
             {members.map((member) => (
-              <li key={member.id} className="py-4 flex items-center gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-white truncate">
+              /* Wraps rather than competing for one line. Name, role and remove
+                 were three items in a nowrap row, so on a phone the name — the
+                 only thing that identifies the row — truncated first to keep a
+                 dropdown and an icon on screen. */
+              <li key={member.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-4">
+                <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+                  <p className="truncate text-sm text-white">
                     {member.name || member.email}
                     {member.id === myId && <span className="text-white/30"> — you</span>}
                   </p>
-                  <p className="text-[13px] text-white/40 truncate">{member.email}</p>
+                  <p className="truncate text-[13px] text-white/40">{member.email}</p>
+                  {/* Said on the page, not in a tooltip.
+                      This was a `title` on the disabled dropdown, which needs a
+                      mouse pointer to hover — so on a phone the control was
+                      simply greyed out with nothing anywhere explaining why,
+                      and the rule ("another owner has to do it") is not one you
+                      can guess. */}
+                  {canManage && member.id === myId && (
+                    <p className="mt-0.5 text-[12px] text-white/30">
+                      Another owner has to change your role.
+                    </p>
+                  )}
                 </div>
 
                 {canManage ? (
@@ -313,12 +328,8 @@ export default function TeamPage() {
                     value={member.role}
                     disabled={busyId === member.id || member.id === myId}
                     onChange={(e) => changeRole(member.id, e.target.value)}
-                    title={
-                      member.id === myId
-                        ? 'Another owner has to change your role'
-                        : undefined
-                    }
-                    className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[13px] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:border-white/30"
+                    aria-label={`Role for ${member.name || member.email}`}
+                    className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[13px] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:border-white/30"
                   >
                     {USER_ROLES.map((role) => (
                       <option key={role} value={role} className="bg-raised">
@@ -335,11 +346,17 @@ export default function TeamPage() {
                 )}
 
                 {canManage && member.id !== myId && (
+                  /* A real target around the icon. A 15px glyph is about a
+                     third of the width a finger needs, and it sits immediately
+                     beside the role dropdown — so the smallest control in the
+                     row was the destructive one, next to the one people
+                     actually came to use. The icon is unchanged; the padding
+                     is what you press. */
                   <button
                     onClick={() => remove(member)}
                     disabled={busyId === member.id}
                     aria-label={`Remove ${member.name || member.email}`}
-                    className="shrink-0 text-white/30 hover:text-red-300 disabled:opacity-30 transition-colors"
+                    className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-30"
                   >
                     <Trash2 size={15} />
                   </button>

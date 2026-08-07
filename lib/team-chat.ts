@@ -22,11 +22,34 @@ export type TeamAttachment = Attachment;
  * everybody.
  */
 export function unreadWhere(userId: string, readAt: Date | null): Prisma.TeamMessageWhereInput {
+  // Deliberately its own OR rather than visibleToWhere() below: this clause
+  // already excludes my own messages, so the "sent by me" arm that belongs in
+  // a visibility check would be dead weight here and read as a contradiction.
   return {
     fromUserId: { not: userId },
     OR: [{ toUserId: userId }, { toUserId: null }],
     ...(readAt ? { createdAt: { gt: readAt } } : {}),
   };
+}
+
+/**
+ * Which messages this person is allowed to touch at all.
+ *
+ * Broadcasts, and the two sides of their own DMs. Nothing else — a DM between
+ * two other people is not theirs to read, and the chat's "Only the two of you
+ * see this" is a promise the API has to keep rather than a filter the browser
+ * applies.
+ *
+ * Here rather than inline because the listing route was the only place that
+ * had it. Resolving a flag — `PATCH /api/admin/team-messages/[messageId]` —
+ * looked a message up by id alone, so any staff account could clear or
+ * re-raise the urgent flag on a conversation it could not open: the flag
+ * vanishes from the other pair's bell, or reappears, and neither of them did
+ * it. The id is a cuid and not discoverable through the listing route, which
+ * is why this stayed quiet; it is still a write on somebody else's thread.
+ */
+export function visibleToWhere(userId: string): Prisma.TeamMessageWhereInput {
+  return { OR: [{ toUserId: null }, { toUserId: userId }, { fromUserId: userId }] };
 }
 
 /**

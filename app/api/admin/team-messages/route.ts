@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { sanitizeAttachments } from '@/lib/team-chat';
+import { sanitizeAttachments, visibleToWhere } from '@/lib/team-chat';
 
 /**
  * The team thread.
@@ -31,9 +31,7 @@ export async function GET(request: NextRequest) {
     // is not this caller's to read, and the page's "Only the two of you see
     // this" promise has to be true at the API, not just in the filter the
     // browser applies.
-    const visibility = {
-      OR: [{ toUserId: null }, { toUserId: session.userId }, { fromUserId: session.userId }],
-    };
+    const visibility = visibleToWhere(session.userId);
     const messages = await prisma.teamMessage.findMany({
       where: validAfter ? { AND: [visibility, { createdAt: { gt: validAfter } }] } : visibility,
       // Newest 200, presented oldest-first. The reverse matters: "the most
