@@ -277,6 +277,11 @@ export async function PATCH(
         contractStatus: contractStatus !== undefined ? contractStatus : undefined,
         mockupRequested: mockupRequested !== undefined ? mockupRequested : undefined,
         mockupRequestedAt: mockupRequested === true && !existing.mockupRequested ? new Date() : undefined,
+        // Asking for a mockup cancels the automated follow-up. The mockup
+        // email IS the second touch, and a lead who gets both in the same
+        // week learns that our emails are automatic — which is the one thing
+        // the sequence exists not to be. See lib/auto-follow-up.ts.
+        autoFollowUpDueAt: mockupRequested === true ? null : undefined,
         mockupUrl: mockupUrl !== undefined ? mockupUrl : undefined,
         // Normalised on the way in, because this is the link that gets
         // emailed and a folder URL pasted without its scheme is a dead

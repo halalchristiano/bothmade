@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isFurtherAlong, type LeadStatus } from '@/lib/leads';
 import { findCallOutcome } from '@/lib/call-outcomes';
+import { autoFollowUpDueDate, callEarnsAutoFollowUp } from '@/lib/auto-follow-up';
 
 /**
  * Records everything that follows from one phone call in a single request:
@@ -67,6 +68,30 @@ export async function POST(
       nextFollowUpAt = null; // stop it appearing in anyone's follow-up queue
     }
 
+    /*
+     * The second email, booked now rather than remembered later.
+     *
+     * Scheduled by the machine at the moment the call is logged, because the
+     * alternative is a person deciding to write it in three days' time and
+     * that is the decision that never gets made. Only for calls where
+     * somebody was actually spoken to — see lib/auto-follow-up.ts for why an
+     * unanswered ring must not produce a "we spoke the other day".
+     *
+     * Set here and not on the mockup answer, so that the follow-up happens
+     * whichever surface logged the call and whether or not anybody stayed on
+     * the screen long enough to answer a question. Asking for a mockup is
+     * what cancels it; nothing is required to make it happen.
+     */
+    const startsAutoFollowUp =
+      callEarnsAutoFollowUp(outcome) &&
+      !lead.autoFollowUpSentAt &&
+      !lead.autoFollowUpDueAt &&
+      !lead.doNotContact &&
+      !!lead.email &&
+      // A mockup already on the way is the follow-up. Two in a week is how a
+      // warm lead learns our emails are automatic.
+      !lead.mockupRequested;
+
     // Captured before the write so a mis-tap can be put back exactly as it
     // was. A wrong "not interested" marks the lead lost, wipes its follow-up
     // and drops it off every list — the single most damaging mis-tap here.
@@ -75,6 +100,7 @@ export async function POST(
       nextFollowUpAt: lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null,
       lostReason: lead.lostReason,
       phoneInvalidAt: lead.phoneInvalidAt ? lead.phoneInvalidAt.toISOString() : null,
+      autoFollowUpDueAt: lead.autoFollowUpDueAt ? lead.autoFollowUpDueAt.toISOString() : null,
     };
 
     const [activity, updated] = await prisma.$transaction([
@@ -91,13 +117,30 @@ export async function POST(
           // A dead/wrong number pulls the lead out of the callable band, so
           // nobody dials it again tomorrow expecting a different result.
           phoneInvalidAt: outcome.phoneInvalid ? new Date() : undefined,
+          autoFollowUpDueAt: startsAutoFollowUp
+            ? autoFollowUpDueDate()
+            : // A flat no cancels anything already booked. Emailing somebody
+              // three days after they said no is how you get reported.
+              outcome.status === 'lost'
+              ? null
+              : undefined,
           updatedAt: new Date(),
         },
       }),
     ]);
 
     return NextResponse.json(
-      { success: true, activity, lead: updated, previous, activityId: activity.id },
+      {
+        success: true,
+        activity,
+        lead: updated,
+        previous,
+        activityId: activity.id,
+        // So the screen can say what was booked without guessing at the rule,
+        // and can ask the one question that changes it.
+        autoFollowUpDueAt: updated.autoFollowUpDueAt?.toISOString() ?? null,
+        askAboutMockup: Boolean(outcome.spokeToThem) && outcome.status !== 'lost',
+      },
       { status: 201 }
     );
   } catch (error) {

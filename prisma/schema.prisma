@@ -573,6 +573,22 @@ model Lead {
   // sinking down a queue ordered by neglect.
   replyReceivedAt DateTime?
 
+  /// The one automated email that follows a call nobody asked a mockup for.
+  ///
+  /// A call that ends "not right now" used to end there. The rep books a
+  /// follow-up date, the date arrives on a list of forty other dates, and the
+  /// second touch — the one that converts — never happens. This is that touch,
+  /// scheduled by the machine at the moment the call is logged so it does not
+  /// depend on anybody remembering.
+  ///
+  /// Two columns rather than one, because "due and not yet sent" and "already
+  /// sent" have to be distinguishable: without the second, a cron that runs
+  /// twice sends twice. Requesting a mockup clears the due date — the mockup
+  /// email IS the follow-up, and two arriving in the same week is how a warm
+  /// lead learns to ignore you. See lib/auto-follow-up.ts.
+  autoFollowUpDueAt  DateTime?
+  autoFollowUpSentAt DateTime?
+
   currentSiteAssessment String? @db.Text
 
   customPainPoints String? @db.Text

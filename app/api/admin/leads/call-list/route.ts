@@ -56,6 +56,12 @@ export type CallReason =
   /** They wrote back. Nothing outranks this. */
   | 'replied'
   /**
+   * A mockup has gone out and nobody has rung about it. The most valuable
+   * call on the sheet: work has been done, it has been delivered, and the
+   * only thing between it and a decision is somebody asking what they thought.
+   */
+  | 'mockup-sent'
+  /**
    * They keep opening the email. Ranked above a booked follow-up on purpose:
    * a date in a diary is a plan, and somebody reading your email this morning
    * is happening now. See lib/lead-opens.ts for why one open does not qualify.
@@ -66,23 +72,38 @@ export type CallReason =
   | 'today'
   | 'no-follow-up'
   | 'never-contacted'
+  /**
+   * A mockup was asked for and has not gone out yet. Held back, like
+   * `scheduled` — you promised these people something and it isn't ready, so
+   * there is nothing to say until it is.
+   */
+  | 'awaiting-mockup'
   /** Booked for a future date — deliberately not callable today. */
   | 'scheduled';
 
 const REASON_RANK: Record<CallReason, number> = {
   replied: 0,
-  opened: 1,
-  bounced: 2,
-  overdue: 3,
-  today: 4,
-  'no-follow-up': 5,
-  'never-contacted': 6,
-  scheduled: 7,
+  'mockup-sent': 1,
+  opened: 2,
+  bounced: 3,
+  overdue: 4,
+  today: 5,
+  'no-follow-up': 6,
+  'never-contacted': 7,
+  'awaiting-mockup': 8,
+  scheduled: 9,
 };
 
-/** The bands that make up the call list. `scheduled` is counted, not called. */
+/**
+ * The bands that make up the call list.
+ *
+ * `scheduled` and `awaiting-mockup` are counted rather than called — one is
+ * booked for a date that hasn't arrived, the other is waiting on work that
+ * hasn't been delivered.
+ */
 const CALLABLE_REASONS: CallReason[] = [
   'replied',
+  'mockup-sent',
   'opened',
   'bounced',
   'overdue',
@@ -91,6 +112,9 @@ const CALLABLE_REASONS: CallReason[] = [
   'never-contacted',
 ];
 
+/** Counted and reported, deliberately kept off today's sheet. */
+const HELD_BACK_REASONS: CallReason[] = ['awaiting-mockup', 'scheduled'];
+
 export async function GET() {
   try {
     const session = await requireStaff();
@@ -98,13 +122,25 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { role: true, googleRefreshToken: true, gmailNeedsReconnect: true },
+      select: { googleRefreshToken: true, gmailNeedsReconnect: true },
     });
 
-    // A rep works their own leads; an owner sees everything.
-    const scope = user?.role === 'sales' ? { assignedToId: session.userId } : {};
-
-    const where = { ...scope, status: { notIn: ['won', 'lost'] } };
+    /*
+     * One sheet, everybody's leads.
+     *
+     * This used to scope a `sales` rep to their own assigned leads, which
+     * sounds tidy and was wrong for a team of two working the same book: the
+     * strongest lead on any given morning — somebody reading the email right
+     * now — was invisible to whoever happened to be free to ring it, because
+     * of an assignment made weeks earlier by whoever imported the CSV. Two
+     * partial lists also meant neither person could tell whether the queue was
+     * genuinely empty or merely empty of theirs.
+     *
+     * Who owns a lead is still on the row, so the sheet reads "Evan's" or
+     * "Kiana's" at a glance. It just no longer decides who is allowed to see
+     * it.
+     */
+    const where = { status: { notIn: ['won', 'lost'] } };
 
     // Counted separately so the page can say how many were considered. A list
     // that silently shows a subset reads as "this is everything", which is the
@@ -149,6 +185,20 @@ export async function GET() {
         coldEmailLastOpenedAt: true,
         salesNote: true,
         updatedAt: true,
+        // Whether a mockup is owed, and whether it has gone out. These decide
+        // two whole bands, and they are different facts: `mockupRequested`
+        // means somebody asked for one, `mockupSentManuallyAt` and a stamped
+        // mockup row mean the client has actually received it. Delivered by
+        // hand counts — the work reached them, which is the only thing the
+        // band is about.
+        mockupRequested: true,
+        mockupSentManuallyAt: true,
+        mockups: {
+          where: { sentAt: { not: null } },
+          orderBy: { sentAt: 'desc' },
+          take: 1,
+          select: { sentAt: true },
+        },
         assignedTo: { select: { name: true } },
         activities: {
           orderBy: { createdAt: 'desc' },
@@ -174,6 +224,31 @@ export async function GET() {
       take: MAX_ROWS,
     });
 
+    /*
+     * When each of these was last rung, in one query.
+     *
+     * Needed for exactly one decision: a mockup that has gone out is the best
+     * reason to ring anybody, but only until somebody has rung. Without this
+     * the band would either stick forever — the same twelve names every
+     * morning, long after the conversation happened — or be gated on a
+     * follow-up date and so miss the two days when the mockup is fresh.
+     *
+     * The single `activities` row already selected above cannot answer it: it
+     * is the most recent activity of ANY type, so a lead rung on Monday and
+     * emailed on Tuesday looks unrung.
+     */
+    const lastCallByLead = new Map<string, Date>();
+    if (leads.length > 0) {
+      const calls = await prisma.leadActivity.groupBy({
+        by: ['leadId'],
+        where: { type: 'call', leadId: { in: leads.map((l) => l.id) } },
+        _max: { createdAt: true },
+      });
+      for (const c of calls) {
+        if (c._max.createdAt) lastCallByLead.set(c.leadId, c._max.createdAt);
+      }
+    }
+
     // Compare on date, not timestamp — a follow-up set for "today" shouldn't
     // read as overdue just because it was stored at midnight.
     const startOfToday = new Date();
@@ -193,12 +268,58 @@ export async function GET() {
       // call, so they cannot drift apart.
       const opens = readOpens(lead);
 
+      /*
+       * Where this lead sits in the mockup half of the pipeline.
+       *
+       * `mockupSentAt` is when the client received one — a stamped send or a
+       * hand-delivery, never merely a link being attached. A preview
+       * deployment sitting on our own machine is not something anybody has
+       * been given, and calling to ask what they thought of it is the exact
+       * embarrassment this distinction exists to prevent.
+       */
+      const mockupSentAt = lead.mockups[0]?.sentAt ?? lead.mockupSentManuallyAt ?? null;
+      const awaitingMockup = lead.mockupRequested && !mockupSentAt;
+
+      /*
+       * Sent, and not rung since.
+       *
+       * The "not rung since" half is what stops this being a band that never
+       * empties. Ringing about the mockup is the whole job; once it has
+       * happened the outcome books a date and the ordinary follow-up bands
+       * take it from there.
+       */
+      const lastCall = lastCallByLead.get(lead.id) ?? null;
+      const mockupNeedsCall =
+        !!mockupSentAt && (!lastCall || lastCall.getTime() < mockupSentAt.getTime());
+
       // First match wins, and the branches are exhaustive — every lead gets
       // exactly one reason, so the counts below can be trusted to add up.
       let reason: CallReason;
       if (lead.replyReceivedAt) {
         // Outranks a booked follow-up: they've moved, so the old plan is stale.
         reason = 'replied';
+      } else if (awaitingMockup) {
+        /*
+         * Promised something, hasn't got it yet. Off the sheet.
+         *
+         * Checked this high on purpose — above an open, above a bounce, above
+         * an overdue date. All of those normally mean "ring them", and every
+         * one of them is wrong here: there is nothing to say to somebody
+         * waiting on work that isn't finished, and ringing anyway is how a
+         * warm lead is talked back out of interest. A reply is the one thing
+         * that outranks it, because a lead who has written to us is no longer
+         * waiting quietly.
+         */
+        reason = 'awaiting-mockup';
+      } else if (mockupNeedsCall) {
+        /*
+         * They have it and nobody has rung. Above the booked-date bands on
+         * purpose: the follow-up date was chosen during a call that happened
+         * before the mockup existed, so it is a plan made without the single
+         * most important fact. Sitting on it until Thursday wastes the two
+         * days when the thing you built is still on their desk.
+         */
+        reason = 'mockup-sent';
       } else if (opens.callable) {
         // Any open, above the follow-up bands deliberately: this is evidence
         // from this morning and it goes cold in days, where a date in a diary
@@ -251,7 +372,7 @@ export async function GET() {
       };
     });
 
-    const due = rows.filter((r) => r.reason !== 'scheduled');
+    const due = rows.filter((r) => !HELD_BACK_REASONS.includes(r.reason));
 
     // Split before anything is counted, so nothing that comes off the sheet
     // can still be counted onto it further down.
@@ -263,9 +384,9 @@ export async function GET() {
     // of nine is the kind of quiet lie that makes a rep stop trusting the
     // page — the ones held back are reported as their own number instead.
     const breakdown = Object.fromEntries(
-      ([...CALLABLE_REASONS, 'scheduled'] as CallReason[]).map((r) => [
+      ([...CALLABLE_REASONS, ...HELD_BACK_REASONS] as CallReason[]).map((r) => [
         r,
-        r === 'scheduled'
+        HELD_BACK_REASONS.includes(r)
           ? rows.filter((x) => x.reason === r).length
           : worthCalling.filter((x) => x.reason === r).length,
       ])
@@ -320,6 +441,14 @@ export async function GET() {
         callsToday,
         breakdown,
         scheduledLater: breakdown.scheduled,
+        /*
+         * Waiting on a mockup. Reported rather than listed, for the same
+         * reason `scheduled` is: an empty-looking sheet with twelve leads
+         * quietly held back is a sheet nobody believes. This number is also
+         * the honest read on the design queue — if it climbs, the bottleneck
+         * is not the phone.
+         */
+        awaitingMockup: breakdown['awaiting-mockup'],
         noPhoneCount: worthCalling.filter((r) => !r.phone || r.phoneInvalidAt).length,
         truncated: leads.length >= MAX_ROWS,
         // The banner's "one tap" reconnect button can't do anything when the

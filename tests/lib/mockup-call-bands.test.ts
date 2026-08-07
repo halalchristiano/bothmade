@@ -1,0 +1,252 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * Who the call sheet stops asking you to ring, and when it starts again.
+ *
+ * The complaint that produced this: a lead was rung, a mockup was requested,
+ * and the sheet went on listing them every morning as somebody to call. There
+ * is nothing to say to a person waiting on work that isn't finished — ringing
+ * them anyway is how a warm lead gets talked back out of interest. And the
+ * moment the mockup does go out, that same lead becomes the single best call
+ * on the page and used to be buried under whatever date was booked before the
+ * mockup existed.
+ *
+ * So: held back while it is being built, top of the sheet once it is sent,
+ * and off that band again the moment somebody actually rings.
+ */
+
+const prisma = {
+  user: { findUnique: vi.fn(async () => ({ googleRefreshToken: 'x', gmailNeedsReconnect: false })) },
+  lead: { count: vi.fn(async () => 0), findMany: vi.fn() },
+  leadActivity: {
+    count: vi.fn(async () => 0),
+    groupBy: vi.fn(async () => [] as { leadId: string; _max: { createdAt: Date | null } }[]),
+  },
+};
+
+vi.mock('@/lib/prisma', () => ({ prisma }));
+vi.mock('@/lib/middleware', () => ({
+  requireStaff: async () => ({ userId: 'user_1' }),
+  unauthorizedResponse: () => new Response('{}', { status: 401 }),
+}));
+vi.mock('@/lib/gmail-oauth', () => ({ isGoogleOAuthConfigured: () => true }));
+
+const { GET } = await import('@/app/api/admin/leads/call-list/route');
+
+const NOW = Date.now();
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+const ago = (ms: number) => new Date(NOW - ms);
+
+let n = 0;
+const lead = (over: Record<string, unknown> = {}) => ({
+  id: `lead_${++n}`,
+  company: `Business ${n}`,
+  contactName: null,
+  phone: '+13365550100',
+  email: 'x@example.com',
+  status: 'contacted',
+  hotLead: false,
+  estimatedValue: 500000,
+  nextFollowUpAt: null,
+  emailDeliveryFailedAt: null,
+  phoneInvalidAt: null,
+  replyReceivedAt: null,
+  emailDeliveryFailedReason: null,
+  // Never emailed, so every lead here starts plainly callable and the band
+  // each test lands in is the one that test put it in — an emailed-and-never-
+  // opened lead is held back for its own separate reason.
+  coldEmailSentAt: null,
+  coldEmailOpens: 0,
+  coldEmailOpenedAt: null,
+  coldEmailLastOpenedAt: null,
+  industry: 'Roofing',
+  region: 'NC',
+  salesNote: null,
+  updatedAt: ago(DAY),
+  mockupRequested: false,
+  mockupSentManuallyAt: null,
+  mockups: [] as { sentAt: Date }[],
+  assignedTo: null,
+  activities: [],
+  _count: { activities: 0 },
+  ...over,
+});
+
+const call = async () => (await GET()).json();
+const names = (rows: { company: string }[]) => rows.map((r) => r.company);
+
+beforeEach(() => {
+  n = 0;
+  vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ googleRefreshToken: 'x', gmailNeedsReconnect: false });
+  prisma.lead.count.mockResolvedValue(0);
+  prisma.leadActivity.count.mockResolvedValue(0);
+  prisma.leadActivity.groupBy.mockResolvedValue([]);
+});
+
+describe('a lead waiting on a mockup', () => {
+  it('comes off the call sheet entirely', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'Waiting', mockupRequested: true }),
+      lead({ company: 'Ordinary' }),
+    ]);
+
+    const { callable, breakdown, awaitingMockup } = await call();
+
+    expect(names(callable)).toEqual(['Ordinary']);
+    expect(breakdown['awaiting-mockup']).toBe(1);
+    // Counted out loud. A sheet that quietly holds twelve leads back is a
+    // sheet nobody believes when it looks empty.
+    expect(awaitingMockup).toBe(1);
+  });
+
+  /**
+   * The three signals that normally mean "ring them today", all overruled.
+   *
+   * Each is a genuine reason to call in every other case, which is exactly
+   * why this has to be tested: the branch is only correct because it is
+   * checked before all three.
+   */
+  it('stays off it even while opening the email, bouncing, or overdue', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({
+        company: 'Reading It',
+        mockupRequested: true,
+        coldEmailSentAt: ago(5 * DAY),
+        coldEmailOpens: 6,
+        coldEmailOpenedAt: ago(2 * DAY),
+        coldEmailLastOpenedAt: ago(HOUR),
+      }),
+      lead({ company: 'Bounced', mockupRequested: true, emailDeliveryFailedAt: ago(DAY) }),
+      lead({ company: 'Overdue', mockupRequested: true, nextFollowUpAt: ago(3 * DAY) }),
+    ]);
+
+    const { callable, breakdown } = await call();
+
+    expect(callable).toHaveLength(0);
+    expect(breakdown['awaiting-mockup']).toBe(3);
+  });
+
+  /** A lead who has written to us is not waiting quietly any more. */
+  it('is callable again the moment they write back', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'Wrote Back', mockupRequested: true, replyReceivedAt: ago(HOUR) }),
+    ]);
+
+    const { callable } = await call();
+
+    expect(callable[0].reason).toBe('replied');
+  });
+});
+
+describe('a lead the mockup has gone out to', () => {
+  it('goes to the top of the sheet', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'Overdue', nextFollowUpAt: ago(3 * DAY) }),
+      lead({
+        company: 'Has The Mockup',
+        mockupRequested: true,
+        mockups: [{ sentAt: ago(HOUR) }],
+      }),
+    ]);
+
+    const { callable } = await call();
+
+    expect(names(callable)).toEqual(['Has The Mockup', 'Overdue']);
+    expect(callable[0].reason).toBe('mockup-sent');
+  });
+
+  /**
+   * The date in the diary was chosen during a call that happened before the
+   * mockup existed, so it is a plan made without the one fact that matters.
+   * Sitting on it wastes the two days the thing is still on their desk.
+   */
+  it('outranks the follow-up date booked before it was sent', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({
+        company: 'Booked For Thursday',
+        mockupRequested: true,
+        mockups: [{ sentAt: ago(HOUR) }],
+        nextFollowUpAt: new Date(NOW + 4 * DAY),
+      }),
+    ]);
+
+    const { callable } = await call();
+
+    expect(callable[0].reason).toBe('mockup-sent');
+  });
+
+  /** Delivered by hand is delivered. The work reached them either way. */
+  it('counts a hand-delivered mockup the same as a tracked send', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'By Hand', mockupRequested: true, mockupSentManuallyAt: ago(HOUR) }),
+    ]);
+
+    expect((await call()).callable[0].reason).toBe('mockup-sent');
+  });
+
+  /**
+   * The half that stops this being a band which never empties. Without it the
+   * same twelve names sit at the top every morning long after the
+   * conversation happened, and a permanent alert is one nobody reads.
+   */
+  it('drops out of the band once somebody has rung', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'Already Rung', mockupRequested: true, mockups: [{ sentAt: ago(2 * DAY) }] }),
+    ]);
+    prisma.leadActivity.groupBy.mockResolvedValue([
+      { leadId: 'lead_1', _max: { createdAt: ago(HOUR) } },
+    ]);
+
+    expect((await call()).callable[0].reason).not.toBe('mockup-sent');
+  });
+
+  /**
+   * A call from before the mockup went out is not a call about the mockup.
+   * It is the call that produced it.
+   */
+  it('stays in the band when the only call predates the send', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'Rung First', mockupRequested: true, mockups: [{ sentAt: ago(HOUR) }] }),
+    ]);
+    prisma.leadActivity.groupBy.mockResolvedValue([
+      { leadId: 'lead_1', _max: { createdAt: ago(3 * DAY) } },
+    ]);
+
+    expect((await call()).callable[0].reason).toBe('mockup-sent');
+  });
+
+  /**
+   * A preview deployment is a password-protected subdomain we look at. It is
+   * not something anybody has been given, and ringing to ask what they
+   * thought of it is the exact embarrassment the distinction prevents.
+   */
+  it('does not count a mockup that was only ever built', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'Built Not Sent', mockupRequested: true, mockups: [] }),
+    ]);
+
+    expect((await call()).callable).toHaveLength(0);
+  });
+});
+
+/**
+ * One sheet for the whole team.
+ *
+ * A rep used to see only leads assigned to them, which for two people working
+ * one book meant the strongest lead of the morning was invisible to whoever
+ * happened to be free to ring it — and neither could tell an empty queue from
+ * an empty half of one.
+ */
+describe('whose leads are on it', () => {
+  it('never filters by who the lead is assigned to', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead({ company: 'Somebody Elses' })]);
+
+    await call();
+
+    const where = prisma.lead.findMany.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('assignedToId');
+    expect(names((await call()).callable)).toContain('Somebody Elses');
+  });
+});

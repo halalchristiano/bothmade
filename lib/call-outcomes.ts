@@ -28,6 +28,16 @@ export interface CallOutcome {
   askForDate?: boolean;
   /** true = the number is dead or wrong; flag the lead so it stops being dialed. */
   phoneInvalid?: boolean;
+  /**
+   * true = a person at the business actually picked up and had a conversation.
+   *
+   * Not a cosmetic distinction. It decides two things: whether the rep is
+   * asked "did they want a mockup?", and whether the lead enters the automated
+   * follow-up sequence — an email that opens "we spoke the other day" and
+   * lands with somebody who never picked up the phone is a lie they will
+   * notice. See lib/auto-follow-up.ts.
+   */
+  spokeToThem?: boolean;
   tone: 'good' | 'neutral' | 'bad';
 }
 
@@ -67,6 +77,7 @@ export const CALL_OUTCOMES: CallOutcome[] = [
     status: 'contacted',
     followUpDays: null,
     askForDate: true,
+    spokeToThem: true,
     tone: 'neutral',
   },
   {
@@ -76,6 +87,7 @@ export const CALL_OUTCOMES: CallOutcome[] = [
     note: 'Spoke to them — interested, wants to see more.',
     status: 'replied',
     followUpDays: 2,
+    spokeToThem: true,
     tone: 'good',
   },
   {
@@ -85,6 +97,7 @@ export const CALL_OUTCOMES: CallOutcome[] = [
     note: 'Spoke to them — agreed to receive a proposal.',
     status: 'qualified',
     followUpDays: 3,
+    spokeToThem: true,
     tone: 'good',
   },
   {
@@ -95,6 +108,7 @@ export const CALL_OUTCOMES: CallOutcome[] = [
     status: 'qualified',
     followUpDays: null,
     askForDate: true,
+    spokeToThem: true,
     tone: 'good',
   },
   {

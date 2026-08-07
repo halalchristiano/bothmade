@@ -103,6 +103,19 @@ export default function CallCockpit() {
   const [sendingDraft, setSendingDraft] = useState(false);
   const [draftDone, setDraftDone] = useState<string | null>(null);
 
+  /**
+   * The one question worth asking the moment a call ends.
+   *
+   * `mockupAsk` holds the date the automated follow-up got booked for, which
+   * is what makes the "No" answer mean something concrete on screen rather
+   * than being a button that appears to do nothing. `mockupAnswer` is what
+   * was decided, kept so the card can confirm it instead of vanishing —
+   * a card that disappears on tap leaves the rep unsure it registered.
+   */
+  const [mockupAsk, setMockupAsk] = useState<{ dueAt: string | null } | null>(null);
+  const [mockupAnswer, setMockupAnswer] = useState<'yes' | 'no' | null>(null);
+  const [mockupSaving, setMockupSaving] = useState(false);
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/leads/${leadId}`);
@@ -205,6 +218,13 @@ export default function CallCockpit() {
       setTidyError(null);
       setOutcomeDate('');
       setLostReason('');
+      // Only after a call where somebody actually picked up — the route
+      // decides that, not this screen, so the question and the sequence that
+      // follows from it can never disagree about who qualifies.
+      if (data.askAboutMockup) {
+        setMockupAsk({ dueAt: data.autoFollowUpDueAt ?? null });
+        setMockupAnswer(null);
+      }
       const followUp = buildFollowUpDraft(outcome.key, {
         company: lead.company,
         contactName: lead.contactName,
@@ -223,6 +243,48 @@ export default function CallCockpit() {
       setActionError('Could not log the call — it has NOT been saved.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Answers "did they want a mockup?".
+   *
+   * Yes puts the lead on the build queue and cancels the automated email —
+   * the mockup is the follow-up, and both arriving in the same week is how a
+   * warm lead learns our emails are automatic.
+   *
+   * No sends nothing and changes nothing, because logging the call already
+   * booked the follow-up. That is on purpose: if this question is ignored, or
+   * the tab is closed, or the call was logged from the queue's quick buttons
+   * instead, the lead still gets its second touch. The default has to be the
+   * thing that happens anyway — a question whose unanswered case is "nothing"
+   * is a question that silently loses leads.
+   */
+  async function answerMockup(wanted: boolean) {
+    if (!lead) return;
+    if (!wanted) {
+      setMockupAnswer('no');
+      return;
+    }
+    setMockupSaving(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/admin/leads/${lead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mockupRequested: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error || "Couldn't put the mockup request in — try it from their page.");
+        return;
+      }
+      setMockupAnswer('yes');
+      await load();
+    } catch {
+      setActionError("Couldn't put the mockup request in — try it from their page.");
+    } finally {
+      setMockupSaving(false);
     }
   }
 
@@ -523,6 +585,45 @@ export default function CallCockpit() {
               {actionError && <p className="mt-2 text-xs text-amber-300">{actionError}</p>}
               {draftDone && !draft && <p className="mt-2 text-xs text-emerald-300">{draftDone}</p>}
             </div>
+
+            {/* One question, asked while the call is still in the room. */}
+            {mockupAsk && (
+              <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.05] p-3 space-y-2.5">
+                {mockupAnswer === null ? (
+                  <>
+                    <div>
+                      <p className="text-[13px] font-semibold text-white">Did they want a mockup?</p>
+                      <p className="text-[11px] text-white/45 mt-0.5 leading-relaxed">
+                        Yes puts them on the build queue and takes them off the call sheet until it&apos;s sent.
+                        No leaves the automated follow-up
+                        {mockupAsk.dueAt
+                          ? ` to go out on ${new Date(mockupAsk.dueAt).toLocaleDateString()}`
+                          : ' as it is'}
+                        .
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <BrandButton onClick={() => answerMockup(true)} disabled={mockupSaving} className="flex-1">
+                        {mockupSaving ? 'Requesting…' : 'Yes — build one'}
+                      </BrandButton>
+                      <BrandButton variant="quiet" onClick={() => answerMockup(false)} disabled={mockupSaving}>
+                        No
+                      </BrandButton>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[12px] text-emerald-200 leading-relaxed">
+                    {mockupAnswer === 'yes'
+                      ? 'On the build queue. They stay off the call sheet until it goes out, then come back to the top.'
+                      : mockupAsk.dueAt
+                        ? `Left in the follow-up sequence — one email goes out on ${new Date(
+                            mockupAsk.dueAt
+                          ).toLocaleDateString()}.`
+                        : 'Noted — nothing automated is queued for this one.'}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* The follow-up, offered the moment it's relevant */}
             {draft && (

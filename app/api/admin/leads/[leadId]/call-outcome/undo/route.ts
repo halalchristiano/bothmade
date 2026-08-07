@@ -47,6 +47,12 @@ export async function POST(
         // Undoing a mis-tapped "wrong number" has to put the lead back in the
         // callable band, or the undo only half-worked.
         phoneInvalidAt: previous.phoneInvalidAt ? new Date(previous.phoneInvalidAt) : null,
+        // Logging the call books an automated email three days out. An undone
+        // call that leaves it booked sends "we spoke the other day" to
+        // somebody whose call was never really logged — the one piece of this
+        // undo that reaches outside the app, so it is the one that matters
+        // most to put back.
+        autoFollowUpDueAt: previous.autoFollowUpDueAt ? new Date(previous.autoFollowUpDueAt) : null,
         updatedAt: new Date(),
       },
     });

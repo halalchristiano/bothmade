@@ -26,12 +26,14 @@ import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 
 type CallReason =
   | 'replied'
+  | 'mockup-sent'
   | 'opened'
   | 'bounced'
   | 'overdue'
   | 'today'
   | 'no-follow-up'
   | 'never-contacted'
+  | 'awaiting-mockup'
   | 'scheduled';
 
 interface CallRow {
@@ -67,6 +69,13 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
     blurb:
       'Someone at these businesses answered your email. Warmest leads you have, and they go cold fastest — call them before anything else on this page.',
     classes: 'border-emerald-400/40 bg-emerald-400/[0.12] text-emerald-100',
+  },
+  'mockup-sent': {
+    label: 'They have the mockup and nobody has rung',
+    short: 'Mockup sent',
+    blurb:
+      'We built something, sent it, and nobody has picked up the phone since. The most valuable call on this page: the work is done and the only thing left is asking what they thought. Drops off this band the moment you log a call.',
+    classes: 'border-teal-400/40 bg-teal-400/[0.12] text-teal-100',
   },
   opened: {
     label: 'They opened your email',
@@ -107,6 +116,13 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
       'No email sent, no call logged, nothing. Straight off an import and untouched — the only band on this page where you are starting from scratch.',
     classes: 'border-white/15 bg-white/[0.04] text-white/70',
   },
+  'awaiting-mockup': {
+    label: 'Waiting on a mockup from us',
+    short: 'Mockup being built',
+    blurb:
+      "Someone asked for a mockup for these and it has not gone out yet. Deliberately off today's list — you promised them something and it is not ready, so there is nothing to say until it is. They come back to the top the day it is sent.",
+    classes: 'border-white/15 bg-white/[0.04] text-white/70',
+  },
   scheduled: {
     label: 'Booked for a later date',
     short: 'Booked for later',
@@ -145,14 +161,15 @@ const OPEN_BANDS = [
 /**
  * The bands that start expanded.
  *
- * Both are evidence from today that goes cold within days, and both are short
- * — which is the test: a band earns being open if you would act on it before
- * you finished scrolling past it.
+ * Each is evidence from the last day or two that goes cold fast, and each is
+ * short — which is the test: a band earns being open if you would act on it
+ * before you finished scrolling past it.
  */
-const OPEN_BY_DEFAULT = new Set<CallReason>(['replied', 'opened']);
+const OPEN_BY_DEFAULT = new Set<CallReason>(['replied', 'mockup-sent', 'opened']);
 
 const ORDER: CallReason[] = [
   'replied',
+  'mockup-sent',
   'opened',
   'bounced',
   'overdue',
@@ -406,6 +423,9 @@ function FilterBar({
 /** Same semantics as REASONS[...].classes, expressed as Badge tones for the per-row chip. */
 const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'purple' | 'neutral'> = {
   replied: 'emerald',
+  // Same green as a reply: both mean the lead has moved and is warm, which is
+  // the only thing the chip colour is for.
+  'mockup-sent': 'emerald',
   // Amber rather than a colour of its own: the Badge palette has five tones
   // and inventing a sixth for one band is how a UI stops meaning anything.
   opened: 'amber',
@@ -414,6 +434,7 @@ const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'pur
   today: 'sky',
   'no-follow-up': 'purple',
   'never-contacted': 'neutral',
+  'awaiting-mockup': 'neutral',
   scheduled: 'neutral',
 };
 
@@ -549,6 +570,22 @@ export function QueueView() {
   const [pendingCall, setPendingCall] = useState<{ id: string; company: string; at: number } | null>(null);
   const [savingQuick, setSavingQuick] = useState(false);
   const [quickOutcomeError, setQuickOutcomeError] = useState('');
+  /**
+   * The follow-on question after a call where somebody picked up.
+   *
+   * Separate from `pendingCall` because it outlives it: the call is logged
+   * and gone from the queue, and this is the one thing still worth asking
+   * about it. Answering "no" is not a no-op with nothing behind it — logging
+   * the call already booked the automated email, so the card says which date
+   * rather than pretending a button did something.
+   */
+  const [mockupAsk, setMockupAsk] = useState<{
+    leadId: string;
+    company: string;
+    dueAt: string | null;
+  } | null>(null);
+  const [mockupSaving, setMockupSaving] = useState(false);
+  const [mockupDone, setMockupDone] = useState<string | null>(null);
   const [snoozingId, setSnoozingId] = useState<string | null>(null);
 
   /**
@@ -673,6 +710,16 @@ export function QueueView() {
         body: JSON.stringify({ outcome: key }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        /*
+         * The call is logged either way. If somebody was actually spoken to,
+         * the card stays up for one more question instead of clearing —
+         * asking now is the difference between a mockup request that happens
+         * and one that gets remembered this evening.
+         */
+        if (data.askAboutMockup) {
+          setMockupAsk({ leadId: pendingCall.id, company: pendingCall.company, dueAt: data.autoFollowUpDueAt ?? null });
+        }
         clearPendingCall();
         load();
       } else {
@@ -683,6 +730,47 @@ export function QueueView() {
       setQuickOutcomeError('Could not reach the server — check your connection and try again.');
     } finally {
       setSavingQuick(false);
+    }
+  };
+
+  /**
+   * Yes puts them on the build queue and cancels the automated email — the
+   * mockup IS the follow-up. No changes nothing, because logging the call
+   * already booked it; the confirmation says when, so "No" reads as a
+   * decision rather than a dismissal.
+   */
+  const answerMockup = async (wanted: boolean) => {
+    if (!mockupAsk) return;
+    if (!wanted) {
+      setMockupDone(
+        mockupAsk.dueAt
+          ? `${mockupAsk.company} stays in the follow-up sequence — one email goes out on ${new Date(mockupAsk.dueAt).toLocaleDateString()}.`
+          : `Noted for ${mockupAsk.company}.`
+      );
+      setMockupAsk(null);
+      return;
+    }
+    setMockupSaving(true);
+    try {
+      const res = await fetch(`/api/admin/leads/${mockupAsk.leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mockupRequested: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setQuickOutcomeError(data.error || "Couldn't put the mockup request in — try it from their page.");
+        return;
+      }
+      setMockupDone(
+        `${mockupAsk.company} is on the build queue — off the call sheet until it goes out, then back at the top.`
+      );
+      setMockupAsk(null);
+      load();
+    } catch {
+      setQuickOutcomeError("Couldn't put the mockup request in — try it from their page.");
+    } finally {
+      setMockupSaving(false);
     }
   };
 
@@ -1050,6 +1138,41 @@ export function QueueView() {
             Or open their page to add a note
           </Link>
         </div>
+      )}
+
+      {mockupAsk && (
+        <div className="mb-5 rounded-2xl border border-emerald-400/30 bg-emerald-400/[0.08] p-4">
+          <p className="text-sm font-bold text-white/90 break-words">
+            Did {mockupAsk.company} want a mockup?
+          </p>
+          <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
+            Yes puts them on the build queue and takes them off this sheet until it&apos;s sent. No leaves the
+            automated follow-up
+            {mockupAsk.dueAt ? ` to go out on ${new Date(mockupAsk.dueAt).toLocaleDateString()}` : ' as it is'}.
+          </p>
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={() => answerMockup(true)}
+              disabled={mockupSaving}
+              className="flex-1 rounded-xl border border-emerald-400/40 bg-emerald-400/15 px-3 py-2 text-xs font-bold text-emerald-100 hover:bg-emerald-400/25 disabled:opacity-40 transition-colors"
+            >
+              {mockupSaving ? 'Requesting…' : 'Yes — build one'}
+            </button>
+            <button
+              onClick={() => answerMockup(false)}
+              disabled={mockupSaving}
+              className="rounded-xl border border-white/12 bg-white/[0.04] px-4 py-2 text-xs font-bold text-white/80 hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
+            >
+              No
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mockupDone && !mockupAsk && (
+        <p className="text-xs text-emerald-300 bg-emerald-400/10 border border-emerald-400/20 rounded-lg px-3 py-2 mb-4">
+          {mockupDone}
+        </p>
       )}
 
       {syncMessage && (
