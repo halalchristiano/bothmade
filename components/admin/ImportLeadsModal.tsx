@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Upload, CheckCircle2, Loader2, Download, AlertTriangle } from 'lucide-react';
 import { parseCsvWithHeaders } from '@/lib/csv';
 import { Modal } from './Modal';
@@ -301,6 +301,41 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
     customPointCount: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * Who these leads belong to once they are in.
+   *
+   * Left to itself the importer assigns every row to whoever ran it, which is
+   * wrong for the thing that actually happens: an owner imports a thousand
+   * cold leads for the closer to work. They all landed on the owner, the
+   * rep's call sheet — scoped to their own leads — stayed empty, and every
+   * open-pixel alert went to the wrong inbox with nothing on screen saying
+   * why.
+   *
+   * So it is asked, once, per file. It defaults to the sales rep because a
+   * cold list is almost always for them, and it is a visible dropdown rather
+   * than a silent rule so that importing a list for yourself is one click,
+   * not a surprise.
+   */
+  const [team, setTeam] = useState<Array<{ id: string; name: string | null; email: string; role: string }>>([]);
+  const [assignedToId, setAssignedToId] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    fetch('/api/admin/users')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live || !d?.success) return;
+        const users = d.users as Array<{ id: string; name: string | null; email: string; role: string }>;
+        setTeam(users);
+        // Oldest sales account, matching where inbound leads already go.
+        const rep = users.find((u) => u.role === 'sales');
+        if (rep) setAssignedToId(rep.id);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // A blank sheet with every column already headed, so nobody has to
   // transcribe the list below by hand and misspell one of them.
@@ -368,7 +403,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
       const res = await fetch('/api/admin/leads/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: preview, fileName }),
+        body: JSON.stringify({ rows: preview, fileName, assignedToId: assignedToId || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -626,6 +661,32 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
                 {preview.length} row{preview.length === 1 ? '' : 's'} ready to import
                 {preview[0]?.company ? ` — first: ${preview[0].company}` : ''}.
               </p>
+            )}
+
+            {/* Asked once per file, not per row, and only when there is more
+                than one person it could be. A lead with nobody against it is
+                on nobody's call sheet and sends its open alerts to nobody. */}
+            {preview.length > 0 && team.length > 1 && (
+              <label className="block mb-3">
+                <span className="text-xs font-semibold text-white/60">Assign these leads to</span>
+                <select
+                  value={assignedToId}
+                  onChange={(e) => setAssignedToId(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+                >
+                  {team.map((u) => (
+                    <option key={u.id} value={u.id} className="bg-raised">
+                      {u.name || u.email}
+                      {u.role === 'sales' ? ' — sales' : u.role === 'owner' ? ' — owner' : ''}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] text-white/35 leading-relaxed">
+                  Whoever owns a lead is the only person it appears for on the call sheet, and the only
+                  person who gets an alert when it opens your email. A row with its own{' '}
+                  <code className="text-white/50">assignedTo</code> column still wins over this.
+                </span>
+              </label>
             )}
 
             {error && <p className="text-xs text-red-400 mb-3">{error}</p>}

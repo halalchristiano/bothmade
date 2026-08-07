@@ -424,7 +424,7 @@ export async function POST(request: NextRequest) {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
-    const { rows, fileName } = await request.json();
+    const { rows, fileName, assignedToId: requestedAssigneeId } = await request.json();
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
     }
@@ -440,6 +440,19 @@ export async function POST(request: NextRequest) {
     ]);
     const playbook = new Map<string, PlaybookEntry>(playbookRows.map((r) => [r.slug, r]));
     const usersByEmail = new Map(teamMembers.map((u) => [u.email.toLowerCase(), u.id]));
+
+    /*
+     * Checked against the real team rather than trusted.
+     *
+     * An id that matches nobody falls back to the importer instead of being
+     * written as-is: a thousand leads owned by a user that does not exist are
+     * invisible on every call sheet at once, and the import would have
+     * reported success.
+     */
+    const defaultAssigneeId =
+      typeof requestedAssigneeId === 'string' && teamMembers.some((u) => u.id === requestedAssigneeId)
+        ? requestedAssigneeId
+        : null;
 
     let skipped = 0;
     // Custom line items across the whole file — reported back so whoever ran
@@ -525,8 +538,23 @@ export async function POST(request: NextRequest) {
         const clientTakenOnAt = parseDdmmyyyy(row.clienttakenon);
         const nextFollowUpAt = parseDdmmyyyy(row.nextfollowup);
 
+        /*
+         * Who owns these leads once they are in.
+         *
+         * It used to be whoever ran the import, full stop, which is wrong for
+         * the case that actually happens: an owner imports a thousand cold
+         * leads for the closer to work. Every one landed on the owner, so the
+         * rep's call sheet — scoped to their own leads — was empty, and every
+         * open-pixel alert went to the wrong inbox. Nothing said why.
+         *
+         * A row that names somebody still wins, because a file that has
+         * thought about it per lead knows more than a dropdown. Below that is
+         * the choice made at import time, and only then the importer.
+         */
         const assignedToId =
-          (row.assignedto && usersByEmail.get(row.assignedto.trim().toLowerCase())) || session.userId;
+          (row.assignedto && usersByEmail.get(row.assignedto.trim().toLowerCase())) ||
+          defaultAssigneeId ||
+          session.userId;
 
         // A link in the sheet is version one of that lead's mockups, not just
         // a loose column — otherwise an imported lead shows "no mockups yet"

@@ -18,7 +18,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const prisma = {
   lead: { findMany: vi.fn(), create: vi.fn(), update: vi.fn((args: unknown) => args) },
   salesPlaybookItem: { findMany: vi.fn(async () => []) },
-  user: { findMany: vi.fn(async () => []) },
+  user: {
+    findMany: vi.fn(async () => [
+      { id: 'user_1', email: 'owner@bothmade.studio', name: 'Kiana' },
+      { id: 'user_evan', email: 'evan@bothmade.studio', name: 'Evan' },
+      { id: 'user_kiana', email: 'kiana@bothmade.studio', name: 'Kiana' },
+    ]),
+  },
   csvImportLog: { create: vi.fn(async () => ({})) },
   $transaction: vi.fn(async (ops: unknown[]) => ops),
 };
@@ -230,5 +236,63 @@ describe('re-importing a business we already hold', () => {
 
     expect(data.enriched).toBe(1);
     expect(data.count).toBe(1);
+  });
+});
+
+/**
+ * Who the leads belong to once they are in.
+ *
+ * The importer assigned every row to whoever ran it, full stop, which is
+ * wrong for the case that actually happens: an owner imports a thousand cold
+ * leads for the closer to work. Every one landed on the owner, so the rep's
+ * call sheet — scoped to their own leads — stayed empty, and every open-pixel
+ * alert went to the wrong inbox. Nothing on screen said why.
+ */
+describe('assigning imported leads', () => {
+  const created = () =>
+    prisma.lead.create.mock.calls.map((c) => c[0] as unknown as { data: Record<string, unknown> });
+
+  const importWith = (body: Record<string, unknown>) =>
+    importLeads({ json: async () => body } as unknown as Parameters<typeof importLeads>[0]);
+
+  beforeEach(() => {
+    prisma.lead.findMany.mockResolvedValue([]);
+  });
+
+  it('gives them to whoever was chosen at import time', async () => {
+    await importWith({
+      rows: [{ company: 'Ridgeline Roofing', email: 'a@b.co' }],
+      assignedToId: 'user_evan',
+    });
+
+    expect(created()[0].data.assignedToId).toBe('user_evan');
+  });
+
+  it('falls back to the importer when nobody was chosen', async () => {
+    await importWith({ rows: [{ company: 'Ridgeline Roofing', email: 'a@b.co' }] });
+
+    expect(created()[0].data.assignedToId).toBe('user_1');
+  });
+
+  /**
+   * A thousand leads owned by a user that does not exist are invisible on
+   * every call sheet at once, and the import would report success.
+   */
+  it('refuses an id that matches nobody rather than writing it', async () => {
+    await importWith({
+      rows: [{ company: 'Ridgeline Roofing', email: 'a@b.co' }],
+      assignedToId: 'user_who_left',
+    });
+
+    expect(created()[0].data.assignedToId).toBe('user_1');
+  });
+
+  it('lets a row that names somebody override the choice', async () => {
+    await importWith({
+      rows: [{ company: 'Ridgeline Roofing', email: 'a@b.co', assignedTo: 'kiana@bothmade.studio' }],
+      assignedToId: 'user_evan',
+    });
+
+    expect(created()[0].data.assignedToId).toBe('user_kiana');
   });
 });
