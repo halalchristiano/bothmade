@@ -264,9 +264,12 @@ export function PageTitle({
   tone?: 'sky' | 'purple' | 'emerald' | 'amber' | 'red';
 }) {
   return (
+    // font-bold and tracking-tight both dropped: 700 is a shout at this size,
+    // and the scale now carries the tracking, so stacking a utility on top was
+    // two people setting the same property from different places.
     <div className="flex items-center gap-3">
       <IconChip icon={icon} tone={tone} size="lg" />
-      <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h1>
+      <h1 className="text-2xl font-semibold text-white md:text-3xl">{title}</h1>
     </div>
   );
 }
@@ -280,13 +283,18 @@ export function ViewTabs({
   tabs: Array<{ href: string; label: string; active: boolean }>;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 p-1 rounded-lg border border-white/[0.07] bg-white/[0.02]">
+    // The selected tab is a raised chip inside a sunken track, rather than
+    // just a lighter rectangle — the shape says "this one is in front" before
+    // the colour has to.
+    <div className="inline-flex items-center gap-1 rounded-lg border border-white/[0.06] bg-black/20 p-1">
       {tabs.map((tab) => (
         <Link
           key={tab.href}
           href={tab.href}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            tab.active ? 'bg-white/10 text-white' : 'text-white/45 hover:text-white'
+          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-[background-color,color] duration-150 ease-ui ${
+            tab.active
+              ? 'bg-white/[0.09] text-white shadow-e1'
+              : 'text-white/45 hover:bg-white/[0.04] hover:text-white/80'
           }`}
         >
           {tab.label}
@@ -635,19 +643,34 @@ export function matchesSearch(query: string, ...fields: Array<string | null | un
 
 /** The marketing site's mono-caps kicker, for exactly one line per page. */
 export function Kicker({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  // Was mono, 10px, letterspaced to 0.4em — the exact tracked-out caps
+  // treatment the rest of this file was written to get away from, left behind
+  // because it sits above headings rather than inside cards. 0.4em is not a
+  // label, it is a texture; at that spacing the word stops being read and
+  // starts being looked at.
   return (
-    <p className={`font-mono text-[10px] uppercase tracking-[0.4em] text-white/35 ${className}`}>
+    <p className={`text-2xs font-medium uppercase tracking-[0.16em] text-white/35 ${className}`}>
       {children}
     </p>
   );
 }
 
 /**
- * The button pair every admin page was hand-rolling.
+ * The button set every admin page was hand-rolling.
  *
- * `primary` is the sky-to-purple gradient — the one per screen; `quiet` is
- * the bordered secondary. Both take the native button props, so existing
- * onClick/disabled call sites port by swapping the element.
+ * `primary` used to be the sky-to-purple gradient, which made the single
+ * loudest object on any screen the OK button of a dialog. A gradient is a
+ * thing you look at; a primary button is a thing you press, and the two want
+ * opposite amounts of attention. Solid white against a near-black ground is
+ * the highest contrast available and needs no colour at all to be obviously
+ * the action — it reads as expensive precisely because it is not trying to.
+ *
+ * The gradient is not gone, it moved to `accent`, for the two or three
+ * moments a screen genuinely wants to be looked at rather than used. Spending
+ * it on every Save was what made it worth nothing.
+ *
+ * All variants take the native button props, so call sites port by swapping
+ * the element.
  */
 export function BrandButton({
   variant = 'primary',
@@ -655,27 +678,36 @@ export function BrandButton({
   children,
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'quiet' | 'danger';
+  variant?: 'primary' | 'accent' | 'quiet' | 'danger';
 }) {
   const styles =
     variant === 'primary'
-      ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90'
+      ? 'bg-white text-ink shadow-e2 hover:bg-white/90 active:translate-y-px'
+      : variant === 'accent'
+      ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black shadow-e2 hover:opacity-90 active:translate-y-px'
       : variant === 'danger'
-      ? 'border border-red-400/40 text-red-300 font-semibold hover:bg-red-400/10'
-      : 'border border-white/15 text-white font-semibold hover:bg-white/5';
+      ? 'border border-red-400/35 text-red-300 hover:border-red-400/60 hover:bg-red-400/10 active:translate-y-px'
+      : 'border border-white/12 bg-white/[0.03] text-white hover:border-white/20 hover:bg-white/[0.06] active:translate-y-px';
   return (
     <button
       {...rest}
-      className={`rounded-xl px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${styles} ${className}`}
+      className={`rounded-lg px-4 py-2 text-sm font-medium transition-[background-color,border-color,opacity,transform] duration-150 ease-ui disabled:cursor-not-allowed disabled:opacity-40 ${styles} ${className}`}
     >
       {children}
     </button>
   );
 }
 
-/** The input class every page re-declared locally. One string, one place. */
+/**
+ * The input class every page re-declared locally. One string, one place.
+ *
+ * Sunk into the surface rather than floating on it — a field is a hole you
+ * put something into, and drawing it as another raised panel is why forms
+ * built out of cards read as busy. The border brightens on focus instead of
+ * vanishing behind a ring, so the field keeps its shape while it is active.
+ */
 export const inputClass =
-  'w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all';
+  'w-full rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2 text-sm text-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] transition-[border-color,background-color] duration-150 ease-ui placeholder:text-white/25 hover:border-white/[0.14] focus:border-sky-400/60 focus:bg-black/35 focus:outline-none';
 
 
 /**
