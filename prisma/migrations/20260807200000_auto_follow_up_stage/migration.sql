@@ -1,0 +1,12 @@
+-- Which email in the sequence goes next.
+--
+-- The follow-up after a call is two emails, not one: day three and day seven.
+-- A due date alone cannot say which of them is next, and getting that wrong
+-- means sending the day-three wording twice instead of following it with the
+-- day-seven one.
+--
+-- Defaults to zero, so every lead — including the handful already mid-sequence
+-- from the day this shipped — is treated as having had none. The worst case of
+-- that is one lead receiving the first email a second time; the worst case of
+-- backfilling a guess is a lead receiving the closing email as its opener.
+ALTER TABLE "leads" ADD COLUMN "autoFollowUpStage" INTEGER NOT NULL DEFAULT 0;

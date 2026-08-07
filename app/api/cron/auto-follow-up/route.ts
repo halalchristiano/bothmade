@@ -9,7 +9,9 @@ import { advanceToContactedOnOutreach } from '@/lib/leads';
 import { checkSendBudget } from '@/lib/send-budget';
 import {
   AUTO_FOLLOW_UP_MAX_PER_RUN,
+  AUTO_FOLLOW_UP_QUIET_DAYS,
   autoFollowUpEmail,
+  autoFollowUpNextDue,
   autoFollowUpSender,
 } from '@/lib/auto-follow-up';
 
@@ -18,11 +20,12 @@ import {
 export const maxDuration = 300;
 
 /**
- * Sends the second email to everybody whose call was three days ago.
+ * Sends whichever of the two follow-ups is due today.
  *
  * The whole point of this job is that it does not depend on anybody
- * remembering. It runs daily, picks up the leads whose due date has arrived,
- * sends one email each, and stamps them so a second run cannot send twice.
+ * remembering. It runs on weekdays, picks up the leads whose due date has
+ * arrived, sends the right email of the two, and either books the next one or
+ * ends the sequence by clearing the date.
  *
  * ## What it refuses to send to, and why each one is checked here
  *
@@ -35,7 +38,10 @@ export const maxDuration = 300;
  *  - they asked to be left alone;
  *  - the deal closed, either way;
  *  - the address bounced, so the send would only push the bounce rate up;
- *  - a mockup went in for them, which is the follow-up.
+ *  - a mockup went in for them, which is the follow-up;
+ *  - a person emailed them in the last two days, which is the one collision
+ *    that would make the whole thing read as automated. That one waits rather
+ *    than being dropped.
  *
  * The alternative — trusting whoever changed the lead to have cleared the due
  * date — is how an automated email goes to somebody who told us to stop.
@@ -80,8 +86,9 @@ export async function GET(request: NextRequest) {
 
     const due = await prisma.lead.findMany({
       where: {
+        // A non-null due date IS the sequence. It is nulled when the last
+        // email goes, so there is no separate "finished" flag to keep in step.
         autoFollowUpDueAt: { lte: new Date() },
-        autoFollowUpSentAt: null,
         replyReceivedAt: null,
         doNotContact: false,
         status: { notIn: ['won', 'lost'] },
@@ -89,13 +96,68 @@ export async function GET(request: NextRequest) {
         emailDeliveryFailedAt: null,
         mockupRequested: false,
       },
-      select: { id: true, company: true, contactName: true, email: true, shareToken: true, status: true },
+      select: {
+        id: true,
+        company: true,
+        contactName: true,
+        email: true,
+        shareToken: true,
+        status: true,
+        autoFollowUpDueAt: true,
+        autoFollowUpStage: true,
+      },
       orderBy: { autoFollowUpDueAt: 'asc' },
       take: AUTO_FOLLOW_UP_MAX_PER_RUN,
     });
 
     if (due.length === 0) {
       return NextResponse.json({ success: true, sent: 0, failed: 0, overflow: 0 }, { status: 200 });
+    }
+
+    /*
+     * Anybody a person emailed in the last couple of days waits.
+     *
+     * The collision this exists for: the rep sends the hand-written follow-up
+     * from the call screen, and the automated one lands the next morning. Two
+     * emails in two days from the same company is the exact texture of
+     * automation, which is the one thing this is trying not to be.
+     *
+     * Deferred rather than skipped — the email is still worth sending, just
+     * not tomorrow — and done as one query rather than one per lead.
+     */
+    const quietSince = new Date(Date.now() - AUTO_FOLLOW_UP_QUIET_DAYS * 24 * 60 * 60 * 1000);
+    const recentlyEmailed = new Set(
+      (
+        await prisma.leadActivity.findMany({
+          where: {
+            type: 'email',
+            leadId: { in: due.map((l) => l.id) },
+            createdAt: { gte: quietSince },
+          },
+          select: { leadId: true },
+          distinct: ['leadId'],
+        })
+      ).map((a) => a.leadId)
+    );
+
+    let deferred = 0;
+    for (const lead of due.filter((l) => recentlyEmailed.has(l.id))) {
+      deferred++;
+      await prisma.lead
+        .update({
+          where: { id: lead.id },
+          data: {
+            autoFollowUpDueAt: new Date(
+              Date.now() + AUTO_FOLLOW_UP_QUIET_DAYS * 24 * 60 * 60 * 1000
+            ),
+          },
+        })
+        .catch(() => null);
+    }
+
+    const ready = due.filter((l) => !recentlyEmailed.has(l.id));
+    if (ready.length === 0) {
+      return NextResponse.json({ success: true, sent: 0, failed: 0, deferred }, { status: 200 });
     }
 
     /*
@@ -106,19 +168,24 @@ export async function GET(request: NextRequest) {
      * that goes over it gets restricted, and "it was the cron, not me" is not
      * a distinction Google draws.
      */
-    const budget = await checkSendBudget(sender.id, due.length);
-    const batch = due.slice(0, budget.allowed);
+    const budget = await checkSendBudget(sender.id, ready.length);
+    const batch = ready.slice(0, budget.allowed);
 
     const site = resolveSiteUrl();
     let sent = 0;
     let failed = 0;
 
     for (const lead of batch) {
-      const mail = autoFollowUpEmail({
-        company: lead.company,
-        contactName: lead.contactName,
-        stopUrl: `${site}/stop/${lead.shareToken}`,
-      });
+      // 1-based: stage 0 on the lead means none have gone, so this is the first.
+      const stage = lead.autoFollowUpStage + 1;
+      const mail = autoFollowUpEmail(
+        {
+          company: lead.company,
+          contactName: lead.contactName,
+          stopUrl: `${site}/stop/${lead.shareToken}`,
+        },
+        stage
+      );
 
       const result = await sendAsUser(
         {
@@ -149,6 +216,10 @@ export async function GET(request: NextRequest) {
           .update({
             where: { id: lead.id },
             data: {
+              // Ends the sequence outright rather than advancing it: if the
+              // first one bounced the second will too, and the lead's route
+              // in is the phone now.
+              autoFollowUpDueAt: null,
               autoFollowUpSentAt: new Date(),
               emailDeliveryFailedAt: new Date(),
               emailDeliveryFailedReason:
@@ -166,14 +237,28 @@ export async function GET(request: NextRequest) {
             data: {
               leadId: lead.id,
               type: 'email',
-              content: `Automated follow-up sent — ${mail.subject}`,
+              content: `Automated follow-up ${stage} of 2 sent — ${mail.subject}`,
               createdById: sender.id,
             },
           }),
           prisma.lead.update({
             where: { id: lead.id },
             data: {
+              autoFollowUpStage: stage,
               autoFollowUpSentAt: new Date(),
+              /*
+               * Null here is what ends the sequence, and it is the only thing
+               * that does — there is no separate finished flag that could
+               * drift out of step with the stage counter.
+               *
+               * The next date is measured from the one just sent rather than
+               * from now, so a run delayed by a day does not drag the tail of
+               * the schedule along with it.
+               */
+              autoFollowUpDueAt: autoFollowUpNextDue(
+                stage,
+                lead.autoFollowUpDueAt ?? new Date()
+              ),
               status: advanceToContactedOnOutreach(lead.status),
               updatedAt: new Date(),
             },
@@ -188,9 +273,13 @@ export async function GET(request: NextRequest) {
         sender: senderEmail,
         sent,
         failed,
+        // Held over because a person emailed them in the last two days. Not a
+        // failure — a lead that would otherwise have had two emails in two
+        // mornings from the same company.
+        deferred,
         // Never silently dropped: a run that was trimmed says by how much, so
         // "40 sent" cannot be mistaken for "everybody who was due".
-        heldBack: due.length - batch.length,
+        heldBack: ready.length - batch.length,
         budgetRemaining: Math.max(0, budget.remaining - sent),
       },
       { status: 200 }

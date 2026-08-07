@@ -4,6 +4,7 @@ import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isFurtherAlong, type LeadStatus } from '@/lib/leads';
 import { findCallOutcome } from '@/lib/call-outcomes';
 import { autoFollowUpDueDate, callEarnsAutoFollowUp } from '@/lib/auto-follow-up';
+import { nextTouch } from '@/lib/next-touch';
 
 /**
  * Records everything that follows from one phone call in a single request:
@@ -140,6 +141,25 @@ export async function POST(
         // and can ask the one question that changes it.
         autoFollowUpDueAt: updated.autoFollowUpDueAt?.toISOString() ?? null,
         askAboutMockup: Boolean(outcome.spokeToThem) && outcome.status !== 'lost',
+        /*
+         * What now happens to this lead, in one sentence, computed from what
+         * was actually written rather than from what the screen assumes.
+         *
+         * The single most useful thing to say the instant a call is logged is
+         * "this one is handled, and here is when it comes back". Without it
+         * the rep is left guessing whether the sheet will pester them about
+         * the same business tomorrow — which is the friction the whole
+         * post-call flow exists to remove.
+         */
+        nextTouch: nextTouch({
+          // Freshly logged with a date on it, so it is not on today's sheet.
+          reason: updated.nextFollowUpAt ? 'scheduled' : 'no-follow-up',
+          nextFollowUpAt: updated.nextFollowUpAt,
+          autoFollowUpDueAt: updated.autoFollowUpDueAt,
+          autoFollowUpStage: updated.autoFollowUpStage,
+          mockupRequested: updated.mockupRequested,
+          mockupSentAt: updated.mockupSentManuallyAt,
+        }),
       },
       { status: 201 }
     );

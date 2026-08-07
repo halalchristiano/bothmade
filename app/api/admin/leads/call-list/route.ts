@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 import { readOpens } from '@/lib/lead-opens';
+import { nextTouch } from '@/lib/next-touch';
 
 /**
  * The day's call list, in the order it should be worked.
@@ -193,6 +194,11 @@ export async function GET() {
         // band is about.
         mockupRequested: true,
         mockupSentManuallyAt: true,
+        // What is already scheduled for this lead, so the row can say so.
+        // Four separate facts decide whether a lead is handled and they used
+        // to live in four places; see lib/next-touch.ts.
+        autoFollowUpDueAt: true,
+        autoFollowUpStage: true,
         mockups: {
           where: { sentAt: { not: null } },
           orderBy: { sentAt: 'desc' },
@@ -359,6 +365,22 @@ export async function GET() {
       return {
         ...lead,
         reason,
+        /*
+         * One sentence saying what happens to this lead next.
+         *
+         * Computed here rather than on the page so the row, the call screen
+         * and the lead page cannot disagree about it — and so the state
+         * nobody could see before, "nothing is scheduled and nobody is coming
+         * back to this", has somewhere to be said out loud.
+         */
+        nextTouch: nextTouch({
+          reason,
+          nextFollowUpAt: lead.nextFollowUpAt,
+          autoFollowUpDueAt: lead.autoFollowUpDueAt,
+          autoFollowUpStage: lead.autoFollowUpStage,
+          mockupRequested: lead.mockupRequested,
+          mockupSentAt,
+        }),
         emailedAndUnopened,
         opens: opens.opens,
         openBand: opens.band,
@@ -449,6 +471,19 @@ export async function GET() {
          * is not the phone.
          */
         awaitingMockup: breakdown['awaiting-mockup'],
+        /*
+         * Automated emails going out over the next week.
+         *
+         * The one thing about this system nobody could see: it writes to
+         * customers on your behalf. A number you can look at is the
+         * difference between automation you trust and automation you are
+         * quietly nervous about.
+         */
+        autoEmailsThisWeek: rows.filter(
+          (r) =>
+            r.autoFollowUpDueAt &&
+            r.autoFollowUpDueAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        ).length,
         noPhoneCount: worthCalling.filter((r) => !r.phone || r.phoneInvalidAt).length,
         truncated: leads.length >= MAX_ROWS,
         // The banner's "one tap" reconnect button can't do anything when the

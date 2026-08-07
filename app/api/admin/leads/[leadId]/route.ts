@@ -187,6 +187,7 @@ export async function PATCH(
       qualTiming,
       qualMotivation,
       clearEmailFailure,
+      cancelAutoFollowUp,
       assignedToId,
       originalWebsite,
       salesNote,
@@ -281,7 +282,13 @@ export async function PATCH(
         // email IS the second touch, and a lead who gets both in the same
         // week learns that our emails are automatic — which is the one thing
         // the sequence exists not to be. See lib/auto-follow-up.ts.
-        autoFollowUpDueAt: mockupRequested === true ? null : undefined,
+        //
+        // And the manual stop, for the case the rules cannot see: the rep
+        // knows something about this conversation that no column holds. An
+        // automated email you can watch approaching and cannot stop is worse
+        // than no automation at all.
+        autoFollowUpDueAt:
+          mockupRequested === true || cancelAutoFollowUp === true ? null : undefined,
         mockupUrl: mockupUrl !== undefined ? mockupUrl : undefined,
         // Normalised on the way in, because this is the link that gets
         // emailed and a folder URL pasted without its scheme is a dead

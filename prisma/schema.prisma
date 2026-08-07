@@ -588,6 +588,13 @@ model Lead {
   /// lead learns to ignore you. See lib/auto-follow-up.ts.
   autoFollowUpDueAt  DateTime?
   autoFollowUpSentAt DateTime?
+  /// How many of the sequence have gone. 0 = none yet, 2 = finished.
+  ///
+  /// The due date alone cannot answer "which email is next", and getting that
+  /// wrong means sending the day-three email twice rather than following it
+  /// with the day-seven one. Nulling the due date is what ends the sequence;
+  /// this is what decides which wording goes out while it is still running.
+  autoFollowUpStage  Int       @default(0)
 
   currentSiteAssessment String? @db.Text
 

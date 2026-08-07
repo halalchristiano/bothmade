@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Phone, ExternalLink, ChevronRight, Clock, Sparkles } from 'lucide-react';
+import { Phone, ExternalLink, ChevronRight, Clock, Sparkles, Check } from 'lucide-react';
 import { buildLeadBrief } from '@/lib/call-brief';
 import { CALL_OUTCOMES, type CallOutcome } from '@/lib/call-outcomes';
 import { OBJECTIONS } from '@/lib/objections';
@@ -112,9 +112,28 @@ export default function CallCockpit() {
    * was decided, kept so the card can confirm it instead of vanishing —
    * a card that disappears on tap leaves the rep unsure it registered.
    */
-  const [mockupAsk, setMockupAsk] = useState<{ dueAt: string | null } | null>(null);
   const [mockupAnswer, setMockupAnswer] = useState<'yes' | 'no' | null>(null);
   const [mockupSaving, setMockupSaving] = useState(false);
+
+  /**
+   * Everything that follows one logged call, in one place.
+   *
+   * There used to be up to three cards on screen at once after logging — an
+   * outcome confirmation, a mockup question and an open follow-up draft — all
+   * appearing together with nothing to say which came first or whether the
+   * call was actually finished with. That is the friction: not the number of
+   * steps but their arrival all at once, with no end.
+   *
+   * Now it is one card that walks through them and finishes on "next call".
+   * `null` means no call has been logged this visit, which is also what makes
+   * the outcome buttons disappear while it is up — one thing to do at a time.
+   */
+  const [wrapUp, setWrapUp] = useState<{
+    outcomeLabel: string;
+    askAboutMockup: boolean;
+    dueAt: string | null;
+    nextTouchLine: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -218,13 +237,16 @@ export default function CallCockpit() {
       setTidyError(null);
       setOutcomeDate('');
       setLostReason('');
-      // Only after a call where somebody actually picked up — the route
-      // decides that, not this screen, so the question and the sequence that
-      // follows from it can never disagree about who qualifies.
-      if (data.askAboutMockup) {
-        setMockupAsk({ dueAt: data.autoFollowUpDueAt ?? null });
-        setMockupAnswer(null);
-      }
+      // Whether to ask about a mockup is the route's decision, not this
+      // screen's, so the question and the sequence that follows from it can
+      // never disagree about who qualifies.
+      setMockupAnswer(null);
+      setWrapUp({
+        outcomeLabel: outcome.label,
+        askAboutMockup: Boolean(data.askAboutMockup),
+        dueAt: data.autoFollowUpDueAt ?? null,
+        nextTouchLine: data.nextTouch?.line ?? '',
+      });
       const followUp = buildFollowUpDraft(outcome.key, {
         company: lead.company,
         contactName: lead.contactName,
@@ -280,9 +302,52 @@ export default function CallCockpit() {
         return;
       }
       setMockupAnswer('yes');
+      // Asking for a mockup cancels the automated email, so the line that
+      // said one was going out on Tuesday has to stop saying it.
+      setWrapUp((w) =>
+        w
+          ? {
+              ...w,
+              dueAt: null,
+              nextTouchLine: 'Waiting on their mockup — back on your sheet the day it goes out',
+            }
+          : w
+      );
       await load();
     } catch {
       setActionError("Couldn't put the mockup request in — try it from their page.");
+    } finally {
+      setMockupSaving(false);
+    }
+  }
+
+  /**
+   * Stops the automated emails for this lead.
+   *
+   * Here rather than buried on the lead page because this is the moment the
+   * rep learns one is coming — the wrap-up card has just told them the date.
+   * An automated email you can watch approaching and cannot stop is worse
+   * than no automation at all: it makes the rep distrust every other thing
+   * the system does on their behalf.
+   */
+  async function stopAutoFollowUp() {
+    if (!lead) return;
+    setMockupSaving(true);
+    try {
+      const res = await fetch(`/api/admin/leads/${lead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cancelAutoFollowUp: true }),
+      });
+      if (!res.ok) {
+        setActionError("Couldn't stop those — try it from their page.");
+        return;
+      }
+      setWrapUp((w) =>
+        w ? { ...w, dueAt: null, nextTouchLine: 'Automated emails stopped for this one' } : w
+      );
+    } catch {
+      setActionError("Couldn't stop those — try it from their page.");
     } finally {
       setMockupSaving(false);
     }
@@ -451,7 +516,13 @@ export default function CallCockpit() {
 
           {/* The actions */}
           <div className="border-l border-white/[0.08] px-5 py-6 space-y-5">
-            <div>
+            {/*
+              * Hidden once a call has been logged, because the wrap-up card
+              * below is the only thing left to do. Ten outcome buttons still
+              * on screen underneath a "Logged" confirmation is what made it
+              * unclear whether the call had actually been recorded.
+              */}
+            <div className={wrapUp ? 'hidden' : undefined}>
               <Kicker className="mb-3">How did it go?</Kicker>
               <div className="grid grid-cols-2 gap-2">
                 {CALL_OUTCOMES.map((o) => (
@@ -583,23 +654,55 @@ export default function CallCockpit() {
               )}
 
               {actionError && <p className="mt-2 text-xs text-amber-300">{actionError}</p>}
-              {draftDone && !draft && <p className="mt-2 text-xs text-emerald-300">{draftDone}</p>}
             </div>
 
-            {/* One question, asked while the call is still in the room. */}
-            {mockupAsk && (
-              <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.05] p-3 space-y-2.5">
-                {mockupAnswer === null ? (
-                  <>
+            {/*
+              * The wrap-up: one card, in order, ending on the next call.
+              *
+              * Everything here used to appear at once and separately — a
+              * mockup question beside an open draft beside a quiet "Next"
+              * link at the bottom of the page — with nothing to say which
+              * came first or when the call was actually done with. The steps
+              * were never the problem; arriving together with no ending was.
+              */}
+            {wrapUp && (
+              <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/[0.06] p-3.5 space-y-3">
+                <div className="flex items-start gap-2">
+                  <Check size={15} className="text-emerald-300 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-white">
+                      Logged — {wrapUp.outcomeLabel.toLowerCase()}
+                    </p>
+                    {/* The sentence that answers "will this pester me again?"
+                        — the whole reason the card leads with it. */}
+                    {wrapUp.nextTouchLine && (
+                      <p className="text-[12px] text-emerald-200/90 mt-0.5 leading-relaxed">
+                        {wrapUp.nextTouchLine}
+                        {wrapUp.dueAt && (
+                          <>
+                            {' · '}
+                            <button
+                              onClick={stopAutoFollowUp}
+                              disabled={mockupSaving}
+                              className="underline underline-offset-2 text-emerald-200/70 hover:text-white disabled:opacity-40"
+                            >
+                              stop those
+                            </button>
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step one, and only while it is unanswered. */}
+                {wrapUp.askAboutMockup && mockupAnswer === null && (
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 space-y-2.5">
                     <div>
                       <p className="text-[13px] font-semibold text-white">Did they want a mockup?</p>
                       <p className="text-[11px] text-white/45 mt-0.5 leading-relaxed">
-                        Yes puts them on the build queue and takes them off the call sheet until it&apos;s sent.
-                        No leaves the automated follow-up
-                        {mockupAsk.dueAt
-                          ? ` to go out on ${new Date(mockupAsk.dueAt).toLocaleDateString()}`
-                          : ' as it is'}
-                        .
+                        Yes puts them on the build queue and off your sheet until it&apos;s sent. No changes
+                        nothing — the follow-up emails are already booked.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -610,38 +713,69 @@ export default function CallCockpit() {
                         No
                       </BrandButton>
                     </div>
-                  </>
-                ) : (
-                  <p className="text-[12px] text-emerald-200 leading-relaxed">
-                    {mockupAnswer === 'yes'
-                      ? 'On the build queue. They stay off the call sheet until it goes out, then come back to the top.'
-                      : mockupAsk.dueAt
-                        ? `Left in the follow-up sequence — one email goes out on ${new Date(
-                            mockupAsk.dueAt
-                          ).toLocaleDateString()}.`
-                        : 'Noted — nothing automated is queued for this one.'}
-                  </p>
+                  </div>
                 )}
-              </div>
-            )}
 
-            {/* The follow-up, offered the moment it's relevant */}
-            {draft && (
-              <div className="rounded-xl border border-sky-400/25 bg-sky-400/[0.04] p-3 space-y-2.5">
-                <div>
-                  <p className="text-[13px] font-semibold text-white">Send the follow-up now?</p>
-                  <p className="text-[11px] text-white/40 mt-0.5">{draft.why}</p>
-                </div>
-                <input value={draftSubject} onChange={(e) => setDraftSubject(e.target.value)} className={inputClass} aria-label="Follow-up subject" />
-                <textarea value={draftBody} onChange={(e) => setDraftBody(e.target.value)} rows={7} className={`${inputClass} font-mono text-[12px]`} aria-label="Follow-up body" />
-                <div className="flex gap-2">
-                  <BrandButton onClick={sendFollowUp} disabled={sendingDraft} className="flex-1">
-                    {sendingDraft ? 'Sending…' : `Send to ${lead.email}`}
-                  </BrandButton>
-                  <BrandButton variant="quiet" onClick={() => setDraft(null)}>
-                    Skip
-                  </BrandButton>
-                </div>
+                {/*
+                  * Step two, and deliberately behind the question above: a
+                  * seven-row textarea open beside an unanswered yes/no is how
+                  * both get ignored.
+                  */}
+                {draft && (!wrapUp.askAboutMockup || mockupAnswer !== null) && (
+                  <div className="rounded-lg border border-sky-400/25 bg-sky-400/[0.05] p-3 space-y-2.5">
+                    <div>
+                      <p className="text-[13px] font-semibold text-white">Write to them now?</p>
+                      <p className="text-[11px] text-white/40 mt-0.5">{draft.why}</p>
+                    </div>
+                    <input
+                      value={draftSubject}
+                      onChange={(e) => setDraftSubject(e.target.value)}
+                      className={inputClass}
+                      aria-label="Follow-up subject"
+                    />
+                    <textarea
+                      value={draftBody}
+                      onChange={(e) => setDraftBody(e.target.value)}
+                      rows={7}
+                      className={`${inputClass} font-mono text-[12px]`}
+                      aria-label="Follow-up body"
+                    />
+                    <div className="flex gap-2">
+                      <BrandButton onClick={sendFollowUp} disabled={sendingDraft} className="flex-1">
+                        {sendingDraft ? 'Sending…' : `Send to ${lead.email}`}
+                      </BrandButton>
+                      <BrandButton variant="quiet" onClick={() => setDraft(null)}>
+                        Skip
+                      </BrandButton>
+                    </div>
+                  </div>
+                )}
+
+                {draftDone && !draft && <p className="text-[12px] text-emerald-300">{draftDone}</p>}
+
+                {/*
+                  * The end of the card, and the end of the call. A queue you
+                  * work forty at a time needs the next one to be the biggest
+                  * thing on screen when you finish this one — not a grey link
+                  * below the activity history.
+                  */}
+                {nextInQueue && nextInQueue.id !== leadId ? (
+                  <Link
+                    href={`/admin/call/${nextInQueue.id}`}
+                    className="flex items-center justify-between rounded-lg bg-emerald-400/15 border border-emerald-400/30 px-3 py-2.5 text-[13px] font-semibold text-emerald-100 hover:bg-emerald-400/25 transition-colors"
+                  >
+                    <span className="truncate">Next call — {nextInQueue.company}</span>
+                    <ChevronRight size={15} className="shrink-0" />
+                  </Link>
+                ) : (
+                  <Link
+                    href="/admin/sales"
+                    className="flex items-center justify-between rounded-lg border border-white/12 px-3 py-2.5 text-[13px] font-semibold text-white/75 hover:bg-white/5 transition-colors"
+                  >
+                    <span>That&apos;s the queue — back to the sheet</span>
+                    <ChevronRight size={15} className="shrink-0" />
+                  </Link>
+                )}
               </div>
             )}
 
@@ -663,7 +797,9 @@ export default function CallCockpit() {
               </div>
             </div>
 
-            {nextInQueue && nextInQueue.id !== leadId && (
+            {/* Only before a call is logged. Afterwards it is the last line
+                of the wrap-up card, where it belongs. */}
+            {!wrapUp && nextInQueue && nextInQueue.id !== leadId && (
               <Link
                 href={`/admin/call/${nextInQueue.id}`}
                 className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-2.5 text-sm text-white/70 hover:bg-white/5 transition-colors"

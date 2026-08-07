@@ -60,6 +60,15 @@ interface CallRow {
   openNextStep: string | null;
   assignedTo: { name: string | null } | null;
   lastActivity: { type: string; content: string; createdAt: string } | null;
+  /**
+   * What happens to this lead next, in one sentence, decided on the server.
+   *
+   * The list was never the stressful part — not being able to tell whether a
+   * lead was handled was. Four separate facts answer that and they used to
+   * live in four places, so the only honest way to know was to open the lead.
+   * See lib/next-touch.ts.
+   */
+  nextTouch?: { kind: string; line: string; needsAttention: boolean } | null;
 }
 
 const REASONS: Record<CallReason, { label: string; short: string; blurb: string; classes: string }> = {
@@ -457,6 +466,10 @@ export function QueueView() {
     callsToday: number;
     breakdown: Partial<Record<CallReason, number>>;
     noPhoneCount: number;
+    /** Held back, and why. Reported so an empty-looking sheet is believable. */
+    awaitingMockup: number;
+    scheduledLater: number;
+    autoEmailsThisWeek: number;
     truncated: boolean;
     gmailStatus: 'ok' | 'needs-reconnect' | 'not-connected';
     googleOAuthAvailable: boolean;
@@ -634,6 +647,9 @@ export function QueueView() {
           callsToday: data.callsToday ?? 0,
           breakdown: data.breakdown ?? {},
           noPhoneCount: data.noPhoneCount ?? 0,
+          awaitingMockup: data.awaitingMockup ?? 0,
+          scheduledLater: data.scheduledLater ?? 0,
+          autoEmailsThisWeek: data.autoEmailsThisWeek ?? 0,
           truncated: !!data.truncated,
           gmailStatus: data.gmailStatus ?? 'ok',
           googleOAuthAvailable: data.googleOAuthAvailable !== false,
@@ -1083,6 +1099,31 @@ export function QueueView() {
         </div>
       )}
 
+      {/*
+        * What is happening without you.
+        *
+        * The three states a lead can be in that are deliberately NOT on this
+        * sheet, said out loud. Without them the page is a list that goes
+        * quiet for reasons you cannot see — which is the point at which
+        * somebody stops believing an empty queue and starts checking the
+        * whole book by hand.
+        */}
+      {meta &&
+        (meta.awaitingMockup > 0 || meta.scheduledLater > 0 || meta.autoEmailsThisWeek > 0) && (
+          <p className="text-xs text-white/40 mb-4 leading-relaxed">
+            Off this sheet on purpose:{' '}
+            {[
+              meta.awaitingMockup > 0 && `${meta.awaitingMockup} waiting on a mockup`,
+              meta.scheduledLater > 0 && `${meta.scheduledLater} booked for a later date`,
+              meta.autoEmailsThisWeek > 0 &&
+                `${meta.autoEmailsThisWeek} getting an automated follow-up this week`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            .
+          </p>
+        )}
+
       {meta?.truncated && (
         <p className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2 mb-4">
           You have more open leads than this page loads at once. The most urgent are shown — clear some down and
@@ -1324,6 +1365,24 @@ export function QueueView() {
                             day: 'numeric',
                             month: 'short',
                           })}
+                        </p>
+                      )}
+
+                      {/*
+                        * Only when it says something the band does not.
+                        *
+                        * Every row on this sheet is "on your sheet now" by
+                        * definition, so printing that under all of them would
+                        * be four hundred lines of noise teaching people to
+                        * skip the place the useful sentence appears.
+                        */}
+                      {row.nextTouch && row.nextTouch.kind !== 'now' && (
+                        <p
+                          className={`text-xs mt-1.5 leading-relaxed break-words ${
+                            row.nextTouch.needsAttention ? 'text-amber-300/85' : 'text-white/45'
+                          }`}
+                        >
+                          {row.nextTouch.line}
                         </p>
                       )}
 
