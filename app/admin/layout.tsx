@@ -9,6 +9,7 @@ import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
 import { Wordmark } from '@/components/Wordmark';
 import { useAdminPoll } from '@/lib/use-admin-poll';
 import { SendGuard } from '@/components/admin/SendGuard';
+import { useBodyScrollLock } from '@/components/admin/Modal';
 
 /*
  * The shell, take three.
@@ -611,6 +612,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // the account now, so everyone sees the full nav.
   const navItems = ADMIN_NAV_ITEMS;
 
+
+  // The page behind an open nav sheet holds still; the sheet scrolls instead.
+  // Shared with the dialogs so the two never restore each other's value.
+  useBodyScrollLock(mobileOpen);
+
   const initials = (userName || '?')
     .split(' ')
     .map((p) => p[0])
@@ -761,7 +767,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 transition={{ duration: reduceMotion ? 0 : 0.2 }}
                 className="overflow-hidden border-t border-white/[0.08]"
               >
-                <div className="px-4 py-4 space-y-4">
+                {/*
+                  Capped, and scrolls inside itself.
+
+                  Fifteen nav items, a search box and a user row come to about
+                  two phone screens, and the sheet expands inline — so opening
+                  the menu pushed the page down and left you scrolling through
+                  nav into page content, with no edge to either. The body is
+                  held still while it is open (the same counted lock the
+                  dialogs use, so the two cannot fight over the value), and the
+                  sheet takes the scrolling instead.
+
+                  `100dvh` rather than `100vh`: on mobile Safari the static
+                  viewport unit does not account for the address bar, which is
+                  precisely the strip the last nav item would hide under.
+                  `4rem` is the header this sits beneath.
+                */}
+                <div className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain px-4 py-4 space-y-4">
                   <SearchBox onNavigate={() => setMobileOpen(false)} />
                   {/* No onNavigate here: the effect keyed on `pathname` already
                       closes this sheet on every route change. */}

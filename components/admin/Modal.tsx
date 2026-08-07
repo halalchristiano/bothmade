@@ -73,7 +73,7 @@ let scrollLocks = 0;
 let restoreOverflow = '';
 let restoreOverscroll = '';
 
-function lockBodyScroll(): () => void {
+export function lockBodyScroll(): () => void {
   if (scrollLocks === 0) {
     restoreOverflow = document.body.style.overflow;
     restoreOverscroll = document.body.style.overscrollBehavior;
@@ -154,6 +154,22 @@ export function useDialog(ref: React.RefObject<HTMLElement | null>, onClose: () 
       previouslyFocused?.focus?.();
     };
   }, [ref]);
+}
+
+/**
+ * The same lock, for an overlay that is not a dialog.
+ *
+ * The admin's mobile nav sheet needs it and is not a `Modal` — it is a panel
+ * inside the header rather than something with a backdrop and a focus trap.
+ * Sharing the counter is the point: two independent locks both writing
+ * `document.body.style.overflow` is how one of them ends up restoring a value
+ * the other still needs.
+ */
+export function useBodyScrollLock(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    return lockBodyScroll();
+  }, [active]);
 }
 
 export function Modal({

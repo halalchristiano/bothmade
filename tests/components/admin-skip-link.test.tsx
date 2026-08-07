@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AdminLayout from '@/app/admin/layout';
 
@@ -97,5 +97,53 @@ describe('the landmarks', () => {
   it('has exactly one main region for the skip link to target', () => {
     shell();
     expect(document.querySelectorAll('main').length).toBe(1);
+  });
+});
+
+/**
+ * The mobile nav sheet.
+ *
+ * Fifteen items, a search box and a user row come to about two phone screens,
+ * and the sheet expands inline inside the header — so opening the menu pushed
+ * the page down and left you scrolling out of nav and into page content with
+ * no edge to either. Capped and scrolling inside itself now, with the page
+ * behind held still.
+ *
+ * The lock is the same counted one the dialogs use. Two independent locks
+ * both writing `document.body.style.overflow` is how one ends up restoring a
+ * value the other still needs, and this file is where that would surface.
+ */
+describe('the mobile nav sheet', () => {
+  const openMenu = async (user: ReturnType<typeof userEvent.setup>) => {
+    shell();
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+    return screen.getByRole('navigation', { name: 'Main, mobile' });
+  };
+
+  it('holds the page still while it is open', async () => {
+    const user = userEvent.setup();
+    await openMenu(user);
+
+    expect(document.body.style.overflow).toBe('hidden');
+  });
+
+  it('gives scrolling back when it closes', async () => {
+    const user = userEvent.setup();
+    await openMenu(user);
+
+    await user.click(screen.getByRole('button', { name: /menu/i }));
+
+    await waitFor(() => expect(document.body.style.overflow).toBe(''));
+  });
+
+  it('caps its own height and takes the scrolling itself', async () => {
+    const user = userEvent.setup();
+    const nav = await openMenu(user);
+
+    // The scroll container is the sheet's inner pane, which wraps the nav.
+    const pane = nav.closest('.overflow-y-auto') as HTMLElement | null;
+    expect(pane, 'the sheet must scroll inside itself').toBeTruthy();
+    expect(pane!.className).toContain('overscroll-contain');
+    expect(pane!.className).toMatch(/max-h-\[calc\(100dvh/);
   });
 });
