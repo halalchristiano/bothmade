@@ -147,6 +147,7 @@ interface TodayData {
     mockupRequests: number;
     /** Answered by the client, waiting on us to send the next round. */
     designsOwed: Array<{ id: string; company: string; since: string; nextStage: string }>;
+    designsOwedCount?: number;
     /** Folder attached, nothing sent. Finished work nobody is chasing. */
     mockupsBuiltNotSent: Array<{
       id: string;
@@ -546,7 +547,7 @@ function WaitingOnUs({
    */
   const blocked =
     (deliver.unreadDesignFeedbackCount ?? deliver.unreadDesignFeedback.length) +
-    (deliver.designsOwed ?? []).length +
+    (deliver.designsOwedCount ?? (deliver.designsOwed ?? []).length) +
     (deliver.mockupRequests > 0 ? 1 : 0) +
     (deliver.mockupsBuiltNotSentCount ?? deliver.mockupsBuiltNotSent.length) +
     (sell.approvedMockupCount ?? sell.approvedMockups.length);

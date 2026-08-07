@@ -51,6 +51,7 @@ const EMPTY = {
     stalledProjectCount: 0,
     mockupRequests: 0,
     designsOwed: [],
+    designsOwedCount: 0,
     mockupsBuiltNotSent: [],
     mockupsBuiltNotSentCount: 0,
     unreadDesignFeedback: [],
@@ -205,5 +206,71 @@ describe('an unsigned proposal', () => {
     render(<Today />);
 
     await screen.findByText("Brandon Roofing has had their proposal 6 days and hasn't signed.");
+  });
+});
+
+/**
+ * The band above the lanes, which counts from five sources at once.
+ *
+ * It is the one place on the card where a person is blocked and cannot move
+ * until somebody here acts, so its number is the least forgiving of a
+ * round-down. Every source feeding it is a page of five; the last of them —
+ * designs owed after the client answered — was still being counted by the
+ * length of its own page after the others were fixed.
+ */
+describe('waiting on us', () => {
+  const blocked = (over: Record<string, unknown>) => ({
+    ...EMPTY,
+    deliver: {
+      ...EMPTY.deliver,
+      // One row is enough to render the band; the counts decide what it says.
+      unreadDesignFeedback: [
+        {
+          id: 'fb_1',
+          round: 1,
+          createdAt: '2026-08-01T00:00:00.000Z',
+          consumedRound: false,
+          project: { id: 'proj_1', name: 'Site', client: { company: 'Acme' } },
+        },
+      ],
+      unreadDesignFeedbackCount: 9,
+      ...over,
+    },
+  });
+
+  it('counts every blocked client across all five sources', async () => {
+    // 9 unread + 4 designs owed + 3 built-not-sent, no mockup requests.
+    serve(blocked({ designsOwedCount: 4, mockupsBuiltNotSentCount: 3 }));
+    render(<Today />);
+
+    expect(await screen.findByText('Waiting on us — 16')).toBeInTheDocument();
+  });
+
+  it('counts the designs it owes, not the page of them it was sent', async () => {
+    serve(
+      blocked({
+        unreadDesignFeedbackCount: 0,
+        // Five rows on the payload, eleven projects actually waiting.
+        designsOwed: Array.from({ length: 5 }, (_, i) => ({
+          id: `proj_${i}`,
+          company: `Co ${i}`,
+          since: '2026-08-01T00:00:00.000Z',
+          nextStage: 'Revision 1',
+        })),
+        designsOwedCount: 11,
+      })
+    );
+    render(<Today />);
+
+    expect(await screen.findByText('Waiting on us — 11')).toBeInTheDocument();
+  });
+
+  /** The footer subtracts what is on screen, which can be fewer than six. */
+  it('offers the remainder against the rows actually shown', async () => {
+    serve(blocked({ designsOwedCount: 4, mockupsBuiltNotSentCount: 3 }));
+    render(<Today />);
+
+    // One row rendered, sixteen blocked.
+    expect(await screen.findByText(/and 15 more, in the lanes below\./)).toBeInTheDocument();
   });
 });

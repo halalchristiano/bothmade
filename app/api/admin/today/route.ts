@@ -332,6 +332,18 @@ export async function GET(request: NextRequest) {
           })
           .catch(() => 0),
         prisma.designFeedback.count({ where: { reviewedAt: null } }).catch(() => 0),
+        // The last source in the "waiting on us" band still being counted by
+        // the length of its own page. Same `where` as the list above it.
+        prisma.project
+          .count({
+            where: {
+              designPresentedAt: { not: null },
+              designReviewEndsAt: null,
+              designApprovedAt: null,
+              status: { not: 'complete' },
+            },
+          })
+          .catch(() => 0),
         prisma.project.count({ where: { status: { not: 'complete' }, updatedAt: { lt: weekAgo } } }),
         prisma.invoice.count({ where: { status: 'open' } }),
         // Count and sum together: the headline states both, and reading them
@@ -346,6 +358,7 @@ export async function GET(request: NextRequest) {
           approvedMockupCount,
           mockupsBuiltNotSentCount,
           unreadDesignFeedbackCount,
+          designsOwedCount,
           stalledProjectCount,
           unpaidInvoiceCount,
           due,
@@ -355,6 +368,7 @@ export async function GET(request: NextRequest) {
           approvedMockupCount,
           mockupsBuiltNotSentCount,
           unreadDesignFeedbackCount,
+          designsOwedCount,
           stalledProjectCount,
           unpaidInvoiceCount,
           dueInstalmentCount: due._count,
@@ -521,6 +535,7 @@ export async function GET(request: NextRequest) {
             since: p.updatedAt,
             nextStage: nextDesignStage(p.designRound).label,
           })),
+          designsOwedCount: totals.designsOwedCount,
           mockupsBuiltNotSent,
           mockupsBuiltNotSentCount: totals.mockupsBuiltNotSentCount,
           stalledProjectCount: totals.stalledProjectCount,
