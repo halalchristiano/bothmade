@@ -94,7 +94,13 @@ export async function GET(request: Request) {
         take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
       }),
+      // Period-scoped like the two feed sources either side of it. Unfiltered,
+      // this was the newest 25 payments of all time competing for the same 40
+      // slots as one week of messages — so a quiet week read as months-old
+      // payment history, and widening the range picker moved every source in
+      // the feed except this one.
       prisma.payment.findMany({
+        where: { createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
         take: 25,
         include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
