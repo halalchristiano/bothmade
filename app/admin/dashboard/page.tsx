@@ -221,8 +221,25 @@ interface NextAction {
   previousNextFollowUpAt: string | null;
 }
 
+/**
+ * How many actions to show before asking.
+ *
+ * Every other list on this page scrolls inside a fixed height; this one
+ * rendered every row it had. It is also the longest — overdue follow-ups plus
+ * today's plus hot plus stale plus stalled, none of them capped by the
+ * endpoint — so on a real book it ran to dozens of rows and pushed the whole
+ * rest of the dashboard below the fold. The card that exists to be acted on
+ * was the one you had to scroll past.
+ *
+ * Eight, because the rows are already ranked worst-first and a morning's work
+ * is not fifty phone calls. The rest are one click away and the count is on
+ * the header either way, so nothing is hidden — just not all shouted at once.
+ */
+const ACTIONS_SHOWN = 8;
+
 function NextActionsCard({ stats }: { stats: SalesStats }) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState(false);
   const seen = new Set<string>();
   const actions: NextAction[] = [];
 
@@ -280,6 +297,9 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
     actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', badge: 'stalled', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
 
+  const visible = expanded ? actions : actions.slice(0, ACTIONS_SHOWN);
+  const hidden = actions.length - visible.length;
+
   return (
     <Card className="p-6" glow={actions.length > 0 ? 'amber' : undefined}>
       <CardHeader
@@ -292,8 +312,8 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
       {actions.length === 0 ? (
         <EmptyState icon={Flame} text="Nothing urgent — you're caught up." tone="clear" />
       ) : (
-        <div className="space-y-0.5">
-          {actions.map((a) => (
+        <div className={expanded ? 'space-y-0.5 max-h-[30rem] overflow-y-auto pr-1' : 'space-y-0.5'}>
+          {visible.map((a) => (
             <ListRow
               key={a.id}
               href={`/admin/leads/${a.id}`}
@@ -341,6 +361,23 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
             />
           ))}
         </div>
+      )}
+      {/*
+        Says the number rather than a bare "show more", so the choice to leave
+        them is an informed one. The condition is what the button would still
+        do, not what it last did: snoozing rows while expanded can take the
+        list below the cap, and a "Show fewer" that collapses nothing is a
+        control that lies about having an effect.
+      */}
+      {actions.length > ACTIONS_SHOWN && (
+        <button
+          type="button"
+          onClick={() => setExpanded((wasExpanded) => !wasExpanded)}
+          aria-expanded={expanded}
+          className="mt-3 w-full rounded-lg border border-white/10 py-2 text-xs font-semibold text-white/50 transition-colors hover:bg-white/[0.03] hover:text-white/80"
+        >
+          {hidden > 0 ? `Show ${hidden} more` : 'Show fewer'}
+        </button>
       )}
     </Card>
   );
