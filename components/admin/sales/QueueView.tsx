@@ -70,6 +70,18 @@ interface CallRow {
    * See lib/next-touch.ts.
    */
   nextTouch?: { kind: string; line: string; needsAttention: boolean } | null;
+  /**
+   * Who rang this last, and when. Null if nobody ever has.
+   *
+   * The sheet is one shared list now, which is the point — and it means two
+   * people can be looking at the same lead at the top of it and dial it
+   * within the same ten minutes. `byYou` matters because "you rang this an
+   * hour ago" and "Kiana rang this an hour ago" call for completely different
+   * behaviour.
+   */
+  lastCall?: { at: string; byName: string; byYou: boolean } | null;
+  /** Rung four times or more and never actually reached. */
+  neverReached?: boolean;
 }
 
 const REASONS: Record<CallReason, { label: string; short: string; blurb: string; classes: string }> = {
@@ -231,6 +243,27 @@ function writePendingCalls(calls: { id: string; company: string; at: number }[])
   } catch {
     /* private mode — the prompt just won't survive a reload */
   }
+}
+
+/**
+ * How long a call stays worth warning about.
+ *
+ * Short enough that the warning means "somebody may still be on the phone to
+ * them", long enough to cover a rep who wandered off mid-list. Past this the
+ * fact is still shown, just without the alarm — a permanent red flag on every
+ * lead rung this month is a flag nobody reads.
+ */
+const COLLISION_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+/** "11 minutes ago", "3 hours ago", "yesterday". */
+function agoWords(iso: string, now: number): string {
+  const mins = Math.round((now - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
 }
 
 /** The things a row can be filtered on. Named so a count can exclude its own. */
@@ -1444,6 +1477,46 @@ export function QueueView() {
                         * be four hundred lines of noise teaching people to
                         * skip the place the useful sentence appears.
                         */}
+                      {/*
+                        * Somebody already rang this.
+                        *
+                        * The one failure the merged sheet made possible and
+                        * nothing else can catch: two people see the same lead
+                        * at the top and both dial it. Loud inside the window
+                        * where somebody might still be on the phone to them,
+                        * quiet afterwards — a permanent red flag on every
+                        * lead rung this month is a flag nobody reads.
+                        */}
+                      {row.lastCall &&
+                        (() => {
+                          const fresh = nowTick - new Date(row.lastCall.at).getTime() < COLLISION_WINDOW_MS;
+                          return (
+                            <p
+                              className={`text-xs mt-1.5 leading-relaxed ${
+                                fresh && !row.lastCall.byYou
+                                  ? 'text-amber-300 font-semibold'
+                                  : 'text-white/35'
+                              }`}
+                            >
+                              {fresh && !row.lastCall.byYou && '⚠ '}
+                              {row.lastCall.byName} rang this {agoWords(row.lastCall.at, nowTick)}
+                              {row.timesCalled > 1 && ` · ${row.timesCalled} attempts`}
+                            </p>
+                          );
+                        })()}
+
+                      {/*
+                        * Four dials and nobody has ever picked up. Advice, not
+                        * a rule: it says the number out loud and leaves the
+                        * decision where it belongs.
+                        */}
+                      {row.neverReached && (
+                        <p className="text-xs text-amber-300/75 mt-1.5 leading-relaxed">
+                          Rung {row.timesCalled} times and never actually reached — worth trying
+                          email, or letting this one go.
+                        </p>
+                      )}
+
                       {row.nextTouch && row.nextTouch.kind !== 'now' && (
                         <p
                           className={`text-xs mt-1.5 leading-relaxed break-words ${
@@ -1483,6 +1556,29 @@ export function QueueView() {
                         >
                           <Phone size={13} /> Dial
                         </a>
+                        {/*
+                          * For a call that never went through this app.
+                          *
+                          * Half of them don't. A rep rings back from their
+                          * own recents, or takes an incoming call, or dials
+                          * off a business card — and until now there was no
+                          * way to say so from the sheet, so the call happened
+                          * and the system never heard about it. That is the
+                          * same shape as the bug that lost an afternoon of
+                          * Evan's work, arriving by a different route.
+                          *
+                          * Reuses the dial prompt exactly: this drops the
+                          * lead onto the same unlogged pile that tapping Dial
+                          * does, so there is one way to log a call and not
+                          * two that can disagree.
+                          */}
+                        <button
+                          onClick={() => startCall(row)}
+                          title={`Log a call to ${row.company} you already made`}
+                          className="shrink-0 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+                        >
+                          Log
+                        </button>
                         <Link
                           href={`/admin/leads/${row.id}`}
                           className="shrink-0 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold hover:bg-white/5 transition-colors"

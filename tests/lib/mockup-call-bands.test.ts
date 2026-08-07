@@ -20,7 +20,7 @@ const prisma = {
   lead: { count: vi.fn(async () => 0), findMany: vi.fn() },
   leadActivity: {
     count: vi.fn(async () => 0),
-    groupBy: vi.fn(async () => [] as { leadId: string; _max: { createdAt: Date | null } }[]),
+    findMany: vi.fn(async (_a: unknown) => [] as { leadId: string; createdAt: Date; createdById: string | null; createdBy: { name: string } | null }[]),
   },
 };
 
@@ -83,7 +83,7 @@ beforeEach(() => {
   prisma.user.findUnique.mockResolvedValue({ googleRefreshToken: 'x', gmailNeedsReconnect: false });
   prisma.lead.count.mockResolvedValue(0);
   prisma.leadActivity.count.mockResolvedValue(0);
-  prisma.leadActivity.groupBy.mockResolvedValue([]);
+  prisma.leadActivity.findMany.mockResolvedValue([]);
 });
 
 describe('a lead waiting on a mockup', () => {
@@ -196,8 +196,8 @@ describe('a lead the mockup has gone out to', () => {
     prisma.lead.findMany.mockResolvedValue([
       lead({ company: 'Already Rung', mockupRequested: true, mockups: [{ sentAt: ago(2 * DAY) }] }),
     ]);
-    prisma.leadActivity.groupBy.mockResolvedValue([
-      { leadId: 'lead_1', _max: { createdAt: ago(HOUR) } },
+    prisma.leadActivity.findMany.mockResolvedValue([
+      { leadId: 'lead_1', createdAt: ago(HOUR), createdById: 'user_1', createdBy: { name: 'Evan' } },
     ]);
 
     expect((await call()).callable[0].reason).not.toBe('mockup-sent');
@@ -211,8 +211,8 @@ describe('a lead the mockup has gone out to', () => {
     prisma.lead.findMany.mockResolvedValue([
       lead({ company: 'Rung First', mockupRequested: true, mockups: [{ sentAt: ago(HOUR) }] }),
     ]);
-    prisma.leadActivity.groupBy.mockResolvedValue([
-      { leadId: 'lead_1', _max: { createdAt: ago(3 * DAY) } },
+    prisma.leadActivity.findMany.mockResolvedValue([
+      { leadId: 'lead_1', createdAt: ago(3 * DAY), createdById: 'user_1', createdBy: { name: 'Evan' } },
     ]);
 
     expect((await call()).callable[0].reason).toBe('mockup-sent');
@@ -249,5 +249,100 @@ describe('whose leads are on it', () => {
     const where = prisma.lead.findMany.mock.calls[0][0].where;
     expect(where).not.toHaveProperty('assignedToId');
     expect(names((await call()).callable)).toContain('Somebody Elses');
+  });
+});
+
+/**
+ * Two people, one sheet, one phone number.
+ *
+ * Merging the call sheets was right — the strongest lead of the morning
+ * should not be invisible to whoever is free to ring it. But it made one
+ * failure possible that could not happen before: both of them see the same
+ * business at the top and both dial it, eleven minutes apart, in front of the
+ * customer. Nothing about good intentions prevents that; only the row saying
+ * so does.
+ */
+describe('who rang this last', () => {
+  const rang = (leadId: string, by: { id: string; name: string }, at: Date) => [
+    { leadId, createdAt: at, createdById: by.id, createdBy: { name: by.name } },
+  ];
+
+  it('names the other person and when', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead({ company: 'Ridgeline' })]);
+    prisma.leadActivity.findMany.mockResolvedValue(
+      rang('lead_1', { id: 'user_evan', name: 'Evan' }, ago(11 * 60 * 1000))
+    );
+
+    const { callable } = await call();
+
+    expect(callable[0].lastCall).toMatchObject({ byName: 'Evan', byYou: false });
+  });
+
+  /**
+   * "You rang this an hour ago" and "Kiana rang this an hour ago" call for
+   * completely different behaviour. A row that cannot tell them apart is one
+   * you learn to ignore.
+   */
+  it('says "You" rather than your own name', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead()]);
+    prisma.leadActivity.findMany.mockResolvedValue(
+      rang('lead_1', { id: 'user_1', name: 'Kiana' }, ago(HOUR))
+    );
+
+    expect((await call()).callable[0].lastCall).toMatchObject({ byName: 'You', byYou: true });
+  });
+
+  it('is null for a business nobody has ever rung', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead()]);
+
+    expect((await call()).callable[0].lastCall).toBeNull();
+  });
+
+  /** A deleted account should not render as a blank accusation. */
+  it('still names someone when the account is gone', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead()]);
+    prisma.leadActivity.findMany.mockResolvedValue([
+      { leadId: 'lead_1', createdAt: ago(HOUR), createdById: null, createdBy: null },
+    ]);
+
+    expect((await call()).callable[0].lastCall.byName).toBe('Someone');
+  });
+});
+
+/**
+ * A number that does not get picked up.
+ *
+ * Four unanswered dials is not persistence. The rep cannot see it unaided,
+ * because each morning the lead looks like any other overdue follow-up — so
+ * the same dead number gets tried a fifth and sixth time while leads nobody
+ * has touched sit further down the page.
+ */
+describe('a lead rung again and again', () => {
+  const tried = (n: number, over: Record<string, unknown> = {}) =>
+    lead({ _count: { activities: n }, ...over });
+
+  it('is flagged after four attempts with nobody reached', async () => {
+    prisma.lead.findMany.mockResolvedValue([tried(4)]);
+
+    expect((await call()).callable[0].neverReached).toBe(true);
+  });
+
+  it('is not flagged while the number is still young', async () => {
+    prisma.lead.findMany.mockResolvedValue([tried(3)]);
+
+    expect((await call()).callable[0].neverReached).toBe(false);
+  });
+
+  /** Reaching them is the whole point — after that the count means nothing. */
+  it('is not flagged once they have written back', async () => {
+    prisma.lead.findMany.mockResolvedValue([tried(9, { replyReceivedAt: ago(DAY) })]);
+
+    expect((await call()).callable[0].neverReached).toBe(false);
+  });
+
+  it('is not flagged for a lead that got qualified on the phone', async () => {
+    prisma.lead.findMany.mockResolvedValue([tried(9, { status: 'qualified' })]);
+
+    expect((await call()).callable[0].neverReached).toBe(false);
   });
 });

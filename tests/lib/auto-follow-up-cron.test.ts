@@ -70,6 +70,7 @@ const lead = (over: Record<string, unknown> = {}) => ({
   status: 'contacted',
   autoFollowUpDueAt: new Date('2026-08-07T09:00:00Z'),
   autoFollowUpStage: 0,
+  personalizedObservation: null,
   ...over,
 });
 
@@ -226,7 +227,7 @@ describe('the sequence', () => {
   const writtenTo = () =>
     (prisma.lead.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
 
-  it('sends the opener first and books the closer', async () => {
+  it('sends the opener first and books the next', async () => {
     prisma.lead.findMany.mockResolvedValue([
       lead({ autoFollowUpStage: 0, autoFollowUpDueAt: new Date('2026-08-10T09:00:00Z') }),
     ]);
@@ -235,23 +236,54 @@ describe('the sequence', () => {
 
     expect(sendAsUser.mock.calls[0]![1].subject).toMatch(/^Following up/);
     expect(writtenTo().autoFollowUpStage).toBe(1);
-    // Day seven, measured from the call rather than from now, so a run that
+    // Day five, measured from the call rather than from now, so a run that
     // slipped a day does not drag the rest of the schedule with it.
+    expect((writtenTo().autoFollowUpDueAt as Date).toISOString().slice(0, 10)).toBe('2026-08-12');
+  });
+
+  it('sends the middle one second and keeps going', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ autoFollowUpStage: 1, autoFollowUpDueAt: new Date('2026-08-12T09:00:00Z') }),
+    ]);
+
+    await run();
+
+    expect(sendAsUser.mock.calls[0]![1].subject).not.toMatch(/^Following up/);
+    expect(writtenTo().autoFollowUpStage).toBe(2);
     expect((writtenTo().autoFollowUpDueAt as Date).toISOString().slice(0, 10)).toBe('2026-08-14');
   });
 
-  it('sends the closer second and ends the sequence', async () => {
+  it('sends the closer third and ends the sequence', async () => {
     prisma.lead.findMany.mockResolvedValue([
-      lead({ autoFollowUpStage: 1, autoFollowUpDueAt: new Date('2026-08-14T09:00:00Z') }),
+      lead({ autoFollowUpStage: 2, autoFollowUpDueAt: new Date('2026-08-14T09:00:00Z') }),
     ]);
 
     await run();
 
     expect(sendAsUser.mock.calls[0]![1].subject).toMatch(/^Last one from me/);
-    expect(writtenTo().autoFollowUpStage).toBe(2);
+    expect(writtenTo().autoFollowUpStage).toBe(3);
     // Null is what ends it. There is no separate finished flag that could
     // drift out of step with the counter.
     expect(writtenTo().autoFollowUpDueAt).toBeNull();
+  });
+
+  /**
+   * The day-five email is the only one that claims somebody looked at their
+   * site, so the thing it quotes has to reach it. A select that forgets the
+   * column turns the personalised email into the generic one, silently.
+   */
+  it('carries the research observation through to the middle email', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({
+        autoFollowUpStage: 1,
+        autoFollowUpDueAt: new Date('2026-08-12T09:00:00Z'),
+        personalizedObservation: 'the booking form 404s on a phone',
+      }),
+    ]);
+
+    await run();
+
+    expect(sendAsUser.mock.calls[0]![1].html).toContain('the booking form 404s on a phone');
   });
 
   /** A bounced first email means a bounced second. Stop, do not advance. */

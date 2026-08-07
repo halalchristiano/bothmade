@@ -166,6 +166,25 @@ export default function CallCockpit() {
     return () => clearInterval(t);
   }, []);
 
+  /**
+   * Somebody already rang this, recently, and it wasn't necessarily you.
+   *
+   * The call sheet is one shared list now — which is the point, and which
+   * means both of you can be looking at the same business at the top of it.
+   * This screen is the last place to catch that before the phone rings at
+   * their end, so it is checked here too rather than only on the sheet.
+   *
+   * Read off the activity list the page already loads, so it costs nothing
+   * and cannot disagree with the history shown further down.
+   */
+  const recentCall = useMemo(() => {
+    const last = lead?.activities?.find((a) => a.type === 'call');
+    if (!last) return null;
+    const minsAgo = Math.round((Date.now() - new Date(last.createdAt).getTime()) / 60000);
+    if (minsAgo > 180) return null;
+    return { minsAgo, by: last.createdBy?.name || 'Someone' };
+  }, [lead]);
+
   const brief = useMemo(() => (lead ? buildLeadBrief(lead) : null), [lead]);
   const local = lead ? leadLocalTime(lead.phone, now) : null;
 
@@ -416,6 +435,23 @@ export default function CallCockpit() {
       <div className="flex-1 min-w-0">
         {/* Header — who, where, when, and the dial button. */}
         <div className="sticky top-0 z-20 bg-ink/95 backdrop-blur border-b border-white/[0.08] px-5 py-4">
+          {/*
+            * Above the dial button, not below it. A warning you read after
+            * pressing call is not a warning.
+            */}
+          {recentCall && (
+            <p className="mb-2.5 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200">
+              ⚠ {recentCall.by} rang this{' '}
+              {recentCall.minsAgo < 1
+                ? 'a moment ago'
+                : recentCall.minsAgo < 60
+                  ? `${recentCall.minsAgo} minutes ago`
+                  : `${Math.round(recentCall.minsAgo / 60)} ${
+                      Math.round(recentCall.minsAgo / 60) === 1 ? 'hour' : 'hours'
+                    } ago`}
+              . Check the notes below before you dial.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="min-w-0">
               <h1 className="text-lg font-bold truncate">{lead.company}</h1>

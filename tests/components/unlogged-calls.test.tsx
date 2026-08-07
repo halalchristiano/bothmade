@@ -50,6 +50,8 @@ const row = (over: Record<string, unknown> = {}) => ({
   assignedTo: null,
   lastActivity: null,
   nextTouch: null,
+  lastCall: null,
+  neverReached: false,
   ...over,
 });
 
@@ -182,5 +184,116 @@ describe('an entry left by the old single-slot version', () => {
     render(<QueueView />);
 
     expect(await screen.findByText(/You called Old Shape Co/i)).toBeTruthy();
+  });
+});
+
+/**
+ * A call that never went through this app.
+ *
+ * Half of them don't. A rep rings back from their own recents, takes an
+ * incoming call, or dials off a business card — and the call happens while
+ * the system never hears about it. Same shape as the bug that lost Evan's
+ * afternoon, arriving by a different route, so it gets the same answer:
+ * one pile, one prompt, one way to log a call.
+ */
+describe('logging a call you made elsewhere', () => {
+  it('offers the prompt without needing the dial link', async () => {
+    render(<QueueView />);
+
+    const rows = await screen.findAllByTitle(/Log a call to .* you already made/i);
+    await userEvent.click(rows[0]!);
+
+    expect(await screen.findByText(/how did it go/i)).toBeTruthy();
+  });
+
+  it('puts it on the same pile as a dialled one', async () => {
+    render(<QueueView />);
+
+    await userEvent.click(
+      await screen.findByTitle(/Log a call to Ridgeline Roofing you already made/i)
+    );
+    await dial('Cascade Dental');
+
+    expect(stored().map((c: { company: string }) => c.company)).toEqual([
+      'Ridgeline Roofing',
+      'Cascade Dental',
+    ]);
+  });
+});
+
+/**
+ * The warning that only became possible when the two call sheets merged.
+ */
+describe('a business somebody else just rang', () => {
+  const seen = (over: Record<string, unknown>) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            callable: [row({ company: 'Ridgeline Roofing', ...over })],
+            noPhone: [],
+            noSignal: [],
+            scheduledHot: [],
+            totalOpen: 1,
+            callsToday: 0,
+            breakdown: { replied: 1 },
+            noPhoneCount: 0,
+            truncated: false,
+            gmailStatus: 'ok',
+            googleOAuthAvailable: true,
+          }),
+        }) as unknown as Response
+    );
+  };
+
+  it('says who rang it and when', async () => {
+    seen({
+      lastCall: { at: new Date(Date.now() - 11 * 60_000).toISOString(), byName: 'Evan', byYou: false },
+      timesCalled: 1,
+    });
+    render(<QueueView />);
+
+    expect(await screen.findByText(/Evan rang this 11 min ago/i)).toBeTruthy();
+  });
+
+  /** Your own call is context, not an alarm. */
+  it('does not raise an alarm about your own call', async () => {
+    seen({
+      lastCall: { at: new Date(Date.now() - 11 * 60_000).toISOString(), byName: 'You', byYou: true },
+      timesCalled: 1,
+    });
+    render(<QueueView />);
+
+    expect(await screen.findByText(/You rang this 11 min ago/i)).toBeTruthy();
+    expect(screen.queryByText(/⚠/)).toBeNull();
+  });
+
+  /**
+   * A permanent red flag on every lead rung this month is a flag nobody
+   * reads, so the alarm expires even though the fact stays on screen.
+   */
+  it('states an old call without shouting about it', async () => {
+    seen({
+      lastCall: {
+        at: new Date(Date.now() - 5 * 24 * 60 * 60_000).toISOString(),
+        byName: 'Evan',
+        byYou: false,
+      },
+      timesCalled: 2,
+    });
+    render(<QueueView />);
+
+    expect(await screen.findByText(/Evan rang this 5 days ago/i)).toBeTruthy();
+    expect(screen.queryByText(/⚠/)).toBeNull();
+  });
+
+  it('says out loud when a number has been tried and never answered', async () => {
+    seen({ neverReached: true, timesCalled: 5 });
+    render(<QueueView />);
+
+    expect(await screen.findByText(/Rung 5 times and never actually reached/i)).toBeTruthy();
   });
 });

@@ -239,25 +239,42 @@ export async function GET(request: NextRequest) {
     /*
      * When each of these was last rung, in one query.
      *
-     * Needed for exactly one decision: a mockup that has gone out is the best
+     * Needed for two things. A mockup that has gone out is the best
      * reason to ring anybody, but only until somebody has rung. Without this
      * the band would either stick forever — the same twelve names every
      * morning, long after the conversation happened — or be gated on a
      * follow-up date and so miss the two days when the mockup is fresh.
      *
-     * The single `activities` row already selected above cannot answer it: it
-     * is the most recent activity of ANY type, so a lead rung on Monday and
-     * emailed on Tuesday looks unrung.
+     * And — since the sheet became one shared list — whether somebody else
+     * has just rung this business. Two people working one book can now both
+     * see the same lead at the top, which is the whole point, and both dial
+     * it within the same ten minutes, which is an embarrassment in front of a
+     * customer that no amount of good intent prevents.
+     *
+     * The single `activities` row already selected above cannot answer either
+     * question: it is the most recent activity of ANY type, so a lead rung on
+     * Monday and emailed on Tuesday looks unrung.
      */
-    const lastCallByLead = new Map<string, Date>();
+    const lastCallByLead = new Map<string, { at: Date; byId: string | null; byName: string }>();
     if (leads.length > 0) {
-      const calls = await prisma.leadActivity.groupBy({
-        by: ['leadId'],
+      const calls = await prisma.leadActivity.findMany({
         where: { type: 'call', leadId: { in: leads.map((l) => l.id) } },
-        _max: { createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        // The newest call per lead, in one query rather than one per lead.
+        distinct: ['leadId'],
+        select: {
+          leadId: true,
+          createdAt: true,
+          createdById: true,
+          createdBy: { select: { name: true } },
+        },
       });
       for (const c of calls) {
-        if (c._max.createdAt) lastCallByLead.set(c.leadId, c._max.createdAt);
+        lastCallByLead.set(c.leadId, {
+          at: c.createdAt,
+          byId: c.createdById,
+          byName: c.createdBy?.name || 'Someone',
+        });
       }
     }
 
@@ -302,7 +319,7 @@ export async function GET(request: NextRequest) {
        */
       const lastCall = lastCallByLead.get(lead.id) ?? null;
       const mockupNeedsCall =
-        !!mockupSentAt && (!lastCall || lastCall.getTime() < mockupSentAt.getTime());
+        !!mockupSentAt && (!lastCall || lastCall.at.getTime() < mockupSentAt.getTime());
 
       // First match wins, and the branches are exhaustive — every lead gets
       // exactly one reason, so the counts below can be trusted to add up.
@@ -394,6 +411,37 @@ export async function GET(request: NextRequest) {
         openNextStep: opens.nextStep,
         openScore: opens.score,
         timesCalled: lead._count.activities,
+        /*
+         * Who rang this last, and when.
+         *
+         * The sheet is one shared list now, which is the point — and it means
+         * two people can be looking at the same lead at the top of it. This
+         * is what stops the second one dialling a business that was rung
+         * eleven minutes ago, which is an embarrassment in front of a
+         * customer that no amount of care prevents on its own.
+         *
+         * `byYou` because "you rang this an hour ago" and "Kiana rang this an
+         * hour ago" call for completely different behaviour, and a row that
+         * cannot tell them apart is one you learn to ignore.
+         */
+        lastCall: lastCall
+          ? {
+              at: lastCall.at,
+              byName: lastCall.byId === session.userId ? 'You' : lastCall.byName,
+              byYou: lastCall.byId === session.userId,
+            }
+          : null,
+        /*
+         * Rung repeatedly and never actually reached.
+         *
+         * Four unanswered dials is not persistence, it is a number that does
+         * not get picked up — and the rep working the sheet cannot see it,
+         * because each morning the lead looks like any other overdue
+         * follow-up. Advice rather than a rule: it says the number out loud
+         * and leaves the decision alone.
+         */
+        neverReached:
+          lead._count.activities >= 4 && !lead.replyReceivedAt && lead.status !== 'qualified',
         lastActivity: lead.activities[0] ?? null,
         activities: undefined,
         _count: undefined,

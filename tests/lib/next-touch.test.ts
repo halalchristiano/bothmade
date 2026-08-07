@@ -80,12 +80,12 @@ describe('a lead with something booked', () => {
     const t = nextTouch(lead({ autoFollowUpDueAt: inDays(1), autoFollowUpStage: 0 }), NOW);
 
     expect(t.kind).toBe('email');
-    expect(t.line).toMatch(/automated email tomorrow \(2 left\)/i);
+    expect(t.line).toMatch(/automated email tomorrow \(3 left\)/i);
   });
 
   /** The last one is worth saying out loud — after it, nothing follows. */
   it('says when an email is the final one', () => {
-    const t = nextTouch(lead({ autoFollowUpDueAt: inDays(4), autoFollowUpStage: 1 }), NOW);
+    const t = nextTouch(lead({ autoFollowUpDueAt: inDays(4), autoFollowUpStage: 2 }), NOW);
 
     expect(t.line).toMatch(/last one/i);
   });
@@ -107,8 +107,8 @@ describe('a lead with something booked', () => {
   });
 
   /** A finished sequence is not a scheduled email, whatever the date says. */
-  it('ignores a stale date once both emails have gone', () => {
-    const t = nextTouch(lead({ autoFollowUpDueAt: inDays(1), autoFollowUpStage: 2 }), NOW);
+  it('ignores a stale date once every email has gone', () => {
+    const t = nextTouch(lead({ autoFollowUpDueAt: inDays(1), autoFollowUpStage: 3 }), NOW);
 
     expect(t.kind).toBe('nothing');
   });

@@ -9,6 +9,7 @@ import { advanceToContactedOnOutreach } from '@/lib/leads';
 import { checkSendBudget } from '@/lib/send-budget';
 import {
   AUTO_FOLLOW_UP_MAX_PER_RUN,
+  AUTO_FOLLOW_UP_TOTAL,
   AUTO_FOLLOW_UP_QUIET_DAYS,
   autoFollowUpEmail,
   autoFollowUpNextDue,
@@ -20,12 +21,12 @@ import {
 export const maxDuration = 300;
 
 /**
- * Sends whichever of the two follow-ups is due today.
+ * Sends whichever of the three follow-ups is due today.
  *
  * The whole point of this job is that it does not depend on anybody
  * remembering. It runs on weekdays, picks up the leads whose due date has
- * arrived, sends the right email of the two, and either books the next one or
- * ends the sequence by clearing the date.
+ * arrived, sends the right email of the three, and either books the next one
+ * or ends the sequence by clearing the date.
  *
  * ## What it refuses to send to, and why each one is checked here
  *
@@ -105,6 +106,10 @@ export async function GET(request: NextRequest) {
         status: true,
         autoFollowUpDueAt: true,
         autoFollowUpStage: true,
+        // The day-five email leads with this. NOT currentSiteAssessment —
+        // that is an internal verdict on their site and sending one to the
+        // business it is about would be the most expensive sentence here.
+        personalizedObservation: true,
       },
       orderBy: { autoFollowUpDueAt: 'asc' },
       take: AUTO_FOLLOW_UP_MAX_PER_RUN,
@@ -183,6 +188,7 @@ export async function GET(request: NextRequest) {
           company: lead.company,
           contactName: lead.contactName,
           stopUrl: `${site}/stop/${lead.shareToken}`,
+          observation: lead.personalizedObservation,
         },
         stage
       );
@@ -237,7 +243,7 @@ export async function GET(request: NextRequest) {
             data: {
               leadId: lead.id,
               type: 'email',
-              content: `Automated follow-up ${stage} of 2 sent — ${mail.subject}`,
+              content: `Automated follow-up ${stage} of ${AUTO_FOLLOW_UP_TOTAL} sent — ${mail.subject}`,
               createdById: sender.id,
             },
           }),
