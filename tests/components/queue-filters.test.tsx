@@ -301,10 +301,76 @@ describe('reading your email, no number to ring', () => {
   it('keeps the plain wording when none of them are reading it', async () => {
     respondWith({ noPhone: [row({ phone: null, company: 'Just Due' })] });
     render(<QueueView />);
-    await screen.findByText('Just Due');
 
-    expect(screen.getByText(/there is nothing to ring/i)).toBeInTheDocument();
+    expect(await screen.findByText(/there is nothing to ring/i)).toBeInTheDocument();
     expect(screen.queryByText(/reading your email right now/i)).not.toBeInTheDocument();
+  });
+
+  /*
+   * Same rule as the urgency bands: collapsed unless it is something you
+   * would act on now. Nobody with a number to find is worth pushing the rest
+   * of the sheet off screen; somebody reading your email right now is.
+   */
+  it('starts shut when none of them are reading, and opens on click', async () => {
+    respondWith({ noPhone: [row({ phone: null, company: 'Just Due' })] });
+    render(<QueueView />);
+    const header = await screen.findByRole('button', { name: /no phone number on file/i });
+
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Just Due')).not.toBeInTheDocument();
+
+    await userEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Just Due')).toBeInTheDocument();
+
+    await userEvent.click(header);
+    expect(screen.queryByText('Just Due')).not.toBeInTheDocument();
+  });
+
+  it('starts open when one of them is reading', async () => {
+    respondWith({ noPhone: [reader({ company: 'Silent Reader' })] });
+    render(<QueueView />);
+
+    expect(await screen.findByText('Silent Reader')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /no phone number on file/i })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+  });
+
+  /** The count is the reason you would open it, so it must show when shut. */
+  it('counts them while collapsed', async () => {
+    respondWith({
+      noPhone: [
+        row({ phone: null, company: 'One' }),
+        row({ phone: null, company: 'Two' }),
+      ],
+    });
+    render(<QueueView />);
+    const header = await screen.findByRole('button', { name: /no phone number on file/i });
+
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(within(header).getByText('(2)')).toBeInTheDocument();
+  });
+
+  /*
+   * A shut section that reopens itself is a section you cannot put away. Once
+   * somebody has closed it, an opener arriving on the next poll must not
+   * yank it back open underneath them.
+   */
+  it('stays shut once closed, even if one of them starts reading', async () => {
+    respondWith({ noPhone: [reader({ company: 'Silent Reader' })] });
+    const { rerender } = render(<QueueView />);
+    const header = await screen.findByRole('button', { name: /no phone number on file/i });
+
+    await userEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+
+    rerender(<QueueView />);
+    expect(screen.getByRole('button', { name: /no phone number on file/i })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
   });
 });
 

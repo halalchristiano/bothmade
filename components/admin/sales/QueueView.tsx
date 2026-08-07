@@ -560,6 +560,11 @@ export function QueueView() {
   /** Emailed, never opened by a person. Deliberately not on the sheet. */
   const [noSignal, setNoSignal] = useState<CallRow[]>([]);
   const [showNoSignal, setShowNoSignal] = useState(false);
+  /*
+   * null means nobody has touched it, so the data still decides — see
+   * showNoPhone below. A click pins it either way for the rest of the session.
+   */
+  const [noPhoneOpen, setNoPhoneOpen] = useState<boolean | null>(null);
   const [scheduledHot, setScheduledHot] = useState<CallRow[]>([]);
   const [meta, setMeta] = useState<{
     totalOpen: number;
@@ -999,6 +1004,20 @@ export function QueueView() {
    * has opened.
    */
   const readingNoPhone = visibleNoPhone.filter((r) => r.reason === 'opened');
+  /*
+   * Shut by default, open when one of them is reading.
+   *
+   * The same rule as the urgency bands above: collapsed unless it is
+   * something you would act on now. The blurb here has always promised
+   * "collapsed, counted, one click away" and the list under it was never
+   * actually collapsible, so on a book with a couple of hundred numberless
+   * leads this section buried everything below it.
+   *
+   * The exception is the row the section exists for — somebody with no number
+   * reading your email right now. That is the most valuable row on the page
+   * and the one thing here that cannot open shut.
+   */
+  const showNoPhone = noPhoneOpen ?? readingNoPhone.length > 0;
   const searchedNoSignal = noSignal.filter(match);
   const visibleNoSignal = searchedNoSignal.filter(nf.matches);
   const visibleScheduledHot = scheduledHot.filter(match);
@@ -1737,16 +1756,22 @@ export function QueueView() {
       */}
       {visibleNoPhone.length > 0 && (
         <section className="mt-8">
-          <div
-            className={`rounded-xl border px-3.5 py-2.5 mb-3 ${
+          <button
+            onClick={() => setNoPhoneOpen(!showNoPhone)}
+            aria-expanded={showNoPhone}
+            className={`w-full text-left rounded-xl border px-3.5 py-2.5 transition-colors ${
               readingNoPhone.length > 0
-                ? 'border-amber-400/35 bg-amber-400/[0.08]'
-                : 'border-white/10 bg-white/[0.03]'
+                ? 'border-amber-400/35 bg-amber-400/[0.08] hover:brightness-125'
+                : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.05]'
             }`}
           >
             <p className="text-sm font-bold text-white/70 flex items-center gap-1.5">
               <CalendarClock size={14} /> No phone number on file
               <span className="ml-1 opacity-60">({visibleNoPhone.length})</span>
+              <ChevronRight
+                size={15}
+                className={`ml-auto shrink-0 opacity-70 transition-transform ${showNoPhone ? 'rotate-90' : ''}`}
+              />
             </p>
             {/*
                 Said separately, because it is a different instruction.
@@ -1771,36 +1796,42 @@ export function QueueView() {
                 These are due a contact but there is nothing to ring. Find a number, or email them instead.
               </p>
             )}
-          </div>
-          <div className="space-y-2">
-            {visibleNoPhone.map((row) => {
-              const reading = row.reason === 'opened';
-              return (
-                <Link
-                  key={row.id}
-                  href={`/admin/leads/${row.id}`}
-                  className={`block rounded-xl border p-3 transition-colors min-w-0 ${
-                    reading
-                      ? 'border-amber-400/30 bg-amber-400/[0.06] hover:bg-amber-400/[0.1]'
-                      : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]'
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-white/80 break-words flex items-center gap-1.5">
-                    {row.company}
-                    {reading && (
-                      <Badge tone="amber">
-                        <Eye size={10} /> {row.opens}×
-                      </Badge>
-                    )}
-                  </p>
-                  <p className="text-xs text-white/35 mt-0.5">
-                    {reading ? row.openHeadline : REASONS[row.reason].label}
-                    {row.email ? ` · ${row.email}` : ' · no email either'}
-                  </p>
-                </Link>
-              );
-            })}
-          </div>
+          </button>
+          {/* Not rendered rather than hidden, matching the urgency bands: this
+              is routinely the longest section on the page, and building a few
+              hundred rows to then display:none them is the cost collapsing it
+              exists to avoid. */}
+          {showNoPhone && (
+            <div className="space-y-2 mt-3">
+              {visibleNoPhone.map((row) => {
+                const reading = row.reason === 'opened';
+                return (
+                  <Link
+                    key={row.id}
+                    href={`/admin/leads/${row.id}`}
+                    className={`block rounded-xl border p-3 transition-colors min-w-0 ${
+                      reading
+                        ? 'border-amber-400/30 bg-amber-400/[0.06] hover:bg-amber-400/[0.1]'
+                        : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-white/80 break-words flex items-center gap-1.5">
+                      {row.company}
+                      {reading && (
+                        <Badge tone="amber">
+                          <Eye size={10} /> {row.opens}×
+                        </Badge>
+                      )}
+                    </p>
+                    <p className="text-xs text-white/35 mt-0.5">
+                      {reading ? row.openHeadline : REASONS[row.reason].label}
+                      {row.email ? ` · ${row.email}` : ' · no email either'}
+                    </p>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 
