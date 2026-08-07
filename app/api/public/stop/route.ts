@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 
 /**
  * Stop emailing this lead. POST only, deliberately.
@@ -41,6 +42,27 @@ export async function POST(request: NextRequest) {
   if (!token) {
     return NextResponse.json({ error: 'Missing token' }, { status: 400 });
   }
+
+  /*
+   * Generous, because the failure mode here is unusual.
+   *
+   * Unsubscribing is idempotent and the endpoint is the least attractive
+   * target in the app — the most anyone gains is stopping mail we did not
+   * want to send anyway. What this actually guards is a token-guessing sweep:
+   * a `shareToken` is the same capability the proposal and brief links use,
+   * so somewhere to try thousands of them and learn from the answer which
+   * ones exist is worth closing even when the action itself is harmless.
+   *
+   * Deliberately after the missing-token check and before the lookup, so a
+   * caller cannot spend the budget probing without at least supplying one.
+   */
+  const limited = await enforceRateLimit(
+    request,
+    'unsubscribe',
+    RATE_LIMITS.publicWrite,
+    'Too many attempts. Please wait a moment and try again.'
+  );
+  if (limited) return limited;
 
   const lead = await prisma.lead
     .findUnique({ where: { shareToken: token }, select: { id: true, doNotContact: true } })

@@ -12,6 +12,33 @@ import { resolveSiteUrl } from '@/lib/site-url';
 import { clientWantsEmail } from '@/lib/email-preferences';
 import { warrantyEndFrom } from '@/lib/launch';
 
+/**
+ * `Project.deliverables` is a JSON string column, and this is the client's
+ * own project page.
+ *
+ * Parsed bare, one malformed value took the entire response down with it:
+ * not just the file list, but the messages, the invoices, the payment
+ * schedule and the design review — everything this route returns — replaced
+ * by a 500 on the page a paying client opens to see how their job is going.
+ * The admin route reading the same column has always defended against this
+ * (see getDeliverables in api/admin/projects/[projectId]/deliverables); the
+ * client-facing one never did.
+ *
+ * An empty list is the right failure. A client with no files listed can ask;
+ * a client staring at a broken page cannot tell whether the studio has lost
+ * their project.
+ */
+function readDeliverables(raw: string | null, projectId: string): unknown[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.error(`Project ${projectId} has unreadable deliverables JSON; sending an empty list.`);
+    return [];
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
@@ -202,9 +229,7 @@ export async function GET(
             issuedBy: session.type === 'user' ? invoice.issuedBy?.name || invoice.issuedBy?.email || null : undefined,
             sentToEmail: session.type === 'user' ? invoice.sentToEmail : undefined,
           })),
-          deliverables: project.deliverables
-            ? JSON.parse(project.deliverables)
-            : [],
+          deliverables: readDeliverables(project.deliverables, project.id),
           contractUrl: project.contractUrl,
           // The Section 4 review clock. Both dashboards read it: the client
           // needs to see the deadline they were given, and deemed approval

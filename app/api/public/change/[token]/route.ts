@@ -8,6 +8,7 @@ import { addOnLabel, formatCents } from '@/lib/pricing';
 import { notifyAdminsChangeOrderSigned } from '@/lib/notify';
 import { sendChangeOrderSignedEmail } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { RATE_LIMITS, checkRateLimit, enforceRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 /**
  * The client's side of a Change Order: read it, then sign or decline.
@@ -96,6 +97,28 @@ export async function POST(
 ) {
   try {
     const { token } = await params;
+
+    /*
+     * The one capability endpoint that never budgeted itself.
+     *
+     * This signs a change order: it moves the project's price, recuts the
+     * payment schedule and writes a clickwrap signature record with the
+     * signer's name and IP. Its siblings — the care offer, the brief form,
+     * agree-and-pay, the mockup response — all rate-limit, and this was
+     * missed. Holding a token is not a reason to skip it; a token can leak,
+     * and a retry loop against a signing endpoint is worth stopping whoever
+     * is holding it.
+     */
+    const message = 'Too many attempts. Please wait a moment and try again.';
+    const limited = await enforceRateLimit(request, 'change-order', RATE_LIMITS.publicWrite, message);
+    if (limited) return limited;
+
+    // Per change order as well as per address, so one link being hammered
+    // doesn't depend on the caller keeping the same IP — the same pairing the
+    // care offer uses.
+    const perOrder = await checkRateLimit(`change-order:${token}`, RATE_LIMITS.publicWrite);
+    if (!perOrder.allowed) return rateLimitResponse(perOrder, message);
+
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const decision = body?.decision;
 

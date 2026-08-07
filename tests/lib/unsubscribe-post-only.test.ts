@@ -25,10 +25,18 @@ vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.studi
 
 const { POST } = await import('@/app/api/public/stop/route');
 
+let unsubscriber = 0;
+
 const post = (token: string | null) => {
   const form = new FormData();
   if (token !== null) form.set('token', token);
-  return POST({ formData: async () => form } as unknown as Parameters<typeof POST>[0]);
+  // A fresh address per call: the route budgets token guesses now, and the
+  // limiter's store outlives a single test.
+  unsubscriber += 1;
+  return POST({
+    formData: async () => form,
+    headers: new Headers({ 'x-forwarded-for': `198.51.100.${unsubscriber}` }),
+  } as unknown as Parameters<typeof POST>[0]);
 };
 
 beforeEach(() => {

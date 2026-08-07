@@ -32,8 +32,22 @@ const { POST } = await import('@/app/api/checkout/route');
 const { calculatePrice } = await import('@/lib/pricing');
 
 /** Minimal stand-in for the NextRequest the route actually reads from. */
+/*
+ * A different caller every time.
+ *
+ * The route budgets by address now, and the limiter's store outlives a single
+ * test — so a shared IP means the tenth case in this file gets a 429 instead
+ * of whatever it was actually asserting. Each request comes from its own
+ * address, which is also closer to the truth: these are unrelated visitors.
+ */
+let caller = 0;
+
 function request(body: unknown) {
-  return { json: async () => body } as Parameters<typeof POST>[0];
+  caller += 1;
+  return {
+    json: async () => body,
+    headers: new Headers({ 'x-forwarded-for': `198.51.100.${caller}` }),
+  } as Parameters<typeof POST>[0];
 }
 
 const VALID = {

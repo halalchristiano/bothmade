@@ -3,6 +3,7 @@ import { resolveSiteUrl } from '@/lib/site-url';
 import { createCheckoutSession } from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import { findSalesRep } from '@/lib/notify';
+import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -98,6 +99,29 @@ async function recordCheckoutAttempt(params: {
 
 export async function POST(request: NextRequest) {
   try {
+    /*
+     * Open to the internet, and it writes.
+     *
+     * No login stands in front of this: the pricing page posts here straight
+     * from a browser. Every call creates a Lead row and opens a Stripe
+     * Checkout session, so an unthrottled loop fills the CRM with rows the
+     * studio has to read and sort through, and burns Stripe API quota doing
+     * it. The other public writers — the contact form, the brief form,
+     * agree-and-pay, the care offer — all budget themselves already; this one
+     * and its two siblings were simply missed.
+     *
+     * `publicWrite` rather than `contact`'s tighter three, because a genuine
+     * buyer legitimately reconfigures a package and comes back to the button
+     * more than once before paying.
+     */
+    const limited = await enforceRateLimit(
+      request,
+      'checkout',
+      RATE_LIMITS.publicWrite,
+      'Too many checkout attempts. Please wait a moment and try again.'
+    );
+    if (limited) return limited;
+
     const {
       baseService,
       addOns = [],
