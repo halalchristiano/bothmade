@@ -7,9 +7,9 @@ import { X } from 'lucide-react';
  * The overlay contract every dialog in the admin owes a keyboard user, in one
  * place: focus moves in on open and back to wherever it came from on close,
  * Tab cycles inside the panel instead of escaping to the page behind it,
- * Escape closes, and screen readers are told a dialog opened and what it's
- * called. Each modal previously hand-rolled its own `fixed inset-0` div and
- * got none of that.
+ * Escape closes, the page behind holds still, and screen readers are told a
+ * dialog opened and what it's called. Each modal previously hand-rolled its
+ * own `fixed inset-0` div and got none of that.
  */
 
 /** Elements that can hold focus — the Tab cycle is built from these, in DOM order. */
@@ -45,9 +45,62 @@ function focusableWithin(container: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Traps Tab within `ref`, closes on Escape, and restores focus to the
- * previously focused element on unmount. Exported separately from `Modal` for
- * the handful of overlays that can't use the standard panel chrome.
+ * Holds the page behind an overlay still for as long as one is open.
+ *
+ * The admin's dialogs had the whole keyboard contract — focus in, Tab
+ * trapped, Escape out, focus restored — and not this, so the page underneath
+ * scrolled freely behind them. On a laptop that is a wandering background.
+ * On a phone it is worse: the panels here are tall enough to scroll, and a
+ * flick that reaches the end of one keeps going into the page beneath, so
+ * closing the dialog leaves you somewhere you never navigated to. Several of
+ * these are long forms, and losing your place in the list you opened one from
+ * is how a "cancel" turns into re-finding the row.
+ *
+ * Counted rather than set, because dialogs stack — a confirm opened from a
+ * composer — and the inner one closing must not hand scrolling back while the
+ * outer one is still up. The previous value is captured at the point the
+ * first lock is taken and restored when the last is released, so this never
+ * assumes it is the only code with an opinion about body scroll.
+ *
+ * `overscroll-behavior: contain` goes on alongside: on iOS Safari an
+ * `overflow: hidden` body still rubber-bands, which is the same wandering
+ * background in a smaller costume.
+ *
+ * The same pattern the public site's mobile menu already uses (components/
+ * Nav.tsx), generalised to nest.
+ */
+let scrollLocks = 0;
+let restoreOverflow = '';
+let restoreOverscroll = '';
+
+function lockBodyScroll(): () => void {
+  if (scrollLocks === 0) {
+    restoreOverflow = document.body.style.overflow;
+    restoreOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'contain';
+  }
+  scrollLocks += 1;
+
+  let released = false;
+  return () => {
+    // Guarded: React can run a cleanup twice in development, and a double
+    // release would drop the count below zero and unlock a dialog still open.
+    if (released) return;
+    released = true;
+    scrollLocks -= 1;
+    if (scrollLocks === 0) {
+      document.body.style.overflow = restoreOverflow;
+      document.body.style.overscrollBehavior = restoreOverscroll;
+    }
+  };
+}
+
+/**
+ * Traps Tab within `ref`, closes on Escape, holds the page behind still, and
+ * restores focus to the previously focused element on unmount. Exported
+ * separately from `Modal` for the handful of overlays that can't use the
+ * standard panel chrome.
  */
 export function useDialog(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
   // Kept in a ref so a caller passing an inline arrow function doesn't
@@ -94,8 +147,10 @@ export function useDialog(ref: React.RefObject<HTMLElement | null>, onClose: () 
     };
 
     document.addEventListener('keydown', onKeyDown, true);
+    const releaseScroll = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
+      releaseScroll();
       previouslyFocused?.focus?.();
     };
   }, [ref]);

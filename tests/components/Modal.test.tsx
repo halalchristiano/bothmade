@@ -187,3 +187,79 @@ describe('closing', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
+
+/**
+ * The one piece of the overlay contract this component did not keep.
+ *
+ * Focus went in, Tab was trapped, Escape closed it and focus came back — and
+ * the page underneath scrolled freely the whole time. On a laptop that is a
+ * wandering background. On a phone it is worse: these panels are tall enough
+ * to scroll, so a flick that reaches the end of one carries on into the page
+ * beneath, and closing the dialog leaves you somewhere you never navigated
+ * to. Cancelling out of a long form then costs you re-finding the row you
+ * opened it from.
+ */
+describe('the page behind', () => {
+  it('holds still while a dialog is open', () => {
+    open();
+    expect(document.body.style.overflow).toBe('hidden');
+  });
+
+  it('stops rubber-banding, which overflow alone does not prevent on iOS', () => {
+    open();
+    expect(document.body.style.overscrollBehavior).toBe('contain');
+  });
+
+  it('scrolls again once the dialog goes', () => {
+    const { unmount } = render(
+      <Modal title="Mark Acme as lost" onClose={vi.fn()}>
+        <button>First</button>
+      </Modal>
+    );
+    unmount();
+
+    expect(document.body.style.overflow).toBe('');
+    expect(document.body.style.overscrollBehavior).toBe('');
+  });
+
+  /**
+   * Dialogs stack — a confirm opened from a composer — and the inner one
+   * closing must not hand scrolling back while the outer one is still up.
+   */
+  it('stays locked when a stacked dialog closes over one still open', () => {
+    render(
+      <Modal title="Compose email" onClose={vi.fn()}>
+        <button>Outer</button>
+      </Modal>
+    );
+    const inner = render(
+      <Modal title="Discard this draft?" onClose={vi.fn()}>
+        <button>Inner</button>
+      </Modal>
+    );
+
+    inner.unmount();
+
+    expect(document.body.style.overflow).toBe('hidden');
+  });
+
+  /**
+   * And restores what was there before rather than assuming it was nothing —
+   * the mobile nav on the public site locks body scroll too.
+   */
+  it('gives back the value it found, not an empty string', () => {
+    document.body.style.overflow = 'clip';
+
+    const { unmount } = render(
+      <Modal title="Mark Acme as lost" onClose={vi.fn()}>
+        <button>First</button>
+      </Modal>
+    );
+    expect(document.body.style.overflow).toBe('hidden');
+
+    unmount();
+    expect(document.body.style.overflow).toBe('clip');
+
+    document.body.style.overflow = '';
+  });
+});
