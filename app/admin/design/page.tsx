@@ -84,6 +84,8 @@ export default function DesignPage() {
   const [rows, setRows] = useState<DesignRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  /** Set when the API had more live projects than it was willing to return. */
+  const [truncated, setTruncated] = useState<{ shown: number; total: number } | null>(null);
   const [search, setSearch] = useState('');
 
   /*
@@ -106,7 +108,9 @@ export default function DesignPage() {
         setFailed(true);
         return;
       }
-      setRows(data.projects ?? []);
+      const projects = data.projects ?? [];
+      setRows(projects);
+      setTruncated(data.truncated ? { shown: projects.length, total: data.total } : null);
       setFailed(false);
     } catch {
       // Network gone, or a body that was not JSON. Either way we do not know
@@ -164,6 +168,21 @@ export default function DesignPage() {
       {failed && (
         <Card className="p-4">
           <LoadError what="the design queue" onRetry={load} />
+        </Card>
+      )}
+
+      {/*
+        A cap the reader cannot see is a page that quietly claims to be
+        complete. The rows dropped are the least recently touched, which on
+        this screen are the ones most likely to be waiting on us — so if this
+        ever appears, it is worth acting on rather than scrolling past.
+      */}
+      {truncated && (
+        <Card className="mb-3 p-3">
+          <p role="status" className="text-xs text-amber-200/80">
+            Showing {truncated.shown} of {truncated.total} live projects — the least recently
+            updated are not on this list. Search still only looks at what is shown.
+          </p>
         </Card>
       )}
 

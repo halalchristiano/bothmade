@@ -21,6 +21,25 @@ import { revisionState } from '@/lib/design-feedback';
 /** Which step of the sequence a project is on, in the order they need attention. */
 export type DesignStep = 'to-send' | 'changes-asked' | 'waiting' | 'approved';
 
+/**
+ * A bound on the query, and one the page is told about.
+ *
+ * There was a `take: 100` here with no mention of it anywhere else, against
+ * an `orderBy: updatedAt desc` — so past a hundred live projects the rows
+ * dropped were the ones nobody had touched in longest. That is precisely
+ * backwards for this screen. A project sitting in "they answered — we owe
+ * them the next round" has a stale updatedAt *because* it has been ignored,
+ * its review clock has stopped, and the payment gate behind it has stopped
+ * too. The most expensive rows on the page were the first to fall off it.
+ *
+ * Raised, because "every project's design" is what the page claims to be and
+ * an active-project list is not large. Kept finite, because an unbounded
+ * query on a page somebody opens all day is its own way to fail. And
+ * reported, because a cap the reader cannot see is a page that quietly lies
+ * about being complete.
+ */
+export const DESIGN_QUEUE_LIMIT = 500;
+
 export async function GET() {
   try {
     const session = await requireStaff();
@@ -28,13 +47,16 @@ export async function GET() {
     const denied = requireRole(session, ANY_STAFF);
     if (denied) return denied;
 
-    const projects = await prisma.project.findMany({
-      // Complete projects have nothing left to design. Everything else is in
-      // the sequence somewhere, including the ones nothing has been sent on —
-      // those are the whole point of the "to send" column.
-      where: { status: { not: 'complete' } },
+    const where = { status: { not: 'complete' } };
+
+    // Counted alongside, so the response can say whether it is the whole
+    // truth. Cheap: an indexed count over the same predicate.
+    const [total, projects] = await Promise.all([
+      prisma.project.count({ where }),
+      prisma.project.findMany({
+      where,
       orderBy: { updatedAt: 'desc' },
-      take: 100,
+      take: DESIGN_QUEUE_LIMIT,
       select: {
         id: true,
         name: true,
@@ -53,7 +75,8 @@ export async function GET() {
           select: { id: true, round: true, createdAt: true, reviewedAt: true, liked: true, note: true },
         },
       },
-    });
+      }),
+    ]);
 
     const rows = projects.map((p) => {
       const latestFeedback = p.designFeedback[0] ?? null;
@@ -105,7 +128,16 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ success: true, projects: rows }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        projects: rows,
+        // What was left out, named. See DESIGN_QUEUE_LIMIT.
+        total,
+        truncated: total > rows.length,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Design queue error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

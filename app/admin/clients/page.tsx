@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2 } from 'lucide-react';
-import { Badge, Card, Kicker, LoadError, PageIn, PageTitle } from '@/components/admin/ui';
+import { Badge, Card, Kicker, LoadError, PageIn, PageTitle, SearchFilter } from '@/components/admin/ui';
 
 interface ClientRow {
   id: string;
@@ -102,16 +102,30 @@ export default function AdminClientsPage() {
             set one up by hand. A signed lead with no project stays a lead.
           </p>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <input
-            type="text"
+        {/*
+          The shared search box, not a hand-rolled one.
+          
+          This page had its own <input>: a placeholder and nothing else. The
+          placeholder disappears the moment anybody types, so a screen reader
+          announced the field as unnamed and there was no way back to the full
+          list except selecting the text and deleting it. And with no match
+          count, a search that found nothing looked exactly like a client list
+          that had lost its rows — the same confusion the empty state fix was
+          about, one control along.
+          
+          SearchFilter is what Design, Projects and Mockups already use. It
+          carries an accessible name, a clear button, and "3 of 40 match".
+        */}
+        <div className="flex w-full flex-col gap-2 sm:w-80">
+          <SearchFilter
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by email or company..."
-            className="flex-1 sm:w-72 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all"
+            onChange={setSearch}
+            placeholder="Search by email or company…"
+            count={filtered.length}
+            total={clients.length}
           />
           {archivedCount > 0 && (
-            <label className="flex items-center gap-2 text-xs text-white/40 whitespace-nowrap cursor-pointer">
+            <label className="-mt-2 flex cursor-pointer items-center gap-2 whitespace-nowrap text-xs text-white/40">
               <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
               Show decommissioned ({archivedCount})
             </label>
