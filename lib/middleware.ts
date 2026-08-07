@@ -49,14 +49,37 @@ export async function requireStaff(): Promise<AuthPayload | null> {
   // without it the thief kept access for the rest of the week.
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { sessionsValidFrom: true },
+    select: { sessionsValidFrom: true, role: true },
   });
 
   // Deleted since the token was minted.
   if (!user) return null;
   if (isTokenRevoked(session.iat, user.sessionsValidFrom)) return null;
 
-  return session;
+  /*
+   * The role comes from the row, not from the token.
+   *
+   * A JWT is a claim minted at sign-in and good for a week; `role` is a fact
+   * that /admin/team can change at any moment. Trusting the claim meant a
+   * re-role did nothing until the token aged out, in both directions and both
+   * of them wrong:
+   *
+   * Demoting an owner to `sales` left their existing session holding owner
+   * authority for the rest of the week — still able to add teammates, remove
+   * teammates, re-role anybody including themselves, delete leads in bulk and
+   * quote below the pricing floor. That is the one change somebody makes when
+   * they specifically want that authority to stop.
+   *
+   * And promoting somebody had the opposite failure: the page said `owner`,
+   * the row said `owner`, and every owner-gated action kept refusing them
+   * until they happened to sign out. There was nothing on screen to explain
+   * it and no way to force it.
+   *
+   * This costs nothing — the row is already being read for the revocation
+   * check above. Deletion and password changes were the only two account
+   * events this guard noticed; a role change is the third.
+   */
+  return { ...session, role: user.role };
 }
 
 /**
