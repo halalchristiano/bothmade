@@ -68,10 +68,26 @@ beforeEach(() => {
   vi.restoreAllMocks();
   sessionStorage.clear();
   push.mockClear();
+  visibility = 'visible';
+  vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
   respond();
 });
 
 const dialButton = async () => (await screen.findAllByRole('link', { name: /\+13365550100/ }))[0]!;
+
+let visibility: DocumentVisibilityState = 'visible';
+
+/**
+ * Pressing Call on the sheet iOS puts up.
+ *
+ * The tap alone is not a call — the sheet is drawn over the page and Cancel
+ * changes nothing the browser can see. Pressing Call opens the phone app,
+ * which backgrounds the browser, and that is the only signal there is.
+ */
+const handOverToThePhone = () => {
+  visibility = 'hidden';
+  document.dispatchEvent(new Event('visibilitychange'));
+};
 
 describe('before the number is dialled', () => {
   it('offers the number to call', async () => {
@@ -91,8 +107,21 @@ describe('coming back from the dialler', () => {
     render(<CallCockpit />);
 
     await userEvent.click(await dialButton());
+    handOverToThePhone();
 
     expect(await screen.findByText(/how did it go\? log it/i)).toBeTruthy();
+  });
+
+  /**
+   * Somebody who backs out of the sheet should find the page exactly as they
+   * left it — script and all — not flipped into its after-the-call shape.
+   */
+  it('leaves the screen alone when they press Cancel', async () => {
+    render(<CallCockpit />);
+
+    await userEvent.click(await dialButton());
+
+    expect(screen.queryByText(/how did it go\? log it/i)).toBeNull();
   });
 
   /**

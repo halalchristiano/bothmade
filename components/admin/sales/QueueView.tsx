@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -24,7 +24,7 @@ import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
 import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { localDayStartParam } from '@/lib/day-window';
-import { beacon } from '@/lib/beacon';
+import { recordDialAttempt } from '@/lib/dial-intent';
 
 type CallReason =
   | 'replied'
@@ -715,6 +715,17 @@ export function QueueView() {
   } | null>(null);
   const [mockupSaving, setMockupSaving] = useState(false);
   const [mockupDone, setMockupDone] = useState<string | null>(null);
+  /** Cancels the watcher from a previous tap, so two taps cannot both fire. */
+  const cancelArmedDial = useRef<(() => void) | null>(null);
+
+  /*
+   * And cancels it on the way out.
+   *
+   * An armed tap listens on the document, not on this component, so leaving
+   * one behind means a page that has gone can still record a dial the next
+   * time the browser is backgrounded — against a lead nobody is looking at.
+   */
+  useEffect(() => () => cancelArmedDial.current?.(), []);
   const [snoozingId, setSnoozingId] = useState<string | null>(null);
 
   /**
@@ -802,16 +813,30 @@ export function QueueView() {
   }, []);
 
   /**
-   * Tells the server a number was dialled, as it is dialled.
+   * Arms the dial record, and lets iOS decide whether it counts.
    *
-   * Sent as a beacon rather than a fetch, because the phone app is about to
-   * take the screen and the page may be frozen or discarded a moment later —
-   * an ordinary request dies exactly when it matters. See lib/beacon.ts.
+   * Tapping a `tel:` link does not place a call — iOS puts up its own
+   * Call/Cancel sheet first, and nothing has happened until one of those is
+   * pressed. Recording from the click handler counted every cancel and every
+   * mis-tap in the one number that exists to be trustworthy.
+   *
+   * The page going away is the call starting. See lib/dial-intent.ts.
    */
-  const recordDial = (leadId: string) => beacon(`/api/admin/leads/${leadId}/dial`);
+  const armDial = (row: CallRow) => {
+    cancelArmedDial.current?.();
+    cancelArmedDial.current = recordDialAttempt(`/api/admin/leads/${row.id}/dial`, () =>
+      addPendingCall(row)
+    );
+  };
 
-  const startCall = (row: CallRow, dialled = false) => {
-    if (dialled) recordDial(row.id);
+  /**
+   * Puts a business on the pile of calls waiting to be written up.
+   *
+   * Reached two ways, and only two: iOS confirmed a dial, or somebody said
+   * they made the call from their own handset. A tap that was cancelled
+   * reaches it by neither, which is the point.
+   */
+  const addPendingCall = (row: CallRow) => {
     setQuickOutcomeError('');
     setPendingCalls((prev) => {
       // Re-dialling the same business is the same unlogged call, not a second
@@ -1172,7 +1197,7 @@ export function QueueView() {
             </Link>
             <a
               href={`tel:${nextUp.phone}`}
-              onClick={() => startCall(nextUp, true)}
+              onClick={() => armDial(nextUp)}
               aria-label={`Call ${nextUp.company}`}
               className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/15 px-3.5 py-2.5 text-sm font-semibold hover:bg-white/5 transition-colors"
             >
@@ -1595,7 +1620,7 @@ export function QueueView() {
                         </Link>
                         <a
                           href={`tel:${row.phone}`}
-                          onClick={() => startCall(row, true)}
+                          onClick={() => armDial(row)}
                           title={`Call ${row.phone}`}
                           aria-label={`Call ${row.company} on ${row.phone}`}
                           className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors"
@@ -1626,7 +1651,7 @@ export function QueueView() {
                           * it worth having.
                           */}
                         <button
-                          onClick={() => startCall(row)}
+                          onClick={() => addPendingCall(row)}
                           title={`Log a call to ${row.company} you already made`}
                           className="shrink-0 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors"
                         >

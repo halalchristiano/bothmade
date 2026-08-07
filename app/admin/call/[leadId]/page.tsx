@@ -11,7 +11,7 @@ import { buildFollowUpDraft, type FollowUpDraft } from '@/lib/follow-up-emails';
 import { LOST_REASON_PRESETS, LEAD_STATUS_LABELS, type PainPointKey } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { Kicker, BrandButton, inputClass } from '@/components/admin/ui';
-import { beacon } from '@/lib/beacon';
+import { recordDialAttempt } from '@/lib/dial-intent';
 
 /**
  * Call HQ — the live-call cockpit.
@@ -192,6 +192,17 @@ export default function CallCockpit() {
   const [callingAvailable, setCallingAvailable] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const activeRailRef = useRef<HTMLAnchorElement | null>(null);
+  /** Cancels the watcher from a previous tap, so two taps cannot both fire. */
+  const cancelArmedDial = useRef<(() => void) | null>(null);
+
+  /*
+   * And cancels it on the way out.
+   *
+   * An armed tap listens on the document, not on this component, so leaving
+   * one behind means a page that has gone can still record a dial the next
+   * time the browser is backgrounded — against a lead nobody is looking at.
+   */
+  useEffect(() => () => cancelArmedDial.current?.(), []);
 
   const load = useCallback(async () => {
     try {
@@ -501,21 +512,28 @@ export default function CallCockpit() {
    * the system does on their behalf.
    */
   /**
-   * Tells the server the number was dialled, as it is dialled.
+   * Arms the dial record, and lets iOS decide whether it counts.
    *
-   * Sent as a beacon rather than a fetch: the phone app is about to take the
-   * screen and the page may be frozen a moment later, so an ordinary request
-   * is cancelled exactly when the record mattered. See lib/beacon.ts.
+   * Tapping a `tel:` link does not place a call — iOS puts up its own
+   * Call/Cancel sheet first, and nothing has happened until one of those is
+   * pressed. Recording from the click handler counted every cancel and every
+   * mis-tap in the one number that exists to be trustworthy.
+   *
+   * Which is also why the screen does not flip into its after-the-call shape
+   * here: somebody who backs out of the sheet should find the page exactly as
+   * they left it, script and all. See lib/dial-intent.ts.
    */
-  function recordDial() {
+  function armDial() {
     if (!lead) return;
-    setDialled(true);
-    try {
-      sessionStorage.setItem(`dialled:${leadId}`, '1');
-    } catch {
-      /* private mode — the bar just won't survive the app switch */
-    }
-    beacon(`/api/admin/leads/${lead.id}/dial`);
+    cancelArmedDial.current?.();
+    cancelArmedDial.current = recordDialAttempt(`/api/admin/leads/${lead.id}/dial`, () => {
+      setDialled(true);
+      try {
+        sessionStorage.setItem(`dialled:${leadId}`, '1');
+      } catch {
+        /* private mode — the bar just won't survive the app switch */
+      }
+    });
   }
 
   /**
@@ -779,7 +797,7 @@ export default function CallCockpit() {
               ) : lead.phone ? (
                 <a
                   href={`tel:${lead.phone}`}
-                  onClick={recordDial}
+                  onClick={armDial}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90"
                 >
                   <Phone size={15} />
@@ -1234,7 +1252,7 @@ export default function CallCockpit() {
             ) : (
               <a
                 href={`tel:${lead.phone}`}
-                onClick={recordDial}
+                onClick={armDial}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-3 text-sm font-bold text-black"
               >
                 <Phone size={16} />

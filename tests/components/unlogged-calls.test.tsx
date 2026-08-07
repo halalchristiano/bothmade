@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueueView } from '@/components/admin/sales/QueueView';
 
@@ -62,6 +62,8 @@ beforeEach(() => {
   vi.restoreAllMocks();
   sessionStorage.clear();
   localStorage.clear();
+  visibility = 'visible';
+  vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
 
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     async () =>
@@ -86,11 +88,35 @@ beforeEach(() => {
   );
 });
 
-/** Tapping the tel: link is what marks a call as started. */
+/**
+ * Tapping the tel: link, and then going through with it.
+ *
+ * The tap alone is not a call — iOS puts up a Call/Cancel sheet and nothing
+ * has happened until one is pressed. Pressing Call opens the phone app, which
+ * backgrounds the browser, and that is the only thing the page can see. So
+ * every test that means "a call was made" has to hand the screen over too.
+ */
 const dial = async (company: string) => {
+  await tap(company);
+  await handOverToThePhone();
+};
+
+/** The tap on its own — what somebody who then cancels has done. */
+const tap = async (company: string) => {
   const link = await screen.findByLabelText(new RegExp(`Call ${company} on`, 'i'));
   await userEvent.click(link);
 };
+
+/** The phone app taking the screen, which is what "they pressed Call" looks like. */
+const handOverToThePhone = async () => {
+  visibility = 'hidden';
+  document.dispatchEvent(new Event('visibilitychange'));
+  // Let the state settle before the assertions look at it.
+  await act(async () => {});
+  visibility = 'visible';
+};
+
+let visibility: DocumentVisibilityState = 'visible';
 
 /** Every request the page made, so a POST can be told from the page load. */
 const posted = (path: RegExp) =>
@@ -352,5 +378,43 @@ describe('what the system records without being asked', () => {
     expect(posted(/\/dial$/)).toHaveLength(0);
     // Still prompts for the outcome, though — the call did happen.
     expect(await screen.findByText(/how did it go/i)).toBeTruthy();
+  });
+});
+
+/**
+ * The Cancel button on the sheet iOS puts up.
+ *
+ * Tapping a number is not making a call. Recording from the click handler
+ * counted every cancel and every mis-tap in the one number that exists to be
+ * trustworthy — and a counter that inflates itself cannot be used to hold
+ * anybody to anything, including themselves.
+ */
+describe('tapping a number and then backing out', () => {
+  it('records nothing', async () => {
+    render(<QueueView />);
+
+    await tap('Ridgeline Roofing');
+
+    expect(posted(/\/dial$/)).toHaveLength(0);
+  });
+
+  it('does not put them on the pile of calls to write up', async () => {
+    render(<QueueView />);
+
+    await tap('Ridgeline Roofing');
+
+    expect(stored()).toEqual([]);
+    expect(screen.queryByText(/how did it go/i)).toBeNull();
+  });
+
+  /** Going through with it after a moment's hesitation still counts. */
+  it('still counts once they do press Call', async () => {
+    render(<QueueView />);
+
+    await tap('Ridgeline Roofing');
+    await handOverToThePhone();
+
+    expect(posted(/\/dial$/)).toHaveLength(1);
+    expect(stored().map((c: { company: string }) => c.company)).toEqual(['Ridgeline Roofing']);
   });
 });
