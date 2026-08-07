@@ -16,6 +16,20 @@ const leadCreate = vi.fn();
 const leadUpdate = vi.fn();
 const activityCreate = vi.fn();
 const userFindFirst = vi.fn();
+/**
+ * Stand-in for the `rate_limits` table, so the limiter takes its real path.
+ *
+ * Without it `prisma.$queryRaw` is undefined, the DB counter throws, and
+ * `enforceRateLimit` quietly falls back to its in-memory window — logging
+ * "[rate-limit] database counter failed" on every single test in this file
+ * and passing regardless. So the budget on the one route in the app that
+ * opens a payment session was, in tests, only ever the fallback that exists
+ * for when Postgres is down. The counter that actually runs in production —
+ * the shared one, the only one that means anything across serverless
+ * instances — was exercised here by nothing.
+ */
+const rateLimitRows = new Map<string, { count: number; windowStart: Date }>();
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     lead: {
@@ -25,6 +39,20 @@ vi.mock('@/lib/prisma', () => ({
     },
     leadActivity: { create: (...args: unknown[]) => activityCreate(...args) },
     user: { findFirst: (...args: unknown[]) => userFindFirst(...args) },
+    rateLimit: { deleteMany: async () => ({ count: 0 }) },
+    $queryRaw: (_sql: TemplateStringsArray, ...params: unknown[]) => {
+      const key = params[0] as string;
+      const windowMs = params[1] as number;
+      const now = Date.now();
+      const existing = rateLimitRows.get(key);
+      if (!existing || now - existing.windowStart.getTime() >= windowMs) {
+        const row = { count: 1, windowStart: new Date(now) };
+        rateLimitRows.set(key, row);
+        return Promise.resolve([{ ...row }]);
+      }
+      existing.count += 1;
+      return Promise.resolve([{ ...existing }]);
+    },
   },
 }));
 
@@ -266,6 +294,55 @@ describe('POST /api/checkout — capturing the attempt', () => {
  * route that transitively touches lib/email — including this one, whose real
  * job is taking money and has nothing to do with sending mail.
  */
+/**
+ * The budget on the one route in the app that opens a payment session.
+ *
+ * Every test above deliberately arrives from a fresh address so the limiter
+ * cannot interfere with what it is asserting — which left nothing at all
+ * asserting the limiter. It was also, until the `$queryRaw` stand-in above,
+ * silently running the in-memory fallback rather than the shared counter that
+ * production actually uses.
+ */
+describe('POST /api/checkout — the budget', () => {
+  /** One address, hammering. `publicWrite` allows ten in ten minutes. */
+  const sameCaller = (body: unknown) =>
+    ({
+      json: async () => body,
+      headers: new Headers({ 'x-forwarded-for': '203.0.113.77' }),
+    }) as Parameters<typeof POST>[0];
+
+  it('opens checkout up to the limit, then refuses', async () => {
+    for (let i = 0; i < 10; i += 1) {
+      const res = await POST(sameCaller(VALID));
+      expect(res.status, `request ${i + 1} of the allowance`).toBe(200);
+    }
+
+    const refused = await POST(sameCaller(VALID));
+
+    expect(refused.status).toBe(429);
+  });
+
+  it('says how long to wait, rather than only refusing', async () => {
+    // A 429 with nothing on it is indistinguishable from the site being
+    // broken; the header is what makes it a queue rather than a wall.
+    for (let i = 0; i < 11; i += 1) await POST(sameCaller(VALID));
+    const refused = await POST(sameCaller(VALID));
+
+    const retryAfter = Number(refused.headers.get('retry-after'));
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(10 * 60);
+  });
+
+  it('does not spend one caller’s budget on everybody else', async () => {
+    for (let i = 0; i < 11; i += 1) await POST(sameCaller(VALID));
+
+    // A different visitor, arriving while the first is locked out.
+    const other = await POST(request(VALID));
+
+    expect(other.status).toBe(200);
+  });
+});
+
 describe('POST /api/checkout — no mail configured', () => {
   it('still opens checkout and still records the lead', async () => {
     vi.stubEnv('RESEND_API_KEY', '');

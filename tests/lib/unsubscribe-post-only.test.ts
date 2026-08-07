@@ -15,9 +15,34 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * is the one a GET always owed: change nothing.
  */
 
+/**
+ * Stand-in for the `rate_limits` table, so the limiter takes its real path.
+ *
+ * Without `$queryRaw` the DB counter throws and `enforceRateLimit` falls back
+ * to its in-memory window — logging "[rate-limit] database counter failed" on
+ * every test here and passing anyway. This route budgets token guesses, which
+ * is the whole reason a stranger cannot unsubscribe a lead by trying tokens;
+ * testing it against the fallback tested the wrong counter.
+ */
+const rateLimitRows = new Map<string, { count: number; windowStart: Date }>();
+
 const prisma = {
   lead: { findUnique: vi.fn(), update: vi.fn(async (_a: unknown) => ({})) },
   leadActivity: { create: vi.fn(async (_a: unknown) => ({})) },
+  rateLimit: { deleteMany: async () => ({ count: 0 }) },
+  $queryRaw: (_sql: TemplateStringsArray, ...params: unknown[]) => {
+    const key = params[0] as string;
+    const windowMs = params[1] as number;
+    const now = Date.now();
+    const existing = rateLimitRows.get(key);
+    if (!existing || now - existing.windowStart.getTime() >= windowMs) {
+      const row = { count: 1, windowStart: new Date(now) };
+      rateLimitRows.set(key, row);
+      return Promise.resolve([{ ...row }]);
+    }
+    existing.count += 1;
+    return Promise.resolve([{ ...existing }]);
+  },
 };
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
