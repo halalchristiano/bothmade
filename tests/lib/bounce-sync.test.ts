@@ -32,14 +32,14 @@ const prisma = {
 const decryptSecret = vi.fn();
 const scanBouncedAddresses = vi.fn();
 const scanReplyAddresses = vi.fn();
-const createGmailOAuthBatchClient = vi.fn(() => ({ client: true }));
+const createGmailOAuthBatchClient = vi.fn((_token: string) => ({ client: true }));
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/crypto', () => ({ decryptSecret: (v: string) => decryptSecret(v) }));
 vi.mock('@/lib/gmail-oauth', () => ({
-  createGmailOAuthBatchClient: (...a: unknown[]) => createGmailOAuthBatchClient(...a),
-  scanBouncedAddresses: (...a: unknown[]) => scanBouncedAddresses(...a),
-  scanReplyAddresses: (...a: unknown[]) => scanReplyAddresses(...a),
+  createGmailOAuthBatchClient: (token: string) => createGmailOAuthBatchClient(token),
+  scanBouncedAddresses: (client: unknown, opts: unknown) => scanBouncedAddresses(client, opts),
+  scanReplyAddresses: (client: unknown, opts: unknown) => scanReplyAddresses(client, opts),
 }));
 
 const { syncBouncesForUser, syncRepliesForUser, syncBouncesForAllUsers } = await import(
