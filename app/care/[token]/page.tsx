@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from 'react';
 import { PillCTA, SectionTag } from '@/components/ui';
+import { formatCentsExact } from '@/lib/pricing';
 
 interface CareService {
   label: string;
@@ -29,7 +30,13 @@ interface CareOffer {
   scheduleLines: Array<{ period: string; detail: string }>;
 }
 
-const money = (cents: number) => `$${(cents / 100).toLocaleString()}`;
+/*
+ * en-US, not the reader's locale. A bare toLocaleString() formats in the
+ * BROWSER's, so a client in Berlin read "$150" fine and "$1.500" as one and a
+ * half — our dollar sign, their digit grouping, on the page where they accept
+ * a recurring charge. See app/sign/[leadId] for the same fix.
+ */
+const money = formatCentsExact;
 
 /**
  * The client's side of the care-plan upsell: what the plan covers, exactly

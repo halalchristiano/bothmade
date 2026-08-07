@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { PillCTA, SectionTag } from '@/components/ui';
 import { CLICKWRAP_STATEMENT, SIGNER_NAME_MAX } from '@/lib/clickwrap';
 import { isValidName, sanitizeNameInput } from '@/lib/validation';
+import { formatCents } from '@/lib/pricing';
 
 interface ScheduleRow {
   index: number;
@@ -35,7 +36,20 @@ interface Proposal {
   sections: Array<{ heading: string; paragraphs: string[] }>;
 }
 
-const money = (cents: number) => `$${(cents / 100).toLocaleString()}`;
+/*
+ * Pinned to en-US, like every other price in the system.
+ *
+ * This rolled its own with a bare `toLocaleString()`, which formats in the
+ * BROWSER's locale — and this is the page where a client reads the fee and
+ * signs for it. A German reader saw "$12.500" for twelve and a half thousand
+ * dollars, which in their notation is twelve dollars fifty; a French one saw
+ * "$12 500"; an Indian one saw lakh grouping on six figures. The dollar sign
+ * was ours and the digit grouping was theirs, on a contract.
+ *
+ * formatCents has always existed for exactly this and is what the proposal,
+ * the invoice and the emails use.
+ */
+const money = formatCents;
 
 export default function SignAndPayPage() {
   const params = useParams();

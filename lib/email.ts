@@ -1182,7 +1182,16 @@ export async function sendWeeklyDigestEmail(
 ): Promise<boolean> {
   if (toEmails.length === 0) return false;
 
-  const formatCents = (cents: number) => `$${(cents / 100).toLocaleString()}`;
+  // Pinned, and named apart from lib/pricing's formatCents so it cannot be
+  // mistaken for it. Rendered server-side, so the locale here is the runtime's
+  // rather than a reader's — which is a smaller exposure than the client pages
+  // had, and no more correct.
+  const money = (cents: number) =>
+    (cents / 100).toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    });
 
   const row = (label: string, value: string, warn = false) => `
     <tr>
@@ -1194,8 +1203,8 @@ export async function sendWeeklyDigestEmail(
     <p style="margin-top:0;">Here's how the week shook out.</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
       ${row('New leads this week', String(stats.newLeadsThisWeek))}
-      ${row('Deals won this week', `${stats.wonThisWeek} (${formatCents(stats.wonValueThisWeek)})`)}
-      ${row('Revenue this month', formatCents(stats.revenueThisMonth))}
+      ${row('Deals won this week', `${stats.wonThisWeek} (${money(stats.wonValueThisWeek)})`)}
+      ${row('Revenue this month', money(stats.revenueThisMonth))}
       ${row('Overdue follow-ups', String(stats.overdueFollowUps), stats.overdueFollowUps > 0)}
       ${row('Overdue balances', String(stats.overdueBalances), stats.overdueBalances > 0)}
       ${row('At-risk projects (7+ days idle)', String(stats.atRiskProjects), stats.atRiskProjects > 0)}

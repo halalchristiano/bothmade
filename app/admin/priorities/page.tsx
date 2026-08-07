@@ -16,6 +16,7 @@ import {
   PenLine,
 } from 'lucide-react';
 import { Card, Kicker, LoadError, PageIn, PageTitle } from '@/components/admin/ui';
+import { formatCents } from '@/lib/pricing';
 
 /**
  * Priorities: the one list of work that needs a person today.
@@ -114,7 +115,8 @@ const BAND_META: Record<Band, { label: string; icon: typeof Inbox; classes: stri
  */
 const BAND_ORDER: Band[] = ['feedback', 'unbilled', 'deliver', 'handoff', 'reply', 'balance', 'atrisk'];
 
-const money = (cents: number) => `$${(cents / 100).toLocaleString()}`;
+// en-US, not the browser's locale — see the note in app/sign/[leadId].
+const money = formatCents;
 
 const SNOOZE_CHOICES = [
   { days: 1, label: 'tomorrow' },

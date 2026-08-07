@@ -489,7 +489,7 @@ export default function ClientDashboard() {
       project.estimatedCompletionDate
         ? `Estimated target: ${new Date(project.estimatedCompletionDate).toLocaleDateString()}`
         : null,
-      `Balance due: $${(project.balanceDue / 100).toLocaleString()}`,
+      `Balance due: ${formatCentsExact(project.balanceDue)}`,
       latestUpdate ? `Latest update: ${latestUpdate.title} (${new Date(latestUpdate.createdAt).toLocaleDateString()})` : null,
       '',
       `View live: ${typeof window !== 'undefined' ? shareUrl() : ''}`,
@@ -1172,7 +1172,7 @@ export default function ClientDashboard() {
                 <div>
                   <h3 className="text-sm text-white/40 mb-1">Project Value</h3>
                   <p className="text-lg font-semibold">
-                    <CountUp value={`$${(project.totalPrice / 100).toLocaleString()}`} />
+                    <CountUp value={formatCentsExact(project.totalPrice)} />
                   </p>
                 </div>
 
@@ -1207,13 +1207,13 @@ export default function ClientDashboard() {
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-white/40">Paid</span>
                 <span className="text-emerald-300 font-medium">
-                  <CountUp value={`$${(project.amountPaid / 100).toLocaleString()}`} />
+                  <CountUp value={formatCentsExact(project.amountPaid)} />
                 </span>
               </div>
               <div className="flex justify-between text-sm mb-3">
                 <span className="text-white/40">Balance Due</span>
                 <span className={`font-medium ${project.balanceDue > 0 ? 'text-amber-300' : 'text-white/40'}`}>
-                  ${(project.balanceDue / 100).toLocaleString()}
+                  {formatCentsExact(project.balanceDue)}
                 </span>
               </div>
               <div className="w-full bg-white/10 rounded-full h-1.5 mb-6 overflow-hidden">
@@ -1294,7 +1294,7 @@ export default function ClientDashboard() {
                                   minimumFractionDigits: due.amountCents % 100 ? 2 : 0,
                                   maximumFractionDigits: due.amountCents % 100 ? 2 : 0,
                                 })}`
-                              : `Pay Balance — $${(project.balanceDue / 100).toLocaleString()}`;
+                              : `Pay Balance — ${formatCentsExact(project.balanceDue)}`;
                           })()}
                     </span>
                     {!payingBalance && !reduceMotion && (
@@ -1327,7 +1327,7 @@ export default function ClientDashboard() {
                         </p>
                       </div>
                       <p className="text-sm font-semibold text-emerald-300">
-                        ${(payment.amount / 100).toLocaleString()}
+                        {formatCentsExact(payment.amount)}
                       </p>
                     </div>
                   ))}

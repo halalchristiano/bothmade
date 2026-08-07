@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { amountPaidTowardProject, projectBalance } from '@/lib/billing';
+import { formatCents } from '@/lib/pricing';
 import { AlertTriangle, FolderKanban, MessageSquare, Plus } from 'lucide-react';
 import { Badge, Card, Kicker, LoadError, matchesSearch, PageIn, PageTitle, SearchFilter } from '@/components/admin/ui';
 
@@ -97,7 +98,7 @@ function HealthBadges({ project }: { project: ProjectRow }) {
   if (project.status !== 'complete' && due > 0) {
     badges.push(
       <Badge key="balance" tone="amber" solid>
-        ${(due / 100).toLocaleString()} due
+        ${formatCents(due)} due
       </Badge>
     );
   }

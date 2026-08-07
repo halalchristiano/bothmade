@@ -132,7 +132,7 @@ export async function POST(
       data: {
         leadId,
         type: 'proposal',
-        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''}${customItems.length ? ` + ${customItems.map((c) => c.label).join(', ')}` : ''} — $${(totalPrice / 100).toLocaleString()}${
+        content: `Sign-and-pay link prepared: ${baseService}${addOnKeys.length ? ` + ${addOnKeys.join(', ')}` : ''}${customItems.length ? ` + ${customItems.map((c) => c.label).join(', ')}` : ''} — ${formatCents(totalPrice)}${
           depositOnly
             ? ` (${instalmentSchedule(totalPrice)[0].label} — ${formatCentsExact(instalmentSchedule(totalPrice)[0].amountCents)} on signing)`
             : ' (paid in full)'

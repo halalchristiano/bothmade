@@ -6,6 +6,7 @@ import { projectBalance, type BalanceInstalment } from '@/lib/billing';
 import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
 import { MOCKUPS_TO_BUILD_WHERE } from '@/lib/mockups';
 import { sumPaymentsBetween } from '@/lib/revenue';
+import { formatCentsExact } from '@/lib/pricing';
 
 const RANGE_LABELS: Record<StatsRange, string> = {
   week: 'This Week',
@@ -426,7 +427,7 @@ export async function GET(request: Request) {
                 p.amount < 0
                   ? `${p.project.client.company} refunded on ${p.project.name}`
                   : `${p.project.client.company} paid on ${p.project.name}`,
-              preview: `$${(Math.abs(p.amount) / 100).toLocaleString()} (${p.type})`,
+              preview: `${formatCentsExact(Math.abs(p.amount))} (${p.type})`,
               createdAt: p.createdAt,
             })),
             ...recentLeadWins.map((a) => ({
