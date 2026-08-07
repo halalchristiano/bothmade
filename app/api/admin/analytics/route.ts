@@ -72,6 +72,8 @@ export async function GET(request: Request) {
           proposalTotalPrice: true,
           lostReason: true,
           updatedAt: true,
+          wonAt: true,
+          lostAt: true,
         },
       }),
       prisma.recurringOffer.findMany({
@@ -123,10 +125,24 @@ export async function GET(request: Request) {
     const mrrCents = activePlans.reduce((sum, plan) => sum + billingThisMonthCents(plan, now), 0);
 
     // --- Deals ------------------------------------------------------------
-    // `updatedAt` is the closest thing to a decision date the schema has. It
-    // is what the sales dashboard already uses, so the two pages agree.
-    const decidedInRange = (lead: { status: string; updatedAt: Date }) =>
-      (lead.status === 'won' || lead.status === 'lost') && (!inRange || lead.updatedAt >= inRange.gte);
+    /*
+     * When the deal was decided.
+     *
+     * `updatedAt` used to be the closest thing to a decision date the schema
+     * had, and it is the last time *anything* on the row changed — so adding
+     * a note to a deal closed in March moved it into the current range, and
+     * this page's win rate and lost-reason split both counted it again.
+     *
+     * This page dates won and lost together, which is why it could not be
+     * fixed when `wonAt` landed on its own: half a decision date would have
+     * made the two halves of one ratio disagree. `lostAt` is the other half.
+     * Both fall back to `updatedAt` for rows decided before the columns
+     * existed, matching the sales dashboard so the two pages still agree.
+     */
+    const decidedAt = (lead: { status: string; wonAt: Date | null; lostAt: Date | null; updatedAt: Date }) =>
+      (lead.status === 'won' ? lead.wonAt : lead.lostAt) ?? lead.updatedAt;
+    const decidedInRange = (lead: { status: string; wonAt: Date | null; lostAt: Date | null; updatedAt: Date }) =>
+      (lead.status === 'won' || lead.status === 'lost') && (!inRange || decidedAt(lead) >= inRange.gte);
 
     const won = leads.filter((l) => l.status === 'won' && decidedInRange(l));
     const lost = leads.filter((l) => l.status === 'lost' && decidedInRange(l));

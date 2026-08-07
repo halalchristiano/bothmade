@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { isFurtherAlong, type LeadStatus } from '@/lib/leads';
+import { isFurtherAlong, lostAtForStatusChange, type LeadStatus } from '@/lib/leads';
 import { findCallOutcome } from '@/lib/call-outcomes';
 import { autoFollowUpDueDate, callEarnsAutoFollowUp } from '@/lib/auto-follow-up';
 import { nextTouch } from '@/lib/next-touch';
@@ -113,6 +113,9 @@ export async function POST(
         where: { id: leadId },
         data: {
           status: nextStatus,
+          // "Not interested" is the other way a deal ends, and it needs the
+          // decision date for the same reason winning one does.
+          lostAt: lostAtForStatusChange(nextStatus, lead),
           nextFollowUpAt,
           lostReason: outcome.status === 'lost' ? lostReason?.trim() || 'Not interested (by phone)' : undefined,
           // A dead/wrong number pulls the lead out of the callable band, so

@@ -115,8 +115,13 @@ export async function POST(
       },
     });
 
-    const data: { contractStatus?: string; status?: string } = {};
-    if (lead.contractStatus === 'not_sent') data.contractStatus = 'sent';
+    const data: { contractStatus?: string; status?: string; contractSentAt?: Date } = {};
+    if (lead.contractStatus === 'not_sent') {
+      data.contractStatus = 'sent';
+      // Stamped once, on the transition. Regenerating the PDF later does not
+      // restart their clock — they have had a contract since this moment.
+      data.contractSentAt = new Date();
+    }
     if (isFurtherAlong(lead.status, 'contract_sent')) data.status = 'contract_sent';
     if (Object.keys(data).length > 0) {
       await prisma.lead.update({ where: { id: leadId }, data });

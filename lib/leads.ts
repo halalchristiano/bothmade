@@ -406,6 +406,31 @@ export function wonAtForStatusChange(
   return now;
 }
 
+/**
+ * The same rule for the other way a deal ends.
+ *
+ * Deliberately a mirror of wonAtForStatusChange rather than a generalisation
+ * of it — the two are only ever called with a status in hand, and one
+ * function taking a "which end" argument would read worse at every call site
+ * than two that say what they stamp.
+ *
+ * "Lost" is written from fewer places than "won" — the lead editor and a
+ * "not interested" call outcome — but it feeds the lost-reason breakdown and
+ * the analytics page's won/lost split, both of which dated a decision by
+ * `updatedAt`. So correcting a typo on a lead lost in March counted its
+ * reason into the current quarter a second time.
+ */
+export function lostAtForStatusChange(
+  nextStatus: string | undefined,
+  existing: { status: string; lostAt: Date | null },
+  now: Date = new Date()
+): Date | undefined {
+  const resulting = nextStatus ?? existing.status;
+  if (resulting !== 'lost') return undefined;
+  if (existing.lostAt) return undefined;
+  return now;
+}
+
 /** One hand-written sales point: the headline, and why it applies to this business. */
 export interface SalesPoint {
   point: string;

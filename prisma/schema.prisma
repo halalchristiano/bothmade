@@ -383,6 +383,12 @@ model Lead {
   nextFollowUpAt DateTime? // self-set reminder date for the next touch
   contractStatus String    @default("not_sent") // "not_sent", "sent", "signed"
 
+  // The day the contract went out. "How long have they had it" is the whole
+  // question behind an unsigned contract, and it was answered with
+  // `updatedAt` — so chasing them was itself a write, and the row reset to
+  // "sent today" on the very act it was meant to prompt.
+  contractSentAt DateTime?
+
   // When this deal was actually won. Set on the transition into "won" and
   // never touched again — see wonAtForStatusChange in lib/leads.ts.
   //
@@ -394,6 +400,12 @@ model Lead {
   // column existed only if the backfill missed them; readers fall back to
   // updatedAt for those.
   wonAt DateTime?
+
+  // The mirror of `wonAt`, for the other way a deal ends. Same rule, same
+  // reason: "which reasons did we lose to this quarter" and the analytics
+  // page's won/lost split both dated a decision by `updatedAt`, so correcting
+  // a typo on a lost lead counted its reason into the current quarter again.
+  lostAt DateTime?
 
   // --- Who this business actually is -------------------------------------
   // Industry and address used to be appended to `notes` as prose, which made
@@ -704,6 +716,7 @@ model Lead {
   @@index([status, addedAt])
   @@index([assignedToId, status])
   @@index([clientTakenOnAt])
+  @@index([lostAt])
   @@index([email])
   @@index([company])
   @@map("leads")

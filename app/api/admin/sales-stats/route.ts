@@ -104,9 +104,11 @@ export async function GET(request: Request) {
           lostReason: true,
           nextFollowUpAt: true,
           contractStatus: true,
+          contractSentAt: true,
           createdAt: true,
           updatedAt: true,
           wonAt: true,
+          lostAt: true,
         },
       }),
       prisma.leadActivity.count({
@@ -140,6 +142,8 @@ export async function GET(request: Request) {
      * close date that was really a last-touched date.
      */
     const closedAt = (l: { wonAt: Date | null; updatedAt: Date }) => l.wonAt ?? l.updatedAt;
+    /** The same, for the other way a deal ends. Same fallback, same reason. */
+    const lostOn = (l: { lostAt: Date | null; updatedAt: Date }) => l.lostAt ?? l.updatedAt;
 
     const wonInPeriod = wonAllTime.filter((l) => closedAt(l) >= periodStart);
     const revenueInPeriod = wonInPeriod.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
@@ -151,7 +155,7 @@ export async function GET(request: Request) {
         ? Math.round(wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0) / wonAllTime.length)
         : 0;
 
-    const lostInPeriod = lostAllTime.filter((l) => l.updatedAt >= periodStart);
+    const lostInPeriod = lostAllTime.filter((l) => lostOn(l) >= periodStart);
     const lostReasonCounts: Record<string, number> = {};
     for (const l of lostInPeriod) {
       const reason = l.lostReason?.trim() || 'No reason recorded';
@@ -159,24 +163,57 @@ export async function GET(request: Request) {
     }
 
     const active = allMine.filter((l) => ACTIVE_STATUSES.includes(l.status));
+
+    /*
+     * When somebody last actually contacted this lead.
+     *
+     * "Going stale — 5+ days idle" meant `updatedAt`, i.e. when the row was
+     * last written, and any write cleared it: a bulk tag edit, an importer
+     * enrichment pass, correcting a phone number. So the whole book could
+     * read as freshly attended-to on a day nobody rang anyone — which is the
+     * one case this card exists to catch, and exactly the one it missed.
+     *
+     * Deliberately not another column. `wonAt`, `lostAt` and `contractSentAt`
+     * each mark a single transition written from two or three places; "last
+     * contact" would have to be maintained by all thirteen routes that log an
+     * activity, and would be wrong the first time one of them forgot. The
+     * activity timeline is already the record of contact, so ask it — one
+     * grouped query over the active set, and it cannot drift.
+     *
+     * A lead with no activity at all has been idle since it arrived. That is
+     * true, and it is a lead worth surfacing rather than hiding.
+     */
+    const lastTouch = await prisma.leadActivity.groupBy({
+      by: ['leadId'],
+      where: { leadId: { in: active.map((l) => l.id) } },
+      _max: { createdAt: true },
+    });
+    const touchedAt = new Map(lastTouch.map((r) => [r.leadId, r._max.createdAt]));
+    const idleSince = (l: { id: string; createdAt: Date }) => touchedAt.get(l.id) ?? l.createdAt;
     const hotLeads = active.filter((l) => l.hotLead);
     const followUpsToday = active.filter(
       (l) => l.nextFollowUpAt && l.nextFollowUpAt >= startOfToday && l.nextFollowUpAt < endOfToday
     );
     const followUpsOverdue = active.filter((l) => l.nextFollowUpAt && l.nextFollowUpAt < startOfToday);
-    const staleLeads = active.filter((l) => l.updatedAt < staleThreshold);
+    const staleLeads = active.filter((l) => idleSince(l) < staleThreshold);
 
     const lateFunnelStallThreshold = new Date(now.getTime() - LATE_FUNNEL_STALL_DAYS * 24 * 60 * 60 * 1000);
     const stageAging = active.filter(
-      (l) => LATE_FUNNEL_STATUSES.includes(l.status) && l.updatedAt < lateFunnelStallThreshold
+      (l) => LATE_FUNNEL_STATUSES.includes(l.status) && idleSince(l) < lateFunnelStallThreshold
     );
 
     // Contracts sitting with the client, unsigned — the one thing on a
     // closer's own deals that needs chasing but wouldn't otherwise surface
     // until it's already gone stale by the generic 5-day check.
+    //
+    // Counted from when the contract went out, not from when the row was last
+    // written. Chasing somebody is itself a write, so the old number reset to
+    // zero on the very act it was meant to prompt: a contract nobody had
+    // signed in a fortnight kept reporting that they had just received it.
+    const sentOn = (l: { contractSentAt: Date | null; updatedAt: Date }) => l.contractSentAt ?? l.updatedAt;
     const awaitingSignature = active
       .filter((l) => l.contractStatus === 'sent')
-      .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime());
+      .sort((a, b) => sentOn(a).getTime() - sentOn(b).getTime());
 
     const leadsInPeriod = allMine.filter((l) => l.createdAt >= periodStart);
     const sourceMap: Record<string, { total: number; won: number }> = {};
@@ -224,7 +261,9 @@ export async function GET(request: Request) {
           hotLeads: hotLeads.map((l) => ({ id: l.id, company: l.company, estimatedValue: l.estimatedValue, phone: l.phone, email: l.email })),
           followUpsToday: followUpsToday.map((l) => ({ id: l.id, company: l.company, phone: l.phone, email: l.email })),
           followUpsOverdue: followUpsOverdue.map((l) => ({ id: l.id, company: l.company, nextFollowUpAt: l.nextFollowUpAt, phone: l.phone, email: l.email })),
-          staleLeads: staleLeads.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt, phone: l.phone, email: l.email })),
+          // `updatedAt` by name, last contact by meaning — the row renders
+          // it as "when did this go quiet", which is what it answers now.
+          staleLeads: staleLeads.map((l) => ({ id: l.id, company: l.company, updatedAt: idleSince(l), phone: l.phone, email: l.email })),
           stageAging: stageAging.map((l) => ({
             id: l.id,
             company: l.company,
@@ -232,14 +271,14 @@ export async function GET(request: Request) {
             phone: l.phone,
             email: l.email,
             stageLabel: LEAD_STATUS_SHORT_LABELS[l.status as keyof typeof LEAD_STATUS_SHORT_LABELS] || l.status,
-            daysIdle: Math.floor((now.getTime() - l.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+            daysIdle: Math.floor((now.getTime() - idleSince(l).getTime()) / (24 * 60 * 60 * 1000)),
           })),
           awaitingSignature: awaitingSignature.map((l) => ({
             id: l.id,
             company: l.company,
             phone: l.phone,
             email: l.email,
-            daysWaiting: Math.floor((now.getTime() - l.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+            daysWaiting: Math.floor((now.getTime() - sentOn(l).getTime()) / (24 * 60 * 60 * 1000)),
           })),
           sourcePerformance,
           clientTypeBreakdown,
