@@ -1,0 +1,162 @@
+import Stripe from 'stripe';
+import { put } from '@vercel/blob';
+import { buildCustomChargeInvoicePdf } from '@/lib/invoice-pdf';
+
+/**
+ * The two artefacts an invoice needs before it can be sent: a PDF to attach
+ * and a link to pay it with.
+ *
+ * Both were assembled inline by the route that raises a charge, which was
+ * fine while raising was the only thing that ever produced them. It isn't:
+ * an invoice can now be sent again, and a resend has to be able to fill in
+ * whichever of the two failed the first time. Two copies of "how do we make
+ * the pay link" is how the resent link ends up pointing somewhere the webhook
+ * doesn't recognise, and that failure looks like a client who paid and a
+ * system that says they didn't.
+ *
+ * Neither of these throws. A charge that half-fails must still be a charge
+ * somebody can see and finish by hand — losing the invoice because Stripe was
+ * briefly unreachable is the one outcome worth engineering against.
+ */
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2025-08-27.basil',
+});
+
+export interface InvoiceLine {
+  label: string;
+  priceCents: number;
+}
+
+export interface StoredPdf {
+  /** For attaching to the email. Null if the render failed. */
+  buffer: Buffer | null;
+  /** For linking on the dashboards. Null if the render OR the upload failed. */
+  url: string | null;
+}
+
+/**
+ * Renders the invoice and files it.
+ *
+ * The two halves fail separately and mean different things: a PDF that
+ * rendered but did not store still reaches the client as an attachment and
+ * only lacks a link, while one that did not render leaves the charge with
+ * nothing behind it at all. Reported apart so the sentence shown to whoever
+ * pressed the button matches which of those happened.
+ */
+export async function buildAndStoreInvoicePdf(input: {
+  invoiceId: string;
+  invoiceNumber: string;
+  company: string;
+  contactName: string | null;
+  description: string;
+  lineItems: InvoiceLine[];
+  issuedAt: Date;
+}): Promise<StoredPdf> {
+  let buffer: Buffer | null = null;
+  try {
+    const bytes = await buildCustomChargeInvoicePdf({
+      invoiceNumber: input.invoiceNumber,
+      company: input.company,
+      contactName: input.contactName,
+      description: input.description,
+      lineItems: input.lineItems,
+      issuedAt: input.issuedAt,
+    });
+    buffer = Buffer.from(bytes);
+  } catch (error) {
+    console.error(`Invoice ${input.invoiceNumber}: failed to build the PDF:`, error);
+    return { buffer: null, url: null };
+  }
+
+  try {
+    // addRandomSuffix for the same reason as the contract and proposal blobs:
+    // these are public URLs carrying a client's name and what they were
+    // charged, and a guessable path is a directory listing with extra steps.
+    const blob = await put(`invoices/custom/${input.invoiceId}.pdf`, buffer, {
+      access: 'public',
+      contentType: 'application/pdf',
+      addRandomSuffix: true,
+    });
+    return { buffer, url: blob.url };
+  } catch (error) {
+    console.error(`Invoice ${input.invoiceNumber}: failed to store the PDF:`, error);
+    return { buffer, url: null };
+  }
+}
+
+export interface InvoicePaymentLink {
+  url: string | null;
+  id: string | null;
+}
+
+/**
+ * The Stripe link that pays this invoice.
+ *
+ * The metadata is the load-bearing part and the reason this is not written
+ * twice: `existingProjectId` is what the webhook branches on to record a
+ * payment against a project that already exists, and `invoiceId` is what
+ * marks this specific charge settled. A link built without them takes the
+ * client's money and settles nothing.
+ */
+export async function createInvoicePaymentLink(input: {
+  siteUrl: string;
+  projectId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  lineItems: InvoiceLine[];
+}): Promise<InvoicePaymentLink> {
+  try {
+    const link = await stripe.paymentLinks.create({
+      // A Payment Link is reusable and permanent unless told otherwise — it
+      // never expires and Stripe will take money through it every time it is
+      // opened. That is the double-collection window this codebase closes
+      // carefully everywhere it uses Checkout Sessions ("two live links for
+      // one instalment") and left wide open here: the invoice is marked paid
+      // once, because that update is scoped to a still-open row, while the
+      // card is charged on every completion. A forwarded email, a back
+      // button, or a client revisiting the link next month all collect again.
+      restrictions: { completed_sessions: { limit: 1 } },
+      after_completion: {
+        type: 'redirect',
+        redirect: { url: `${input.siteUrl}/client/${input.projectId}?paid=1` },
+      },
+      line_items: input.lineItems.map((item) => ({
+        price_data: {
+          currency: 'usd',
+          product_data: { name: item.label },
+          unit_amount: item.priceCents,
+        },
+        quantity: 1,
+      })),
+      metadata: {
+        existingProjectId: input.projectId,
+        invoiceId: input.invoiceId,
+        invoiceNumber: input.invoiceNumber,
+        paymentType: 'custom',
+      },
+    });
+    return { url: link.url, id: link.id };
+  } catch (error) {
+    console.error(`Invoice ${input.invoiceNumber}: failed to create the Stripe payment link:`, error);
+    return { url: null, id: null };
+  }
+}
+
+/**
+ * `lineItems` comes back off the row as `Json`, which is `unknown` as far as
+ * the type system is concerned. Read defensively rather than cast: a resend
+ * reads a row written months ago, and a malformed line would otherwise reach
+ * Stripe as `unit_amount: undefined` and fail the whole send rather than the
+ * one line.
+ */
+export function readInvoiceLines(value: unknown): InvoiceLine[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const { label, priceCents } = raw as { label?: unknown; priceCents?: unknown };
+    if (typeof label !== 'string' || !label.trim()) return [];
+    if (typeof priceCents !== 'number' || !Number.isSafeInteger(priceCents) || priceCents <= 0) return [];
+    return [{ label: label.trim(), priceCents }];
+  });
+}

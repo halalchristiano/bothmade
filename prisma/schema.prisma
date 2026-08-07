@@ -1055,6 +1055,15 @@ model Invoice {
   issuedBy    User?   @relation("InvoiceIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
   sentToEmail String?
 
+  // How the chase has gone. `sentToEmail` says where the invoice went and
+  // nothing about when, or how many times — so an invoice raised for the
+  // record only, one whose send failed, and one the client has been reminded
+  // about three times all read identically. These are what separate them, and
+  // what stops somebody sending a fourth reminder this morning because they
+  // could not tell there had been three.
+  lastSentAt DateTime?
+  sendCount  Int       @default(0)
+
   paidAt   DateTime?
   voidedAt DateTime?
 

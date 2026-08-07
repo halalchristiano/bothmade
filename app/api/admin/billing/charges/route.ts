@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveSiteUrl } from '@/lib/site-url';
-import Stripe from 'stripe';
-import { put } from '@vercel/blob';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendCustomChargeEmail, sendInvoiceRecordEmail } from '@/lib/email';
-import { buildCustomChargeInvoicePdf } from '@/lib/invoice-pdf';
+import { buildAndStoreInvoicePdf, createInvoicePaymentLink } from '@/lib/invoice-dispatch';
 import {
   createInvoiceRow as sharedCreateInvoiceRow,
   invoiceFilename,
   readChargeDraft,
 } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-08-27.basil',
-});
 
 /**
  * Raise a one-off charge against an existing customer.
@@ -143,72 +137,28 @@ export async function POST(request: NextRequest) {
     // The PDF and the pay link are independent failures with the same rule:
     // neither is allowed to lose the charge. Whatever survives is stored, the
     // rest is reported, and the invoice stays on both dashboards either way.
-    let pdfBuffer: Buffer | null = null;
-    let pdfUrl: string | null = null;
-    try {
-      const bytes = await buildCustomChargeInvoicePdf({
-        invoiceNumber: invoice.number,
-        company: project.client.company,
-        contactName: project.client.contactName,
-        description,
-        lineItems,
-        issuedAt: invoice.createdAt,
-      });
-      pdfBuffer = Buffer.from(bytes);
-      // addRandomSuffix for the same reason as the contract and proposal
-      // blobs: these are public URLs carrying a client's name and what they
-      // were charged, and a guessable path is a directory listing with extra
-      // steps.
-      const blob = await put(`invoices/custom/${invoice.id}.pdf`, pdfBuffer, {
-        access: 'public',
-        contentType: 'application/pdf',
-        addRandomSuffix: true,
-      });
-      pdfUrl = blob.url;
-    } catch (pdfError) {
-      console.error(`Invoice ${invoice.number}: failed to build or store the PDF:`, pdfError);
-    }
+    //
+    // Shared with the resend route via lib/invoice-dispatch.ts. Two copies of
+    // "how do we mint the pay link" is how a resent link ends up without the
+    // metadata the webhook branches on — which looks like a client who paid
+    // and a system that says they didn't.
+    const { buffer: pdfBuffer, url: pdfUrl } = await buildAndStoreInvoicePdf({
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.number,
+      company: project.client.company,
+      contactName: project.client.contactName,
+      description,
+      lineItems,
+      issuedAt: invoice.createdAt,
+    });
 
-    let paymentUrl: string | null = null;
-    let paymentLinkId: string | null = null;
-    try {
-      const link = await stripe.paymentLinks.create({
-        // A Payment Link is reusable and permanent unless told otherwise — it
-        // never expires and Stripe will take money through it every time it is
-        // opened. That is the double-collection window this codebase closes
-        // carefully everywhere it uses Checkout Sessions ("two live links for
-        // one instalment") and left wide open here: the invoice is marked paid
-        // once, because that update is scoped to a still-open row, while the
-        // card is charged on every completion. A forwarded email, a back
-        // button, or a client revisiting the link next month all collect again.
-        restrictions: { completed_sessions: { limit: 1 } },
-        after_completion: {
-          type: 'redirect',
-          redirect: { url: `${siteUrl}/client/${project.id}?paid=1` },
-        },
-        line_items: lineItems.map((item) => ({
-          price_data: {
-            currency: 'usd',
-            product_data: { name: item.label },
-            unit_amount: item.priceCents,
-          },
-          quantity: 1,
-        })),
-        metadata: {
-          // existingProjectId is what the webhook branches on to record a
-          // payment against a project that already exists; invoiceId is what
-          // marks this specific charge settled.
-          existingProjectId: project.id,
-          invoiceId: invoice.id,
-          invoiceNumber: invoice.number,
-          paymentType: 'custom',
-        },
-      });
-      paymentUrl = link.url;
-      paymentLinkId = link.id;
-    } catch (stripeError) {
-      console.error(`Invoice ${invoice.number}: failed to create the Stripe payment link:`, stripeError);
-    }
+    const { url: paymentUrl, id: paymentLinkId } = await createInvoicePaymentLink({
+      siteUrl,
+      projectId: project.id,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.number,
+      lineItems,
+    });
 
     const stored = await prisma.invoice.update({
       where: { id: invoice.id },
@@ -242,6 +192,25 @@ export async function POST(request: NextRequest) {
       });
       clientDelivered = result.sent;
       if (!result.sent) clientSendError = result.reason;
+    }
+
+    /*
+     * The first send counts as a send.
+     *
+     * Written after the attempt rather than with the artefacts above, because
+     * these two answer "how many times have we asked them for this money" and
+     * a send that failed is not an ask. An invoice raised for the record only
+     * stays at zero, which is the honest reading of it: nobody has been told.
+     */
+    if (clientDelivered) {
+      stored.lastSentAt = new Date();
+      stored.sendCount = 1;
+      await prisma.invoice
+        .update({
+          where: { id: invoice.id },
+          data: { lastSentAt: stored.lastSentAt, sendCount: 1 },
+        })
+        .catch((error) => console.error(`Invoice ${invoice.number}: send counters not written:`, error));
     }
 
     // info@ gets its copy whether or not the client's send worked — it is the

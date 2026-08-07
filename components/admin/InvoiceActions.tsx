@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Ban, RotateCcw } from 'lucide-react';
+import { Ban, RotateCcw, Send } from 'lucide-react';
 import { Modal } from '@/components/admin/Modal';
 import { BrandButton, inputClass } from '@/components/admin/ui';
 import { dollarsToCents } from '@/lib/billing';
@@ -14,17 +14,18 @@ import {
 } from '@/lib/invoice-lifecycle';
 
 /**
- * The two things that can happen to an invoice after it exists, wherever an
- * invoice is listed.
+ * Everything that can happen to an invoice after it exists, wherever an
+ * invoice is listed: send it, cancel it, refund it.
  *
  * One component rather than a copy on the billing page and another on the
  * project page, because these are the buttons where a second implementation
  * eventually disagrees with the first about what is allowed — and the
  * disagreement is always discovered by someone refunding the wrong amount.
  *
- * Both are deliberately behind a modal with a typed reason. Neither is
- * undoable, and a one-click irreversible money action next to "Copy pay link"
- * is a mis-click waiting to happen.
+ * All three are deliberately behind a modal. Cancel and refund because
+ * neither is undoable and a one-click irreversible money action next to "Copy
+ * pay link" is a mis-click waiting to happen; send because the mis-click
+ * there is chasing a client who already paid.
  */
 
 export interface ActionableInvoice {
@@ -35,6 +36,9 @@ export interface ActionableInvoice {
   status: string;
   refundedCents: number;
   sentToEmail: string | null;
+  /** How the chase has gone. Absent on payloads written before sends were counted. */
+  sendCount?: number;
+  lastSentAt?: string | null;
 }
 
 interface Deduction {
@@ -50,16 +54,27 @@ export function InvoiceActions({
   invoice: ActionableInvoice;
   onDone: () => void;
 }) {
-  const [open, setOpen] = useState<'void' | 'refund' | null>(null);
+  const [open, setOpen] = useState<'void' | 'refund' | 'send' | null>(null);
 
   const remaining = invoice.amountCents - invoice.refundedCents;
   const canVoid = invoice.status === 'open';
   const canRefund = invoice.status === 'paid' && remaining > 0;
+  // Only an open invoice is still a request for money. A paid one has nothing
+  // to chase and a cancelled one has nothing to pay.
+  const canSend = invoice.status === 'open';
 
-  if (!canVoid && !canRefund) return null;
+  if (!canVoid && !canRefund && !canSend) return null;
 
   return (
     <>
+      {canSend && (
+        <button
+          onClick={() => setOpen('send')}
+          className="inline-flex items-center gap-1 text-white/45 transition-colors hover:text-sky-300"
+        >
+          <Send size={11} /> {invoice.sendCount ? 'Send again' : 'Send'}
+        </button>
+      )}
       {canVoid && (
         <button
           onClick={() => setOpen('void')}
@@ -83,7 +98,120 @@ export function InvoiceActions({
       {open === 'refund' && (
         <RefundModal invoice={invoice} onClose={() => setOpen(null)} onDone={onDone} />
       )}
+      {open === 'send' && (
+        <SendModal invoice={invoice} onClose={() => setOpen(null)} onDone={onDone} />
+      )}
     </>
+  );
+}
+
+/**
+ * Send this invoice to the client — the first time, or again.
+ *
+ * Behind a confirmation rather than one click, for a reason that is not
+ * "money moves": it doesn't. It is that the recipient is a paying client and
+ * the message is a request for money, and the mis-click cost is an
+ * accidental second chase to somebody who already paid you last week. So the
+ * screen says who it is going to and how many times they have had it, and
+ * makes that the last thing read before pressing.
+ */
+function SendModal({
+  invoice,
+  onClose,
+  onDone,
+}: {
+  invoice: ActionableInvoice;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [warnings, setWarnings] = useState<string[]>([]);
+
+  const sends = invoice.sendCount ?? 0;
+
+  const submit = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/billing/invoices/${invoice.id}/send`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Something went wrong.');
+        // The row may still have changed — a pay link can be minted on an
+        // attempt whose email then failed, and the dashboards should show it.
+        onDone();
+        return;
+      }
+      if (data.warnings?.length) {
+        // Sent, but not perfectly. Kept on screen rather than closing over it:
+        // "the client can't pay this online" is the sentence that decides
+        // whether somebody picks up the phone.
+        setWarnings(data.warnings);
+        onDone();
+        return;
+      }
+      onDone();
+      onClose();
+    } catch {
+      setError('Something went wrong. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} title={`Send invoice ${invoice.number}`}>
+      <div className="space-y-4">
+        <p className="text-sm text-white/60">
+          {invoice.description} — {formatCentsExact(invoice.amountCents)}
+        </p>
+
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-xs text-white/45">
+          {sends === 0 ? (
+            <>
+              This invoice has never been emailed to the client.
+              {invoice.sentToEmail
+                ? ` A copy is addressed to ${invoice.sentToEmail}.`
+                : ' It was raised for the record only.'}
+            </>
+          ) : (
+            <>
+              Already sent {sends === 1 ? 'once' : `${sends} times`}
+              {invoice.sentToEmail ? ` to ${invoice.sentToEmail}` : ''}
+              {invoice.lastSentAt ? `, last on ${new Date(invoice.lastSentAt).toLocaleDateString()}` : ''}.
+            </>
+          )}
+          <span className="mt-2 block text-white/30">
+            A missing PDF or payment link is rebuilt before it goes, so an invoice raised while
+            Stripe was unreachable becomes payable now.
+          </span>
+        </div>
+
+        {warnings.length > 0 && (
+          <ul className="space-y-1">
+            {warnings.map((warning, i) => (
+              <li key={i} className="text-xs text-amber-300">
+                {warning}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <BrandButton variant="quiet" onClick={onClose}>
+            {warnings.length > 0 ? 'Done' : 'Not now'}
+          </BrandButton>
+          {warnings.length === 0 && (
+            <BrandButton onClick={submit} disabled={busy}>
+              {busy ? 'Sending…' : sends === 0 ? 'Send it' : 'Send it again'}
+            </BrandButton>
+          )}
+        </div>
+      </div>
+    </Modal>
   );
 }
 

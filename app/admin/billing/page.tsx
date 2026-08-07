@@ -45,6 +45,8 @@ interface InvoiceRow {
   pdfUrl: string | null;
   paymentUrl: string | null;
   sentToEmail: string | null;
+  sendCount: number;
+  lastSentAt: string | null;
   refundedCents: number;
   refundMethod: string | null;
   refundReason: string | null;
@@ -549,8 +551,16 @@ function BillingWorkspace() {
                         Copy pay link
                       </button>
                     )}
+                    {/* "Not emailed" used to be the end of the sentence and
+                        there was nothing to do about it. It is now a state
+                        with a button beside it, so it says how many times
+                        instead of only whether. */}
                     <span className="text-white/30">
-                      {invoice.sentToEmail ? `Sent to ${invoice.sentToEmail}` : 'Not emailed'}
+                      {invoice.sendCount > 1
+                        ? `Sent ${invoice.sendCount}× to ${invoice.sentToEmail}`
+                        : invoice.sentToEmail
+                          ? `Sent to ${invoice.sentToEmail}`
+                          : 'Not emailed'}
                     </span>
                     <InvoiceActions invoice={invoice} onDone={loadInvoices} />
                   </div>
