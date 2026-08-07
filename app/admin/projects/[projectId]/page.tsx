@@ -21,6 +21,7 @@ import { stageMessage } from '@/lib/stage-gates';
 import { deliverableHref } from '@/lib/deliverables';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
+import { ageBand, chaseLine, daysOutstanding } from '@/lib/invoice-ledger';
 import { AttachLink } from '@/components/AttachLink';
 import { AttachmentList } from '@/components/AttachmentCard';
 import { readAttachments, type Attachment } from '@/lib/attachments';
@@ -74,6 +75,10 @@ interface ProjectDetail {
     voidReason?: string | null;
     issuedBy?: string | null;
     sentToEmail?: string | null;
+    /** Staff-only, and what the Send confirmation reads. See the project route. */
+    sendCount?: number;
+    lastSentAt?: string | null;
+    paidMethod?: string | null;
   }>;
   deliverables: Deliverable[];
   createdAt: string;
@@ -736,11 +741,46 @@ export default function AdminProjectDetailPage() {
                           }}
                           onDone={loadProject}
                         />
-                        {invoice.sentToEmail ? (
-                          <span className="text-white/30">Sent to {invoice.sentToEmail}</span>
-                        ) : (
-                          <span className="text-white/30">Not emailed to the client</span>
+                        {/* Same sentence as the billing ledger, so the two
+                            screens cannot say different things about whether
+                            this client has been chased. */}
+                        <span className="text-white/30">
+                          {(invoice.sendCount ?? 0) > 1
+                            ? `Sent ${invoice.sendCount}× to ${invoice.sentToEmail}`
+                            : invoice.sentToEmail
+                              ? `Sent to ${invoice.sentToEmail}`
+                              : 'Not emailed to the client'}
+                        </span>
+                        {/* How money that skipped Stripe actually arrived —
+                            the only place a bank transfer is recoverable from
+                            once the badge just reads "Paid". */}
+                        {invoice.paidMethod && (
+                          <span className="text-white/30">{invoice.paidMethod}</span>
                         )}
+                        {(() => {
+                          const line = chaseLine({
+                            status: invoice.status,
+                            createdAt: invoice.createdAt,
+                            sendCount: invoice.sendCount,
+                          });
+                          if (!line) return null;
+                          const band = ageBand(
+                            daysOutstanding({ status: invoice.status, createdAt: invoice.createdAt })
+                          );
+                          return (
+                            <span
+                              className={
+                                band === 'stale'
+                                  ? 'text-red-300/80'
+                                  : band === 'ageing'
+                                    ? 'text-amber-300/70'
+                                    : 'text-white/30'
+                              }
+                            >
+                              {line}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}

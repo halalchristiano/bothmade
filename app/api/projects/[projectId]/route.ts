@@ -80,7 +80,8 @@ export async function GET(
         // One-off charges raised against this project. Both dashboards read
         // this list — it is the same record on either side, which is the
         // point: a client and the studio looking at the same invoice number
-        // should never be looking at two different stories.
+        // should never be looking at two different stories. What each side is
+        // allowed to see is decided in the mapping below, not here.
         invoices: {
           orderBy: { createdAt: 'desc' },
           include: { issuedBy: { select: { name: true, email: true } } },
@@ -267,6 +268,27 @@ export async function GET(
             voidReason: invoice.voidReason,
             issuedBy: session.type === 'user' ? invoice.issuedBy?.name || invoice.issuedBy?.email || null : undefined,
             sentToEmail: session.type === 'user' ? invoice.sentToEmail : undefined,
+            /*
+             * The chase log, staff only.
+             *
+             * The project page renders the same invoice actions as the billing
+             * ledger, and those actions read these two: the button says "Send
+             * again" rather than "Send", and the confirmation says how many
+             * times this client has already had it. Without them here, that
+             * screen told whoever was about to press send that an invoice
+             * chased three times had never been emailed — which is not a
+             * missing detail, it is the wrong answer to the question the
+             * confirmation exists to ask.
+             *
+             * Deliberately not sent to the client. How many times we have
+             * asked them for money is our business, and reading it back is
+             * faintly insulting; the row they see says what they owe and why.
+             */
+            sendCount: session.type === 'user' ? invoice.sendCount : undefined,
+            lastSentAt: session.type === 'user' ? invoice.lastSentAt : undefined,
+            // How it was settled when it did not come through Stripe — a
+            // reconciliation note typed for our own books, in our own words.
+            paidMethod: session.type === 'user' ? invoice.paidMethod : undefined,
             };
           }),
           deliverables: readDeliverables(project.deliverables, project.id),
