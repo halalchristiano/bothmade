@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkSendBudget } from '@/lib/send-budget';
 import { BounceWatch, recentBounceRate, verifiedFirst } from '@/lib/send-safety';
+import {
+  VERIFY_BATCH_SIZE,
+  isSendableStatus,
+  isVerificationConfigured,
+  verifyBatch,
+} from '@/lib/email-verification';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
@@ -15,6 +21,16 @@ import { leadOpenPixelUrl } from '@/lib/lead-opens';
 import { resolveSiteUrl } from '@/lib/site-url';
 
 const MAX_LEADS = 200;
+
+/*
+ * Long enough for a verification call and a batch of sends in one request.
+ *
+ * The verifier documents up to 70 seconds for a full batch of 200, and the
+ * send loop is sequential on top of that. On the platform default this route
+ * would be killed partway through — with some emails sent, some not, and the
+ * caller told only that it failed, which is the worst of every world.
+ */
+export const maxDuration = 300;
 
 /**
  * Sends every selected lead's cold email draft one click, no per-recipient
@@ -100,7 +116,81 @@ export async function POST(request: NextRequest) {
      * guesses included. Verified addresses now lead.
      */
     const selected = await prisma.lead.findMany({ where: { id: { in: leadIds } } });
-    const leads = verifiedFirst(selected).slice(0, budget.allowed);
+    const ordered = verifiedFirst(selected).slice(0, budget.allowed);
+
+    /*
+     * Check the addresses before using them, not after they bounce.
+     *
+     * Only the ones never checked, because an address does not change between
+     * sends and a verification costs a credit. Only the batch about to go
+     * out, which is capped at 200 by the route and by the provider alike, so
+     * this is one call rather than a queue.
+     *
+     * Nothing is guessed when the check cannot run: a provider outage refuses
+     * the batch rather than falling through to sending unverified addresses,
+     * because "the safety check is down" is the worst possible moment to send
+     * a thousand guesses. The whole point of this is that a bad list is more
+     * expensive than a delayed one.
+     */
+    const unchecked = ordered.filter((l) => l.email && !l.emailVerifiedAt).slice(0, VERIFY_BATCH_SIZE);
+    let verified = 0;
+    let rejected = 0;
+
+    if (isVerificationConfigured() && unchecked.length > 0) {
+      let results;
+      try {
+        results = await verifyBatch(unchecked.map((l) => l.email as string));
+      } catch (err) {
+        console.error('Email verification failed:', err);
+        return NextResponse.json(
+          {
+            error:
+              "Couldn't verify the addresses, so nothing was sent. This list is mostly guessed addresses and sending it unchecked is what got the account restricted last time — try again in a few minutes.",
+          },
+          { status: 503 }
+        );
+      }
+
+      const now = new Date();
+      await Promise.all(
+        unchecked.map(async (lead) => {
+          const r = results.get((lead.email as string).toLowerCase());
+          if (!r) return; // no verdict — stays unverified, gets another chance
+          verified++;
+          if (!isSendableStatus(r.status)) rejected++;
+          await prisma.lead
+            .update({
+              where: { id: lead.id },
+              data: {
+                emailVerifiedAt: now,
+                emailVerificationStatus: r.status,
+                emailVerificationSubStatus: r.subStatus,
+                // A dead address is a delivery failure we found out about
+                // without spending a send on it. Recorded the same way a real
+                // bounce is, so it lands in "can't reach" beside the others
+                // rather than inventing a state nothing else understands.
+                ...(isSendableStatus(r.status)
+                  ? {}
+                  : {
+                      emailDeliveryFailedAt: now,
+                      emailDeliveryFailedReason: `Address verified as ${r.status}${
+                        r.subStatus ? ` (${r.subStatus})` : ''
+                      }. Nothing was sent — call instead.`,
+                    }),
+              },
+            })
+            .catch(() => null);
+        })
+      );
+
+      // Re-read so the loop below sees the verdicts that were just written.
+      for (const lead of unchecked) {
+        const r = results.get((lead.email as string).toLowerCase());
+        if (r) lead.emailVerificationStatus = r.status;
+      }
+    }
+
+    const leads = ordered.filter((l) => isSendableStatus(l.emailVerificationStatus));
     const idsToSend = leads.map((l) => l.id);
 
     const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
@@ -254,6 +344,10 @@ export async function POST(request: NextRequest) {
         // here that should change what somebody does next.
         haltedBy: haltedBy ?? null,
         bounceRate: bounces.verdict().rate,
+        // What the verifier did, so a batch that came back smaller has a
+        // reason attached rather than looking like leads went missing.
+        verified,
+        rejected,
         budget: { limit: budget.limit, used: budget.used + sentCount, remaining: Math.max(0, budget.remaining - sentCount) },
       },
       { status: 200 }

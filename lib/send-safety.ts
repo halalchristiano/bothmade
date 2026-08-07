@@ -30,6 +30,8 @@ const GUESSED_TAG = 'convention-email';
 export interface AddressConfidence {
   tags: string;
   email: string | null;
+  /** What a verifier said, when one has been run. See lib/email-verification.ts. */
+  emailVerificationStatus?: string | null;
 }
 
 /**
@@ -39,6 +41,13 @@ export interface AddressConfidence {
  * "fine" would quietly exempt the largest and least trustworthy group.
  */
 export function isVerifiedAddress(lead: AddressConfidence): boolean {
+  // A verifier's answer beats anything the research CSV claimed. `valid`
+  // means a mail server confirmed the mailbox exists, which is a stronger
+  // statement than "somebody saw this printed on a website" — and a status
+  // that is present but not `valid` is a checked address that came back
+  // uncertain, which must not be promoted on the strength of a stale tag.
+  if (lead.emailVerificationStatus) return lead.emailVerificationStatus === 'valid';
+
   const tags = (lead.tags || '').toLowerCase();
   if (tags.includes(CONFIRMED_TAG)) return true;
   if (tags.includes(GUESSED_TAG)) return false;

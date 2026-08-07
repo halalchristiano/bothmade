@@ -498,6 +498,23 @@ model Lead {
   /// Claimed by the first pixel fetch that proves a person rather than a mail
   /// server, so the "they opened it" alert fires once per send instead of once
   /// per image load. Cleared on a resend along with the counters.
+  /// What an email verifier said about this address, and when it said it.
+  ///
+  /// Roughly three quarters of this book carries an `info@` worked out from
+  /// the company's domain rather than one anybody saw published, and every
+  /// wrong guess is a hard bounce. Bounce rate is what gets a sending account
+  /// restricted, so the guess has to be checked before it is used — see
+  /// lib/email-verification.ts for what each status is allowed to mean.
+  ///
+  /// Stored rather than checked at send time every time: a verification costs
+  /// a credit and an address does not change from one send to the next.
+  emailVerificationStatus    String?
+  /// The verifier's finer-grained reason, kept verbatim. Never interpreted in
+  /// the app — it is here so a surprising result can be explained afterwards
+  /// rather than argued about.
+  emailVerificationSubStatus String?
+  emailVerifiedAt            DateTime?
+
   coldEmailOpenNotifiedAt DateTime?
   /// First fetch of the pixel. Kept, never overwritten, so a machine-speed
   /// open on delivery stays distinguishable from a person reading it later.

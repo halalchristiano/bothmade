@@ -150,3 +150,42 @@ describe('the standing bounce rate', () => {
     expect((await recentBounceRate()).rate).toBe(0);
   });
 });
+
+/**
+ * A verifier's answer against the research CSV's claim.
+ *
+ * The tag says somebody saw the address printed on a website. `valid` says a
+ * mail server confirmed the mailbox exists. When they disagree the second one
+ * wins, in both directions — including the awkward direction, where a lead
+ * tagged confirmed comes back uncertain and must stop being promoted on the
+ * strength of a tag that is now out of date.
+ */
+describe('verification against the tag', () => {
+  it('promotes a guessed address the verifier confirmed', () => {
+    expect(
+      isVerifiedAddress({ tags: 'convention-email', email: 'a@b.com', emailVerificationStatus: 'valid' })
+    ).toBe(true);
+  });
+
+  it('demotes a tagged address the verifier could not confirm', () => {
+    for (const status of ['catch-all', 'unknown', 'invalid']) {
+      expect(
+        isVerifiedAddress({ tags: 'confirmed-email', email: 'a@b.com', emailVerificationStatus: status }),
+        status
+      ).toBe(false);
+    }
+  });
+
+  it('falls back to the tag while nothing has been verified', () => {
+    expect(isVerifiedAddress({ tags: 'confirmed-email', email: 'a@b.com', emailVerificationStatus: null })).toBe(true);
+    expect(isVerifiedAddress({ tags: 'convention-email', email: 'a@b.com' })).toBe(false);
+  });
+
+  it('sorts verified-good ahead of merely-tagged', () => {
+    const out = verifiedFirst([
+      { tags: 'confirmed-email', email: 'tagged@b.com' },
+      { tags: 'convention-email', email: 'checked@b.com', emailVerificationStatus: 'valid' },
+    ]);
+    expect(out.map((l) => l.email)).toEqual(['tagged@b.com', 'checked@b.com']);
+  });
+});
