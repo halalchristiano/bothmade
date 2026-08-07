@@ -72,15 +72,50 @@ export async function GET(request: Request) {
     // "My" leads: assigned to me, or unassigned (so nothing falls through the cracks).
     const mine = { OR: [{ assignedToId: session.userId }, { assignedToId: null }] };
 
-    const [allMine, wonAllTime, lostAllTime, newInPeriod, activityInPeriod] = await Promise.all([
-      prisma.lead.findMany({ where: mine }),
-      prisma.lead.findMany({ where: { ...mine, status: 'won' } }),
-      prisma.lead.findMany({ where: { ...mine, status: 'lost' } }),
-      prisma.lead.count({ where: { ...mine, createdAt: { gte: periodStart } } }),
+    /*
+     * One pass over the leads, thirteen columns of the hundred-odd on the
+     * row.
+     *
+     * This was four queries: every lead, then every won lead, then every lost
+     * lead, then a count of the ones created this period. `mine` carries no
+     * status filter, so the won and lost queries were re-fetching rows the
+     * first query had already returned — the same table walked three times to
+     * produce three views of one result set, and a fourth time to count a
+     * subset of it. Everything downstream is JS filtering over the whole
+     * list anyway, so the split bought nothing.
+     *
+     * Selecting explicitly matters as much as the query count here: a Lead
+     * carries notes, pain points, the address block and the whole enrichment
+     * side, none of which this endpoint reads. Dragging all of it across the
+     * wire once per dashboard open, per range change, was the bulk of the cost.
+     */
+    const [allMine, activityInPeriod] = await Promise.all([
+      prisma.lead.findMany({
+        where: mine,
+        select: {
+          id: true,
+          company: true,
+          status: true,
+          source: true,
+          estimatedValue: true,
+          email: true,
+          phone: true,
+          hotLead: true,
+          lostReason: true,
+          nextFollowUpAt: true,
+          contractStatus: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
       prisma.leadActivity.count({
         where: { createdAt: { gte: periodStart }, createdById: session.userId },
       }),
     ]);
+
+    const wonAllTime = allMine.filter((l) => l.status === 'won');
+    const lostAllTime = allMine.filter((l) => l.status === 'lost');
+    const newInPeriod = allMine.filter((l) => l.createdAt >= periodStart).length;
 
     const pipeline = ACTIVE_STATUSES.map((status) => {
       const leads = allMine.filter((l) => l.status === status);
