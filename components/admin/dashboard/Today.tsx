@@ -189,12 +189,22 @@ function Row({
   detail,
   right,
   tone = 'neutral',
+  action,
 }: {
   href: string;
   title: string;
   detail: string;
   right?: string;
   tone?: 'neutral' | 'hot' | 'good' | 'warn';
+  /**
+   * One thing you can do without leaving the page.
+   *
+   * Rendered outside the link rather than inside it: a button nested in an
+   * anchor navigates about half the time, and the half where it does is the
+   * half where somebody meant to chase an invoice and landed on a project
+   * page instead.
+   */
+  action?: React.ReactNode;
 }) {
   const tones = {
     neutral: 'border-white/[0.06] hover:border-white/15',
@@ -203,17 +213,99 @@ function Row({
     warn: 'border-amber-400/25 bg-amber-400/[0.05] hover:border-amber-400/45',
   };
   return (
-    <Link
-      href={href}
-      className={`group flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-colors ${tones[tone]}`}
+    <div
+      className={`group flex items-center gap-2.5 rounded-xl border transition-colors ${tones[tone]}`}
     >
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-white">{title}</p>
-        <p className="truncate text-[11px] text-white/40">{detail}</p>
-      </div>
-      {right && <span className="shrink-0 text-[12px] tabular-nums text-white/50">{right}</span>}
-      <ArrowRight size={13} className="shrink-0 text-white/15 group-hover:text-white/40 transition-colors" />
-    </Link>
+      <Link href={href} className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium text-white">{title}</p>
+          <p className="truncate text-[11px] text-white/40">{detail}</p>
+        </div>
+        {right && <span className="shrink-0 text-[12px] tabular-nums text-white/50">{right}</span>}
+        {!action && (
+          <ArrowRight
+            size={13}
+            className="shrink-0 text-white/15 group-hover:text-white/40 transition-colors"
+          />
+        )}
+      </Link>
+      {action && <div className="shrink-0 pr-2.5">{action}</div>}
+    </div>
+  );
+}
+
+/**
+ * Emails the client a fresh payment link for what they owe.
+ *
+ * The endpoint behind this has existed all along, it works, and its own
+ * docstring says "one-click nudge the client, straight from the dashboard".
+ * Nothing anywhere called it — so the fastest thing anybody does about late
+ * money, on the screen that lists late money, was to open the project, find
+ * the balance section and do it from there. Money that is late gets later for
+ * want of two clicks.
+ *
+ * Confirms first, because this puts an email in a client's inbox and a
+ * mis-click on a dashboard is cheap to make and awkward to explain.
+ */
+function ChasePayment({ projectId, onSent }: { projectId: string; onSent: () => void }) {
+  const [state, setState] = useState<'idle' | 'confirming' | 'sending' | 'sent'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  if (state === 'sent') {
+    return <span className="text-[11px] font-semibold text-emerald-300">Sent</span>;
+  }
+
+  const send = async () => {
+    setState('sending');
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/payment-reminder`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // The route's own words. "No card on file" and "already paid" need
+        // completely different things doing about them.
+        setError(data.error || "Couldn't send it.");
+        setState('idle');
+        return;
+      }
+      setState('sent');
+      onSent();
+    } catch {
+      setError('Could not reach the server.');
+      setState('idle');
+    }
+  };
+
+  return (
+    <span className="flex items-center gap-1.5">
+      {error && <span className="text-[10.5px] text-amber-300">{error}</span>}
+      {state === 'confirming' ? (
+        <>
+          <button
+            onClick={send}
+            className="rounded-lg border border-emerald-400/40 bg-emerald-400/20 px-2 py-1 text-[11px] font-semibold text-emerald-100 transition-colors hover:bg-emerald-400/30"
+          >
+            Email it
+          </button>
+          <button
+            onClick={() => setState('idle')}
+            className="text-[11px] text-white/35 transition-colors hover:text-white"
+          >
+            No
+          </button>
+        </>
+      ) : (
+        <button
+          onClick={() => setState('confirming')}
+          disabled={state === 'sending'}
+          className="rounded-lg border border-white/12 px-2 py-1 text-[11px] font-semibold text-white/60 transition-colors hover:border-white/30 hover:text-white disabled:opacity-40"
+        >
+          {state === 'sending' ? 'Sending…' : 'Chase it'}
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -810,6 +902,23 @@ export function Today({
                 }
                 right={formatCents(i.amountCents)}
                 tone={delivery.concerning || overdue ? 'warn' : 'neutral'}
+                /*
+                 * Only on the ones that are actually late. An invoice due next
+                 * Friday does not want chasing, and a button offering to is one
+                 * somebody presses because it is there.
+                 *
+                 * And never when the delivery reading says it may never have
+                 * arrived — a second copy to a dead address is the one thing
+                 * that cannot help, and the row already says to check it.
+                 */
+                action={
+                  overdue && !delivery.concerning ? (
+                    /* Refetches, so a chased invoice stops sitting in the
+                       overdue list inviting a second email to the same
+                       client a moment later. */
+                    <ChasePayment projectId={i.project.id} onSent={load} />
+                  ) : undefined
+                }
               />
             );
           })}
