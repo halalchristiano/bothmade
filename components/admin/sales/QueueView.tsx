@@ -28,6 +28,7 @@ import { localDayStartParam } from '@/lib/day-window';
 type CallReason =
   | 'replied'
   | 'mockup-sent'
+  | 'mockup-stalled'
   | 'opened'
   | 'bounced'
   | 'overdue'
@@ -70,6 +71,10 @@ interface CallRow {
    * See lib/next-touch.ts.
    */
   nextTouch?: { kind: string; line: string; needsAttention: boolean } | null;
+  /** Days since a mockup was promised, if one is still owed. */
+  promisedDaysAgo?: number | null;
+  /** The mockup exists and simply has not been sent. One click, not a build. */
+  mockupBuiltNotSent?: boolean;
   /**
    * Who rang this last, and when. Null if nobody ever has.
    *
@@ -91,6 +96,13 @@ const REASONS: Record<CallReason, { label: string; short: string; blurb: string;
     blurb:
       'Someone at these businesses answered your email. Warmest leads you have, and they go cold fastest — call them before anything else on this page.',
     classes: 'border-emerald-400/40 bg-emerald-400/[0.12] text-emerald-100',
+  },
+  'mockup-stalled': {
+    label: "You promised these a mockup and it still hasn't gone",
+    short: 'Mockup overdue',
+    blurb:
+      "Asked for days ago and still not sent. These came off the call sheet on the promise that a mockup was coming, so leaving them there quietly is how a warm prospect goes cold without anybody noticing. Send it, or ring them and say where it is.",
+    classes: 'border-rose-400/40 bg-rose-400/[0.10] text-rose-100',
   },
   'mockup-sent': {
     label: 'They have the mockup and nobody has rung',
@@ -187,11 +199,17 @@ const OPEN_BANDS = [
  * short — which is the test: a band earns being open if you would act on it
  * before you finished scrolling past it.
  */
-const OPEN_BY_DEFAULT = new Set<CallReason>(['replied', 'mockup-sent', 'opened']);
+const OPEN_BY_DEFAULT = new Set<CallReason>([
+  'replied',
+  'mockup-sent',
+  'mockup-stalled',
+  'opened',
+]);
 
 const ORDER: CallReason[] = [
   'replied',
   'mockup-sent',
+  'mockup-stalled',
   'opened',
   'bounced',
   'overdue',
@@ -514,6 +532,8 @@ const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'pur
   // Same green as a reply: both mean the lead has moved and is warm, which is
   // the only thing the chip colour is for.
   'mockup-sent': 'emerald',
+  // Red, because it is the only band on the page that is our own fault.
+  'mockup-stalled': 'red',
   // Amber rather than a colour of its own: the Badge palette has five tones
   // and inventing a sixth for one band is how a UI stops meaning anything.
   opened: 'amber',
@@ -1530,6 +1550,21 @@ export function QueueView() {
                         * a rule: it says the number out loud and leaves the
                         * decision where it belongs.
                         */}
+                      {/*
+                        * A promise past its date, and which of the two jobs
+                        * it needs. "Nobody started it" needs a designer;
+                        * "built and sitting there" needs one click — and the
+                        * silence looks identical to the prospect either way.
+                        */}
+                      {row.reason === 'mockup-stalled' && (
+                        <p className="text-xs text-rose-200 mt-1.5 leading-relaxed font-semibold">
+                          Promised a mockup {row.promisedDaysAgo} days ago —{' '}
+                          {row.mockupBuiltNotSent
+                            ? "it's built and has never been sent."
+                            : 'nobody has started it yet.'}
+                        </p>
+                      )}
+
                       {row.neverReached && (
                         <p className="text-xs text-amber-300/75 mt-1.5 leading-relaxed">
                           Rung {row.timesCalled} times and never actually reached — worth trying

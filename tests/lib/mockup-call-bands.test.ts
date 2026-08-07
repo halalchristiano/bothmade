@@ -65,7 +65,10 @@ const lead = (over: Record<string, unknown> = {}) => ({
   salesNote: null,
   updatedAt: ago(DAY),
   mockupRequested: false,
+  mockupRequestedAt: null,
   mockupSentManuallyAt: null,
+  mockupFolderUrl: null,
+  mockupUrl: null,
   mockups: [] as { sentAt: Date }[],
   assignedTo: null,
   activities: [],
@@ -89,7 +92,7 @@ beforeEach(() => {
 describe('a lead waiting on a mockup', () => {
   it('comes off the call sheet entirely', async () => {
     prisma.lead.findMany.mockResolvedValue([
-      lead({ company: 'Waiting', mockupRequested: true }),
+      lead({ company: 'Waiting', mockupRequested: true, mockupRequestedAt: ago(DAY) }),
       lead({ company: 'Ordinary' }),
     ]);
 
@@ -114,13 +117,14 @@ describe('a lead waiting on a mockup', () => {
       lead({
         company: 'Reading It',
         mockupRequested: true,
+        mockupRequestedAt: ago(DAY),
         coldEmailSentAt: ago(5 * DAY),
         coldEmailOpens: 6,
         coldEmailOpenedAt: ago(2 * DAY),
         coldEmailLastOpenedAt: ago(HOUR),
       }),
-      lead({ company: 'Bounced', mockupRequested: true, emailDeliveryFailedAt: ago(DAY) }),
-      lead({ company: 'Overdue', mockupRequested: true, nextFollowUpAt: ago(3 * DAY) }),
+      lead({ company: 'Bounced', mockupRequested: true, mockupRequestedAt: ago(DAY), emailDeliveryFailedAt: ago(DAY) }),
+      lead({ company: 'Overdue', mockupRequested: true, mockupRequestedAt: ago(DAY), nextFollowUpAt: ago(3 * DAY) }),
     ]);
 
     const { callable, breakdown } = await call();
@@ -132,7 +136,7 @@ describe('a lead waiting on a mockup', () => {
   /** A lead who has written to us is not waiting quietly any more. */
   it('is callable again the moment they write back', async () => {
     prisma.lead.findMany.mockResolvedValue([
-      lead({ company: 'Wrote Back', mockupRequested: true, replyReceivedAt: ago(HOUR) }),
+      lead({ company: 'Wrote Back', mockupRequested: true, mockupRequestedAt: ago(DAY), replyReceivedAt: ago(HOUR) }),
     ]);
 
     const { callable } = await call();
@@ -225,7 +229,7 @@ describe('a lead the mockup has gone out to', () => {
    */
   it('does not count a mockup that was only ever built', async () => {
     prisma.lead.findMany.mockResolvedValue([
-      lead({ company: 'Built Not Sent', mockupRequested: true, mockups: [] }),
+      lead({ company: 'Built Not Sent', mockupRequested: true, mockupRequestedAt: ago(DAY), mockups: [] }),
     ]);
 
     expect((await call()).callable).toHaveLength(0);
@@ -344,5 +348,80 @@ describe('a lead rung again and again', () => {
     prisma.lead.findMany.mockResolvedValue([tried(9, { status: 'qualified' })]);
 
     expect((await call()).callable[0].neverReached).toBe(false);
+  });
+});
+
+/**
+ * The escape hatch on a promise nobody kept.
+ *
+ * `awaiting-mockup` takes a lead off the sheet indefinitely, on the
+ * undertaking that it comes back the day the mockup is sent. That is right
+ * while somebody is building it and catastrophic if nobody ever does: the
+ * lead is invisible forever, held back by a promise no one met, which is the
+ * exact failure the band was added to prevent wearing a different hat.
+ */
+describe('a mockup promised and never sent', () => {
+  const promised = (daysAgo: number, over: Record<string, unknown> = {}) =>
+    lead({ mockupRequested: true, mockupRequestedAt: ago(daysAgo * DAY), ...over });
+
+  it('stays off the sheet while it is still being built', async () => {
+    prisma.lead.findMany.mockResolvedValue([promised(2)]);
+
+    const { callable, breakdown } = await call();
+
+    expect(callable).toHaveLength(0);
+    expect(breakdown['awaiting-mockup']).toBe(1);
+  });
+
+  it('comes back once the promise is five days old', async () => {
+    prisma.lead.findMany.mockResolvedValue([promised(6)]);
+
+    const { callable } = await call();
+
+    expect(callable[0].reason).toBe('mockup-stalled');
+    expect(callable[0].promisedDaysAgo).toBe(6);
+  });
+
+  /** Our own failure, so it outranks every reason to ring that is theirs. */
+  it('ranks above an open, a bounce and an overdue date', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      lead({ company: 'Overdue', nextFollowUpAt: ago(9 * DAY) }),
+      lead({
+        company: 'Reading It',
+        coldEmailSentAt: ago(9 * DAY),
+        coldEmailOpens: 5,
+        coldEmailOpenedAt: ago(3 * DAY),
+        coldEmailLastOpenedAt: ago(HOUR),
+      }),
+      promised(9, { company: 'Still Waiting' }),
+    ]);
+
+    expect(names((await call()).callable)[0]).toBe('Still Waiting');
+  });
+
+  /**
+   * Two different jobs behind the same silence. "Nobody has started it" needs
+   * a designer; "built and sitting there" needs one click. The row cannot say
+   * which without both facts.
+   */
+  it('says whether it is unbuilt or merely unsent', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      promised(7, { company: 'Not Started' }),
+      promised(7, { company: 'Built', mockupFolderUrl: 'https://drive.example/x' }),
+    ]);
+
+    const rows = (await call()).callable;
+
+    expect(rows.find((r: { company: string }) => r.company === 'Not Started').mockupBuiltNotSent).toBe(false);
+    expect(rows.find((r: { company: string }) => r.company === 'Built').mockupBuiltNotSent).toBe(true);
+  });
+
+  /** Sending it is what the whole band is waiting for. */
+  it('stops once the mockup actually goes out', async () => {
+    prisma.lead.findMany.mockResolvedValue([
+      promised(20, { mockups: [{ sentAt: ago(HOUR) }] }),
+    ]);
+
+    expect((await call()).callable[0].reason).toBe('mockup-sent');
   });
 });

@@ -75,6 +75,16 @@ export type CallReason =
   | 'no-follow-up'
   | 'never-contacted'
   /**
+   * A mockup was promised days ago and still has not gone out.
+   *
+   * The escape hatch on `awaiting-mockup` below, and the reason it needs one:
+   * that band takes a lead off the sheet indefinitely on the promise that it
+   * comes back the day the mockup is sent. If nobody ever sends it, the lead
+   * is invisible forever — held back by a promise that was never kept, which
+   * is the worst possible way for a warm prospect to go cold.
+   */
+  | 'mockup-stalled'
+  /**
    * A mockup was asked for and has not gone out yet. Held back, like
    * `scheduled` — you promised these people something and it isn't ready, so
    * there is nothing to say until it is.
@@ -86,15 +96,27 @@ export type CallReason =
 const REASON_RANK: Record<CallReason, number> = {
   replied: 0,
   'mockup-sent': 1,
-  opened: 2,
-  bounced: 3,
-  overdue: 4,
-  today: 5,
-  'no-follow-up': 6,
-  'never-contacted': 7,
-  'awaiting-mockup': 8,
-  scheduled: 9,
+  // Above every other reason to ring except a reply and a delivered mockup,
+  // because this is the only band on the page that is our fault.
+  'mockup-stalled': 2,
+  opened: 3,
+  bounced: 4,
+  overdue: 5,
+  today: 6,
+  'no-follow-up': 7,
+  'never-contacted': 8,
+  'awaiting-mockup': 9,
+  scheduled: 10,
 };
+
+/**
+ * How long a promised mockup may hold a lead off the sheet.
+ *
+ * A mockup takes a day or two. Five is generous enough that a normal week
+ * never trips it and short enough that a forgotten promise surfaces while the
+ * prospect still remembers the call.
+ */
+const MOCKUP_PROMISE_DAYS = 5;
 
 /**
  * The bands that make up the call list.
@@ -106,6 +128,7 @@ const REASON_RANK: Record<CallReason, number> = {
 const CALLABLE_REASONS: CallReason[] = [
   'replied',
   'mockup-sent',
+  'mockup-stalled',
   'opened',
   'bounced',
   'overdue',
@@ -199,7 +222,13 @@ export async function GET(request: NextRequest) {
         // hand counts — the work reached them, which is the only thing the
         // band is about.
         mockupRequested: true,
+        mockupRequestedAt: true,
         mockupSentManuallyAt: true,
+        // Whether anything has actually been built. "Asked for and nobody has
+        // started" and "built and sitting there unsent" are the same silence
+        // to the prospect and completely different jobs to fix.
+        mockupFolderUrl: true,
+        mockupUrl: true,
         // What is already scheduled for this lead, so the row can say so.
         // Four separate facts decide whether a lead is handled and they used
         // to live in four places; see lib/next-touch.ts.
@@ -305,6 +334,8 @@ export async function GET(request: NextRequest) {
       for (const c of calls) lastCallByLead.set(c.leadId, { at: c.createdAt });
     }
 
+    const now = new Date();
+
     // Compare on date, not timestamp — a follow-up set for "today" shouldn't
     // read as overdue just because it was stored at midnight.
     const startOfToday = new Date();
@@ -334,7 +365,27 @@ export async function GET(request: NextRequest) {
        * embarrassment this distinction exists to prevent.
        */
       const mockupSentAt = lead.mockups[0]?.sentAt ?? lead.mockupSentManuallyAt ?? null;
-      const awaitingMockup = lead.mockupRequested && !mockupSentAt;
+      const owedMockup = lead.mockupRequested && !mockupSentAt;
+
+      /*
+       * A promise that has gone past its date.
+       *
+       * `awaiting-mockup` takes a lead off the sheet indefinitely, on the
+       * undertaking that it comes back the day the mockup is sent. If nobody
+       * ever sends it, that lead is invisible forever — held back by a
+       * promise nobody kept, which is the worst way for a warm prospect to go
+       * cold and the exact failure the band was meant to prevent.
+       *
+       * So the promise expires. After five days the lead comes back to the
+       * top of the sheet and says why, which is the only honest thing to do
+       * with a commitment nobody has met.
+       */
+      const promisedFor = lead.mockupRequestedAt
+        ? Math.floor((now.getTime() - lead.mockupRequestedAt.getTime()) / 86_400_000)
+        : 0;
+      const mockupStalled = owedMockup && promisedFor >= MOCKUP_PROMISE_DAYS;
+      const awaitingMockup = owedMockup && !mockupStalled;
+      const mockupBuiltNotSent = owedMockup && !!(lead.mockupFolderUrl || lead.mockupUrl);
 
       /*
        * Sent, and not rung since.
@@ -368,6 +419,8 @@ export async function GET(request: NextRequest) {
          * waiting quietly.
          */
         reason = 'awaiting-mockup';
+      } else if (mockupStalled) {
+        reason = 'mockup-stalled';
       } else if (mockupNeedsCall) {
         /*
          * They have it and nobody has rung. Above the booked-date bands on
@@ -439,6 +492,16 @@ export async function GET(request: NextRequest) {
         openNextStep: opens.nextStep,
         openScore: opens.score,
         timesCalled: lead._count.activities,
+        /*
+         * How long they have been waiting on something we promised, and
+         * whether the thing exists yet.
+         *
+         * Two different jobs wearing the same silence: "nobody has started
+         * it" needs a designer, "it is built and sitting there" needs one
+         * click. The row cannot tell you which to do without both facts.
+         */
+        promisedDaysAgo: owedMockup ? promisedFor : null,
+        mockupBuiltNotSent,
         /*
          * Who rang this last, and when.
          *
