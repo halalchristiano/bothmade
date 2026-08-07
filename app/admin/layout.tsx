@@ -600,6 +600,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => window.removeEventListener('keydown', onKey);
   }, [pathname === '/admin/login']);
 
+  /*
+   * Above the early return, and it has to stay there.
+   *
+   * This sat below it, which meant the login route ran one fewer hook than
+   * every other admin route. Hook order is per component instance, not per
+   * route — so the instant login redirected to the dashboard, the same
+   * AdminLayout re-rendered with one more hook than its previous render and
+   * React threw #310 ("rendered more hooks than during the previous render").
+   * On every login, which is the way almost everybody enters this app.
+   *
+   * Only production throws; dev recovers quietly, which is why it survived.
+   * Locking on the login route costs nothing — `mobileOpen` is false there
+   * and there is no sheet to hold still.
+   */
+  useBodyScrollLock(mobileOpen);
+
   if (pathname === '/admin/login') {
     return <>{children}</>;
   }
@@ -612,11 +628,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // Equal admin for both people — the owner's call; the role only labels
   // the account now, so everyone sees the full nav.
   const navItems = ADMIN_NAV_ITEMS;
-
-
-  // The page behind an open nav sheet holds still; the sheet scrolls instead.
-  // Shared with the dialogs so the two never restore each other's value.
-  useBodyScrollLock(mobileOpen);
 
   const initials = (userName || '?')
     .split(' ')
