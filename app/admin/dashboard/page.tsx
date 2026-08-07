@@ -45,6 +45,7 @@ import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastFo
 import { Card, CardHeader, StatRow, Badge, ListRow, EmptyState, PageIn, MiniBarChart, Kicker, BrandButton } from '@/components/admin/ui';
 import { Today } from '@/components/admin/dashboard/Today';
 import { NotificationGuide } from '@/components/admin/dashboard/NotificationGuide';
+import { localDayStartParam } from '@/lib/day-window';
 import { formatCents } from '@/lib/pricing';
 import { LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 import { USER_ROLE_LABELS, type UserRole } from '@/lib/roles';
@@ -1351,8 +1352,11 @@ export default function AdminDashboardPage() {
         // the signed-in role, which is what made two people in the same studio
         // unable to see the same screen — the rep couldn't see what was at
         // risk in delivery, and ops couldn't see what was about to land.
+        // `dayStart` is what makes "follow up today" mean the viewer's today
+        // rather than the server's — see lib/day-window.ts.
+        const dayStart = encodeURIComponent(localDayStartParam());
         const [salesRes, opsRes] = await Promise.all([
-          fetch(`/api/admin/sales-stats?range=${range}`),
+          fetch(`/api/admin/sales-stats?range=${range}&dayStart=${dayStart}`),
           fetch(`/api/admin/ops-stats?range=${range}`),
         ]);
         if (salesRes.status === 401 || opsRes.status === 401) {

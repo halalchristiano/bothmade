@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { resolveDayStart } from '@/lib/day-window';
 import { ACTIVE_LEAD_STATUSES, LEAD_STATUS_SHORT_LABELS } from '@/lib/leads';
 
 // Late-funnel stages where a stall is expensive — worth a tighter SLA than
@@ -51,7 +52,19 @@ export async function GET(request: Request) {
     const range: StatsRange = rangeParam === 'month' || rangeParam === 'quarter' ? rangeParam : 'week';
 
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    /*
+     * The browser's midnight, not the server's — the same fix `/api/admin/today`
+     * already carries, and for the same reason (see lib/day-window.ts).
+     *
+     * This endpoint feeds the "Do This Next" card, so a UTC boundary on a
+     * server running UTC moved a US rep's day over four hours early: at 8pm
+     * Eastern everything due today flipped to red "Overdue", and anything
+     * they'd set for later that evening landed in tomorrow's UTC day — past
+     * `endOfToday`, not yet before `startOfToday`, so it appeared in neither
+     * list. A follow-up that silently isn't on the list is the one failure
+     * this card cannot have.
+     */
+    const startOfToday = resolveDayStart(searchParams.get('dayStart'), now);
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
     const periodStart = getPeriodStart(range, now);
     const staleThreshold = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
