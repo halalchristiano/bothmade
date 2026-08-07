@@ -166,6 +166,14 @@ export function ChangeOrderPanel({
         setNotice(
           `Heads up: that takes the total below what's already been paid by ${formatCentsExact(data.overpaidCents)}. The remaining payments go to zero — the difference is a refund conversation.`
         );
+      } else if (data.unbillableCents > 0) {
+        // The schedule cannot carry this and must not pretend to: §9
+        // recalculates later instalments, and every one of them is already
+        // paid or sitting in the client's inbox. Without this line the extra
+        // work is signed for and silently never invoiced.
+        setNotice(
+          `Heads up: every remaining payment is already paid or invoiced, so ${formatCentsExact(data.unbillableCents)} of this increase has nowhere to go on the schedule. Raise it as a one-off charge once they've signed, or it won't be billed at all.`
+        );
       }
       reset();
       await load();

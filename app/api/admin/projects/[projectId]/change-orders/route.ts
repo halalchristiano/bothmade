@@ -189,6 +189,11 @@ export async function POST(
         // overpaid is a refund conversation, and the person drafting this
         // needs to know before they send it.
         overpaidCents: recut.overpaidCents,
+        // The mirror, and the one that costs money rather than starting a
+        // conversation: an increase with no unbilled row to land on is never
+        // invoiced at all. Said here, before it is sent, because afterwards
+        // the only trace is a schedule that does not add up.
+        unbillableCents: recut.unbillableCents,
       },
       { status: 201 }
     );

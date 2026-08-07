@@ -115,6 +115,22 @@ export interface Recut {
    * not something a schedule can express.
    */
   overpaidCents: number;
+  /**
+   * The mirror, and the one that quietly costs money.
+   *
+   * An increase has to land somewhere, and the only rows it may land on are
+   * the ones not yet paid or invoiced. When every row is frozen there is
+   * nowhere to put it: the schedule keeps summing to the old total while the
+   * project's price becomes the new one, so the client's dashboard shows three
+   * payments that do not add up to the figure printed above them — and nobody
+   * is ever invoiced for the difference. They signed for the extra work and
+   * will never be asked to pay for it.
+   *
+   * The schedule cannot express this and should not pretend to. §9 recalculates
+   * "later Instalments" and there are none, so the honest answer is a one-off
+   * charge — which this reports rather than invents.
+   */
+  unbillableCents: number;
 }
 
 /**
@@ -170,10 +186,16 @@ export function recutSchedule(rows: ScheduleRow[], newTotalCents: number): Recut
     };
   });
 
+  // What the rows actually add up to, which is not always what was asked for.
+  const scheduledTotal = out.reduce((sum, row) => sum + row.newAmountCents, 0);
+
   return {
     rows: out,
-    newTotalCents: out.reduce((sum, row) => sum + row.newAmountCents, 0),
+    newTotalCents: scheduledTotal,
     overpaidCents,
+    // Only ever positive when there was money to place and no movable row to
+    // place it on — `toDistribute` is fully allocated whenever one exists.
+    unbillableCents: Math.max(0, newTotalCents - scheduledTotal - overpaidCents),
   };
 }
 

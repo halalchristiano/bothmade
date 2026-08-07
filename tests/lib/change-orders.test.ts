@@ -294,3 +294,72 @@ describe('what the project scope becomes', () => {
     expect(result.customItems).toHaveLength(1);
   });
 });
+
+/**
+ * An increase with nowhere to land.
+ *
+ * §9 recalculates "later Instalments", and the rows a change order may touch
+ * are only the ones not yet paid or invoiced. When every row is frozen the
+ * increase has nowhere to go: the schedule keeps summing to the old total
+ * while the project's price becomes the new one, so the client sees payments
+ * that do not add up to the figure printed above them — and nothing ever
+ * invoices the difference. They signed for the work and are never asked to
+ * pay for it.
+ *
+ * The schedule cannot express that and should not pretend to. It reports the
+ * amount instead, so the studio can raise a one-off charge.
+ */
+describe('an increase the schedule cannot carry', () => {
+  const frozen = (index: number, amountCents: number, status: string) => ({
+    index,
+    label: `Payment ${index} of 3`,
+    amountCents,
+    percent: 0,
+    status,
+  });
+
+  it('names the money it could not place', () => {
+    const rows = [
+      frozen(1, 800_000, 'paid'),
+      frozen(2, 600_000, 'paid'),
+      frozen(3, 600_000, 'due'),
+    ];
+
+    const recut = recutSchedule(rows, 2_500_000);
+
+    // 2,500,000 asked for, 2,000,000 already frozen across the three rows.
+    expect(recut.unbillableCents).toBe(500_000);
+  });
+
+  it('leaves every frozen row exactly as it was', () => {
+    const rows = [frozen(1, 800_000, 'paid'), frozen(2, 600_000, 'due')];
+
+    const recut = recutSchedule(rows, 2_000_000);
+
+    expect(recut.rows.map((r) => r.newAmountCents)).toEqual([800_000, 600_000]);
+    expect(recut.rows.every((r) => r.frozen)).toBe(true);
+  });
+
+  it('says nothing when a movable row can absorb it', () => {
+    const rows = [
+      frozen(1, 800_000, 'paid'),
+      frozen(2, 600_000, 'scheduled'),
+      frozen(3, 600_000, 'scheduled'),
+    ];
+
+    const recut = recutSchedule(rows, 2_500_000);
+
+    expect(recut.unbillableCents).toBe(0);
+    expect(recut.newTotalCents).toBe(2_500_000);
+  });
+
+  /** A reduction below what is paid is the other failure, and already named. */
+  it('does not double-count a reduction as unbillable', () => {
+    const rows = [frozen(1, 800_000, 'paid'), frozen(2, 600_000, 'paid')];
+
+    const recut = recutSchedule(rows, 1_000_000);
+
+    expect(recut.overpaidCents).toBe(400_000);
+    expect(recut.unbillableCents).toBe(0);
+  });
+});

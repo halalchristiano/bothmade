@@ -410,10 +410,17 @@ export async function notifyAdminsChangeOrderSigned(params: {
   deltaCents: number;
   newTotalCents: number;
   projectId: string;
+  /**
+   * Money the schedule could not carry, because every remaining instalment
+   * was already paid or invoiced. Nothing will invoice it on its own — this
+   * is the only place anybody finds out.
+   */
+  unbillableCents?: number;
 }): Promise<void> {
   const money = (cents: number) =>
     (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   const up = params.deltaCents > 0;
+  const unbillable = params.unbillableCents ?? 0;
 
   const html = wrap(
     `${params.number} signed`,
@@ -422,8 +429,16 @@ export async function notifyAdminsChangeOrderSigned(params: {
       <strong>${escapeHtml(params.number)}</strong> on ${escapeHtml(params.projectName)}.</p>
      <p style="color:#555;">The fee ${up ? 'goes up' : 'comes down'} by
        <strong>${money(Math.abs(params.deltaCents))}</strong>, to
-       <strong>${money(params.newTotalCents)}</strong>. Remaining instalments have
-       been recalculated.</p>`,
+       <strong>${money(params.newTotalCents)}</strong>. ${
+         unbillable > 0
+           ? 'Every remaining instalment was already paid or invoiced, so the schedule could not absorb it.'
+           : 'Remaining instalments have been recalculated.'
+       }</p>${
+       unbillable > 0
+         ? `<p style="color:#a15c00;"><strong>${money(unbillable)} of this will not be billed by anything.</strong>
+             Raise it as a one-off charge on the project — there is no instalment left for it to land on.</p>`
+         : ''
+     }`,
     `${siteUrl()}/admin/projects/${params.projectId}`,
     'View Project'
   );

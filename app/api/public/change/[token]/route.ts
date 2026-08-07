@@ -279,7 +279,11 @@ export async function POST(
             order.timelineExtensionDays > 0
               ? `, and the timeline extends by ${order.timelineExtensionDays} day${order.timelineExtensionDays === 1 ? '' : 's'}`
               : ''
-          }. Remaining payments have been updated to match.`,
+          }.${
+            recut.unbillableCents > 0
+              ? " We'll invoice the difference separately — your existing payments are unchanged."
+              : ' Remaining payments have been updated to match.'
+          }`,
           statusStage: order.project.status,
           userId: null,
         },
@@ -294,6 +298,10 @@ export async function POST(
       deltaCents: order.deltaCents,
       newTotalCents: order.newTotalCents,
       projectId: order.projectId,
+      // The draft-time warning was days ago and may have been read by
+      // somebody else. This is the last moment anyone is told, and nothing
+      // downstream will invoice this amount on its own.
+      unbillableCents: recut.unbillableCents,
     }).catch((error) => console.error(`Change order ${order.number}: admin notify failed:`, error));
 
     /*
