@@ -74,6 +74,23 @@ export async function GET(request: NextRequest) {
     const clients = await prisma.client.findMany({
       where: {
         archivedAt: null,
+        /*
+         * "Has somewhere to hang an invoice" is part of the QUERY, not a pass
+         * over the results.
+         *
+         * An invoice needs a project — see the Invoice model's required
+         * projectId — and unbillable clients used to be filtered out after
+         * the ten-row cap had already been applied. So a search that matched
+         * fifteen clients, the first ten of them alphabetically leads with no
+         * project yet, returned nothing at all, and the screen said "No
+         * customer matches that" about a customer who was right there. The
+         * more clients in the book, the more often it happened, and it always
+         * looked like the search was broken rather than the cap.
+         *
+         * Asked of the database, the ten rows that come back are ten
+         * customers who can actually be billed.
+         */
+        projects: { some: {} },
         OR: [
           { company: { contains: query, mode: 'insensitive' } },
           { contactName: { contains: query, mode: 'insensitive' } },
@@ -94,16 +111,7 @@ export async function GET(request: NextRequest) {
       take: MAX_RESULTS,
     });
 
-    return NextResponse.json(
-      {
-        success: true,
-        // A client with no project has nowhere to hang an invoice — see the
-        // Invoice model's required projectId — so they're filtered out here
-        // rather than offered and then refused on submit.
-        customers: clients.filter((client) => client.projects.length > 0),
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({ success: true, customers: clients }, { status: 200 });
   } catch (error) {
     console.error('Billing customer search error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
