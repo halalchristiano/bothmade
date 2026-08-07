@@ -277,7 +277,7 @@ describe('reading your email, no number to ring', () => {
   it('shows the open count on the row', async () => {
     respondWith({ noPhone: [reader({ company: 'Silent Reader' })] });
     render(<QueueView />);
-    await screen.findByText('Silent Reader');
+    await userEvent.click(await screen.findByRole('button', { name: /no phone number on file/i }));
 
     expect(screen.getByText('3×')).toBeInTheDocument();
     expect(screen.getByText(/opened 3 times/i)).toBeInTheDocument();
@@ -289,7 +289,7 @@ describe('reading your email, no number to ring', () => {
       noSignal: [row({ company: 'Never Opened', reason: 'no-follow-up' })],
     });
     render(<QueueView />);
-    await screen.findByText('Silent Reader');
+    await userEvent.click(await screen.findByRole('button', { name: /no phone number on file/i }));
 
     const order = screen.getByText('Silent Reader').compareDocumentPosition(
       screen.getByText(/emailed, nobody has opened it/i)
@@ -307,11 +307,15 @@ describe('reading your email, no number to ring', () => {
   });
 
   /*
-   * Same rule as the urgency bands: collapsed unless it is something you
-   * would act on now. Nobody with a number to find is worth pushing the rest
-   * of the sheet off screen; somebody reading your email right now is.
+   * Shut, always, whatever the rows say.
+   *
+   * This used to open itself when one of these leads was reading their email,
+   * on the theory that such a row is too valuable to hide. On a real book that
+   * exception fires every time — at 546 numberless leads, 379 of them are
+   * "reading" — so the section was never once collapsed and put five hundred
+   * rows between the call sheet and everything under it.
    */
-  it('starts shut when none of them are reading, and opens on click', async () => {
+  it('starts shut, and opens on click', async () => {
     respondWith({ noPhone: [row({ phone: null, company: 'Just Due' })] });
     render(<QueueView />);
     const header = await screen.findByRole('button', { name: /no phone number on file/i });
@@ -327,15 +331,16 @@ describe('reading your email, no number to ring', () => {
     expect(screen.queryByText('Just Due')).not.toBeInTheDocument();
   });
 
-  it('starts open when one of them is reading', async () => {
+  it('stays shut even when they are reading, and says so in the header', async () => {
     respondWith({ noPhone: [reader({ company: 'Silent Reader' })] });
     render(<QueueView />);
+    const header = await screen.findByRole('button', { name: /no phone number on file/i });
 
-    expect(await screen.findByText('Silent Reader')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /no phone number on file/i })).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    );
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Silent Reader')).not.toBeInTheDocument();
+    // The urgency lives in the sentence, which costs one line, rather than in
+    // the rows, which cost the rest of the page.
+    expect(screen.getByText(/reading your email right now/i)).toBeInTheDocument();
   });
 
   /** The count is the reason you would open it, so it must show when shut. */
@@ -354,23 +359,41 @@ describe('reading your email, no number to ring', () => {
   });
 
   /*
-   * A shut section that reopens itself is a section you cannot put away. Once
-   * somebody has closed it, an opener arriving on the next poll must not
-   * yank it back open underneath them.
+   * The other direction: a section you opened must stay open across a poll,
+   * or working through it becomes impossible.
    */
-  it('stays shut once closed, even if one of them starts reading', async () => {
+  it('stays open once opened', async () => {
     respondWith({ noPhone: [reader({ company: 'Silent Reader' })] });
     const { rerender } = render(<QueueView />);
     const header = await screen.findByRole('button', { name: /no phone number on file/i });
 
     await userEvent.click(header);
-    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(header).toHaveAttribute('aria-expanded', 'true');
 
     rerender(<QueueView />);
     expect(screen.getByRole('button', { name: /no phone number on file/i })).toHaveAttribute(
       'aria-expanded',
-      'false'
+      'true'
     );
+  });
+
+  /*
+   * And a cap once open. Nothing in this view capped anything, which is fine
+   * at forty rows and not at five hundred: opening the section built every
+   * one of them.
+   */
+  it('opens onto a page of rows rather than all of them', async () => {
+    respondWith({
+      noPhone: Array.from({ length: 30 }, (_, i) => row({ phone: null, company: `Co ${i}` })),
+    });
+    render(<QueueView />);
+    await userEvent.click(await screen.findByRole('button', { name: /no phone number on file/i }));
+
+    expect(screen.getByText('Co 24')).toBeInTheDocument();
+    expect(screen.queryByText('Co 25')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /show 5 more \(5 left\)/i }));
+    expect(screen.getByText('Co 29')).toBeInTheDocument();
   });
 });
 

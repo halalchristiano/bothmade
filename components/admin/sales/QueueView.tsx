@@ -564,6 +564,8 @@ const REASON_TONE: Record<CallReason, 'emerald' | 'red' | 'amber' | 'sky' | 'pur
  *
  * Optional, because Call HQ renders this on its own and has nothing to bump.
  */
+const NO_PHONE_PAGE = 25;
+
 export function QueueView({ refreshToken = 0 }: { refreshToken?: number } = {}) {
   const router = useRouter();
   const [callable, setCallable] = useState<CallRow[]>([]);
@@ -571,11 +573,16 @@ export function QueueView({ refreshToken = 0 }: { refreshToken?: number } = {}) 
   /** Emailed, never opened by a person. Deliberately not on the sheet. */
   const [noSignal, setNoSignal] = useState<CallRow[]>([]);
   const [showNoSignal, setShowNoSignal] = useState(false);
-  /*
-   * null means nobody has touched it, so the data still decides — see
-   * showNoPhone below. A click pins it either way for the rest of the session.
-   */
+  /* null means nobody has touched it. A click pins it for the session. */
   const [noPhoneOpen, setNoPhoneOpen] = useState<boolean | null>(null);
+  /*
+   * And a cap once it is open. Nothing in this file capped anything, which is
+   * survivable at forty rows and not at five hundred and forty-six: opening
+   * the section built every one of them, and the ones worth acting on are the
+   * readers, which sort to the top. Twenty-five is enough to see the shape of
+   * it and reach the rest in a tap.
+   */
+  const [noPhoneShown, setNoPhoneShown] = useState(NO_PHONE_PAGE);
   const [scheduledHot, setScheduledHot] = useState<CallRow[]>([]);
   const [meta, setMeta] = useState<{
     totalOpen: number;
@@ -1016,19 +1023,21 @@ export function QueueView({ refreshToken = 0 }: { refreshToken?: number } = {}) 
    */
   const readingNoPhone = visibleNoPhone.filter((r) => r.reason === 'opened');
   /*
-   * Shut by default, open when one of them is reading.
+   * Shut. Always, until somebody opens it.
    *
-   * The same rule as the urgency bands above: collapsed unless it is
-   * something you would act on now. The blurb here has always promised
-   * "collapsed, counted, one click away" and the list under it was never
-   * actually collapsible, so on a book with a couple of hundred numberless
-   * leads this section buried everything below it.
+   * This used to open itself whenever one of these leads was reading their
+   * email, on the theory that such a row is too valuable to hide. That theory
+   * does not survive contact with a real book: at 546 numberless leads, 379 of
+   * them are "reading", so the exception fired every single time and the
+   * section was never once collapsed — five hundred rows between the call
+   * sheet and everything below it, on a phone. A default that is always taken
+   * is not a default, it is the behaviour.
    *
-   * The exception is the row the section exists for — somebody with no number
-   * reading your email right now. That is the most valuable row on the page
-   * and the one thing here that cannot open shut.
+   * The urgency belongs in the header, which already says how many are reading
+   * and what to do about it. That sentence is visible while shut and costs one
+   * line; the rows cost the rest of the page.
    */
-  const showNoPhone = noPhoneOpen ?? readingNoPhone.length > 0;
+  const showNoPhone = noPhoneOpen ?? false;
   const searchedNoSignal = noSignal.filter(match);
   const visibleNoSignal = searchedNoSignal.filter(nf.matches);
   const visibleScheduledHot = scheduledHot.filter(match);
@@ -1814,7 +1823,7 @@ export function QueueView({ refreshToken = 0 }: { refreshToken?: number } = {}) 
               exists to avoid. */}
           {showNoPhone && (
             <div className="space-y-2 mt-3">
-              {visibleNoPhone.map((row) => {
+              {visibleNoPhone.slice(0, noPhoneShown).map((row) => {
                 const reading = row.reason === 'opened';
                 return (
                   <Link
@@ -1841,6 +1850,15 @@ export function QueueView({ refreshToken = 0 }: { refreshToken?: number } = {}) 
                   </Link>
                 );
               })}
+              {visibleNoPhone.length > noPhoneShown && (
+                <button
+                  onClick={() => setNoPhoneShown((n) => n + NO_PHONE_PAGE)}
+                  className="w-full rounded-xl border border-white/10 py-2 text-xs font-semibold text-white/50 transition-colors hover:bg-white/[0.03] hover:text-white/80"
+                >
+                  Show {Math.min(visibleNoPhone.length - noPhoneShown, NO_PHONE_PAGE)} more (
+                  {visibleNoPhone.length - noPhoneShown} left)
+                </button>
+              )}
             </div>
           )}
         </section>
