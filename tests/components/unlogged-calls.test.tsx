@@ -323,9 +323,10 @@ describe('what the system records without being asked', () => {
   });
 
   /**
-   * `keepalive` is the whole trick. The phone app is about to take the screen
-   * and the page may be frozen a moment later; an ordinary request would be
-   * cancelled mid-flight exactly when the record mattered most.
+   * The phone app is about to take the screen and the page may be frozen a
+   * moment later; an ordinary request would be cancelled mid-flight exactly
+   * when the record mattered most. jsdom has no sendBeacon, so what is
+   * exercised here is the fallback — and the fallback has to survive too.
    */
   it('sends it in a way that survives the page being taken over', async () => {
     render(<QueueView />);

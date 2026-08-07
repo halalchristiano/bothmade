@@ -11,6 +11,7 @@ import { buildFollowUpDraft, type FollowUpDraft } from '@/lib/follow-up-emails';
 import { LOST_REASON_PRESETS, LEAD_STATUS_LABELS, type PainPointKey } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { Kicker, BrandButton, inputClass } from '@/components/admin/ui';
+import { beacon } from '@/lib/beacon';
 
 /**
  * Call HQ — the live-call cockpit.
@@ -502,11 +503,9 @@ export default function CallCockpit() {
   /**
    * Tells the server the number was dialled, as it is dialled.
    *
-   * `keepalive` is the whole trick: the phone app is about to take the screen
-   * and the page may be frozen a moment later, so an ordinary fetch would be
-   * cancelled mid-flight exactly when the record mattered. This is the one
-   * fact in the system nobody has to remember to record, so it has to survive
-   * the thing that happens next.
+   * Sent as a beacon rather than a fetch: the phone app is about to take the
+   * screen and the page may be frozen a moment later, so an ordinary request
+   * is cancelled exactly when the record mattered. See lib/beacon.ts.
    */
   function recordDial() {
     if (!lead) return;
@@ -516,13 +515,7 @@ export default function CallCockpit() {
     } catch {
       /* private mode — the bar just won't survive the app switch */
     }
-    try {
-      fetch(`/api/admin/leads/${lead.id}/dial`, { method: 'POST', keepalive: true }).catch(
-        () => {}
-      );
-    } catch {
-      /* a measurement that fails must never look like a call that failed */
-    }
+    beacon(`/api/admin/leads/${lead.id}/dial`);
   }
 
   /**

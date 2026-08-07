@@ -24,6 +24,7 @@ import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
 import { CALL_OUTCOMES } from '@/lib/call-outcomes';
 import { localDayStartParam } from '@/lib/day-window';
+import { beacon } from '@/lib/beacon';
 
 type CallReason =
   | 'replied'
@@ -803,21 +804,11 @@ export function QueueView() {
   /**
    * Tells the server a number was dialled, as it is dialled.
    *
-   * `keepalive` is the whole trick. The phone app is about to take the screen
-   * and the page may be frozen or discarded a moment later; an ordinary fetch
-   * would be cancelled mid-flight and the dial would go unrecorded exactly
-   * when it mattered. This is the one measurement in the system nobody has to
-   * remember to take, so it has to survive the thing that happens next.
+   * Sent as a beacon rather than a fetch, because the phone app is about to
+   * take the screen and the page may be frozen or discarded a moment later —
+   * an ordinary request dies exactly when it matters. See lib/beacon.ts.
    */
-  const recordDial = (leadId: string) => {
-    try {
-      fetch(`/api/admin/leads/${leadId}/dial`, { method: 'POST', keepalive: true }).catch(
-        () => {}
-      );
-    } catch {
-      /* a measurement that fails must never look like a call that failed */
-    }
-  };
+  const recordDial = (leadId: string) => beacon(`/api/admin/leads/${leadId}/dial`);
 
   const startCall = (row: CallRow, dialled = false) => {
     if (dialled) recordDial(row.id);
