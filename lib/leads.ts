@@ -375,6 +375,37 @@ export function isLeadActivityType(value: string): value is LeadActivityType {
   return (LEAD_ACTIVITY_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * What to write to `wonAt` on a status change, if anything.
+ *
+ * Three paths mark a lead won — the lead editor, converting one into a
+ * project, and the Stripe webhook — and they must agree, because the number
+ * this feeds is a commission figure. The rules, in order:
+ *
+ *   - Not moving to "won"? Leave the column alone (`undefined`, so Prisma
+ *     omits it from the update).
+ *   - Already won and already stamped? Leave it alone too. Re-saving a won
+ *     deal must not re-date it — that is the whole bug this column exists
+ *     for, and it would come straight back if any write path re-stamped.
+ *   - Otherwise stamp it: either a genuine transition into "won", or a row
+ *     that was won before this column existed and never got backfilled.
+ *
+ * Moving *out* of "won" deliberately keeps the old stamp rather than
+ * clearing it. A deal marked won by mistake and corrected the same hour is
+ * rarer than one reopened and re-closed, and for the second case the
+ * original close date is the one worth keeping.
+ */
+export function wonAtForStatusChange(
+  nextStatus: string | undefined,
+  existing: { status: string; wonAt: Date | null },
+  now: Date = new Date()
+): Date | undefined {
+  const resulting = nextStatus ?? existing.status;
+  if (resulting !== 'won') return undefined;
+  if (existing.wonAt) return undefined;
+  return now;
+}
+
 /** One hand-written sales point: the headline, and why it applies to this business. */
 export interface SalesPoint {
   point: string;

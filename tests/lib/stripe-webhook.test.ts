@@ -15,7 +15,7 @@ const prisma = {
   emailPreferences: { create: vi.fn() },
   projectUpdate: { create: vi.fn() },
   payment: { create: vi.fn(), findUnique: vi.fn() },
-  lead: { update: vi.fn() },
+  lead: { update: vi.fn(), updateMany: vi.fn() },
   invoice: { updateMany: vi.fn() },
   instalment: { create: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   teamMessage: { create: vi.fn() },
@@ -86,6 +86,7 @@ beforeEach(() => {
   prisma.payment.create.mockResolvedValue({});
   prisma.payment.findUnique.mockResolvedValue(null);
   prisma.lead.update.mockResolvedValue({ id: 'lead_1', assignedToId: 'user_1', signedContractUrl: null });
+  prisma.lead.updateMany.mockResolvedValue({ count: 1 });
   prisma.teamMessage.create.mockResolvedValue({});
   prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
   prisma.user.findFirst.mockResolvedValue({ id: 'user_1' });
@@ -214,6 +215,21 @@ describe('a new sale', () => {
 
     expect(prisma.lead.update).toHaveBeenCalledWith({ where: { id: 'lead_1' }, data: { status: 'won' } });
     expect(prisma.teamMessage.create).toHaveBeenCalledOnce();
+  });
+
+  // Stripe retries, and this handler is meant to be idempotent — so the close
+  // date is stamped through a `wonAt: null` guard rather than read-then-write.
+  // A redelivered webhook must not re-date a deal that was already closed.
+  it('stamps the close date only if the deal has not already got one', () => {
+    constructWebhookEvent.mockReturnValue(
+      completedSession({ ...NEW_SALE_METADATA, leadId: 'lead_1' })
+    );
+
+    return POST(request()).then(() => {
+      const call = prisma.lead.updateMany.mock.calls[0][0];
+      expect(call.where).toEqual({ id: 'lead_1', wonAt: null });
+      expect(call.data.wonAt).toBeInstanceOf(Date);
+    });
   });
 
   it('carries a signed contract across to the client-visible project', async () => {

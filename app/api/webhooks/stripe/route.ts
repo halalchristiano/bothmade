@@ -226,6 +226,12 @@ async function handleCheckoutSessionCompleted(
   // Stripe. Either way this is the moment the deal is actually won, so mark
   // it automatically instead of leaving it stuck until someone remembers.
   if (leadId) {
+    // Guarded on `wonAt: null` so a redelivered webhook — Stripe retries, and
+    // this handler is meant to be idempotent — cannot re-date a deal that was
+    // already closed.
+    await prisma.lead
+      .updateMany({ where: { id: leadId, wonAt: null }, data: { wonAt: new Date() } })
+      .catch(() => null);
     const lead = await prisma.lead
       .update({ where: { id: leadId }, data: { status: 'won' } })
       .catch((error) => {

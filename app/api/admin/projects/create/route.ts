@@ -153,6 +153,14 @@ export async function POST(request: NextRequest) {
     if (convertedFromLeadId) {
       // Converting a lead into a paying project is the deal closing — reflect
       // that in the CRM so it shows up correctly in the sales dashboard.
+      //
+      // The close date is stamped through `updateMany` guarded on `wonAt:
+      // null` rather than read-then-write: it means a lead that somehow
+      // arrives here twice keeps its first close date instead of being
+      // re-dated to the second attempt.
+      await prisma.lead
+        .updateMany({ where: { id: convertedFromLeadId, wonAt: null }, data: { wonAt: new Date() } })
+        .catch(() => null);
       const updatedLead = await prisma.lead
         .update({ where: { id: convertedFromLeadId }, data: { status: 'won' } })
         .catch(() => null); // lead may already be deleted/invalid — non-fatal

@@ -23,7 +23,17 @@ export async function GET(request: NextRequest) {
 
     const [newLeadsThisWeek, wonThisWeek, paymentsThisMonth, overdueFollowUps, activeProjects] = await Promise.all([
       prisma.lead.count({ where: { createdAt: { gte: weekAgo } } }),
-      prisma.lead.findMany({ where: { status: 'won', updatedAt: { gte: weekAgo } }, select: { estimatedValue: true } }),
+      // Closed this week by `wonAt`, not `updatedAt` — the latter is the last
+      // time anything on the row changed, so touching an old won deal used to
+      // put it back in this week's digest. `updatedAt` still covers rows
+      // closed before that column existed.
+      prisma.lead.findMany({
+        where: {
+          status: 'won',
+          OR: [{ wonAt: { gte: weekAgo } }, { wonAt: null, updatedAt: { gte: weekAgo } }],
+        },
+        select: { estimatedValue: true },
+      }),
       prisma.payment.findMany({ where: { createdAt: { gte: startOfMonth } }, select: { amount: true } }),
       prisma.lead.count({
         where: { status: { notIn: ['won', 'lost'] }, nextFollowUpAt: { lt: now } },

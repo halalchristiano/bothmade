@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { isLeadStatus, isFurtherAlong } from '@/lib/leads';
+import { isLeadStatus, isFurtherAlong, wonAtForStatusChange } from '@/lib/leads';
 import { ensurePlaybookSeeded } from '@/lib/playbook-seed';
 import { clientMockupLink, mockupInclude, normalizeMockupUrl, recordLeadMockup } from '@/lib/mockups';
 import { findDesigner } from '@/lib/notify';
@@ -268,6 +268,7 @@ export async function PATCH(
         // "can't reach" forever with a number that works.
         phoneInvalidAt: phone !== undefined && phone !== existing.phone ? null : undefined,
         status: status !== undefined ? status : autoStatus,
+        wonAt: wonAtForStatusChange(status ?? autoStatus, existing),
         source: source !== undefined ? source : undefined,
         estimatedValue: estimatedValue !== undefined ? estimatedValue : undefined,
         painPoints: Array.isArray(painPoints) ? painPoints.join(',') : undefined,

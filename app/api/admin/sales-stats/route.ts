@@ -106,6 +106,7 @@ export async function GET(request: Request) {
           contractStatus: true,
           createdAt: true,
           updatedAt: true,
+          wonAt: true,
         },
       }),
       prisma.leadActivity.count({
@@ -128,7 +129,19 @@ export async function GET(request: Request) {
       0
     );
 
-    const wonInPeriod = wonAllTime.filter((l) => l.updatedAt >= periodStart);
+    /*
+     * When a deal closed — `wonAt`, falling back to `updatedAt` only for rows
+     * closed before that column existed and missed by the backfill.
+     *
+     * `updatedAt` used to be the only answer available, and it is the last
+     * time anything on the row changed: adding a note to a deal closed in
+     * March re-dated it to today, so it re-entered this period's won count
+     * and revenue and jumped to the top of the commission log carrying a
+     * close date that was really a last-touched date.
+     */
+    const closedAt = (l: { wonAt: Date | null; updatedAt: Date }) => l.wonAt ?? l.updatedAt;
+
+    const wonInPeriod = wonAllTime.filter((l) => closedAt(l) >= periodStart);
     const revenueInPeriod = wonInPeriod.reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
 
     const closedTotal = wonAllTime.length + lostAllTime.length;
@@ -231,9 +244,9 @@ export async function GET(request: Request) {
           sourcePerformance,
           clientTypeBreakdown,
           wonDeals: wonAllTime
-            .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+            .sort((a, b) => closedAt(b).getTime() - closedAt(a).getTime())
             .slice(0, 50)
-            .map((l) => ({ id: l.id, company: l.company, value: l.estimatedValue || 0, wonAt: l.updatedAt })),
+            .map((l) => ({ id: l.id, company: l.company, value: l.estimatedValue || 0, wonAt: closedAt(l) })),
           totalWonValue: wonAllTime.reduce((s, l) => s + (l.estimatedValue || 0), 0),
         },
       },

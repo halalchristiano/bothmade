@@ -383,6 +383,18 @@ model Lead {
   nextFollowUpAt DateTime? // self-set reminder date for the next touch
   contractStatus String    @default("not_sent") // "not_sent", "sent", "signed"
 
+  // When this deal was actually won. Set on the transition into "won" and
+  // never touched again — see wonAtForStatusChange in lib/leads.ts.
+  //
+  // Every "won this week" figure used to read `updatedAt`, which is the last
+  // time *anything* on the row changed. Adding a note to a deal closed in
+  // March re-dated the win to today: it re-entered this period's won count
+  // and revenue, and jumped to the top of the commission log with a close
+  // date that was really a last-touched date. Null on rows won before this
+  // column existed only if the backfill missed them; readers fall back to
+  // updatedAt for those.
+  wonAt DateTime?
+
   // --- Who this business actually is -------------------------------------
   // Industry and address used to be appended to `notes` as prose, which made
   // them unfilterable and unsortable — you could read "Industry: Dental
