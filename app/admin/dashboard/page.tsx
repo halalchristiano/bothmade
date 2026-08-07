@@ -560,7 +560,7 @@ function WonDealsCard({ stats }: { stats: SalesStats }) {
  * of them — six props that looked like this half owned a range picker and a
  * refresh control when both live in the header above it.
  */
-function SalesDashboard({ stats }: { stats: SalesStats }) {
+function SalesDashboard({ stats, refreshSignal }: { stats: SalesStats; refreshSignal: number }) {
   const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
 
   return (
@@ -628,7 +628,7 @@ function SalesDashboard({ stats }: { stats: SalesStats }) {
       </div>
 
       <div className="mb-5">
-        <MockupsCard />
+        <MockupsCard refreshSignal={refreshSignal} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
@@ -1118,7 +1118,7 @@ interface TeamMemberSummary {
  * and the daily follow-up digest. That is invisible from every other screen —
  * the leads are all there, they just never reach anyone.
  */
-function TeamCard() {
+function TeamCard({ refreshSignal }: { refreshSignal: number }) {
   const [members, setMembers] = useState<TeamMemberSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -1130,7 +1130,7 @@ function TeamCard() {
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
-  }, []);
+  }, [refreshSignal]);
 
   const missingSales = loaded && members.length > 0 && !members.some((m) => m.role === 'sales');
 
@@ -1184,6 +1184,7 @@ function OpsDashboard({
   lastUpdated,
   refreshing,
   onRefresh,
+  refreshSignal,
   embedded = false,
 }: {
   stats: OpsStats;
@@ -1193,6 +1194,7 @@ function OpsDashboard({
   lastUpdated: Date | null;
   refreshing: boolean;
   onRefresh: () => void;
+  refreshSignal: number;
   /**
    * Rendered below the sales half rather than on its own. The greeting, the
    * range picker and the refresh control are shared and already on screen, so
@@ -1322,7 +1324,7 @@ function OpsDashboard({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <ActivityFeedCard activity={stats.activityFeed} />
 
-        <TeamCard />
+        <TeamCard refreshSignal={refreshSignal} />
       </div>
 
       {stats.projectsAwaitingReply.length > 0 && (
@@ -1347,7 +1349,7 @@ function OpsDashboard({
       )}
 
       <div className="mb-8">
-        <SignatureCertificatesCard />
+        <SignatureCertificatesCard refreshSignal={refreshSignal} />
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -1564,7 +1566,7 @@ export default function AdminDashboardPage() {
           personal to-do list rendered twice on one page — and it belongs
           above the fold rather than buried in a breakdown nobody opened. */}
       <div className="mb-6">
-        <TasksWidget />
+        <TasksWidget refreshSignal={retryCount} />
       </div>
 
       {/* Beside the breakdown rather than in Settings, because the question
@@ -1641,7 +1643,7 @@ export default function AdminDashboardPage() {
             )}
 
             {salesStats && (
-              <SalesDashboard stats={salesStats} />
+              <SalesDashboard stats={salesStats} refreshSignal={retryCount} />
             )}
             {opsStats && (
               <OpsDashboard
@@ -1652,6 +1654,7 @@ export default function AdminDashboardPage() {
                 lastUpdated={lastUpdated}
                 refreshing={refreshing}
                 onRefresh={onRefresh}
+                refreshSignal={retryCount}
                 embedded
               />
             )}

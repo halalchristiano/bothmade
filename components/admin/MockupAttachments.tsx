@@ -730,7 +730,13 @@ function daysWaiting(requestedAt: string | null): number | null {
  * waiting on one, so the answer to "what have we shown this business" is on
  * the front page rather than three clicks into the lead.
  */
-export function MockupsCard() {
+/**
+ * `refreshSignal` is bumped by the dashboard's refresh control — the same
+ * signal Today takes. This card used to fetch once on mount and never again,
+ * so a page-wide refresh left it showing whatever it had when the tab was
+ * opened, under a timestamp saying otherwise.
+ */
+export function MockupsCard({ refreshSignal = 0 }: { refreshSignal?: number } = {}) {
   const [leads, setLeads] = useState<MockupLeadRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -750,7 +756,7 @@ export function MockupsCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshSignal]);
 
   const updateLead = (leadId: string, mockups: LeadMockupItem[]) =>
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, mockups } : l)));

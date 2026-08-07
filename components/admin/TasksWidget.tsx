@@ -9,7 +9,13 @@ interface TaskItem {
   dueAt: string | null;
 }
 
-export function TasksWidget() {
+/**
+ * `refreshSignal` is bumped by the dashboard's refresh control — the same
+ * signal Today takes. This card used to fetch once on mount and never again,
+ * so a page-wide refresh left it showing whatever it had when the tab was
+ * opened, under a timestamp saying otherwise.
+ */
+export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = {}) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(true);
@@ -28,7 +34,8 @@ export function TasksWidget() {
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
 
   const handleAdd = async () => {
     if (!newTitle.trim()) return;

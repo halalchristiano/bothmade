@@ -124,7 +124,13 @@ function RecordRow({ record }: { record: SignatureRecord }) {
 }
 
 /** The dashboard card: every certifiable signature, searchable, one click each. */
-export function SignatureCertificatesCard() {
+/**
+ * `refreshSignal` is bumped by the dashboard's refresh control — the same
+ * signal Today takes. This card used to fetch once on mount and never again,
+ * so a page-wide refresh left it showing whatever it had when the tab was
+ * opened, under a timestamp saying otherwise.
+ */
+export function SignatureCertificatesCard({ refreshSignal = 0 }: { refreshSignal?: number } = {}) {
   const [records, setRecords] = useState<SignatureRecord[] | null>(null);
   const [query, setQuery] = useState('');
   // A sales account can reach the ops dashboard, and client money isn't
@@ -142,7 +148,7 @@ export function SignatureCertificatesCard() {
         setRecords(r.ok ? (await r.json()).records ?? [] : []);
       })
       .catch(() => setRecords([]));
-  }, []);
+  }, [refreshSignal]);
 
   if (!permitted) return null;
 
