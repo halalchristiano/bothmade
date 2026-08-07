@@ -124,6 +124,13 @@ export async function GET(
     const instalments =
       project.instalments.length > 0 ? project.instalments : await ensureInstalments(project.id);
 
+    // Invoice number is the only link between the two — Instalment.invoiceNumber
+    // is unique and points at Invoice.number. Used below to give an instalment
+    // invoice somewhere to be paid.
+    const instalmentByInvoiceNumber = new Map(
+      instalments.filter((i) => i.invoiceNumber).map((i) => [i.invoiceNumber as string, i])
+    );
+
     let sourcedLead: { id: string; company: string } | null = null;
     if (session.type === 'user' && project.convertedFromLeadId) {
       sourcedLead = await prisma.lead.findUnique({
@@ -205,7 +212,31 @@ export async function GET(
           })),
           // Who raised an invoice is an internal detail — the client gets
           // the invoice, not the org chart.
-          invoices: project.invoices.map((invoice) => ({
+          invoices: project.invoices.map((invoice) => {
+            /*
+             * Where this invoice can actually be paid.
+             *
+             * An instalment invoice has no `paymentUrl` of its own and never
+             * has: the checkout lives on the Instalment row and dies after 24
+             * hours, so storing it here would be storing a corpse. The client
+             * dashboard renders this field as its Pay button and falls back to
+             * "We'll send a payment link for this shortly" when it is null —
+             * so every instalment invoice appeared unpayable, promising a link
+             * that had already been emailed days earlier, directly below a
+             * payment schedule offering to take the same money.
+             *
+             * /pay resolves a live session when it is clicked, and refuses for
+             * anything settled or cancelled, so this is safe to hand over for
+             * any row that is still owed.
+             */
+            const inst = instalmentByInvoiceNumber.get(invoice.number);
+            const payableUrl = inst
+              ? invoice.status === 'open' && inst.status !== 'paid' && inst.status !== 'void'
+                ? `/pay/${inst.id}`
+                : null
+              : invoice.paymentUrl;
+
+            return {
             id: invoice.id,
             number: invoice.number,
             description: invoice.description,
@@ -213,7 +244,7 @@ export async function GET(
             amountCents: invoice.amountCents,
             status: invoice.status,
             pdfUrl: invoice.pdfUrl,
-            paymentUrl: invoice.paymentUrl,
+            paymentUrl: payableUrl,
             createdAt: invoice.createdAt,
             paidAt: invoice.paidAt,
             // A client whose money came back must be able to see that here.
@@ -228,7 +259,8 @@ export async function GET(
             voidReason: invoice.voidReason,
             issuedBy: session.type === 'user' ? invoice.issuedBy?.name || invoice.issuedBy?.email || null : undefined,
             sentToEmail: session.type === 'user' ? invoice.sentToEmail : undefined,
-          })),
+            };
+          }),
           deliverables: readDeliverables(project.deliverables, project.id),
           contractUrl: project.contractUrl,
           // The Section 4 review clock. Both dashboards read it: the client
