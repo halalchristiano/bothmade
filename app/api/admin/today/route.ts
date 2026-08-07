@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
       designsOwed,
       mockupsBuiltNotSent,
       unreadDesignFeedback,
+      totals,
     ] = await Promise.all([
       prisma.lead.findMany({
         where: { status: { notIn: ['won', 'lost'] }, nextFollowUpAt: { lt: now } },
@@ -276,6 +277,69 @@ export async function GET(request: NextRequest) {
           },
         })
         .catch(() => []),
+
+      /*
+       * The real sizes of the lists above.
+       *
+       * Every list here is capped — five rows, eight for the money — because
+       * this card is a summary and a summary that renders four hundred rows
+       * is a list. The caps were fine. What was not fine is that the page
+       * then counted the capped arrays and printed the answer as a total:
+       * "5 follow-ups are overdue" to somebody with thirty, and — worse — a
+       * sum of at most eight instalments announced as everything invoiced
+       * and unpaid.
+       *
+       * Under-reporting a backlog is the one direction a dashboard must not
+       * round in. It reads as "nearly caught up" and it is the opposite.
+       */
+      Promise.all([
+        prisma.lead.count({
+          where: { status: { notIn: ['won', 'lost'] }, nextFollowUpAt: { lt: now } },
+        }),
+        prisma.lead.count({ where: { contractStatus: 'sent', status: { notIn: ['won', 'lost'] } } }),
+        prisma.leadMockup
+          .count({ where: { status: 'approved', lead: { status: { notIn: ['won', 'lost'] } } } })
+          .catch(() => 0),
+        prisma.lead
+          .count({
+            where: {
+              mockupFolderUrl: { not: null },
+              doNotContact: false,
+              status: { notIn: ['won', 'lost'] },
+              mockups: { none: { sentAt: { not: null } } },
+            },
+          })
+          .catch(() => 0),
+        prisma.designFeedback.count({ where: { reviewedAt: null } }).catch(() => 0),
+        prisma.project.count({ where: { status: { not: 'complete' }, updatedAt: { lt: weekAgo } } }),
+        prisma.invoice.count({ where: { status: 'open' } }),
+        // Count and sum together: the headline states both, and reading them
+        // off a page of eight rows understated the money as well as the count.
+        prisma.instalment
+          .aggregate({ where: { status: 'due' }, _count: true, _sum: { amountCents: true } })
+          .catch(() => ({ _count: 0, _sum: { amountCents: 0 } })),
+      ]).then(
+        ([
+          overdueFollowUpCount,
+          unsignedProposalCount,
+          approvedMockupCount,
+          mockupsBuiltNotSentCount,
+          unreadDesignFeedbackCount,
+          stalledProjectCount,
+          unpaidInvoiceCount,
+          due,
+        ]) => ({
+          overdueFollowUpCount,
+          unsignedProposalCount,
+          approvedMockupCount,
+          mockupsBuiltNotSentCount,
+          unreadDesignFeedbackCount,
+          stalledProjectCount,
+          unpaidInvoiceCount,
+          dueInstalmentCount: due._count,
+          dueInstalmentTotalCents: due._sum.amountCents ?? 0,
+        })
+      ),
     ]);
 
     const callsToday = await prisma.leadActivity.count({
@@ -381,13 +445,22 @@ export async function GET(request: NextRequest) {
       // top of a board about who does the most work.
       .sort((a, b) => b.dials - a.dials || b.calls - a.calls);
 
-    const uninvoiced = uninvoicedPayments(gateProjects).slice(0, 8);
+    // Summed before the slice. The headline announces this figure as all the
+    // money past its gate and never invoiced; totalling the eight rows it
+    // happens to show made that sentence understate itself.
+    const allUninvoiced = uninvoicedPayments(gateProjects);
+    const uninvoiced = allUninvoiced.slice(0, 8);
 
     return NextResponse.json(
       {
         success: true,
         sell: {
           overdueFollowUps,
+          // What the lists above are pages OF. Anything the page states as a
+          // total reads one of these, never `list.length`.
+          overdueFollowUpCount: totals.overdueFollowUpCount,
+          unsignedProposalCount: totals.unsignedProposalCount,
+          approvedMockupCount: totals.approvedMockupCount,
           repliedCount: repliedLeads,
           neverContactedCount: neverContacted,
           openedMockups,
@@ -407,8 +480,12 @@ export async function GET(request: NextRequest) {
           // Earned, and never asked for. The only kind of missing revenue
           // that is entirely ours to fix, and it does not announce itself.
           uninvoiced,
-          uninvoicedTotalCents: uninvoiced.reduce((sum, u) => sum + u.amountCents, 0),
+          uninvoicedCount: allUninvoiced.length,
+          uninvoicedTotalCents: allUninvoiced.reduce((sum, u) => sum + u.amountCents, 0),
           unpaidInvoices,
+          unpaidInvoiceCount: totals.unpaidInvoiceCount,
+          dueInstalmentCount: totals.dueInstalmentCount,
+          dueInstalmentTotalCents: totals.dueInstalmentTotalCents,
           collectedThisMonthCents: paidThisMonth._sum.amount ?? 0,
         },
         deliver: {
@@ -424,9 +501,12 @@ export async function GET(request: NextRequest) {
             nextStage: nextDesignStage(p.designRound).label,
           })),
           mockupsBuiltNotSent,
+          mockupsBuiltNotSentCount: totals.mockupsBuiltNotSentCount,
+          stalledProjectCount: totals.stalledProjectCount,
           // Blocking, and silent until now: their clock has stopped and the
           // project cannot move until somebody here reads this.
           unreadDesignFeedback,
+          unreadDesignFeedbackCount: totals.unreadDesignFeedbackCount,
         },
       },
       { status: 200 }

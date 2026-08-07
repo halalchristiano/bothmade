@@ -64,6 +64,17 @@ interface TodayData {
       updatedAt: string;
     }>;
     callsToday: number;
+    /*
+     * The real sizes of the lists above, which are pages of five.
+     *
+     * Anything this card states as a total reads one of these. Counting the
+     * capped array told somebody with thirty overdue follow-ups that they had
+     * five — a dashboard rounding a backlog towards "nearly caught up", which
+     * is the one direction it must never round in.
+     */
+    overdueFollowUpCount: number;
+    unsignedProposalCount: number;
+    approvedMockupCount: number;
     /**
      * Everybody's day, and the same numbers on every account.
      *
@@ -105,6 +116,7 @@ interface TodayData {
       amountCents: number;
       claim: string;
     }>;
+    uninvoicedCount: number;
     uninvoicedTotalCents: number;
     unpaidInvoices: Array<{
       id: string;
@@ -115,6 +127,10 @@ interface TodayData {
       client: { company: string };
       project: { id: string };
     }>;
+    unpaidInvoiceCount: number;
+    dueInstalmentCount: number;
+    /** Every instalment invoiced and unpaid, not just the eight shown. */
+    dueInstalmentTotalCents: number;
     collectedThisMonthCents: number;
   };
   deliver: {
@@ -143,6 +159,9 @@ interface TodayData {
       consumedRound: boolean;
       project: { id: string; name: string; client: { company: string } };
     }>;
+    unreadDesignFeedbackCount: number;
+    mockupsBuiltNotSentCount: number;
+    stalledProjectCount: number;
   };
 }
 
@@ -306,6 +325,26 @@ function ChasePayment({ projectId, onSent }: { projectId: string; onSent: () => 
         </button>
       )}
     </span>
+  );
+}
+
+/**
+ * Said out loud when a lane is showing a page rather than the list.
+ *
+ * The rows are capped at five so the card stays a summary. That is the right
+ * call and it was never mentioned, so five rows and forty-one rows looked
+ * identical — and the lane read as "this is what there is" either way. A
+ * summary may abbreviate; it may not imply it hasn't.
+ */
+function More({ shown, total, href }: { shown: number; total: number; href: string }) {
+  if (total <= shown) return null;
+  return (
+    <Link
+      href={href}
+      className="block rounded-xl px-3 py-1.5 text-[11px] font-medium text-white/40 hover:bg-white/[0.04] hover:text-white/70 transition-colors"
+    >
+      {total - shown} more →
+    </Link>
   );
 }
 
@@ -494,10 +533,26 @@ function WaitingOnUs({
 
   if (rows.length === 0) return null;
 
+  /*
+   * How many people are actually blocked on us, as opposed to how many rows
+   * arrived.
+   *
+   * Every list feeding this band is a page of five, so the header counted the
+   * page: "Waiting on us — 5" with nine clients waiting, and a footer offering
+   * "and 0 more" underneath it. The number in a band about people who have
+   * stopped and cannot move is the last one that should quietly round down.
+   */
+  const blocked =
+    (deliver.unreadDesignFeedbackCount ?? deliver.unreadDesignFeedback.length) +
+    (deliver.designsOwed ?? []).length +
+    (deliver.mockupRequests > 0 ? 1 : 0) +
+    (deliver.mockupsBuiltNotSentCount ?? deliver.mockupsBuiltNotSent.length) +
+    (sell.approvedMockupCount ?? sell.approvedMockups.length);
+
   return (
     <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.05] p-4">
       <p className="mb-2.5 font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
-        Waiting on us — {rows.length}
+        Waiting on us — {blocked}
       </p>
       <div className="space-y-1.5">
         {rows.slice(0, 6).map((row) => {
@@ -516,8 +571,10 @@ function WaitingOnUs({
             </Link>
           );
         })}
-        {rows.length > 6 && (
-          <p className="pt-1 text-xs text-white/35">and {rows.length - 6} more, in the lanes below.</p>
+        {blocked > Math.min(rows.length, 6) && (
+          <p className="pt-1 text-xs text-white/35">
+            and {blocked - Math.min(rows.length, 6)} more, in the lanes below.
+          </p>
         )}
       </div>
     </div>
@@ -683,11 +740,12 @@ export function Today({
     if (deliver.unreadDesignFeedback.length > 0) {
       const f = deliver.unreadDesignFeedback[0];
       const waiting = daysSince(f.createdAt);
+      const feedbackCount = deliver.unreadDesignFeedbackCount ?? deliver.unreadDesignFeedback.length;
       return {
         text:
-          deliver.unreadDesignFeedback.length === 1
+          feedbackCount === 1
             ? `${f.project.client.company} sent design feedback${waiting > 0 ? ` ${waiting} day${waiting === 1 ? '' : 's'} ago` : ''} and nobody has read it.`
-            : `${deliver.unreadDesignFeedback.length} clients have sent design feedback nobody has read.`,
+            : `${feedbackCount} clients have sent design feedback nobody has read.`,
         href: `/admin/projects/${f.project.id}`,
         cta: 'Read it',
       };
@@ -707,21 +765,26 @@ export function Today({
      */
     if (money.uninvoiced.length > 0) {
       const first = money.uninvoiced[0];
+      const uninvoicedCount = money.uninvoicedCount ?? money.uninvoiced.length;
       return {
         text:
-          money.uninvoiced.length === 1
+          uninvoicedCount === 1
             ? `${first.company} passed ${first.claim} and ${formatCents(first.amountCents)} was never invoiced.`
-            : `${formatCents(money.uninvoicedTotalCents)} across ${money.uninvoiced.length} payments has passed its gate and never been invoiced.`,
+            : `${formatCents(money.uninvoicedTotalCents)} across ${uninvoicedCount} payments has passed its gate and never been invoiced.`,
         href: `/admin/projects/${first.projectId}`,
         cta: 'Invoice it',
       };
     }
     if (money.dueInstalments.length > 0) {
-      const total = money.dueInstalments.reduce((s, i) => s + i.amountCents, 0);
+      // Both figures come from an aggregate over every due instalment. They
+      // used to be summed and counted off the eight rows this card shows, so
+      // the sentence announcing everything invoiced and unpaid was reporting
+      // one page of it — a money number that quietly rounded down.
+      const count = money.dueInstalmentCount ?? money.dueInstalments.length;
+      const total =
+        money.dueInstalmentTotalCents ?? money.dueInstalments.reduce((s, i) => s + i.amountCents, 0);
       return {
-        text: `${formatCents(total)} invoiced and unpaid across ${money.dueInstalments.length} payment${
-          money.dueInstalments.length === 1 ? '' : 's'
-        }.`,
+        text: `${formatCents(total)} invoiced and unpaid across ${count} payment${count === 1 ? '' : 's'}.`,
         href: `/admin/projects/${money.dueInstalments[0].project.id}`,
         cta: 'Chase it',
       };
@@ -734,10 +797,9 @@ export function Today({
       };
     }
     if (sell.overdueFollowUps.length > 0) {
+      const overdue = sell.overdueFollowUpCount ?? sell.overdueFollowUps.length;
       return {
-        text: `${sell.overdueFollowUps.length} follow-up${
-          sell.overdueFollowUps.length === 1 ? ' is' : 's are'
-        } overdue.`,
+        text: `${overdue} follow-up${overdue === 1 ? ' is' : 's are'} overdue.`,
         // ?start=1 — "Start calling" opens the top of the queue rather than
         // the Call HQ page, which is what the words on the button promise.
         href: '/admin/call?start=1',
@@ -839,6 +901,14 @@ export function Today({
             sell.overdueFollowUps.length +
             sell.unsignedProposals.length ===
             0 && <Quiet text="Nobody is waiting on you." />}
+          <More
+            shown={sell.overdueFollowUps.length + sell.unsignedProposals.length}
+            total={
+              (sell.overdueFollowUpCount ?? sell.overdueFollowUps.length) +
+              (sell.unsignedProposalCount ?? sell.unsignedProposals.length)
+            }
+            href="/admin/sales?view=queue"
+          />
 
           <div className="flex flex-wrap gap-1.5 pt-1">
             {sell.repliedCount > 0 && (
@@ -934,6 +1004,14 @@ export function Today({
           {money.dueInstalments.length + money.unpaidInvoices.length === 0 && (
             <Quiet text="Nothing invoiced and unpaid." />
           )}
+          <More
+            shown={money.dueInstalments.length + money.unpaidInvoices.length}
+            total={
+              (money.dueInstalmentCount ?? money.dueInstalments.length) +
+              (money.unpaidInvoiceCount ?? money.unpaidInvoices.length)
+            }
+            href="/admin/priorities"
+          />
 
           {/* Earned and never asked for.
               Distinct from everything above it: nobody is late, because
@@ -1038,6 +1116,19 @@ export function Today({
             deliver.mockupsBuiltNotSent.length === 0 && (
               <Quiet text="Every project moved this week." />
             )}
+          <More
+            shown={
+              deliver.unreadDesignFeedback.length +
+              deliver.stalledProjects.length +
+              deliver.mockupsBuiltNotSent.length
+            }
+            total={
+              (deliver.unreadDesignFeedbackCount ?? deliver.unreadDesignFeedback.length) +
+              (deliver.stalledProjectCount ?? deliver.stalledProjects.length) +
+              (deliver.mockupsBuiltNotSentCount ?? deliver.mockupsBuiltNotSent.length)
+            }
+            href="/admin/projects"
+          />
 
           <div className="flex flex-wrap gap-1.5 pt-1">
             <Link
