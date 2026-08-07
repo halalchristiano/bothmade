@@ -20,6 +20,20 @@ Two things to check first, because this deploys to a live site:
 - Whether the diff touches `prisma/`. Migrations run against the **production
   database** during the build, so say so explicitly before pushing one.
 
+## Several sessions run at once — land work in small pieces
+
+Assume another agent is editing this repo right now. The way to stay out of
+its way is to keep your unpushed window small: sync before you start, and
+commit and push each finished change on its own rather than batching a
+session's worth of work into one drop at the end.
+
+    git fetch origin main && git merge --ff-only origin/main   # before starting
+    # ...one coherent change...
+    git add -A && git commit && git push origin HEAD:main      # then immediately
+
+If the fast-forward check fails, someone else landed first: `git pull --rebase
+origin main`, re-verify, then push. Never force-push `main`.
+
 Preview deployments are disabled for `claude/*` branches (see `vercel.json`):
 the preview environment has none of the project's environment variables, so
 `prisma migrate deploy` fails there in seconds while the identical commit
