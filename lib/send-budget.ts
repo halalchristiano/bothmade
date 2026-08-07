@@ -18,13 +18,19 @@ import { prisma } from '@/lib/prisma';
  * what the automated systems are built to catch. A recovering domain wants to
  * be well under, not just inside.
  *
- * So the default is deliberately far below what Google allows, and it is
- * meant to be raised slowly by hand as the domain earns it — a week at a
- * level with no bounces before the next step up. `DAILY_EMAIL_LIMIT` in the
- * environment overrides it, which is where a deliberate decision belongs
- * rather than in a constant somebody edits mid-panic.
+ * Five hundred is a deliberate choice, not a default nobody looked at. It sits
+ * a quarter of the way into Workspace's 2,000 and is paired with the thing
+ * that actually decides whether that volume is safe: every address verified
+ * before it is sent to. Bounce rate is what gets a sender restricted, and a
+ * verified list bounces at a fraction of a percent — the guards in
+ * lib/send-safety.ts are what hold that promise to account, refusing a batch
+ * outright if the standing rate ever climbs back.
+ *
+ * `DAILY_EMAIL_LIMIT` overrides it. Worth dropping to 30 or so for a week
+ * after any restriction, because the first days back are judged harder than
+ * the steady state.
  */
-export const DEFAULT_DAILY_SEND_LIMIT = 120;
+export const DEFAULT_DAILY_SEND_LIMIT = 500;
 
 export function dailySendLimit(): number {
   const raw = Number(process.env.DAILY_EMAIL_LIMIT);

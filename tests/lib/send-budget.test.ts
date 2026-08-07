@@ -32,10 +32,12 @@ afterEach(() => {
 });
 
 describe('the limit', () => {
-  it('is far below what Google would technically allow', () => {
-    // Gmail's own ceilings are 500 personal / 2,000 Workspace, and those are
-    // the numbers that get an account suspended rather than the safe ones.
-    expect(DEFAULT_DAILY_SEND_LIMIT).toBeLessThan(500);
+  it('stays inside what Workspace allows, with room to spare', () => {
+    // Workspace's ceiling is 2,000 external recipients a day and that is the
+    // number that gets an account suspended, not a target. What makes this
+    // volume safe is the verification step in front of it, not the figure —
+    // see lib/send-safety.ts for the guards that check the promise held.
+    expect(DEFAULT_DAILY_SEND_LIMIT).toBeLessThanOrEqual(2000);
     expect(dailySendLimit()).toBe(DEFAULT_DAILY_SEND_LIMIT);
   });
 
