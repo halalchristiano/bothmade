@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkSendBudget } from '@/lib/send-budget';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendTemplatedEmail } from '@/lib/send-templated-email';
@@ -37,6 +38,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Max ${MAX_RECIPIENTS} recipients per send` }, { status: 400 });
     }
 
+    // Same daily ceiling as every other send path — a limit one route can be
+    // routed around is not a limit. Trimmed, and the trim is reported.
+    const budget = await checkSendBudget(session.userId, recipients.length);
+    if (budget.error) {
+      return NextResponse.json({ error: budget.error, budget }, { status: 429 });
+    }
+    const heldBack = recipients.length - budget.allowed;
+    const toSend = recipients.slice(0, budget.allowed);
+
     const results: Array<{ leadId: string; company?: string; ok: boolean; error?: string }> = [];
 
     // The composer sends whatever the page selected, so the block has to be
@@ -70,7 +80,7 @@ export async function POST(request: NextRequest) {
         ? createGmailBatchTransport(sender.gmailAddress, sender.gmailAppPassword)
         : undefined;
 
-    for (const recipient of recipients as Recipient[]) {
+    for (const recipient of toSend as Recipient[]) {
       if (!recipient.to || !recipient.leadId) {
         results.push({ leadId: recipient.leadId, company: recipient.company, ok: false, error: 'Missing recipient email' });
         continue;
@@ -104,7 +114,21 @@ export async function POST(request: NextRequest) {
     gmailTransport?.close();
 
     const sentCount = results.filter((r) => r.ok).length;
-    return NextResponse.json({ success: true, sentCount, total: results.length, results }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        sentCount,
+        total: results.length,
+        results,
+        heldBack,
+        budget: {
+          limit: budget.limit,
+          used: budget.used + sentCount,
+          remaining: Math.max(0, budget.remaining - sentCount),
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Bulk send email error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

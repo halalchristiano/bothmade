@@ -13,7 +13,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const prisma = {
   lead: { findMany: vi.fn(), update: vi.fn(async () => ({})) },
-  leadActivity: { create: vi.fn(async () => ({})) },
+  leadActivity: {
+    create: vi.fn(async () => ({})),
+    // The daily send budget counts sent email off this table, so a mock
+    // without it reads as "the day is already spent" and every send below
+    // gets trimmed to nothing.
+    count: vi.fn(async () => 0),
+  },
   user: { findUnique: vi.fn() },
 };
 

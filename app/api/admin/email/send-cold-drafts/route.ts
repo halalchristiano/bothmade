@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkSendBudget } from '@/lib/send-budget';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
@@ -49,7 +50,22 @@ export async function POST(request: NextRequest) {
     });
     if (!sender) return unauthorizedResponse();
 
-    const leads = await prisma.lead.findMany({ where: { id: { in: leadIds } } });
+    /*
+     * The daily ceiling, checked before a single message goes.
+     *
+     * The per-request cap above was the only limit there had ever been, so
+     * four presses of send was eight hundred emails and Google restricted the
+     * account. Trimmed rather than refused: a batch that can send forty
+     * should send forty and say so, because refusing the whole thing is what
+     * teaches somebody to press send again.
+     */
+    const budget = await checkSendBudget(session.userId, leadIds.length);
+    if (budget.error) {
+      return NextResponse.json({ error: budget.error, budget }, { status: 429 });
+    }
+    const idsToSend = leadIds.slice(0, budget.allowed);
+
+    const leads = await prisma.lead.findMany({ where: { id: { in: idsToSend } } });
 
     const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
 
@@ -160,8 +176,22 @@ export async function POST(request: NextRequest) {
 
     const sentCount = results.filter((r) => r.ok).length;
     const sentViaResend = results.filter((r) => r.ok && r.sentVia === 'resend').length;
+    /*
+     * `heldBack` is reported rather than left to be inferred from a count
+     * that came back smaller than the one that went in — a trim nobody was
+     * told about is how somebody presses send a second time.
+     */
+    const heldBack = leadIds.length - idsToSend.length;
     return NextResponse.json(
-      { success: true, sentCount, total: results.length, results, sentViaResend },
+      {
+        success: true,
+        sentCount,
+        total: results.length,
+        results,
+        sentViaResend,
+        heldBack,
+        budget: { limit: budget.limit, used: budget.used + sentCount, remaining: Math.max(0, budget.remaining - sentCount) },
+      },
       { status: 200 }
     );
   } catch (error) {

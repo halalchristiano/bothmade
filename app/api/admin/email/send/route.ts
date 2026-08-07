@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkSendBudget } from '@/lib/send-budget';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendTemplatedEmail } from '@/lib/send-templated-email';
 
@@ -11,6 +12,19 @@ export async function POST(request: NextRequest) {
 
     if (!templateId || !to) {
       return NextResponse.json({ error: 'Template and recipient are required' }, { status: 400 });
+    }
+
+    /*
+     * One email still counts against the day.
+     *
+     * A ceiling the composer can walk past is not a ceiling — and the
+     * composer is exactly where somebody goes when a batch has just been
+     * refused. Refused rather than trimmed here, because there is nothing to
+     * trim: it is one message or none.
+     */
+    const budget = await checkSendBudget(session.userId, 1);
+    if (budget.error) {
+      return NextResponse.json({ error: budget.error, budget }, { status: 429 });
     }
 
     const result = await sendTemplatedEmail({

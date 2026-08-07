@@ -199,7 +199,17 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
   const [showBulkEmail, setShowBulkEmail] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sendingColdDrafts, setSendingColdDrafts] = useState(false);
-  const [coldSendResult, setColdSendResult] = useState<{ sentCount: number; total: number; failures: string[]; sentViaResend: number } | null>(null);
+  const [coldSendResult, setColdSendResult] = useState<{
+    sentCount: number;
+    total: number;
+    failures: string[];
+    sentViaResend: number;
+    /** Trimmed off by the daily ceiling — reported, never silently dropped. */
+    heldBack?: number;
+    budget?: { limit: number; used: number; remaining: number };
+  } | null>(null);
+  /** Set when the day is spent and nothing at all could go. */
+  const [sendBlocked, setSendBlocked] = useState<string | null>(null);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [listError, setListError] = useState('');
@@ -473,11 +483,25 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
         body: JSON.stringify({ leadIds }),
       });
       const data = await res.json();
+      // 429 is the daily ceiling, and it is the one failure worth its own
+      // message: everything else here is per-lead, this is "stop for today".
+      if (res.status === 429) {
+        setSendBlocked(data.error);
+        setPreviewingBatch(null);
+        return;
+      }
       if (res.ok) {
         const failures = (data.results || [])
           .filter((r: { ok: boolean }) => !r.ok)
           .map((r: { company: string; reason?: string }) => `${r.company}: ${r.reason}`);
-        setColdSendResult({ sentCount: data.sentCount, total: data.total, failures, sentViaResend: data.sentViaResend || 0 });
+        setColdSendResult({
+          sentCount: data.sentCount,
+          total: data.total,
+          failures,
+          sentViaResend: data.sentViaResend || 0,
+          heldBack: data.heldBack || 0,
+          budget: data.budget,
+        });
         setSelected(new Set());
         setPreviewingBatch(null);
         load();
@@ -1051,16 +1075,49 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
         </div>
       )}
 
+      {/*
+          The day's ceiling, when it has been reached.
+
+          Its own block rather than a line inside the result panel, because it
+          is not a report on a send that happened — it is the reason one did
+          not, and it has to be impossible to read as "try again".
+      */}
+      {sendBlocked && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.07] px-5 py-3 mb-6">
+          <p className="text-sm font-semibold text-amber-200 mb-1">Nothing sent — daily limit reached</p>
+          <p className="text-xs text-amber-100/70 leading-relaxed">{sendBlocked}</p>
+          <button
+            onClick={() => setSendBlocked(null)}
+            className="mt-2 text-xs font-semibold text-white/50 hover:text-white transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {coldSendResult && (
         <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-5 py-3 mb-6">
           <div className="flex items-start justify-between gap-3">
             <p className="text-sm">
               Sent <strong className="text-emerald-300">{coldSendResult.sentCount}</strong> of {coldSendResult.total} prepared cold emails.
+              {coldSendResult.budget && (
+                <span className="text-white/45">
+                  {' '}
+                  {coldSendResult.budget.remaining} of {coldSendResult.budget.limit} left today.
+                </span>
+              )}
             </p>
             <button onClick={() => setColdSendResult(null)} className="text-xs text-white/40 hover:text-white transition-colors shrink-0">
               Dismiss
             </button>
           </div>
+          {!!coldSendResult.heldBack && coldSendResult.heldBack > 0 && (
+            <p className="mt-1.5 text-xs text-amber-200/80 leading-relaxed">
+              {coldSendResult.heldBack} more {coldSendResult.heldBack === 1 ? 'was' : 'were'} held back —
+              that would have gone past the daily limit. They are still selected-ready and nothing was
+              marked as sent, so send them tomorrow rather than trying again now.
+            </p>
+          )}
           {coldSendResult.failures.length > 0 && (
             <div className="mt-2 space-y-0.5">
               {coldSendResult.failures.map((f, i) => (

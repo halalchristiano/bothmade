@@ -186,13 +186,29 @@ export function readOpens(facts: OpenFacts, now: Date = new Date()): OpenReading
   // must not outrank a lead a person actually opened twice.
   const firstLooksAutomatic =
     !!firstAt && firstAt.getTime() - sentAt.getTime() < MACHINE_OPEN_WINDOW_MS;
-  const humanOpens = firstLooksAutomatic ? opens - 1 : opens;
 
   // Did anyone come back to it? A privacy proxy fetches once on delivery and
   // never again, so a gap between the first and last open is the single most
   // useful thing this module knows.
   const returned =
     !!firstAt && !!lastAt && lastAt.getTime() - firstAt.getTime() > DISTINCT_OPEN_GAP_MS;
+
+  /*
+   * How many of these fetches can be attributed to a person.
+   *
+   * The first is discounted when it arrived at machine speed. But a burst
+   * that STARTS automatic and finishes seconds later is all one delivery: a
+   * scanner and a mail client rendering the same message produce three or
+   * four fetches inside a few seconds, and counting the extras as human
+   * turned a proxy into an "engaged" lead with a phone alert attached. With
+   * only a first and a last timestamp, no gap means no second visit — so the
+   * whole burst is the delivery and none of it is a reader.
+   *
+   * Where the first open was NOT machine-speed, repeat fetches are left
+   * alone: somebody who opens at nine and again a minute later is a person
+   * scrolling, which is exactly what it looks like.
+   */
+  const humanOpens = firstLooksAutomatic ? (returned ? opens - 1 : 0) : opens;
 
   if (humanOpens >= 4 || (humanOpens >= 2 && returned)) {
     return {

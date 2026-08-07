@@ -27,6 +27,15 @@ import { readOpens } from '@/lib/lead-opens';
  * a new question and deserves its own answer.
  */
 
+/**
+ * How many opens a lead needs before an alert is worth sending.
+ *
+ * Every open below this still counts, still ranks the lead on the call sheet
+ * and still shows on the row — this is only the bar for interrupting a person
+ * with a notification, which is a far more expensive thing to get wrong.
+ */
+export const ALERT_MIN_OPENS = 3;
+
 export interface OpenAlertResult {
   /** Whether this fetch was the one that claimed the alert. */
   sent: boolean;
@@ -63,21 +72,27 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
 
   const reading = readOpens(lead);
   /*
-   * Any open, because that is what was asked for — and it is right.
+   * Three opens before anybody's phone buzzes.
    *
-   * This briefly required repetition, on the grounds that a mail scanner is
-   * not news. The problem with that was never the volume, it was the wording:
-   * the alert said "is reading it" over a fetch that proved no such thing.
-   * Suppressing the alert fixes the lie by throwing away the fact, and the
-   * fact is worth having — an open is the difference between an address that
-   * works and one that never landed.
+   * The bar has moved twice, and both moves were right at the time. It
+   * required repetition, then it fired on any open — because an open is real
+   * information and suppressing the alert threw the fact away. What changed
+   * is the volume: at a thousand leads a day, "every first open" is a
+   * notification every few minutes, and an alert stream nobody can keep up
+   * with is one nobody reads. The fact is still kept — the count is on the
+   * lead and the lead is on the call sheet from the very first open. This
+   * only decides what is worth interrupting somebody for.
    *
-   * So it fires on every first open and the copy below tells you which kind
-   * you have got. One alert per send either way: the claim on
-   * coldEmailOpenNotifiedAt is what stops a mailbox that syncs on four
-   * devices turning into four notifications.
+   * Three, not two, because a privacy proxy fetching on delivery plus one
+   * genuine open is already two. Three is the first number that cannot be
+   * explained by a machine and a single glance.
    */
-  if (!reading.callable) return { sent: false, reason: 'not a person yet' };
+  if (reading.opens < ALERT_MIN_OPENS) {
+    return { sent: false, reason: `only ${reading.opens} open(s) — below the alert threshold` };
+  }
+  // And still only when the pattern says a person rather than a mail server,
+  // which is the discount `confirmedReader` exists to apply.
+  if (!reading.confirmedReader) return { sent: false, reason: 'not a person yet' };
 
   /*
    * The claim, and the check, in one statement.
