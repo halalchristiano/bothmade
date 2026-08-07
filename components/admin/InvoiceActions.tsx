@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Ban, RotateCcw, Send } from 'lucide-react';
+import { Ban, Check, RotateCcw, Send } from 'lucide-react';
 import { Modal } from '@/components/admin/Modal';
 import { BrandButton, inputClass } from '@/components/admin/ui';
 import { dollarsToCents } from '@/lib/billing';
@@ -15,16 +15,16 @@ import {
 
 /**
  * Everything that can happen to an invoice after it exists, wherever an
- * invoice is listed: send it, cancel it, refund it.
+ * invoice is listed: send it, mark it paid, cancel it, refund it.
  *
  * One component rather than a copy on the billing page and another on the
  * project page, because these are the buttons where a second implementation
  * eventually disagrees with the first about what is allowed — and the
  * disagreement is always discovered by someone refunding the wrong amount.
  *
- * All three are deliberately behind a modal. Cancel and refund because
- * neither is undoable and a one-click irreversible money action next to "Copy
- * pay link" is a mis-click waiting to happen; send because the mis-click
+ * All four are deliberately behind a modal. Cancel, refund and mark-paid
+ * because none is undoable and a one-click irreversible money action next to
+ * "Copy pay link" is a mis-click waiting to happen; send because the mis-click
  * there is chasing a client who already paid.
  */
 
@@ -54,16 +54,22 @@ export function InvoiceActions({
   invoice: ActionableInvoice;
   onDone: () => void;
 }) {
-  const [open, setOpen] = useState<'void' | 'refund' | 'send' | null>(null);
+  const [open, setOpen] = useState<'void' | 'refund' | 'send' | 'paid' | null>(null);
 
   const remaining = invoice.amountCents - invoice.refundedCents;
   const canVoid = invoice.status === 'open';
   const canRefund = invoice.status === 'paid' && remaining > 0;
-  // Only an open invoice is still a request for money. A paid one has nothing
-  // to chase and a cancelled one has nothing to pay.
+  /*
+   * Both of these are "this invoice is still a request for money", which is
+   * exactly what an open invoice is: a paid one has nothing to chase and a
+   * cancelled one has nothing to pay. Named separately rather than shared,
+   * because they answer different questions and the day one of them grows a
+   * condition the other doesn't, a shared boolean is how it goes unnoticed.
+   */
   const canSend = invoice.status === 'open';
+  const canMarkPaid = invoice.status === 'open';
 
-  if (!canVoid && !canRefund && !canSend) return null;
+  if (!canVoid && !canRefund && !canSend && !canMarkPaid) return null;
 
   return (
     <>
@@ -73,6 +79,14 @@ export function InvoiceActions({
           className="inline-flex items-center gap-1 text-white/45 transition-colors hover:text-sky-300"
         >
           <Send size={11} /> {invoice.sendCount ? 'Send again' : 'Send'}
+        </button>
+      )}
+      {canMarkPaid && (
+        <button
+          onClick={() => setOpen('paid')}
+          className="inline-flex items-center gap-1 text-white/45 transition-colors hover:text-emerald-300"
+        >
+          <Check size={11} /> Mark paid
         </button>
       )}
       {canVoid && (
@@ -101,7 +115,99 @@ export function InvoiceActions({
       {open === 'send' && (
         <SendModal invoice={invoice} onClose={() => setOpen(null)} onDone={onDone} />
       )}
+      {open === 'paid' && (
+        <MarkPaidModal invoice={invoice} onClose={() => setOpen(null)} onDone={onDone} />
+      )}
     </>
+  );
+}
+
+/**
+ * The client paid, just not through us.
+ *
+ * A bank transfer, a cheque, a card taken over the phone — the invoice email
+ * offers exactly this, and until now nothing could record that it happened.
+ * The invoice stayed open, kept counting toward the outstanding total, and
+ * kept showing the client a Pay button for money they had already sent.
+ *
+ * How it arrived is required, not optional. "Paid" on its own is the version
+ * of this record nobody can reconcile against a bank statement a year later.
+ */
+function MarkPaidModal({
+  invoice,
+  onClose,
+  onDone,
+}: {
+  invoice: ActionableInvoice;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [method, setMethod] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/billing/invoices/${invoice.id}/mark-paid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Something went wrong.');
+        return;
+      }
+      onDone();
+      onClose();
+    } catch {
+      setError('Something went wrong. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} title={`Mark ${invoice.number} paid`}>
+      <div className="space-y-4">
+        <p className="text-sm text-white/60">
+          {invoice.description} — {formatCentsExact(invoice.amountCents)}
+        </p>
+        <p className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-xs text-white/45">
+          For money that arrived outside Stripe. The payment link stops working immediately, so the
+          client can&apos;t pay the same invoice a second time, and the amount goes into the ledger as
+          a real payment rather than only flipping a status.
+        </p>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-white/50">How did it arrive?</label>
+          <input
+            autoFocus
+            value={method}
+            maxLength={MAX_REASON_LENGTH}
+            onChange={(e) => setMethod(e.target.value)}
+            placeholder="Bank transfer, ref ACME0312"
+            className={inputClass}
+          />
+          <p className="mt-1 text-[11px] text-white/30">
+            Enough to find it on a bank statement in a year&apos;s time.
+          </p>
+        </div>
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <BrandButton variant="quiet" onClick={onClose}>
+            Not yet
+          </BrandButton>
+          <BrandButton onClick={submit} disabled={busy || !method.trim()}>
+            {busy ? 'Recording…' : `Record ${formatCentsExact(invoice.amountCents)} received`}
+          </BrandButton>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

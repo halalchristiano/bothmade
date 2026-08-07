@@ -83,6 +83,7 @@ model User {
   issuedInvoices       Invoice[]        @relation("InvoiceIssuer")
   voidedInvoices       Invoice[]        @relation("InvoiceVoider")
   refundedInvoices     Invoice[]        @relation("InvoiceRefunder")
+  settledInvoices      Invoice[]        @relation("InvoiceSettler")
   changeOrders         ChangeOrder[]    @relation("ChangeOrderAuthor")
   recurringOffers      RecurringOffer[] @relation("RecurringOfferAuthor")
 
@@ -1066,6 +1067,18 @@ model Invoice {
 
   paidAt   DateTime?
   voidedAt DateTime?
+
+  // Money that arrived some other way. Every invoice used to be settleable
+  // only by Stripe, so a client who paid by bank transfer — which the invoice
+  // email explicitly offers — left an invoice open forever, on the outstanding
+  // total and in the chase queue. These record how it actually arrived and who
+  // said so, for the same reason voidReason and refundReason exist: a row that
+  // changed with no recorded reason is the hardest thing to explain a year
+  // later. Null on anything Stripe settled — there the session id is the
+  // record.
+  paidMethod String?
+  paidById   String?
+  paidBy     User?   @relation("InvoiceSettler", fields: [paidById], references: [id], onDelete: SetNull)
 
   // --- Life after issue ---------------------------------------------------
   // Why an invoice changed, and who changed it. Required by the routes, not
