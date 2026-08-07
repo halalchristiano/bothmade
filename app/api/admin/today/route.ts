@@ -298,8 +298,9 @@ export async function GET(request: NextRequest) {
      * all derived from the same rows.
      */
     const callRows = await prisma.leadActivity.findMany({
-      where: { type: 'call', createdAt: { gte: startOfDay } },
+      where: { type: { in: ['call', 'dial'] }, createdAt: { gte: startOfDay } },
       select: {
+        type: true,
         createdById: true,
         createdBy: { select: { name: true, email: true } },
         lead: {
@@ -315,7 +316,14 @@ export async function GET(request: NextRequest) {
 
     const byPerson = new Map<
       string,
-      { userId: string; name: string; calls: number; mockups: Set<string>; sequence: Set<string> }
+      {
+        userId: string;
+        name: string;
+        calls: number;
+        dials: number;
+        mockups: Set<string>;
+        sequence: Set<string>;
+      }
     >();
 
     for (const row of callRows) {
@@ -328,9 +336,26 @@ export async function GET(request: NextRequest) {
           // rendering a blank row that reads as a bug.
           name: row.createdBy?.name || row.createdBy?.email || 'Someone',
           calls: 0,
+          dials: 0,
           mockups: new Set<string>(),
           sequence: new Set<string>(),
         };
+
+      /*
+       * Two numbers that must never be added together.
+       *
+       * `dials` is what the machine saw: a number tapped, recorded before the
+       * phone app took the screen, with nothing to press and no way to skip
+       * it. `calls` is what somebody wrote down afterwards. They answer
+       * different questions — "how much work happened" and "how much of it
+       * came back as information" — and the gap between them is the only
+       * thing on this dashboard nobody could see before.
+       */
+      if (row.type === 'dial') {
+        entry.dials++;
+        byPerson.set(key, entry);
+        continue;
+      }
       entry.calls++;
       // Sets, not counters: two calls to the same business in one day is one
       // mockup, and counting it twice would flatter the number.
@@ -347,10 +372,14 @@ export async function GET(request: NextRequest) {
         userId: p.userId,
         name: p.name,
         calls: p.calls,
+        dials: p.dials,
         mockupsRequested: p.mockups.size,
         intoFollowUp: p.sequence.size,
       }))
-      .sort((a, b) => b.calls - a.calls);
+      // By dials, because that is the number nobody typed. Sorting by
+      // self-reported outcomes would put whoever writes the most notes at the
+      // top of a board about who does the most work.
+      .sort((a, b) => b.dials - a.dials || b.calls - a.calls);
 
     const uninvoiced = uninvoicedPayments(gateProjects).slice(0, 8);
 

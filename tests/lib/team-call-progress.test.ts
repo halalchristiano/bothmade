@@ -68,8 +68,10 @@ const call = (
     mockupRequestedAt: Date | null;
     autoFollowUpDueAt: Date | null;
     autoFollowUpStage: number;
-  }> = {}
+  }> = {},
+  type: 'call' | 'dial' = 'call'
 ) => ({
+  type,
   createdById: byId,
   createdBy: by,
   lead: {
@@ -80,12 +82,17 @@ const call = (
   },
 });
 
+/** A number tapped, recorded by the app rather than written up by anyone. */
+const dialled = (by: { name: string; email: string }, byId: string) =>
+  call(by, byId, {}, 'dial');
+
 const run = async () => {
   const res = await GET(new Request('https://x/api/admin/today') as never);
   return (await res.json()).sell.team as Array<{
     userId: string;
     name: string;
     calls: number;
+    dials: number;
     mockupsRequested: number;
     intoFollowUp: number;
   }>;
@@ -139,6 +146,7 @@ describe('counting a day', () => {
         userId: 'user_evan',
         name: 'Evan Buoncristiano',
         calls: 4,
+        dials: 0,
         mockupsRequested: 1,
         intoFollowUp: 2,
       },
@@ -207,5 +215,80 @@ describe('counting a day', () => {
   /** A row of zeroes at 9am is a scolding, not information. */
   it('is empty before the first call of the day', async () => {
     expect(await run()).toEqual([]);
+  });
+});
+
+/**
+ * The number nobody typed, next to the number somebody did.
+ *
+ * "How many calls did you make" and "how many did you tell me about" are
+ * different questions and only one of them could be answered before. A dial
+ * is recorded as the number is tapped, before the phone app takes the screen;
+ * an outcome is written up afterwards, if the afternoon allows. Keeping them
+ * apart is the entire value — added together they would be a bigger number
+ * that means less.
+ */
+describe('dialled against written up', () => {
+  it('counts them separately and never adds them together', async () => {
+    logged([
+      dialled(EVAN, 'user_evan'),
+      dialled(EVAN, 'user_evan'),
+      dialled(EVAN, 'user_evan'),
+      call(EVAN, 'user_evan'),
+    ]);
+
+    const [evan] = await run();
+
+    expect(evan).toMatchObject({ dials: 3, calls: 1 });
+  });
+
+  /**
+   * A dial says a number was tapped. It says nothing about whether anybody
+   * picked up, so it cannot be credited with a mockup or a booked sequence —
+   * those follow from a conversation somebody had.
+   */
+  it('never credits an outcome to a bare dial', async () => {
+    logged([
+      call(EVAN, 'user_evan', { id: 'a', mockupRequestedAt: TODAY }, 'dial'),
+      call(EVAN, 'user_evan', { id: 'b', autoFollowUpDueAt: TODAY, autoFollowUpStage: 0 }, 'dial'),
+    ]);
+
+    const [evan] = await run();
+
+    expect(evan).toMatchObject({ dials: 2, calls: 0, mockupsRequested: 0, intoFollowUp: 0 });
+  });
+
+  /**
+   * Ordered by the measurement, not the self-report. Sorting by written-up
+   * outcomes would put whoever keeps the tidiest notes at the top of a board
+   * about who did the most work.
+   */
+  it('ranks by dials rather than by write-ups', async () => {
+    logged([
+      call(KIANA, 'user_kiana'),
+      call(KIANA, 'user_kiana'),
+      call(KIANA, 'user_kiana'),
+      dialled(EVAN, 'user_evan'),
+      dialled(EVAN, 'user_evan'),
+      dialled(EVAN, 'user_evan'),
+      dialled(EVAN, 'user_evan'),
+    ]);
+
+    expect((await run())[0]!.name).toBe('Evan Buoncristiano');
+  });
+
+  it('shows somebody who dialled and wrote nothing up at all', async () => {
+    logged([dialled(EVAN, 'user_evan'), dialled(EVAN, 'user_evan')]);
+
+    expect(await run()).toEqual([
+      {
+        userId: 'user_evan',
+        name: 'Evan Buoncristiano',
+        calls: 0,
+        dials: 2,
+        mockupsRequested: 0,
+        intoFollowUp: 0,
+      },
+    ]);
   });
 });

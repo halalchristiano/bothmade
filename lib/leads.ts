@@ -203,13 +203,32 @@ export const PAIN_POINTS: Record<PainPointKey, string> = {
   'disconnected-tools': "Tools don't talk to each other",
 };
 
-export const LEAD_ACTIVITY_TYPES = ['note', 'email', 'call', 'loom', 'proposal', 'objection'] as const;
+/**
+ * `dial` is the one type in here nobody writes by hand.
+ *
+ * Every other entry is somebody's account of what happened. A dial is the
+ * system's: the moment a number was actually tapped, recorded before the
+ * phone app takes the screen, with no button to press and no way to skip it.
+ * That distinction is the whole point — "how many calls did you make" and
+ * "how many did you tell me about" are different questions, and only one of
+ * them could be answered before.
+ */
+export const LEAD_ACTIVITY_TYPES = [
+  'note',
+  'email',
+  'call',
+  'dial',
+  'loom',
+  'proposal',
+  'objection',
+] as const;
 export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
 
 export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
   note: 'Note',
   email: 'Email',
   call: 'Call',
+  dial: 'Number dialled',
   loom: 'Loom Video',
   proposal: 'Proposal',
   objection: 'Objection',
@@ -235,6 +254,7 @@ export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
 export const LEAD_ACTIVITY_SEEN_BY_LEAD: Record<LeadActivityType, boolean> = {
   note: false,
   call: false,
+  dial: false,
   objection: false,
   email: true,
   proposal: true,

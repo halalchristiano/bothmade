@@ -75,6 +75,8 @@ interface TodayData {
       userId: string;
       name: string;
       calls: number;
+      /** Numbers actually dialled, recorded by the app rather than typed in. */
+      dials: number;
       mockupsRequested: number;
       intoFollowUp: number;
     }>;
@@ -393,17 +395,25 @@ export function Today() {
 function TodayOnThePhones({
   team,
 }: {
-  team: Array<{ userId: string; name: string; calls: number; mockupsRequested: number; intoFollowUp: number }>;
+  team: Array<{
+    userId: string;
+    name: string;
+    calls: number;
+    dials: number;
+    mockupsRequested: number;
+    intoFollowUp: number;
+  }>;
 }) {
   if (team.length === 0) return null;
 
   const total = team.reduce(
     (a, p) => ({
+      dials: a.dials + p.dials,
       calls: a.calls + p.calls,
       mockups: a.mockups + p.mockupsRequested,
       followUp: a.followUp + p.intoFollowUp,
     }),
-    { calls: 0, mockups: 0, followUp: 0 }
+    { dials: 0, calls: 0, mockups: 0, followUp: 0 }
   );
 
   return (
@@ -413,8 +423,8 @@ function TodayOnThePhones({
           On the phones today
         </p>
         <p className="text-[11px] text-white/35">
-          {total.calls} {total.calls === 1 ? 'call' : 'calls'} · {total.mockups}{' '}
-          {total.mockups === 1 ? 'mockup' : 'mockups'} · {total.followUp} into follow-up
+          {total.dials} dialled · {total.calls} written up · {total.mockups}{' '}
+          {total.mockups === 1 ? 'mockup' : 'mockups'}
         </p>
       </div>
 
@@ -425,9 +435,27 @@ function TodayOnThePhones({
             className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
           >
             <span className="text-sm font-semibold text-white min-w-0 truncate">{p.name}</span>
+            {/*
+              * Dials first, because it is the only number here nobody typed.
+              * It is recorded as the number is tapped, before the phone app
+              * takes the screen — there is nothing to press and no way to
+              * skip it.
+              */}
             <span className="text-sm text-white/80">
-              {p.calls} {p.calls === 1 ? 'call' : 'calls'}
+              {p.dials} dialled
             </span>
+            <span className="text-xs text-white/45">{p.calls} written up</span>
+            {/*
+              * The gap, said out loud, and only when it is big enough to
+              * mean something. Three dials and two write-ups is somebody
+              * mid-afternoon; fifteen and two is a day of work that left no
+              * record of what happened on it.
+              */}
+            {p.dials - p.calls >= 3 && (
+              <span className="text-xs text-amber-300/85">
+                {p.dials - p.calls} with no outcome logged
+              </span>
+            )}
             {/*
               * The two outcomes, and only when they happened. A dash where a
               * number could be reads as a failure to record something; an

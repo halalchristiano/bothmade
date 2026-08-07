@@ -780,7 +780,27 @@ export function QueueView() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
-  const startCall = (row: CallRow) => {
+  /**
+   * Tells the server a number was dialled, as it is dialled.
+   *
+   * `keepalive` is the whole trick. The phone app is about to take the screen
+   * and the page may be frozen or discarded a moment later; an ordinary fetch
+   * would be cancelled mid-flight and the dial would go unrecorded exactly
+   * when it mattered. This is the one measurement in the system nobody has to
+   * remember to take, so it has to survive the thing that happens next.
+   */
+  const recordDial = (leadId: string) => {
+    try {
+      fetch(`/api/admin/leads/${leadId}/dial`, { method: 'POST', keepalive: true }).catch(
+        () => {}
+      );
+    } catch {
+      /* a measurement that fails must never look like a call that failed */
+    }
+  };
+
+  const startCall = (row: CallRow, dialled = false) => {
+    if (dialled) recordDial(row.id);
     setQuickOutcomeError('');
     setPendingCalls((prev) => {
       // Re-dialling the same business is the same unlogged call, not a second
@@ -1141,7 +1161,7 @@ export function QueueView() {
             </Link>
             <a
               href={`tel:${nextUp.phone}`}
-              onClick={() => startCall(nextUp)}
+              onClick={() => startCall(nextUp, true)}
               aria-label={`Call ${nextUp.company}`}
               className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/15 px-3.5 py-2.5 text-sm font-semibold hover:bg-white/5 transition-colors"
             >
@@ -1549,7 +1569,7 @@ export function QueueView() {
                         </Link>
                         <a
                           href={`tel:${row.phone}`}
-                          onClick={() => startCall(row)}
+                          onClick={() => startCall(row, true)}
                           title={`Call ${row.phone}`}
                           aria-label={`Call ${row.company} on ${row.phone}`}
                           className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors"
@@ -1571,6 +1591,13 @@ export function QueueView() {
                           * lead onto the same unlogged pile that tapping Dial
                           * does, so there is one way to log a call and not
                           * two that can disagree.
+                          *
+                          * It deliberately does NOT record a dial. A dial is
+                          * the one thing in this system the machine saw for
+                          * itself; a call somebody says they made from their
+                          * own handset is a claim, and mixing the two would
+                          * cost the measurement the only property that makes
+                          * it worth having.
                           */}
                         <button
                           onClick={() => startCall(row)}

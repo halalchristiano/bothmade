@@ -255,27 +255,54 @@ export async function GET(request: NextRequest) {
      * question: it is the most recent activity of ANY type, so a lead rung on
      * Monday and emailed on Tuesday looks unrung.
      */
-    const lastCallByLead = new Map<string, { at: Date; byId: string | null; byName: string }>();
+    /*
+     * Two questions, deliberately two queries, because a dial and a logged
+     * call are not interchangeable.
+     *
+     *  - `lastTouchByLead` is for the collision warning, and counts a dial as
+     *    much as a call. The dangerous window is the ten minutes after
+     *    somebody tapped a number and before they have written up what
+     *    happened, which is exactly when the lead still looks untouched to
+     *    everybody else.
+     *  - `lastCallByLead` is for the mockup band, and counts only a logged
+     *    outcome. A number that rang out is not somebody having asked what
+     *    they thought of the mockup, and letting a dial clear that band would
+     *    quietly drop the most valuable call on the sheet.
+     */
+    const lastTouchByLead = new Map<string, { at: Date; byId: string | null; byName: string }>();
+    const lastCallByLead = new Map<string, { at: Date }>();
+
     if (leads.length > 0) {
-      const calls = await prisma.leadActivity.findMany({
-        where: { type: 'call', leadId: { in: leads.map((l) => l.id) } },
-        orderBy: { createdAt: 'desc' },
-        // The newest call per lead, in one query rather than one per lead.
-        distinct: ['leadId'],
-        select: {
-          leadId: true,
-          createdAt: true,
-          createdById: true,
-          createdBy: { select: { name: true } },
-        },
-      });
-      for (const c of calls) {
-        lastCallByLead.set(c.leadId, {
-          at: c.createdAt,
-          byId: c.createdById,
-          byName: c.createdBy?.name || 'Someone',
+      const ids = leads.map((l) => l.id);
+      const [touches, calls] = await Promise.all([
+        prisma.leadActivity.findMany({
+          where: { type: { in: ['call', 'dial'] }, leadId: { in: ids } },
+          orderBy: { createdAt: 'desc' },
+          // The newest per lead, in one query rather than one per lead.
+          distinct: ['leadId'],
+          select: {
+            leadId: true,
+            createdAt: true,
+            createdById: true,
+            createdBy: { select: { name: true } },
+          },
+        }),
+        prisma.leadActivity.findMany({
+          where: { type: 'call', leadId: { in: ids } },
+          orderBy: { createdAt: 'desc' },
+          distinct: ['leadId'],
+          select: { leadId: true, createdAt: true },
+        }),
+      ]);
+
+      for (const t of touches) {
+        lastTouchByLead.set(t.leadId, {
+          at: t.createdAt,
+          byId: t.createdById,
+          byName: t.createdBy?.name || 'Someone',
         });
       }
+      for (const c of calls) lastCallByLead.set(c.leadId, { at: c.createdAt });
     }
 
     // Compare on date, not timestamp — a follow-up set for "today" shouldn't
@@ -318,6 +345,7 @@ export async function GET(request: NextRequest) {
        * take it from there.
        */
       const lastCall = lastCallByLead.get(lead.id) ?? null;
+      const lastTouch = lastTouchByLead.get(lead.id) ?? null;
       const mockupNeedsCall =
         !!mockupSentAt && (!lastCall || lastCall.at.getTime() < mockupSentAt.getTime());
 
@@ -424,11 +452,11 @@ export async function GET(request: NextRequest) {
          * hour ago" call for completely different behaviour, and a row that
          * cannot tell them apart is one you learn to ignore.
          */
-        lastCall: lastCall
+        lastCall: lastTouch
           ? {
-              at: lastCall.at,
-              byName: lastCall.byId === session.userId ? 'You' : lastCall.byName,
-              byYou: lastCall.byId === session.userId,
+              at: lastTouch.at,
+              byName: lastTouch.byId === session.userId ? 'You' : lastTouch.byName,
+              byYou: lastTouch.byId === session.userId,
             }
           : null,
         /*

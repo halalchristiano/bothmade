@@ -178,7 +178,11 @@ export default function CallCockpit() {
    * and cannot disagree with the history shown further down.
    */
   const recentCall = useMemo(() => {
-    const last = lead?.activities?.find((a) => a.type === 'call');
+    // A dial counts as much as a logged call here — more, if anything. The
+    // dangerous window is the ten minutes after somebody tapped a number and
+    // before they have written up what happened, which is exactly when the
+    // lead still looks untouched to everybody else.
+    const last = lead?.activities?.find((a) => a.type === 'call' || a.type === 'dial');
     if (!last) return null;
     const minsAgo = Math.round((Date.now() - new Date(last.createdAt).getTime()) / 60000);
     if (minsAgo > 180) return null;
@@ -349,6 +353,26 @@ export default function CallCockpit() {
    * than no automation at all: it makes the rep distrust every other thing
    * the system does on their behalf.
    */
+  /**
+   * Tells the server the number was dialled, as it is dialled.
+   *
+   * `keepalive` is the whole trick: the phone app is about to take the screen
+   * and the page may be frozen a moment later, so an ordinary fetch would be
+   * cancelled mid-flight exactly when the record mattered. This is the one
+   * fact in the system nobody has to remember to record, so it has to survive
+   * the thing that happens next.
+   */
+  function recordDial() {
+    if (!lead) return;
+    try {
+      fetch(`/api/admin/leads/${lead.id}/dial`, { method: 'POST', keepalive: true }).catch(
+        () => {}
+      );
+    } catch {
+      /* a measurement that fails must never look like a call that failed */
+    }
+  }
+
   async function stopAutoFollowUp() {
     if (!lead) return;
     setMockupSaving(true);
@@ -483,6 +507,7 @@ export default function CallCockpit() {
               {lead.phone ? (
                 <a
                   href={`tel:${lead.phone}`}
+                  onClick={recordDial}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90"
                 >
                   <Phone size={15} />

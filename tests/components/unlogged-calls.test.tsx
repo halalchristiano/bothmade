@@ -92,6 +92,12 @@ const dial = async (company: string) => {
   await userEvent.click(link);
 };
 
+/** Every request the page made, so a POST can be told from the page load. */
+const posted = (path: RegExp) =>
+  (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.filter(
+    ([url, init]) => path.test(String(url)) && init?.method === 'POST'
+  );
+
 const stored = () => JSON.parse(sessionStorage.getItem('pendingCalls') || '[]');
 
 describe('dialling more than one business', () => {
@@ -295,5 +301,55 @@ describe('a business somebody else just rang', () => {
     render(<QueueView />);
 
     expect(await screen.findByText(/Rung 5 times and never actually reached/i)).toBeTruthy();
+  });
+});
+
+/**
+ * The dial the system records for itself.
+ *
+ * Everything else in a lead's history is somebody's account of what happened.
+ * This one is a measurement, taken as the number is tapped and before the
+ * phone app takes the screen — nothing to press, no way to skip it. Which is
+ * the point: "how many calls did you make" stops being a question anybody has
+ * to be asked.
+ */
+describe('what the system records without being asked', () => {
+  it('tells the server the moment a number is dialled', async () => {
+    render(<QueueView />);
+
+    await dial('Ridgeline Roofing');
+
+    expect(posted(/\/api\/admin\/leads\/lead_1\/dial$/)).toHaveLength(1);
+  });
+
+  /**
+   * `keepalive` is the whole trick. The phone app is about to take the screen
+   * and the page may be frozen a moment later; an ordinary request would be
+   * cancelled mid-flight exactly when the record mattered most.
+   */
+  it('sends it in a way that survives the page being taken over', async () => {
+    render(<QueueView />);
+
+    await dial('Ridgeline Roofing');
+
+    const [, init] = posted(/\/dial$/)[0]!;
+    expect(init?.keepalive).toBe(true);
+  });
+
+  /**
+   * A call somebody says they made from their own handset is a claim, not an
+   * observation. Recording it as a dial would cost the measurement the only
+   * property that makes it worth having.
+   */
+  it('does not record a dial for a call logged after the fact', async () => {
+    render(<QueueView />);
+
+    await userEvent.click(
+      await screen.findByTitle(/Log a call to Ridgeline Roofing you already made/i)
+    );
+
+    expect(posted(/\/dial$/)).toHaveLength(0);
+    // Still prompts for the outcome, though — the call did happen.
+    expect(await screen.findByText(/how did it go/i)).toBeTruthy();
   });
 });
