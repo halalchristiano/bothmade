@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
+import { recordUnsubscribe } from '@/lib/unsubscribe-record';
 
 /**
  * Stop emailing this lead. POST only, deliberately.
@@ -64,33 +64,9 @@ export async function POST(request: NextRequest) {
   );
   if (limited) return limited;
 
-  const lead = await prisma.lead
-    .findUnique({ where: { shareToken: token }, select: { id: true, doNotContact: true } })
-    .catch(() => null);
-
-  // Idempotent: unsubscribing twice is not an error, and telling somebody
-  // their second attempt failed would be the worst possible moment to do it.
-  if (lead && !lead.doNotContact) {
-    await prisma.lead
-      .update({
-        where: { id: lead.id },
-        data: { doNotContact: true, doNotContactReason: 'Unsubscribed from a follow-up email.' },
-      })
-      .catch((e) => console.error('Unsubscribe not recorded:', e));
-
-    // On the timeline rather than only in a column, so a rep who wonders why
-    // this lead went quiet sees the answer in the same place as everything
-    // else that happened to them.
-    await prisma.leadActivity
-      .create({
-        data: {
-          leadId: lead.id,
-          type: 'note',
-          content: 'Unsubscribed from follow-up emails. Do not contact by email.',
-        },
-      })
-      .catch((e) => console.error('Unsubscribe activity not written:', e));
-  }
+  // Shared with the mail client's one-click POST at ./[token]/route.ts, so an
+  // unsubscribe means the same thing whichever control the recipient used.
+  await recordUnsubscribe(token);
 
   // 303 so the browser follows with a GET and a refresh cannot re-post.
   return NextResponse.redirect(`${site}/stop/${encodeURIComponent(token)}?done=1`, 303);

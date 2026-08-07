@@ -11,6 +11,7 @@ import { type MockupKind } from '@/lib/mockup-kinds';
 export { MOCKUP_KINDS, readMockupKind, type MockupKind } from '@/lib/mockup-kinds';
 import { firstNameOf, personalize, splitDraft } from '@/lib/cold-email';
 import { RESET_TOKEN_TTL_LABEL } from '@/lib/password-policy';
+import { unsubscribeLinks } from '@/lib/unsubscribe';
 import {
   esc,
   escMultiline,
@@ -21,6 +22,7 @@ import {
   sanitizeDisplayName,
   sanitizeEmailAddress,
   sanitizeEmailAddresses,
+  sanitizeHeaderValue,
   sanitizeSubject,
 } from '@/lib/html';
 
@@ -95,6 +97,11 @@ export interface EmailData {
   fromName?: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
+  /**
+   * Becomes `List-Unsubscribe` on whichever transport ends up carrying this.
+   * Set on outreach, absent from client mail. See lib/unsubscribe.ts.
+   */
+  unsubscribeUrl?: string | null;
 }
 
 /**
@@ -194,6 +201,7 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
           html: data.html,
           replyTo,
           attachments: data.attachments,
+          unsubscribeUrl: data.unsubscribeUrl,
         })
       )
     );
@@ -228,6 +236,19 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
       text: htmlToPlainText(data.html),
       ...(replyTo ? { replyTo } : {}),
       ...(data.attachments ? { attachments: data.attachments } : {}),
+      // The fallback transport has to carry the header too. A cold email that
+      // gets an Unsubscribe control in Gmail on the delegated path and none
+      // when it falls back here is a sender that looks inconsistent to the
+      // one system judging it — and inconsistent is how a domain gets scored
+      // as a bulk sender that only sometimes honours opt-outs.
+      ...(data.unsubscribeUrl
+        ? {
+            headers: {
+              'List-Unsubscribe': `<${sanitizeHeaderValue(data.unsubscribeUrl)}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            },
+          }
+        : {}),
     });
 
     if (result.error) {
@@ -290,6 +311,20 @@ function renderShell(opts: {
    * honestly be claimed to mean.
    */
   trackingPixelUrl?: string | null;
+  /**
+   * The way out, in the footer of anything sent to somebody who did not ask
+   * for it.
+   *
+   * The shell has always carried a physical address, which is half of what US
+   * law requires of a commercial email. The other half is a working opt-out,
+   * and cold email had none — so the only exit a recipient had was "Report
+   * spam". Complaint rate is the number that restricted this sending account,
+   * and every complaint here was a complaint the app forced.
+   *
+   * Deliberately absent from client mail: an invoice or a project update is
+   * not marketing, and offering to stop sending those is nonsense.
+   */
+  unsubscribeUrl?: string | null;
 }): string {
   const { bodyHtml } = opts;
   const eyebrow = esc(opts.eyebrow);
@@ -370,6 +405,13 @@ function renderShell(opts: {
                 <p style="margin:10px 0 0 0; font-size:11px; line-height:1.5; color:rgba(255,255,255,0.25);">
                   ${COMPANY_NAME}, ${COMPANY_ADDRESS_INLINE}
                 </p>
+                ${
+                  opts.unsubscribeUrl
+                    ? `<p style="margin:8px 0 0 0; font-size:11px; line-height:1.5; color:rgba(255,255,255,0.3);">
+                  Not interested? <a href="${opts.unsubscribeUrl}" style="color:rgba(255,255,255,0.5);">Unsubscribe</a> and we will not contact you again.
+                </p>`
+                    : ''
+                }
               </td>
             </tr>
           </table>
@@ -1306,10 +1348,16 @@ export async function sendEnquiryNudge(input: {
   copy: { subject: string; opening: string; closing: string };
 }): Promise<SendResult> {
   const stopUrl = `${resolveSiteUrl()}/stop/${input.shareToken}`;
+  // The sentence in the body is for the reader; the header is for Gmail,
+  // which puts its own Unsubscribe control beside the sender's name and — since
+  // its 2024 bulk-sender rules — judges a daily sequence without one harder on
+  // complaints. See lib/unsubscribe.ts for why the two URLs differ.
+  const oneClickUrl = unsubscribeLinks(resolveSiteUrl(), input.shareToken)?.oneClickUrl;
 
   return sendEmailDetailed({
     to: input.toEmail,
     subject: input.copy.subject,
+    unsubscribeUrl: oneClickUrl,
     html: renderShell({
       eyebrow: 'Following up',
       title: input.copy.subject,

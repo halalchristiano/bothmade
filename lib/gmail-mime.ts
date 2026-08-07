@@ -115,6 +115,20 @@ export function encodeMimeMessage(opts: {
    * barred from the path built for that.
    */
   attachments?: { filename: string; content: Buffer; contentType?: string }[];
+  /**
+   * One-click unsubscribe, as the mail clients want it.
+   *
+   * A visible link in the body is what the law asks for. This is what GMAIL
+   * asks for: since its 2024 bulk-sender rules, a sender without
+   * `List-Unsubscribe` is judged harder on complaints, and the complaint rate
+   * is the number that restricted this account. It also puts an "Unsubscribe"
+   * control in Gmail's own header UI — which matters because the alternative
+   * that recipient reaches for is "Report spam", and that costs far more.
+   *
+   * `List-Unsubscribe-Post` is the half that makes it one click rather than a
+   * page visit, and it is the reason the endpoint behind it is a POST.
+   */
+  unsubscribeUrl?: string | null;
 }): string {
   const from = sanitizeHeaderValue(opts.from);
   const to = sanitizeEmailAddress(opts.to);
@@ -171,11 +185,22 @@ export function encodeMimeMessage(opts: {
     `--${boundary}--`,
   ];
 
+  // Sanitised like every other header value: this arrives from a caller
+  // building a URL out of a database token, and a newline in a header is a
+  // header injection wherever it comes from.
+  const unsubscribe = opts.unsubscribeUrl ? sanitizeHeaderValue(opts.unsubscribeUrl) : null;
+
   const headers = [
     `From: ${from}`,
     `To: ${to}`,
     ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
     `Subject: ${encodedSubject}`,
+    ...(unsubscribe
+      ? [
+          `List-Unsubscribe: <${unsubscribe}>`,
+          'List-Unsubscribe-Post: List-Unsubscribe=One-Click',
+        ]
+      : []),
     'MIME-Version: 1.0',
   ];
 

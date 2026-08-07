@@ -19,6 +19,7 @@ import { buildFallbackColdEmailDraft, advanceToContactedOnOutreach } from '@/lib
 import { FALLBACK_SENDER_NAME, renderColdEmail } from '@/lib/cold-email';
 import { leadOpenPixelUrl } from '@/lib/lead-opens';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { unsubscribeLinks } from '@/lib/unsubscribe';
 
 const MAX_LEADS = 200;
 
@@ -297,9 +298,21 @@ export async function POST(request: NextRequest) {
       // end up in a client's inbox.
       const bodyHtml = escParagraphs(body);
 
+      /*
+       * The way out, which cold email did not have.
+       *
+       * The shell has always carried a physical address — half of what US law
+       * asks of a commercial email. The other half is a working opt-out, and
+       * without one the only exit a recipient had was "Report spam". Complaint
+       * rate is the number that restricted this sending account, so every one
+       * of those was a complaint the app forced.
+       */
+      const unsubscribe = unsubscribeLinks(resolveSiteUrl(), lead.shareToken);
+
       const html = renderShell({
         title: subject,
         bodyHtml,
+        unsubscribeUrl: unsubscribe?.pageUrl,
         footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
         footerAvatarUrl: sender.avatarUrl,
         // One pixel, so the silence afterwards can be read. Without it every
@@ -316,7 +329,7 @@ export async function POST(request: NextRequest) {
           gmailAppPassword: sender.gmailAppPassword,
           googleRefreshToken: sender.googleRefreshToken,
         },
-        { to: lead.email, subject, html },
+        { to: lead.email, subject, html, unsubscribeUrl: unsubscribe?.oneClickUrl },
         { gmailTransport, gmailOAuthClient }
       );
 

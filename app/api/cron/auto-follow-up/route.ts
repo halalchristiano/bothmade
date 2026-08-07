@@ -5,6 +5,7 @@ import { decryptSecret } from '@/lib/crypto';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { unsubscribeLinks } from '@/lib/unsubscribe';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
 import { checkSendBudget } from '@/lib/send-budget';
 import {
@@ -216,11 +217,12 @@ export async function GET(request: NextRequest) {
     for (const lead of batch) {
       // 1-based: stage 0 on the lead means none have gone, so this is the first.
       const stage = lead.autoFollowUpStage + 1;
+      const unsubscribe = unsubscribeLinks(site, lead.shareToken);
       const mail = autoFollowUpEmail(
         {
           company: lead.company,
           contactName: lead.contactName,
-          stopUrl: `${site}/stop/${lead.shareToken}`,
+          stopUrl: unsubscribe?.pageUrl ?? `${site}/stop/${lead.shareToken}`,
           observation: lead.personalizedObservation,
         },
         stage
@@ -236,7 +238,17 @@ export async function GET(request: NextRequest) {
             ? decryptSecret(sender.googleRefreshToken)
             : null,
         },
-        { to: lead.email as string, subject: mail.subject, html: renderShell({ title: mail.subject, bodyHtml: mail.html, footerNote: `${sender.name || 'Bothmade'} — bothmade.studio` }) }
+        {
+          to: lead.email as string,
+          subject: mail.subject,
+          html: renderShell({
+            title: mail.subject,
+            bodyHtml: mail.html,
+            footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
+            unsubscribeUrl: unsubscribe?.pageUrl,
+          }),
+          unsubscribeUrl: unsubscribe?.oneClickUrl,
+        }
       );
 
       if (!result.ok) {

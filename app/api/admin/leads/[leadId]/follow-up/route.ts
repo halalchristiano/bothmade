@@ -6,6 +6,8 @@ import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
 import { escParagraphs } from '@/lib/html';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
+import { resolveSiteUrl } from '@/lib/site-url';
+import { unsubscribeLinks } from '@/lib/unsubscribe';
 
 /**
  * Sends the post-call follow-up as the rep, from their own mailbox.
@@ -74,6 +76,18 @@ export async function POST(
 
     const bodyHtml = escParagraphs(body);
 
+    /*
+     * The way out travels with the follow-up too.
+     *
+     * This one is hand-written and follows a conversation, so it feels like
+     * ordinary correspondence — but it goes to somebody who never asked to
+     * hear from us, which is the only test that matters. Leaving it off here
+     * would mean a prospect who wants to stop has an unsubscribe in the first
+     * email and none in the second, and the control they reach for instead is
+     * "Report spam".
+     */
+    const unsubscribe = unsubscribeLinks(resolveSiteUrl(), lead.shareToken);
+
     const result = await sendAsUser(
       {
         name: sender.name,
@@ -90,7 +104,9 @@ export async function POST(
           bodyHtml,
           footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
           footerAvatarUrl: sender.avatarUrl,
+          unsubscribeUrl: unsubscribe?.pageUrl,
         }),
+        unsubscribeUrl: unsubscribe?.oneClickUrl,
       }
     );
 

@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { decryptSecret } from '@/lib/crypto';
 import { buildFromHeader } from '@/lib/gmail-mime';
-import { sanitizeEmailAddress, sanitizeSubject } from '@/lib/html';
+import { sanitizeEmailAddress, sanitizeHeaderValue, sanitizeSubject } from '@/lib/html';
 import { sendEmail as sendViaResend } from '@/lib/email';
 import { sendAsDelegatedUser, isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient, sendViaGmailOAuth, type GmailOAuthClient } from '@/lib/gmail-oauth';
@@ -19,6 +19,16 @@ export interface OutgoingEmail {
   to: string;
   subject: string;
   html: string;
+  /**
+   * One-click unsubscribe, for anything sent to somebody who did not ask.
+   *
+   * Set on cold outreach and left off client mail. It becomes the
+   * `List-Unsubscribe` header, which is what Gmail's bulk-sender rules want
+   * and what puts an Unsubscribe control in Gmail's own UI — the alternative
+   * a recipient reaches for otherwise is "Report spam", and complaint rate is
+   * the number that restricted this account.
+   */
+  unsubscribeUrl?: string | null;
 }
 
 export interface SendAsUserResult {
@@ -91,6 +101,7 @@ export async function sendAsUser(
     to: recipient,
     subject: sanitizeSubject(rawEmail.subject),
     html: rawEmail.html,
+    unsubscribeUrl: rawEmail.unsubscribeUrl ?? null,
   };
 
   // Previewing: hand it over rather than sending, before any of the four
@@ -106,6 +117,7 @@ export async function sendAsUser(
       to: email.to,
       subject: email.subject,
       html: email.html,
+      unsubscribeUrl: email.unsubscribeUrl,
     });
     if (sent) return { ok: true, sentVia: 'delegated' };
   }
@@ -119,6 +131,7 @@ export async function sendAsUser(
         to: email.to,
         subject: email.subject,
         html: email.html,
+        unsubscribeUrl: email.unsubscribeUrl,
       });
       if (sent) return { ok: true, sentVia: 'oauth' };
     } catch (error) {
@@ -142,6 +155,14 @@ export async function sendAsUser(
         to: email.to,
         subject: email.subject,
         html: email.html,
+        ...(email.unsubscribeUrl
+          ? {
+              headers: {
+                'List-Unsubscribe': `<${sanitizeHeaderValue(email.unsubscribeUrl)}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              },
+            }
+          : {}),
       });
       return { ok: true, sentVia: 'gmail-app-password' };
     } catch (error) {
@@ -155,6 +176,7 @@ export async function sendAsUser(
     html: email.html,
     fromName: sender.name || undefined,
     replyTo: sender.email || undefined,
+    unsubscribeUrl: email.unsubscribeUrl,
   });
   return { ok: sent, sentVia: sent ? 'resend' : 'failed' };
 }

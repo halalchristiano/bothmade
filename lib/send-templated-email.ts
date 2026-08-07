@@ -8,6 +8,7 @@ import { type GmailOAuthClient } from '@/lib/gmail-oauth';
 import { advanceToContactedOnOutreach } from '@/lib/leads';
 import { leadOpenPixelUrl } from '@/lib/lead-opens';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { unsubscribeLinks } from '@/lib/unsubscribe';
 
 export interface SendTemplatedEmailInput {
   senderId: string;
@@ -129,6 +130,27 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     };
   }
 
+  /*
+   * The way out, on anything going to a lead.
+   *
+   * Same test as the pixel below: a leadId means this is outreach to somebody
+   * who did not ask for it, and US law wants a working opt-out on those. No
+   * leadId means a client or a teammate — an invoice does not get an
+   * unsubscribe link, and offering one would be nonsense.
+   *
+   * A lead whose token cannot be read gets no link rather than a broken one.
+   * The alternative is an unsubscribe that is offered and does nothing, which
+   * is worse than not offering it: the recipient presses it, nothing happens,
+   * and the next control they try is "Report spam".
+   */
+  const leadToken = leadId
+    ? await prisma.lead
+        .findUnique({ where: { id: leadId }, select: { shareToken: true } })
+        .then((l) => l?.shareToken ?? null)
+        .catch(() => null)
+    : null;
+  const unsubscribe = unsubscribeLinks(resolveSiteUrl(), leadToken);
+
   const html = renderShell({
     eyebrow: built.eyebrow,
     title: built.title,
@@ -139,6 +161,7 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
     ctaUrl: built.ctaUrl,
     footerNote: `${sender.name || 'Bothmade'} — bothmade.studio`,
     footerAvatarUrl: sender.avatarUrl,
+    unsubscribeUrl: unsubscribe?.pageUrl,
     /*
      * The open pixel, on every email that goes to a lead.
      *
@@ -166,7 +189,7 @@ export async function sendTemplatedEmail(input: SendTemplatedEmailInput): Promis
       gmailAppPassword: sender.gmailAppPassword,
       googleRefreshToken: sender.googleRefreshToken,
     },
-    { to, subject: built.subject, html },
+    { to, subject: built.subject, html, unsubscribeUrl: unsubscribe?.oneClickUrl },
     { gmailTransport, gmailOAuthClient }
   );
 

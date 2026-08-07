@@ -30,6 +30,8 @@ export async function sendAsDelegatedUser(
     subject: string;
     html: string;
     replyTo?: string | null;
+    /** Becomes List-Unsubscribe. See lib/gmail-mime.ts. */
+    unsubscribeUrl?: string | null;
     attachments?: { filename: string; content: Buffer; contentType?: string }[];
   }
 ): Promise<boolean> {
@@ -53,6 +55,7 @@ export async function sendAsDelegatedUser(
       html: opts.html,
       replyTo: opts.replyTo,
       attachments: opts.attachments,
+      unsubscribeUrl: opts.unsubscribeUrl,
     });
 
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
