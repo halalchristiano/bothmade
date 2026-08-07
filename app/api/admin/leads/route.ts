@@ -63,11 +63,55 @@ export async function GET(request: NextRequest) {
       where.clientTakenOnAt = { ...(wonFrom ? { gte: wonFrom } : {}), ...(wonTo ? { lte: wonTo } : {}) };
     }
 
+    /*
+     * The twenty-odd columns the board and the list actually render, out of
+     * the hundred-and-four a Lead carries.
+     *
+     * This was an `include`, so every row came back whole and was then spread
+     * into the response — the notes, the pain points, the address block, the
+     * entire enrichment side (ratings, review counts, three social URLs), the
+     * saved proposal JSON, the agreement statement. None of it is on either
+     * screen. On a book of a few hundred leads that is a payload measured in
+     * megabytes, sent again on every board open and every list filter, to
+     * render a card with a company name and a value on it.
+     *
+     * `shareToken` is the one worth naming separately. It is the capability
+     * secret for the public sign-and-pay page — the link that both shows a
+     * prospect their proposal and lets them agree the contract — and it was
+     * being handed to the browser for every lead in the book, on a screen
+     * that has no use for it. The endpoint is staff-only, so this is not a
+     * breach; it is a set of live signing keys sitting in a response body,
+     * in devtools, and in any HAR a support conversation asks for. Selecting
+     * fields explicitly is what stops the next column like it from joining
+     * them silently.
+     *
+     * `proposalTotalPrice` is here despite being on neither screen: dealValue
+     * below is computed from it.
+     */
     const leads = await prisma.lead.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        company: true,
+        contactName: true,
+        email: true,
+        phone: true,
+        status: true,
+        estimatedValue: true,
+        proposalTotalPrice: true,
+        hotLead: true,
+        qualifiedAt: true,
+        painPoints: true,
+        doNotContact: true,
+        coldEmailDraft: true,
+        coldEmailSentAt: true,
+        personalizedObservation: true,
+        emailDeliveryFailedAt: true,
+        emailDeliveryFailedReason: true,
+        updatedAt: true,
         assignedTo: { select: { id: true, name: true, email: true } },
-        activities: { orderBy: { createdAt: 'desc' }, take: 1 },
+        // One row: the list shows "last activity" and nothing reads further back.
+        activities: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -94,8 +138,39 @@ export async function GET(request: NextRequest) {
       if (p.convertedFromLeadId) soldFor.set(p.convertedFromLeadId, p.totalPrice);
     }
 
+    /*
+     * Written out rather than spread.
+     *
+     * `{ ...lead }` ships whatever the query happened to return, which makes
+     * the `select` above the only thing standing between a column and the
+     * browser. That is a guarantee held by a coincidence: the day somebody
+     * selects one more field to compute something with, the spread publishes
+     * it too, and nothing says so. Naming the response is what makes adding a
+     * column to the query and adding it to the payload two separate decisions.
+     *
+     * `proposalTotalPrice` is the demonstration — selected because dealValue
+     * is derived from it, and deliberately not sent.
+     */
     const withValue = leads.map((lead) => ({
-      ...lead,
+      id: lead.id,
+      company: lead.company,
+      contactName: lead.contactName,
+      email: lead.email,
+      phone: lead.phone,
+      status: lead.status,
+      estimatedValue: lead.estimatedValue,
+      hotLead: lead.hotLead,
+      qualifiedAt: lead.qualifiedAt,
+      painPoints: lead.painPoints,
+      doNotContact: lead.doNotContact,
+      coldEmailDraft: lead.coldEmailDraft,
+      coldEmailSentAt: lead.coldEmailSentAt,
+      personalizedObservation: lead.personalizedObservation,
+      emailDeliveryFailedAt: lead.emailDeliveryFailedAt,
+      emailDeliveryFailedReason: lead.emailDeliveryFailedReason,
+      updatedAt: lead.updatedAt,
+      assignedTo: lead.assignedTo,
+      activities: lead.activities,
       dealValue: soldFor.get(lead.id) ?? lead.proposalTotalPrice ?? lead.estimatedValue ?? null,
       /** True when dealValue is a real figure rather than somebody's estimate. */
       dealValueIsFirm: soldFor.has(lead.id) || Boolean(lead.proposalTotalPrice),
