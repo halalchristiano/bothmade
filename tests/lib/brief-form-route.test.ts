@@ -19,6 +19,29 @@ const leadFindUnique = vi.fn();
 const leadUpdate = vi.fn();
 const activityCreate = vi.fn();
 
+/**
+ * The notification, mocked rather than left to fall over.
+ *
+ * It used to be neither. `notifyBriefFormCompleted` falls through to
+ * `notifyAdmins`, which reads `prisma.user.findMany` — absent from the mock
+ * below, so every run of every test in this file threw inside the route's
+ * `.catch`, logged "Brief completion notify failed: TypeError", and passed
+ * anyway. The one thing this route does for the studio rather than the
+ * database — telling somebody a warm lead just answered a page of questions
+ * about their own business — was covered by nothing, and the noise it made
+ * on every run was the sort you learn to scroll past.
+ */
+const notifyBriefFormCompleted = vi.fn();
+vi.mock('@/lib/notify', () => ({
+  notifyBriefFormCompleted: (...args: unknown[]) => notifyBriefFormCompleted(...args),
+}));
+
+/** Same reason: the receipt to the client sends a real email otherwise. */
+const sendBriefReceivedEmail = vi.fn();
+vi.mock('@/lib/email', () => ({
+  sendBriefReceivedEmail: (...args: unknown[]) => sendBriefReceivedEmail(...args),
+}));
+
 /** Stand-in for the `rate_limits` table, so the limiter takes its real path. */
 const rateLimitRows = new Map<string, { count: number; windowStart: Date }>();
 
@@ -70,6 +93,8 @@ beforeEach(() => {
   leadFindUnique.mockReset().mockResolvedValue({ id: 'lead_1', painPoints: 'poor-seo' });
   leadUpdate.mockReset().mockResolvedValue({ id: 'lead_1' });
   activityCreate.mockReset().mockResolvedValue({ id: 'act_1' });
+  notifyBriefFormCompleted.mockReset().mockResolvedValue(undefined);
+  sendBriefReceivedEmail.mockReset().mockResolvedValue({ sent: true });
 });
 
 describe('POST /api/public/brief/[token]', () => {
@@ -118,6 +143,67 @@ describe('POST /api/public/brief/[token]', () => {
     expect(activityCreate.mock.calls[0][0].data.content).toContain(
       'Client filled in the brief form.'
     );
+  });
+
+  /**
+   * The point of the route, from the studio's side. Somebody who has just
+   * answered a page of questions about their own business is as warm as this
+   * gets, and the window on that is hours — so the telling has to happen, and
+   * it has to carry enough to act on without opening anything first.
+   */
+  it('tells the assigned rep, with enough to act on', async () => {
+    leadFindUnique.mockResolvedValue({
+      id: 'lead_1',
+      painPoints: '',
+      company: 'Linpotia Dental',
+      contactName: 'Sam',
+      email: 'sam@linpotia.test',
+      assignedTo: { email: 'evan@bothmade.test' },
+    });
+
+    await POST(request(ANSWERS, freshIp()), { params: params() });
+
+    expect(notifyBriefFormCompleted).toHaveBeenCalledTimes(1);
+    expect(notifyBriefFormCompleted.mock.calls[0][0]).toMatchObject({
+      toEmail: 'evan@bothmade.test',
+      leadId: 'lead_1',
+      company: 'Linpotia Dental',
+      contactName: 'Sam',
+      problemCount: 1,
+    });
+  });
+
+  /** No rep on the lead is not a reason for nobody to hear about it. */
+  it('still tells somebody when the lead has no rep on it', async () => {
+    leadFindUnique.mockResolvedValue({ id: 'lead_1', painPoints: '', company: 'Linpotia Dental' });
+
+    await POST(request(ANSWERS, freshIp()), { params: params() });
+
+    expect(notifyBriefFormCompleted).toHaveBeenCalledTimes(1);
+    // Null routes it to notifyAdmins rather than to a named inbox.
+    expect(notifyBriefFormCompleted.mock.calls[0][0].toEmail).toBeNull();
+  });
+
+  /**
+   * The answers are already saved by the time we try to tell anyone. A dead
+   * mail provider must not turn a successful write into a 500 the client is
+   * invited to retry — they would fill the form in twice and still not know.
+   */
+  it('still answers 200 when the notification cannot be sent', async () => {
+    notifyBriefFormCompleted.mockRejectedValue(new Error('Resend is down'));
+
+    const res = await POST(request(ANSWERS, freshIp()), { params: params() });
+
+    expect(res.status).toBe(200);
+    expect(leadUpdate).toHaveBeenCalled();
+  });
+
+  it('does not tell anybody about a token it does not recognise', async () => {
+    leadFindUnique.mockResolvedValue(null);
+
+    await POST(request(ANSWERS, freshIp()), { params: params('guessed') });
+
+    expect(notifyBriefFormCompleted).not.toHaveBeenCalled();
   });
 
   it('refuses a token it does not recognise, and says nothing about anybody', async () => {
