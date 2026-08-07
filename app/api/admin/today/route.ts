@@ -101,11 +101,32 @@ export async function GET(request: NextRequest) {
         })
         .catch(() => []),
 
+      /*
+       * Proposals out and unsigned, oldest first.
+       *
+       * Ordered and dated by `contractSentAt` — when the thing actually went
+       * out — rather than `updatedAt`, which is when the row was last written
+       * by anything. Chasing somebody is a write, so the old number reset to
+       * zero on the very act it was meant to prompt: the card said they had
+       * just received a proposal they had been sitting on for a fortnight.
+       *
+       * The sales dashboard was moved onto `contractSentAt` when the column
+       * landed and this was missed, so the two pages had started giving
+       * different answers to one question about one lead. `updatedAt` remains
+       * the fallback for proposals sent before the column existed, matching
+       * what sales-stats does, so the two agree on those too.
+       */
       prisma.lead.findMany({
         where: { contractStatus: 'sent', status: { notIn: ['won', 'lost'] } },
-        orderBy: { updatedAt: 'asc' },
+        orderBy: [{ contractSentAt: 'asc' }, { updatedAt: 'asc' }],
         take: 5,
-        select: { id: true, company: true, proposalTotalPrice: true, updatedAt: true },
+        select: {
+          id: true,
+          company: true,
+          proposalTotalPrice: true,
+          contractSentAt: true,
+          updatedAt: true,
+        },
       }),
 
       // Money that has been invoiced and is sitting there.

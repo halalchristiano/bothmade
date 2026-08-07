@@ -168,3 +168,42 @@ describe('a lane showing a page', () => {
     expect(screen.queryByText(/more →/)).toBeNull();
   });
 });
+
+/**
+ * How long a client has had their proposal.
+ *
+ * Two pages state this about the same lead, and they had drifted apart: the
+ * sales dashboard moved onto `contractSentAt` when the column landed and this
+ * card was missed, so it was still counting from `updatedAt` — when the row
+ * was last written by anything. Chasing somebody is a write, so the number
+ * reset to zero on the very act it was meant to prompt.
+ */
+describe('an unsigned proposal', () => {
+  const sentOn = (contractSentAt: string | null, updatedAt: string) => ({
+    ...EMPTY,
+    sell: {
+      ...EMPTY.sell,
+      unsignedProposalCount: 1,
+      unsignedProposals: [
+        { id: 'lead_1', company: 'Brandon Roofing', proposalTotalPrice: null, contractSentAt, updatedAt },
+      ],
+    },
+  });
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  it('counts from the day it went out, not the day we last chased', async () => {
+    // Sent a fortnight ago; chased this morning, which wrote the row.
+    serve(sentOn(daysAgo(14), daysAgo(0)));
+    render(<Today />);
+
+    await screen.findByText("Brandon Roofing has had their proposal 14 days and hasn't signed.");
+  });
+
+  it('falls back to the row for a proposal sent before the column existed', async () => {
+    serve(sentOn(null, daysAgo(6)));
+    render(<Today />);
+
+    await screen.findByText("Brandon Roofing has had their proposal 6 days and hasn't signed.");
+  });
+});

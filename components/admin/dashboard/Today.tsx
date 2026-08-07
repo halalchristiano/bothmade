@@ -61,6 +61,8 @@ interface TodayData {
       id: string;
       company: string;
       proposalTotalPrice: number | null;
+      /** When it went out. Null only for proposals predating the column. */
+      contractSentAt: string | null;
       updatedAt: string;
     }>;
     callsToday: number;
@@ -811,7 +813,9 @@ export function Today({
     // proposal sitting unsigned — a page contradicting itself in one glance.
     if (sell.unsignedProposals.length > 0) {
       const oldest = sell.unsignedProposals[0];
-      const days = daysSince(oldest.updatedAt);
+      // How long THEY have had it, not how long since we last touched the
+      // row — chasing them is a write, and it used to reset this to zero.
+      const days = daysSince(oldest.contractSentAt ?? oldest.updatedAt);
       return {
         text:
           days === 0
@@ -892,7 +896,7 @@ export function Today({
               key={l.id}
               href={`/admin/leads/${l.id}`}
               title={l.company}
-              detail={`Proposal sent ${daysSince(l.updatedAt)}d ago, unsigned`}
+              detail={`Proposal sent ${daysSince(l.contractSentAt ?? l.updatedAt)}d ago, unsigned`}
               right={l.proposalTotalPrice ? formatCents(l.proposalTotalPrice) : undefined}
             />
           ))}
