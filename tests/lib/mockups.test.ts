@@ -398,8 +398,40 @@ describe('what counts as still to build', () => {
       mockupFolderUrl: null,
       // Work already delivered by hand is finished, not outstanding.
       mockupSentManuallyAt: null,
+      // And so is work delivered the ordinary way, through the button.
+      mockups: { none: { sentAt: { not: null } } },
       OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
     });
+  });
+
+  /**
+   * The trap this closes, and it was the ordinary path rather than an edge
+   * case.
+   *
+   * Sending a mockup writes only to the mockup row — it has never touched
+   * `mockupRequested` or `mockupFolderUrl` on the lead. So a mockup that was
+   * built, sent, opened and replied to left this clause completely unchanged,
+   * and the lead sat on the build queue forever as work still to do. The
+   * dashboard said "6 mockups requested and not built" over a list that
+   * included mockups the client had already seen, which is how a designer
+   * learns to stop believing their own queue.
+   */
+  it('does not count a mockup the client has already been sent', () => {
+    expect(MOCKUPS_TO_BUILD_WHERE).toMatchObject({
+      mockups: { none: { sentAt: { not: null } } },
+    });
+  });
+
+  /**
+   * Sent, not merely built. A draft row with no `sentAt` is a mockup sitting
+   * on our own machine that nobody has been given — still outstanding work,
+   * and excluding it would hide the one state most worth chasing.
+   */
+  it('still counts a mockup that was built and never sent', () => {
+    const clause = MOCKUPS_TO_BUILD_WHERE.mockups as { none: { sentAt: unknown } };
+
+    expect(clause.none.sentAt).toEqual({ not: null });
+    expect(JSON.stringify(clause)).not.toContain('"status"');
   });
 
   /**

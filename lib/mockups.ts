@@ -110,6 +110,20 @@ export const MOCKUPS_TO_BUILD_WHERE: Prisma.LeadWhereInput = {
   // through the button, and a queue that cannot be told that keeps showing
   // finished work as outstanding forever.
   mockupSentManuallyAt: null,
+  /*
+   * And already delivered through the button, which is the ordinary way.
+   *
+   * Sending a mockup writes only to the mockup row — it has never touched
+   * `mockupRequested` or `mockupFolderUrl` on the lead. So a mockup that was
+   * built, sent, opened and replied to left this clause completely unchanged,
+   * and the lead sat on the build queue forever as work still to do. The
+   * dashboard said "6 mockups requested and not built" over a list that
+   * included mockups the client had already seen.
+   *
+   * A mockup somebody has received is built. That is what the tab means, and
+   * this is the only line that could say so.
+   */
+  mockups: { none: { sentAt: { not: null } } },
   OR: [{ mockupRequested: true }, { mockupUrl: { not: null } }],
 };
 
