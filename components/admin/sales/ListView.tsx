@@ -6,6 +6,7 @@ import { Users, Flame, Phone, Mail, Sparkles, CheckCircle2, Clock, Download, Upl
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, type LeadStatus } from '@/lib/leads';
 import { formatCents } from '@/lib/pricing';
 import { Card, SearchFilter, matchesSearch, clickableRowProps, BrandButton, Badge, EmptyState, inputClass } from '@/components/admin/ui';
+import { UkSweep } from '@/components/admin/sales/UkSweep';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
 import { ImportLeadsModal } from '@/components/admin/ImportLeadsModal';
@@ -791,6 +792,11 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
       )}
 
       <SearchFilter value={search} onChange={setSearch} count={searched.length} total={byStatus.length} />
+
+      {/* Renders nothing when the book is clean, which is the ordinary state.
+          A permanent panel offering to delete leads is one somebody eventually
+          presses by accident. */}
+      <UkSweep onDeleted={load} />
 
       {/* Saved views: a filter, a search and a sort under a name you chose.
           "My cold-call list" is a habit, not shared configuration, so these
