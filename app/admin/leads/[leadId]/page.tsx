@@ -35,6 +35,7 @@ import { SendMockupPanel } from '@/components/admin/SendMockupPanel';
 import type { MockupKind } from '@/lib/mockup-kinds';
 import { AddOnPicker, BaseServicePicker } from '@/components/admin/AddOnPicker';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
+import { Section } from '@/components/admin/ui';
 import { DealTimeline } from '@/components/admin/lead/DealTimeline';
 import { CustomLineItems } from '@/components/admin/lead/CustomLineItems';
 import {
@@ -127,7 +128,18 @@ interface LeadDetail {
   mockupUrl: string | null;
   mockupFolderUrl: string | null;
   mockupDeliveredAt: string | null;
-  mockups: Array<{ id: string; url: string; fileName: string | null; createdAt: string }>;
+  // Enough to say where the mockup is without opening the section — see
+  // `mockupSummary` below. The API has always returned these; the type simply
+  // never asked for them.
+  mockups: Array<{
+    id: string;
+    url: string;
+    fileName: string | null;
+    createdAt: string;
+    sentAt?: string | null;
+    viewCount?: number;
+  }>;
+  mockupSentManuallyAt: string | null;
   vercelDeployPassword: string | null;
   invoicePdfUrl: string | null;
   industry: string | null;
@@ -1491,6 +1503,63 @@ export default function LeadDetailPage() {
   // copy — the one that still opens with no signal and no password. The list
   // comes back newest first, so the first match is the current one.
   const latestMockupPdf = lead.mockups.find((m) => m.fileName)?.url ?? null;
+
+  const qualAnswered = [qualNeed, qualAuthority, qualBudget, qualTiming, qualMotivation].filter(
+    (v) => v.trim()
+  ).length;
+
+  /**
+   * What the Mockups section says while it is shut, and whether it opens.
+   *
+   * A collapsed box labelled "Mockups" is a question you have to open the box
+   * to answer, which is no better than the endless scroll it replaced. This
+   * is the answer: where the mockup is, in the words that decide what you do
+   * next. Sent-and-opened is a reason to ring today; requested-and-waiting is
+   * a reason to chase the designer; nothing at all is a reason to ask for one.
+   *
+   * It opens by itself only when somebody is being kept waiting — which is
+   * the one state where the detail underneath is worth the space.
+   */
+  const mockupSummary = (() => {
+    const sent = lead.mockups.find((m) => m.sentAt);
+    const built = lead.mockups.length > 0 || !!lead.mockupFolderUrl;
+
+    if (sent) {
+      const views = sent.viewCount ?? 0;
+      return {
+        open: false,
+        attention: false,
+        line: `Sent ${new Date(sent.sentAt as string).toLocaleDateString()} · ${
+          views > 0
+            ? `opened ${views} ${views === 1 ? 'time' : 'times'} — worth a call`
+            : 'not opened yet'
+        }`,
+      };
+    }
+    if (lead.mockupSentManuallyAt) {
+      return {
+        open: false,
+        attention: false,
+        line: `Sent by hand on ${new Date(lead.mockupSentManuallyAt).toLocaleDateString()}.`,
+      };
+    }
+    if (built) {
+      // The trap worth shouting about: the work is done and the client has
+      // never seen it. One click from finished, and invisible until now.
+      return { open: true, attention: true, line: 'Built and never sent — it is one click away.' };
+    }
+    if (lead.mockupRequested) {
+      const days = lead.mockupRequestedAt
+        ? Math.floor((Date.now() - new Date(lead.mockupRequestedAt).getTime()) / 86_400_000)
+        : 0;
+      return {
+        open: days >= 5,
+        attention: days >= 5,
+        line: `Asked for ${days === 0 ? 'today' : `${days} days ago`} — nobody has built it yet.`,
+      };
+    }
+    return { open: false, attention: false, line: 'None asked for, none built.' };
+  })();
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-10 overflow-x-hidden">
@@ -2897,8 +2966,12 @@ export default function LeadDetailPage() {
 
         {/* RIGHT: Activity timeline + logger */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-xl font-bold mb-4">Log Activity</h2>
+          <Section
+            id="lead-log-activity"
+            title="Log something by hand"
+            hint="A note, an objection, a call you made elsewhere — anything the buttons above don't cover."
+            summary="Nothing here needs your attention. Open it to add a note."
+          >
 
             <div className="flex flex-wrap gap-2 mb-3">
               {LEAD_ACTIVITY_TYPES.map((t) => (
@@ -2997,10 +3070,16 @@ export default function LeadDetailPage() {
             >
               {loggingActivity ? 'Saving...' : 'Log Activity'}
             </button>
-          </div>
+          </Section>
 
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-lg font-bold mb-1">Mockups</h2>
+          <Section
+            id="lead-mockups"
+            title="Mockups"
+            hint="What we built for them, and whether they have looked at it."
+            defaultOpen={mockupSummary.open}
+            attention={mockupSummary.attention}
+            summary={mockupSummary.line}
+          >
             {lead.mockupFolderUrl ? (
               <p className="text-xs text-emerald-300 mb-3">
                 Latest delivered {lead.mockupDeliveredAt ? new Date(lead.mockupDeliveredAt).toLocaleDateString() : ''} — every
@@ -3070,7 +3149,7 @@ export default function LeadDetailPage() {
             {lead.mockupFolderUrl && (
               <p className="text-xs text-white/30 mt-3">Now's the time to call, email, or follow up with this in hand.</p>
             )}
-          </div>
+          </Section>
 
           {/* Files and access. The mockup link is upstairs because it's what
               gets sent; this is everything that gets kept — the PDF copies,
@@ -3086,11 +3165,18 @@ export default function LeadDetailPage() {
             ].filter((p) => p.isCustom);
 
             return (
-              <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-                <h2 className="text-lg font-bold mb-1">Files &amp; access</h2>
-                <p className="text-xs text-white/40 mb-4">
-                  The copies that outlive the deployment — downloadable any time, with or without signal.
-                </p>
+              <Section
+                id="lead-files"
+                title="Files &amp; access"
+                hint="The copies that outlive the deployment — downloadable any time, with or without signal."
+                summary={
+                  [
+                    lead.invoicePdfUrl && 'signed invoice',
+                    lead.vercelDeployPassword && 'preview password',
+                    customLineItems.length > 0 && `${customLineItems.length} custom line items`,
+                  ].filter(Boolean).join(' · ') || 'Nothing filed against this lead yet.'
+                }
+              >
 
                 <div className="space-y-3">
                   <FileField
@@ -3169,21 +3255,21 @@ export default function LeadDetailPage() {
                     </p>
                   </div>
                 )}
-              </div>
+              </Section>
             );
           })()}
 
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-bold">Qualification</h2>
-              <span className={`text-xs font-semibold ${lead.qualifiedAt ? 'text-emerald-300' : 'text-white/40'}`}>
-                {[qualNeed, qualAuthority, qualBudget, qualTiming, qualMotivation].filter((v) => v.trim()).length}/5
-                {lead.qualifiedAt ? ' — Qualified' : ''}
+          <Section
+            id="lead-qualification"
+            title="Qualification"
+            hint={'Need, Authority, Budget, Timing, Motivation — fill in all five and this lead auto-advances to "Qualified."'}
+            summary={
+              <span className={lead.qualifiedAt ? 'text-emerald-300' : undefined}>
+                {qualAnswered} of 5 answered{lead.qualifiedAt ? ' — qualified' : ''}
+                {qualAnswered === 0 && ' — nothing captured yet'}
               </span>
-            </div>
-            <p className="text-xs text-white/40 mb-4">
-              Need, Authority, Budget, Timing, Motivation — fill in all five and this lead auto-advances to "Qualified."
-            </p>
+            }
+          >
 
             <div className="space-y-3">
               <div>
@@ -3245,13 +3331,14 @@ export default function LeadDetailPage() {
             >
               {savingQual ? 'Saving...' : 'Save Qualification'}
             </button>
-          </div>
+          </Section>
 
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-lg font-bold mb-1">Loop In The Team</h2>
-            <p className="text-xs text-white/40 mb-3">
-              Ping the team chat about this lead — for questions, a heads-up, or asking for a second opinion.
-            </p>
+          <Section
+            id="lead-loop-in"
+            title="Loop in the team"
+            hint="Ping the team chat about this lead — a question, a heads-up, a second opinion."
+            summary="Nobody has been asked about this one."
+          >
             <div className="flex gap-2 mb-2">
               <input
                 value={loopMessage}
@@ -3272,10 +3359,23 @@ export default function LeadDetailPage() {
               🚩 Flag as needing a response (shows in their notifications until resolved)
             </label>
             {loopStatus && <p className="text-xs text-emerald-300 mt-2">{loopStatus}</p>}
-          </div>
+          </Section>
 
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h2 className="text-xl font-bold">Timeline</h2>
+          <Section
+            id="lead-timeline"
+            title="Timeline"
+            hint="Everything that has ever happened with this business, newest first."
+            defaultOpen
+            summary={
+              lead.activities.length === 0
+                ? 'Nothing has happened yet.'
+                : `${lead.activities.length} ${lead.activities.length === 1 ? 'entry' : 'entries'}${
+                    lead.activities[0]
+                      ? ` · last was ${LEAD_ACTIVITY_LABELS[lead.activities[0].type as LeadActivityType] ?? lead.activities[0].type} on ${new Date(lead.activities[0].createdAt).toLocaleDateString()}`
+                      : ''
+                  }`
+            }
+          >
             {/* Two kinds of entry sit in this list and they used to look the
                 same. An email or a proposal row is a receipt — a record that
                 something went out. A note, a call write-up or an objection is
@@ -3344,7 +3444,7 @@ export default function LeadDetailPage() {
                 );
               })}
             </div>
-          </div>
+          </Section>
         </div>
       </div>
 

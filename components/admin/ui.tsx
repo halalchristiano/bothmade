@@ -2,7 +2,8 @@
 
 import { motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
-import { Search, X, type LucideIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronRight, Search, X, type LucideIcon } from 'lucide-react';
 
 /*
  * Design language, take two. The mono-uppercase-label-on-every-box style
@@ -584,3 +585,124 @@ export function BrandButton({
 /** The input class every page re-declared locally. One string, one place. */
 export const inputClass =
   'w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all';
+
+
+/**
+ * A named, collapsible section of a long page.
+ *
+ * THE PROBLEM. The lead page put everything about a business on one scroll —
+ * the brief, the mockups, the files, the qualification, the timeline, the
+ * team chat — as a stack of identical bordered cards. Any single card is
+ * fine; twelve of them is a page where finding the mockup means scrolling
+ * past four things you are not doing, every time, and where the useful
+ * information is invisible until you have travelled to it.
+ *
+ * Collapsing alone does not fix that. A shut box labelled "Mockups" is a
+ * question you still have to open the box to answer, so people leave
+ * everything open and nothing is gained.
+ *
+ * So `summary` is the point of this component, not the chevron. A closed
+ * section must say the thing you would have opened it to find out — "3
+ * versions · sent 2 days ago, opened twice" — and then opening it is a
+ * decision rather than a search. Sections with nothing worth saying should
+ * say that too, quietly, so an empty one can be recognised without a click.
+ *
+ * The open/shut choice is remembered per section, because somebody who works
+ * mockups all day and never touches qualification should get their page back
+ * the way they left it.
+ */
+export function Section({
+  id,
+  title,
+  hint,
+  summary,
+  defaultOpen = false,
+  attention = false,
+  children,
+  className = '',
+}: {
+  /** Stable key for remembering the open/shut choice. Never reuse one. */
+  id: string;
+  title: string;
+  /** One line under the title, always visible. What this section is for. */
+  hint?: string;
+  /**
+   * What a reader would have opened it to find out. Shown when shut, and it
+   * is the whole reason this is worth collapsing — a closed box that answers
+   * nothing just costs a click.
+   */
+  summary?: React.ReactNode;
+  defaultOpen?: boolean;
+  /** Something in here needs doing. Survives being collapsed. */
+  attention?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  // Read after mount rather than in the initial state, so the server and the
+  // first client render agree — a section that starts open on the server and
+  // shut on the client is a hydration mismatch.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`bothmade_section_${id}`);
+      if (saved === 'open') setOpen(true);
+      else if (saved === 'shut') setOpen(false);
+    } catch {
+      /* private browsing — the default is fine */
+    }
+  }, [id]);
+
+  const toggle = () => {
+    setOpen((prev) => {
+      try {
+        localStorage.setItem(`bothmade_section_${id}`, prev ? 'shut' : 'open');
+      } catch {
+        /* ignore */
+      }
+      return !prev;
+    });
+  };
+
+  return (
+    <section
+      className={`rounded-2xl border bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl ${
+        attention ? 'border-amber-400/30' : 'border-white/[0.08]'
+      } ${className}`}
+    >
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-start gap-3 px-5 py-4 text-left sm:px-6"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2 text-[15px] font-bold text-white">
+            {title}
+            {attention && (
+              <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                needs you
+              </span>
+            )}
+          </p>
+          {hint && <p className="mt-0.5 text-xs leading-relaxed text-white/40">{hint}</p>}
+          {/* The answer, while it is shut. Hidden when open because the
+              section itself is then saying it in full, and repeating it above
+              the detail is the sort of duplication that makes a page feel
+              longer than it is. */}
+          {!open && summary && (
+            <div className="mt-1.5 text-xs leading-relaxed text-white/55">{summary}</div>
+          )}
+        </div>
+        <ChevronRight
+          size={16}
+          className={`mt-1 shrink-0 text-white/30 transition-transform ${open ? 'rotate-90' : ''}`}
+        />
+      </button>
+
+      {/* Not rendered rather than hidden: several of these mount forms, fetch
+          data or draw tables, and building all of them to then display:none
+          most is the cost this exists to avoid. */}
+      {open && <div className="px-5 pb-5 sm:px-6 sm:pb-6">{children}</div>}
+    </section>
+  );
+}
