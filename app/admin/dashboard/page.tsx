@@ -554,23 +554,13 @@ function WonDealsCard({ stats }: { stats: SalesStats }) {
  * call list does, so the numbers here and the list there can't disagree.
  */
 
-function SalesDashboard({
-  stats,
-  name,
-  range,
-  onRangeChange,
-  lastUpdated,
-  refreshing,
-  onRefresh,
-}: {
-  stats: SalesStats;
-  name: string;
-  range: StatsRange;
-  onRangeChange: (r: StatsRange) => void;
-  lastUpdated: Date | null;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
+/*
+ * Takes the stats and nothing else. It was also handed `name`, `range`,
+ * `onRangeChange`, `lastUpdated`, `refreshing` and `onRefresh`, and read none
+ * of them — six props that looked like this half owned a range picker and a
+ * refresh control when both live in the header above it.
+ */
+function SalesDashboard({ stats }: { stats: SalesStats }) {
   const maxPipelineValue = Math.max(...stats.pipeline.map((p) => p.value), 1);
 
   return (
@@ -1560,36 +1550,46 @@ export default function AdminDashboardPage() {
       </div>
 
       <div className="rounded-2xl border border-white/[0.07] bg-white/[0.01]">
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={open}
-          className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-white/[0.02] transition-colors rounded-2xl"
-        >
-          <ChevronRight
-            size={16}
-            className={`shrink-0 text-white/35 transition-transform ${open ? 'rotate-90' : ''}`}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-white">The full breakdown</p>
-            <p className="text-xs text-white/35">
-              Pipeline by stage, revenue history, at-risk projects, handoffs, activity and the team.
-            </p>
-          </div>
+        {/*
+          The controls are siblings of the toggle, not children of it.
+          They used to sit inside the <button>, which put buttons inside a
+          button — invalid, and it took an onClick stopPropagation on a
+          wrapper span to stop every range change from also collapsing the
+          panel it was meant to filter. They were also `hidden sm:flex` and
+          rendered nowhere else, so below 640px there was no way to change
+          the range or refresh at all — the sales half ignores these props
+          entirely, and the ops half only renders copies of its own when it
+          isn't embedded, which on this page it always is.
+        */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-5 py-4">
+          <button
+            type="button"
+            onClick={toggle}
+            aria-expanded={open}
+            aria-controls="dashboard-breakdown"
+            className="-m-2 flex min-w-0 flex-1 items-center gap-3 rounded-xl p-2 text-left hover:bg-white/[0.02] transition-colors"
+          >
+            <ChevronRight
+              size={16}
+              className={`shrink-0 text-white/35 transition-transform ${open ? 'rotate-90' : ''}`}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white">The full breakdown</p>
+              <p className="text-xs text-white/35">
+                Pipeline by stage, revenue history, at-risk projects, handoffs, activity and the team.
+              </p>
+            </div>
+          </button>
           {open && (
-            <span
-              onClick={(e) => e.stopPropagation()}
-              className="hidden sm:flex items-center gap-3"
-              role="presentation"
-            >
+            <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
               <RangePicker range={range} onChange={setRange} />
               <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
-            </span>
+            </div>
           )}
-        </button>
+        </div>
 
         {open && (
-          <div className="border-t border-white/[0.07] px-4 md:px-5 pb-6 pt-2">
+          <div id="dashboard-breakdown" className="border-t border-white/[0.07] px-4 md:px-5 pb-6 pt-2">
             {loading && !salesStats && (
               <p className="py-10 text-center text-sm text-white/40">Loading the breakdown…</p>
             )}
@@ -1608,15 +1608,7 @@ export default function AdminDashboardPage() {
             )}
 
             {salesStats && (
-              <SalesDashboard
-                stats={salesStats}
-                name={name}
-                range={range}
-                onRangeChange={setRange}
-                lastUpdated={lastUpdated}
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-              />
+              <SalesDashboard stats={salesStats} />
             )}
             {opsStats && (
               <OpsDashboard
