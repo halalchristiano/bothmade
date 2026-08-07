@@ -225,12 +225,28 @@ function Quiet({ text }: { text: string }) {
   );
 }
 
-export function Today() {
+export function Today({
+  refreshSignal = 0,
+  onSettled,
+}: {
+  /**
+   * Bumped by the dashboard's refresh control. This card is the one thing on
+   * the page that is always on screen, and it used to load once on mount and
+   * never again — so "Updated 2m ago" sat above a list that could be hours
+   * old, and the button next to it refreshed only the collapsible breakdown
+   * underneath. A refresh control that visibly skips the card above it is
+   * worse than none, because the stale list now looks confirmed.
+   */
+  refreshSignal?: number;
+  /** The load finished: a timestamp on success, null on failure. */
+  onSettled?: (at: Date | null) => void;
+} = {}) {
   const router = useRouter();
   const [data, setData] = useState<TodayData | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     /*
      * The browser's midnight goes with the request.
      *
@@ -238,6 +254,9 @@ export function Today() {
      * hours rolls over mid-evening — so an afternoon of calls read as
      * yesterday and this page said "1 call logged today" to somebody who had
      * made twelve. See lib/day-window.ts.
+     *
+     * Recomputed per load rather than captured once: a tab left open across
+     * midnight would otherwise keep asking for yesterday.
      */
     fetch(`/api/admin/today?dayStart=${encodeURIComponent(localDayStartParam())}`)
       .then((res) => {
@@ -248,11 +267,28 @@ export function Today() {
         return res.ok ? res.json() : null;
       })
       .then((body) => {
-        if (body?.success) setData(body);
-        else setFailed(true);
+        if (cancelled) return;
+        if (body?.success) {
+          setData(body);
+          setFailed(false);
+          onSettled?.(new Date());
+        } else {
+          setFailed(true);
+          onSettled?.(null);
+        }
       })
-      .catch(() => setFailed(true));
-  }, [router]);
+      .catch(() => {
+        if (cancelled) return;
+        setFailed(true);
+        onSettled?.(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `onSettled` is deliberately not a dependency — it is a fresh closure on
+    // every parent render, and including it would refetch on each one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, refreshSignal]);
 
   if (failed) {
     return (

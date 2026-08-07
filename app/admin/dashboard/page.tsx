@@ -1418,6 +1418,8 @@ export default function AdminDashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [todayUpdatedAt, setTodayUpdatedAt] = useState<Date | null>(null);
+  const [todayRefreshing, setTodayRefreshing] = useState(false);
   const [range, setRange] = useState<StatsRange>('week');
 
   // Who is looking at it — cheap, and needed for the greeting whether or not
@@ -1518,7 +1520,24 @@ export default function AdminDashboardPage() {
     });
   };
 
-  const onRefresh = () => setRetryCount((c) => c + 1);
+  const onRefresh = () => {
+    setTodayRefreshing(true);
+    setRetryCount((c) => c + 1);
+  };
+
+  /*
+   * What the "Updated Xm ago" label is allowed to claim.
+   *
+   * Two things load independently — the Today card above, and the breakdown
+   * below — so the honest answer is the staler of whatever is currently on
+   * screen. Claiming the fresher one would put a confident timestamp over a
+   * list that had not moved.
+   */
+  const shownUpdatedAt =
+    open && lastUpdated && todayUpdatedAt
+      ? new Date(Math.min(lastUpdated.getTime(), todayUpdatedAt.getTime()))
+      : todayUpdatedAt ?? (open ? lastUpdated : null);
+  const anyRefreshing = todayRefreshing || (open && (refreshing || loading));
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
@@ -1532,7 +1551,13 @@ export default function AdminDashboardPage() {
 
       {/* What you can act on, before any of the detail. */}
       <div className="mb-5">
-        <Today />
+        <Today
+          refreshSignal={retryCount}
+          onSettled={(at) => {
+            setTodayRefreshing(false);
+            if (at) setTodayUpdatedAt(at);
+          }}
+        />
       </div>
 
       {/* One instance. This used to mount inside both halves, so the same
@@ -1580,12 +1605,20 @@ export default function AdminDashboardPage() {
               </p>
             </div>
           </button>
-          {open && (
-            <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
-              <RangePicker range={range} onChange={setRange} />
-              <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
-            </div>
-          )}
+          {/*
+            The range picker belongs to the breakdown and hides with it. The
+            refresh control does not: the Today card above stays on screen
+            either way, so collapsing the panel used to take away the only way
+            to refresh the one thing still visible.
+          */}
+          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+            {open && <RangePicker range={range} onChange={setRange} />}
+            <RefreshIndicator
+              lastUpdated={shownUpdatedAt}
+              refreshing={anyRefreshing}
+              onRefresh={onRefresh}
+            />
+          </div>
         </div>
 
         {open && (
