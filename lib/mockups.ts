@@ -44,6 +44,47 @@ export function mockupLinkExpired(
   return Boolean(mockup.expiresAt) && new Date(mockup.expiresAt as Date) <= now;
 }
 
+/**
+ * How long before a live link dies is worth saying so.
+ *
+ * A thirty-day link warned at five days left leaves room to re-send before
+ * anybody hits a dead one. Shorter and the warning arrives too late to act
+ * on; longer and it is on screen for most of a mockup's life, which is the
+ * same as not being there.
+ */
+export const MOCKUP_EXPIRY_WARNING_DAYS = 5;
+
+/**
+ * A link that still works and is about to stop.
+ *
+ * THE FAILURE THIS EXISTS FOR. Nothing said anything about expiry until the
+ * link was already dead — and the person who finds out is the prospect,
+ * clicking a link we sent them and getting nothing. A deal in its slowest,
+ * most considered week is exactly when a mockup is thirty days old and
+ * exactly when that click happens.
+ *
+ * Re-sending resets the clock, which is one button that already exists. The
+ * only thing missing was knowing to press it.
+ */
+export function mockupLinkExpiringSoon(
+  mockup: { expiresAt: Date | string | null },
+  now: Date = new Date()
+): boolean {
+  if (!mockup.expiresAt) return false;
+  const left = new Date(mockup.expiresAt as Date).getTime() - now.getTime();
+  return left > 0 && left <= MOCKUP_EXPIRY_WARNING_DAYS * 86_400_000;
+}
+
+/** Whole days until the link stops working. Null when it never will. */
+export function mockupDaysLeft(
+  mockup: { expiresAt: Date | string | null },
+  now: Date = new Date()
+): number | null {
+  if (!mockup.expiresAt) return null;
+  const left = new Date(mockup.expiresAt as Date).getTime() - now.getTime();
+  return left <= 0 ? 0 : Math.ceil(left / 86_400_000);
+}
+
 export interface LeadMockupDTO {
   id: string;
   url: string;
@@ -59,6 +100,8 @@ export interface LeadMockupDTO {
   viewCount: number;
   expiresAt: string | null;
   expired: boolean;
+  /** Still works, about to stop. See mockupLinkExpiringSoon. */
+  expiringSoon: boolean;
   respondedAt: string | null;
   responseNote: string | null;
   /** Set when the last send failed. The link is live; the email is not. */
@@ -145,6 +188,8 @@ export function toMockupDTO(m: MockupRow): LeadMockupDTO {
     viewCount: m.viewCount ?? 0,
     expiresAt: m.expiresAt?.toISOString() ?? null,
     expired: mockupLinkExpired({ expiresAt: m.expiresAt ?? null }),
+    // So a list can sort and colour by it without re-deriving the rule.
+    expiringSoon: mockupLinkExpiringSoon({ expiresAt: m.expiresAt ?? null }),
     respondedAt: m.respondedAt?.toISOString() ?? null,
     responseNote: m.responseNote ?? null,
     sendFailedAt: m.sendFailedAt?.toISOString() ?? null,
@@ -170,16 +215,28 @@ export function mockupSignal(m: LeadMockupDTO, now: Date = new Date()): string {
    */
   if (m.sendFailedAt) return 'Failed to send — nobody received this. Send it again.';
   if (m.expired) return 'Link expired — re-send to reopen it';
+
+  /*
+   * Appended rather than replacing, because it is a deadline on a fact rather
+   * than a fact of its own: "opened 4 times, link dies in 2 days" is a reason
+   * to act today, and either half alone is not.
+   */
+  const daysLeft = mockupDaysLeft(m, now);
+  const dying =
+    mockupLinkExpiringSoon(m, now) && daysLeft !== null
+      ? ` · link dies ${daysLeft <= 1 ? 'tomorrow' : `in ${daysLeft} days`} — re-send to reset it`
+      : '';
+
   if (m.viewCount > 0) {
     const last = m.lastViewedAt ? new Date(m.lastViewedAt) : null;
     const hours = last ? Math.floor((now.getTime() - last.getTime()) / 3_600_000) : null;
     const when =
       hours === null ? '' : hours < 1 ? ', last just now' : hours < 24 ? `, last ${hours}h ago` : `, last ${Math.floor(hours / 24)}d ago`;
-    return `Opened ${m.viewCount} time${m.viewCount === 1 ? '' : 's'}${when}`;
+    return `Opened ${m.viewCount} time${m.viewCount === 1 ? '' : 's'}${when}${dying}`;
   }
   if (m.status === 'sent' || m.sentAt) {
     const days = m.sentAt ? Math.floor((now.getTime() - new Date(m.sentAt).getTime()) / 86_400_000) : 0;
-    return days <= 0 ? 'Sent today, not opened yet' : `Sent ${days}d ago, never opened`;
+    return (days <= 0 ? 'Sent today, not opened yet' : `Sent ${days}d ago, never opened`) + dying;
   }
   return 'Not sent to the client yet';
 }

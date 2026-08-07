@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { upload } from '@vercel/blob/client';
 import { Eye, ExternalLink, ImageIcon, Paperclip, PlayCircle, Send, StickyNote, Upload, Clock } from 'lucide-react';
-import { mockupSignal, type LeadMockupDTO, type MockupStatus } from '@/lib/mockups';
+import { mockupSignal, type LeadMockupDTO, type MockupStatus, mockupLinkExpiringSoon } from '@/lib/mockups';
 import {
   DELIVERABLE_CONTENT_TYPES,
   DELIVERABLE_MAX_BYTES,
@@ -77,6 +77,10 @@ function asDTO(m: LeadMockupItem): LeadMockupDTO {
     viewCount: m.viewCount ?? 0,
     expiresAt: m.expiresAt ?? null,
     expired: m.expired ?? false,
+    // Recomputed rather than trusted from the payload: this list is rendered
+    // from a lead page that may have been open for an hour, and "about to
+    // expire" goes stale in a way "expired" does not.
+    expiringSoon: mockupLinkExpiringSoon({ expiresAt: m.expiresAt ?? null }),
     respondedAt: m.respondedAt ?? null,
     responseNote: m.responseNote ?? null,
     sendFailedAt: m.sendFailedAt ?? null,

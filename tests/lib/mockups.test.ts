@@ -203,6 +203,7 @@ const BASE: LeadMockupDTO = {
   viewCount: 0,
   expiresAt: null,
   expired: false,
+  expiringSoon: false,
   respondedAt: null,
   responseNote: null,
 };

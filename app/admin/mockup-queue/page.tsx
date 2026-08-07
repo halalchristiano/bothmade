@@ -152,6 +152,7 @@ interface LiveMockup {
   viewCount: number;
   responseNote: string | null;
   expired: boolean;
+  expiringSoon: boolean;
   sendFailedAt: string | null;
   sendFailedReason: string | null;
   /**
@@ -182,6 +183,12 @@ interface LiveMockup {
 
 /** A send that failed, whatever the row's status says. */
 const FAILED_TONE = 'border-red-400/35 bg-red-400/[0.07]';
+
+/**
+ * A live link with days left on it. Amber rather than red: nothing is broken
+ * yet, and that is the whole point of saying so now.
+ */
+const EXPIRING_TONE = 'border-amber-400/35 bg-amber-400/[0.08]';
 
 const LIVE_TONE: Record<string, string> = {
   draft: 'border-amber-400/30 bg-amber-400/[0.06]',
@@ -306,25 +313,41 @@ export default function MockupQueuePage() {
   const liveVisible = [...live]
     .filter((m) => matchesSearch(search, m.lead.company, m.lead.contactName))
     .sort((a, b) => {
-      // A send that failed outranks everything: the client has heard nothing,
-      // and one click fixes it. Then unsent, then whatever the client said.
+      /*
+       * A send that failed outranks everything: the client has heard nothing,
+       * and one click fixes it.
+       *
+       * A live link about to die comes next, above even an approval. It is
+       * the only row here with a DEADLINE on it — everything else can wait
+       * until tomorrow and be exactly as true, while this one turns into a
+       * prospect clicking a dead link we sent them. Re-sending resets the
+       * clock, which is the button already on the row.
+       */
       const rank = (m: LiveMockup) =>
         m.sendFailedAt
-          ? -1
-          : m.status === 'draft'
-            ? 0
-            : m.status === 'approved'
-              ? 1
-              : m.status === 'changes_requested'
-                ? 2
-                : m.status === 'viewed'
-                  ? 3
-                  : 4;
+          ? -2
+          : m.expiringSoon
+            ? -1
+            : m.status === 'draft'
+              ? 0
+              : m.status === 'approved'
+                ? 1
+                : m.status === 'changes_requested'
+                  ? 2
+                  : m.status === 'viewed'
+                    ? 3
+                    : 4;
       return rank(a) - rank(b);
     });
   // Named rather than inlined: the summary line at the top of the page says
   // how many, and the count has to be the one the list is actually showing.
   const failedCount = liveVisible.filter((m) => m.sendFailedAt).length;
+  /*
+   * Live links about to die. Worth the top of the page because it is the one
+   * thing here with a deadline: everything else is as true tomorrow, and this
+   * turns into a prospect clicking a dead link we sent them.
+   */
+  const expiringCount = liveVisible.filter((m) => m.expiringSoon && !m.sendFailedAt).length;
   const sortedByWait = [...visible].sort((a, b) => {
     if (a.hotLead !== b.hotLead) return a.hotLead ? -1 : 1;
     return (daysWaiting(a.mockupRequestedAt) ?? 0) - (daysWaiting(b.mockupRequestedAt) ?? 0) > 0 ? -1 : 1;
@@ -344,7 +367,9 @@ export default function MockupQueuePage() {
               ? 'Nothing built yet. Attach a mockup above and it lands here ready to send.'
               : failedCount > 0
                 ? `${failedCount} did not reach anybody — those are at the top. Then unsent, then anything the client has opened.`
-                : `${liveVisible.length} built. Unsent first, then anything the client has opened — those are warm, ring them.`}
+                : expiringCount > 0
+                  ? `${expiringCount} ${expiringCount === 1 ? 'link stops' : 'links stop'} working within the week — those are at the top. Re-send to reset the clock.`
+                  : `${liveVisible.length} built. Unsent first, then anything the client has opened — those are warm, ring them.`}
         </p>
       </div>
 
@@ -399,7 +424,11 @@ export default function MockupQueuePage() {
             <div
               key={m.id}
               className={`rounded-xl border p-4 ${
-                m.sendFailedAt ? FAILED_TONE : LIVE_TONE[m.status] ?? 'border-white/10 bg-white/[0.03]'
+                m.sendFailedAt
+                  ? FAILED_TONE
+                  : m.expiringSoon
+                    ? EXPIRING_TONE
+                    : LIVE_TONE[m.status] ?? 'border-white/10 bg-white/[0.03]'
               }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -418,7 +447,11 @@ export default function MockupQueuePage() {
                       {m.versionCount} versions
                     </span>
                   )}
-                  <p className={`text-xs mt-0.5 ${m.sendFailedAt ? 'text-red-300' : 'text-white/55'}`}>
+                  <p
+                    className={`text-xs mt-0.5 ${
+                      m.sendFailedAt ? 'text-red-300' : m.expiringSoon ? 'text-amber-200' : 'text-white/55'
+                    }`}
+                  >
                     {m.signal}
                   </p>
                   {/* The provider's own words. "Domain is not verified" names
