@@ -205,6 +205,9 @@ export async function GET(request: Request) {
           status: p.status,
           updatedAt: p.updatedAt,
           daysSinceUpdate: Math.floor((now.getTime() - p.updatedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          // Needed to build the public status URL. That page is addressed by
+          // capability token, not by project ID, so a link without it 404s.
+          shareToken: p.shareToken,
           waitingOnClient,
           // Days since we last chased — the number that matters when deciding
           // whether to chase again.
@@ -313,6 +316,7 @@ export async function GET(request: Request) {
               onboardingAnswered: p.onboardingQuestions.filter((q) => q.response).length,
               handoffAcknowledgedAt: p.handoffAcknowledgedAt,
               daysWaiting: Math.floor((now.getTime() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
+              shareToken: p.shareToken,
             })),
           newClientsThisWeek: newClientsInPeriod,
           atRiskProjects: atRiskProjects.slice(0, 40),

@@ -100,12 +100,23 @@ function RefreshIndicator({
   );
 }
 
-/** Opens the client's own status page in a new tab — the fastest way to see
- * exactly what they're seeing, without switching accounts. */
-function OpenStatusButton({ projectId }: { projectId: string }) {
+/**
+ * Opens the client's own status page in a new tab — the fastest way to see
+ * exactly what they're seeing, without switching accounts.
+ *
+ * The token is not decoration. That page is a capability link: the API behind
+ * it 404s on a missing or wrong `?t=`, deliberately and identically to an
+ * unknown project, so that a cuid alone proves nothing. Linking by ID the way
+ * this used to meant every one of these buttons opened "Not found".
+ */
+function OpenStatusButton({ projectId, shareToken }: { projectId: string; shareToken: string | null }) {
+  if (!shareToken) return null;
+  // `t` is spelled out rather than imported from lib/share-links: that module
+  // pulls in node:crypto for the constant-time compare, which has no place in
+  // a browser bundle.
   return (
     <a
-      href={`/status/${projectId}`}
+      href={`/status/${projectId}?t=${encodeURIComponent(shareToken)}`}
       target="_blank"
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
@@ -176,15 +187,24 @@ interface OpsStats {
     onboardingAnswered: number;
     handoffAcknowledgedAt: string | null;
     daysWaiting: number;
+    shareToken: string | null;
   }>;
   newClientsThisWeek: number;
-  atRiskProjects: Array<{ id: string; name: string; company: string; status: string; daysSinceUpdate: number }>;
+  atRiskProjects: Array<{
+    id: string;
+    name: string;
+    company: string;
+    status: string;
+    daysSinceUpdate: number;
+    shareToken: string | null;
+  }>;
   waitingOnClient: Array<{
     id: string;
     name: string;
     company: string;
     daysSinceUpdate: number;
     daysSinceWeAsked: number | null;
+    shareToken: string | null;
   }>;
   overdueBalances: Array<{
     id: string;
@@ -781,7 +801,7 @@ function HandoffRow({
           {handoff.company}
         </Link>
         <div className="flex items-center gap-2 shrink-0">
-          <OpenStatusButton projectId={handoff.id} />
+          <OpenStatusButton projectId={handoff.id} shareToken={handoff.shareToken} />
           {handoff.onboardingTotal > 0 && (
             <Badge tone={handoff.onboardingAnswered === handoff.onboardingTotal ? 'emerald' : 'amber'}>
               Onboarding {handoff.onboardingAnswered}/{handoff.onboardingTotal}
@@ -996,7 +1016,7 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
                 trailing={
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <Badge tone="red">{p.daysSinceUpdate}d</Badge>
-                    <OpenStatusButton projectId={p.id} />
+                    <OpenStatusButton projectId={p.id} shareToken={p.shareToken} />
                   </div>
                 }
               />
@@ -1044,7 +1064,7 @@ function WaitingOnClientCard({ projects }: { projects: OpsStats['waitingOnClient
                 trailing={
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <Badge tone="amber">{p.daysSinceUpdate}d</Badge>
-                    <OpenStatusButton projectId={p.id} />
+                    <OpenStatusButton projectId={p.id} shareToken={p.shareToken} />
                   </div>
                 }
               />
