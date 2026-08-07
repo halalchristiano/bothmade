@@ -16,6 +16,23 @@ import { formatCentsExact, instalmentSchedule } from '@/lib/pricing';
 export type InstalmentStatus = 'scheduled' | 'due' | 'paid' | 'void';
 
 /**
+ * The statuses that mean money is still owed on a row.
+ *
+ * Named once because getting it wrong is silent and expensive, and it was
+ * already wrong in two places. `status: { not: 'paid' }` reads like "unpaid"
+ * and is not: it also matches `void`, which is the status a row takes when a
+ * change order removes the scope it was billing for. So a client whose
+ * remaining instalments had been voided was told on launch day that there was
+ * "still a balance outstanding" and that their files were being held until it
+ * cleared — over a debt that had been cancelled by an amendment they signed.
+ *
+ * Use this in the query rather than restating the literals. fullyPaid() below
+ * is the same rule read from the other end, and the two must agree: a project
+ * with no rows in these statuses is a project that is fully paid.
+ */
+export const OWED_INSTALMENT_STATUSES: InstalmentStatus[] = ['scheduled', 'due'];
+
+/**
  * Seed the full schedule for a newly created project, marking as paid
  * whatever the first checkout already covered.
  *

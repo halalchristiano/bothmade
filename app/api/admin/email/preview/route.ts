@@ -13,6 +13,7 @@ import {
   sendProjectLiveEmail,
 } from '@/lib/email';
 import { designStage } from '@/lib/design-stages';
+import { OWED_INSTALMENT_STATUSES } from '@/lib/instalments';
 import { reviewNoticeLine, startReview } from '@/lib/design-approval';
 import { escMultiline, escParagraphs, normalizeUrl } from '@/lib/html';
 import { clientMockupLink } from '@/lib/mockups';
@@ -246,8 +247,11 @@ async function buildPreview(
         select: { id: true, name: true, client: { select: { email: true, contactName: true } } },
       });
       if (!project) return [];
+      // The same rule as the live send in app/api/projects/[projectId] — a
+      // preview that draws the line somewhere else is a preview of a
+      // different email.
       const owed = await prisma.instalment.count({
-        where: { projectId, status: { not: 'paid' } },
+        where: { projectId, status: { in: OWED_INSTALMENT_STATUSES } },
       });
       return composeOnly(() =>
         sendProjectLiveEmail({

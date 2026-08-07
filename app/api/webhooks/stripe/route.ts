@@ -21,7 +21,7 @@ import {
   notifyAdminsPaymentReceived,
 } from '@/lib/notify';
 import { buildCarePlanInvoicePdf } from '@/lib/invoice-pdf';
-import { seedInstalments } from '@/lib/instalments';
+import { OWED_INSTALMENT_STATUSES, seedInstalments } from '@/lib/instalments';
 import { createInvoiceRow } from '@/lib/billing';
 import { discountLabel, scheduleForOffer } from '@/lib/care-offers';
 import { planLabel, scheduleLines } from '@/lib/recurring';
@@ -57,21 +57,30 @@ function receiptDate(): string {
  *
  * Read from the instalment rows after the settling transaction has committed,
  * so it reflects what was just paid rather than what was owed a moment ago.
- * Returns null when nothing is left, which is the receipt's cue to say the
- * project is settled in full rather than to stay quiet about it.
+ *
+ * Only ever 'owing' or 'settled': a project always has a standing, one way or
+ * the other. The receipt's third state, 'unrelated', is not this function's to
+ * return — it belongs to one-off charges, which never consult the schedule.
  */
-async function outstandingAfterPayment(projectId: string): Promise<string | null> {
+async function projectStanding(
+  projectId: string
+): Promise<{ kind: 'owing'; label: string } | { kind: 'settled' }> {
   const open = await prisma.instalment.findMany({
-    where: { projectId, status: { not: 'paid' } },
+    // Not `not: 'paid'` — that counts voided rows as owed. See
+    // OWED_INSTALMENT_STATUSES for what it cost the last time.
+    where: { projectId, status: { in: OWED_INSTALMENT_STATUSES } },
     orderBy: { index: 'asc' },
     select: { label: true, amountCents: true },
   });
-  if (open.length === 0) return null;
+  if (open.length === 0) return { kind: 'settled' };
 
   const total = open.reduce((sum, row) => sum + row.amountCents, 0);
-  return `${open.length} payment${open.length === 1 ? '' : 's'} still to come, totalling ${formatCentsExact(
-    total
-  )} — the next is ${open[0].label}. We invoice each one when it falls due, so there is nothing to do now.`;
+  return {
+    kind: 'owing',
+    label: `${open.length} payment${open.length === 1 ? '' : 's'} still to come, totalling ${formatCentsExact(
+      total
+    )} — the next is ${open[0].label}. We invoice each one when it falls due, so there is nothing to do now.`,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -422,7 +431,7 @@ async function handleCheckoutSessionCompleted(
       paidOnLabel: receiptDate(),
       forLabel: metadata.paymentType === 'deposit' ? 'Deposit — Payment 1 of 3' : 'Project fee, paid in full',
       invoiceNumber: signingInvoiceNumber,
-      outstandingLabel: await outstandingAfterPayment(project.id),
+      standing: await projectStanding(project.id),
       dashboardUrl: `${resolveSiteUrl()}/client/${project.id}`,
     });
   } catch (receiptError) {
@@ -866,9 +875,8 @@ async function handleExistingProjectPayment(
             : 'Project balance'),
         invoiceNumber: metadata.invoiceNumber || settled?.invoiceNumber || null,
         // A one-off charge settles its own invoice and says nothing about the
-        // project schedule, so it must not claim the build is paid off.
-        outstandingLabel:
-          type === 'custom' ? null : await outstandingAfterPayment(projectId),
+        // project schedule, so it claims nothing about the build either way.
+        standing: type === 'custom' ? { kind: 'unrelated' } : await projectStanding(projectId),
         dashboardUrl: `${resolveSiteUrl()}/client/${projectId}`,
       });
     }

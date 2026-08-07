@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/auth';
 import { forbiddenResponse, requirePrincipal, unauthorizedResponse } from '@/lib/middleware';
 import { amountPaidTowardProject } from '@/lib/billing';
-import { ensureInstalments } from '@/lib/instalments';
+import { ensureInstalments, OWED_INSTALMENT_STATUSES } from '@/lib/instalments';
 import { revisionState } from '@/lib/design-feedback';
 import { designStage } from '@/lib/design-stages';
 import { DIRECTION_STATEMENT, directionStatus } from '@/lib/design-direction';
@@ -366,8 +366,17 @@ export async function PUT(
           where: { id: project.clientId },
           select: { email: true, contactName: true, emailPreferences: true },
         });
+        /*
+         * This count drives the launch email's "there is still a balance
+         * outstanding ... the final handover completes once it clears".
+         *
+         * It was `not: 'paid'`, which counts voided rows as owed — so a
+         * client whose remaining instalments had been voided by a change
+         * order they signed was told on launch day that their files were
+         * being held against a debt that no longer existed.
+         */
         const owed = await prisma.instalment.count({
-          where: { projectId, status: { not: 'paid' } },
+          where: { projectId, status: { in: OWED_INSTALMENT_STATUSES } },
         });
         if (client && clientWantsEmail(client.emailPreferences, 'statusUpdates')) {
           await sendProjectLiveEmail({

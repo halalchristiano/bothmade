@@ -2163,8 +2163,23 @@ export async function sendPaymentReceiptEmail(input: {
   /** What the money settled — "Payment 2 of 3", "Deposit", "Invoice INV-0042". */
   forLabel: string;
   invoiceNumber?: string | null;
-  /** Where they stand afterwards. Null when the project is settled in full. */
-  outstandingLabel?: string | null;
+  /**
+   * Where this payment leaves them, as a state rather than a nullable string.
+   *
+   * It was `outstandingLabel: string | null`, and null was doing two jobs:
+   * "nothing left to pay" and "this payment says nothing about the schedule".
+   * A one-off charge for extra work is the second — it settles its own
+   * invoice and tells you nothing about the build — so every change-request
+   * receipt confidently informed the client that their project was settled in
+   * full while two instalments were still outstanding.
+   *
+   * Three states, named, so that sentence cannot be reached by accident.
+   */
+  standing:
+    | { kind: 'owing'; label: string }
+    | { kind: 'settled' }
+    /** A one-off charge: says nothing about the project schedule either way. */
+    | { kind: 'unrelated' };
   dashboardUrl: string;
   invoicePdf?: Buffer | null;
   fileName?: string;
@@ -2182,9 +2197,11 @@ export async function sendPaymentReceiptEmail(input: {
       ['Project', input.projectName],
     ])}
     ${
-      input.outstandingLabel
-        ? `<p style="font-size:14px; color:rgba(255,255,255,0.7);">${esc(input.outstandingLabel)}</p>`
-        : `<p style="font-size:14px; color:#7dd3fc;">That settles the project in full — nothing further is owed.</p>`
+      input.standing.kind === 'owing'
+        ? `<p style="font-size:14px; color:rgba(255,255,255,0.7);">${esc(input.standing.label)}</p>`
+        : input.standing.kind === 'settled'
+        ? `<p style="font-size:14px; color:#7dd3fc;">That settles the project in full — nothing further is owed.</p>`
+        : ''
     }
     <p style="font-size:13px; color:rgba(255,255,255,0.5);">This is a receipt, not a request for payment. Nothing to do — keep it for your records.</p>
   `;
