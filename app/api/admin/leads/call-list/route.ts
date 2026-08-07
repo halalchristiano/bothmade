@@ -165,7 +165,22 @@ export async function GET(request: NextRequest) {
      * "Kiana's" at a glance. It just no longer decides who is allowed to see
      * it.
      */
-    const where = { status: { notIn: ['won', 'lost'] } };
+    /*
+     * And nobody who asked to be left alone.
+     *
+     * `doNotContact` is described in the schema as "a hard stop, not a
+     * preference — every outreach path checks it before sending or dialling",
+     * and this sheet is the dialling path. It never checked. Somebody who
+     * unsubscribed on Tuesday was back at the top of the call queue on
+     * Wednesday, and the rep working the list had no way to know: the row
+     * looks like any other, and the strongest bands put a recent unsubscriber
+     * near the top precisely because they had just engaged with an email.
+     *
+     * The email paths refusing while the phone path did not is the worst
+     * version of that promise — it turns "we stopped emailing them" into
+     * "we rang them instead".
+     */
+    const where = { status: { notIn: ['won', 'lost'] }, doNotContact: false };
 
     // Counted separately so the page can say how many were considered. A list
     // that silently shows a subset reads as "this is everything", which is the

@@ -46,6 +46,24 @@ export async function POST(
     ]);
 
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+
+    /*
+     * The hard stop, which this path was missing.
+     *
+     * Every other send checks it — the cold drafts, the bulk sender, the
+     * mockup sends, the automated follow-up. This one did not, and it is the
+     * one a person presses deliberately seconds after a call, which makes it
+     * more likely to reach somebody who has asked to be left alone rather
+     * than less.
+     */
+    if (lead.doNotContact) {
+      return NextResponse.json(
+        {
+          error: `${lead.company} has asked not to be contacted. Nothing was sent.`,
+        },
+        { status: 400 }
+      );
+    }
     if (!sender) return NextResponse.json({ error: 'Sender not found' }, { status: 404 });
     if (!lead.email) {
       return NextResponse.json(

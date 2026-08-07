@@ -63,9 +63,20 @@ export async function POST(
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, phone: true },
+      select: { id: true, phone: true, doNotContact: true },
     });
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+
+    /*
+     * Recorded even for somebody who asked to be left alone — and flagged.
+     *
+     * Refusing to write it would be the wrong instinct: the call already
+     * happened, the phone app has the screen, and a measurement that quietly
+     * omits the dials nobody should have made is a measurement that hides
+     * exactly the thing worth knowing. So it goes in the record, saying what
+     * it was.
+     */
+    const stopped = lead.doNotContact;
 
     await prisma.leadActivity.create({
       data: {
@@ -74,7 +85,9 @@ export async function POST(
         // The number as it stood when it was dialled. If somebody corrects a
         // wrong number later, the record still says which one was actually
         // rung, which is the only version worth keeping.
-        content: `Dialled ${lead.phone ?? 'a number that is no longer on file'}.`,
+        content: stopped
+          ? `Dialled ${lead.phone ?? 'a number no longer on file'} — this lead is marked do-not-contact.`
+          : `Dialled ${lead.phone ?? 'a number that is no longer on file'}.`,
         createdById: session.userId,
       },
     });
