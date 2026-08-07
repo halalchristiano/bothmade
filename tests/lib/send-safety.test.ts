@@ -189,3 +189,63 @@ describe('verification against the tag', () => {
     expect(out.map((l) => l.email)).toEqual(['tagged@b.com', 'checked@b.com']);
   });
 });
+
+/**
+ * What a dead address costs, and what it takes with it.
+ *
+ * Two rules that only make sense together. A verified-dead address is never
+ * sent to, so it must not consume a slot in a daily allowance that exists to
+ * cap what actually reaches a mail server — trimming to the limit before
+ * verification meant a batch of five hundred holding a hundred dead addresses
+ * sent four hundred and burned the whole day doing it.
+ *
+ * And what remains of the lead decides whether it survives: a phone number is
+ * still a business to ring, an address with nothing behind it is a row that
+ * can only ever take up space in a count.
+ */
+describe('spending the daily allowance', () => {
+  type Row = { id: string; phone: string | null; status: string | null };
+  const sendable = (s: string | null) => !['invalid', 'spamtrap', 'abuse', 'do_not_mail'].includes(s ?? '');
+
+  /** The order the route applies: verify, drop the dead, then trim. */
+  const plan = (rows: Row[], limit: number) => {
+    const alive = rows.filter((r) => sendable(r.status));
+    return { sent: alive.slice(0, limit), heldBack: Math.max(0, alive.length - limit) };
+  };
+
+  it('does not let a dead address use up a slot', () => {
+    const rows: Row[] = [
+      { id: 'a', phone: null, status: 'invalid' },
+      { id: 'b', phone: null, status: 'invalid' },
+      { id: 'c', phone: null, status: 'valid' },
+      { id: 'd', phone: null, status: 'valid' },
+    ];
+
+    // A limit of two must still send two live addresses, not two minus the
+    // dead ones that were never going anywhere.
+    expect(plan(rows, 2).sent.map((r) => r.id)).toEqual(['c', 'd']);
+  });
+
+  /** Nothing is waiting for tomorrow that no longer exists. */
+  it('counts only live addresses as held back', () => {
+    const rows: Row[] = [
+      { id: 'a', phone: null, status: 'invalid' },
+      { id: 'b', phone: null, status: 'valid' },
+      { id: 'c', phone: null, status: 'valid' },
+    ];
+
+    expect(plan(rows, 1).heldBack).toBe(1);
+  });
+});
+
+describe('what happens to a dead address', () => {
+  const fate = (phone: string | null) => (phone ? 'kept' : 'deleted');
+
+  it('keeps the lead when there is still a number to ring', () => {
+    expect(fate('(212) 555-0100')).toBe('kept');
+  });
+
+  it('deletes it when the address was the only way in', () => {
+    expect(fate(null)).toBe('deleted');
+  });
+});

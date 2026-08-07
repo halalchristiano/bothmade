@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         email: { not: null },
         doNotContact: false,
       },
-      select: { id: true, email: true, company: true },
+      select: { id: true, email: true, company: true, phone: true },
       orderBy: { createdAt: 'asc' },
       take: VERIFY_BATCH_SIZE,
     });
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
     let good = 0;
     let bad = 0;
     let noVerdict = 0;
+    const deleted: string[] = [];
 
     await Promise.all(
       leads.map(async (lead) => {
@@ -86,28 +87,46 @@ export async function POST(request: NextRequest) {
           return;
         }
         const sendable = isSendableStatus(r.status);
-        sendable ? good++ : bad++;
-        await prisma.lead
-          .update({
-            where: { id: lead.id },
-            data: {
-              emailVerifiedAt: now,
-              emailVerificationStatus: r.status,
-              emailVerificationSubStatus: r.subStatus,
-              // Recorded exactly like a real bounce, so a dead address lands
-              // in "can't reach" beside the others instead of inventing a
-              // state the rest of the app does not understand.
-              ...(sendable
-                ? {}
-                : {
-                    emailDeliveryFailedAt: now,
-                    emailDeliveryFailedReason: `Address verified as ${r.status}${
-                      r.subStatus ? ` (${r.subStatus})` : ''
-                    }. Nothing was sent — call instead.`,
-                  }),
-            },
-          })
-          .catch(() => null);
+        if (sendable) {
+          good++;
+          await prisma.lead
+            .update({
+              where: { id: lead.id },
+              data: {
+                emailVerifiedAt: now,
+                emailVerificationStatus: r.status,
+                emailVerificationSubStatus: r.subStatus,
+              },
+            })
+            .catch(() => null);
+          return;
+        }
+
+        bad++;
+
+        // Same rule the sender uses, so a backlog sweep and a send agree
+        // about what a dead address means: keep it if there is still a phone
+        // to ring, delete it when the address was the only way in.
+        if (lead.phone) {
+          await prisma.lead
+            .update({
+              where: { id: lead.id },
+              data: {
+                emailVerifiedAt: now,
+                emailVerificationStatus: r.status,
+                emailVerificationSubStatus: r.subStatus,
+                emailDeliveryFailedAt: now,
+                emailDeliveryFailedReason: `Address verified as ${r.status}${
+                  r.subStatus ? ` (${r.subStatus})` : ''
+                }. Nothing was sent — call instead.`,
+              },
+            })
+            .catch(() => null);
+          return;
+        }
+
+        deleted.push(lead.company);
+        await prisma.lead.delete({ where: { id: lead.id } }).catch(() => null);
       })
     );
 
@@ -120,6 +139,8 @@ export async function POST(request: NextRequest) {
       checked: leads.length,
       good,
       bad,
+      deleted: deleted.length,
+      deletedNames: deleted.slice(0, 10),
       noVerdict,
       remaining,
       done: remaining === 0,

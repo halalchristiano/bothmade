@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
      * guesses included. Verified addresses now lead.
      */
     const selected = await prisma.lead.findMany({ where: { id: { in: leadIds } } });
-    const ordered = verifiedFirst(selected).slice(0, budget.allowed);
+    const ordered = verifiedFirst(selected);
 
     /*
      * Check the addresses before using them, not after they bounce.
@@ -135,6 +135,8 @@ export async function POST(request: NextRequest) {
     const unchecked = ordered.filter((l) => l.email && !l.emailVerifiedAt).slice(0, VERIFY_BATCH_SIZE);
     let verified = 0;
     let rejected = 0;
+    const deleted: string[] = [];
+    const dropped = new Set<string>();
 
     if (isVerificationConfigured() && unchecked.length > 0) {
       let results;
@@ -157,29 +159,55 @@ export async function POST(request: NextRequest) {
           const r = results.get((lead.email as string).toLowerCase());
           if (!r) return; // no verdict — stays unverified, gets another chance
           verified++;
-          if (!isSendableStatus(r.status)) rejected++;
-          await prisma.lead
-            .update({
-              where: { id: lead.id },
-              data: {
-                emailVerifiedAt: now,
-                emailVerificationStatus: r.status,
-                emailVerificationSubStatus: r.subStatus,
-                // A dead address is a delivery failure we found out about
-                // without spending a send on it. Recorded the same way a real
-                // bounce is, so it lands in "can't reach" beside the others
-                // rather than inventing a state nothing else understands.
-                ...(isSendableStatus(r.status)
-                  ? {}
-                  : {
-                      emailDeliveryFailedAt: now,
-                      emailDeliveryFailedReason: `Address verified as ${r.status}${
-                        r.subStatus ? ` (${r.subStatus})` : ''
-                      }. Nothing was sent — call instead.`,
-                    }),
-              },
-            })
-            .catch(() => null);
+          if (isSendableStatus(r.status)) {
+            await prisma.lead
+              .update({
+                where: { id: lead.id },
+                data: {
+                  emailVerifiedAt: now,
+                  emailVerificationStatus: r.status,
+                  emailVerificationSubStatus: r.subStatus,
+                },
+              })
+              .catch(() => null);
+            return;
+          }
+
+          rejected++;
+          dropped.add(lead.id);
+
+          /*
+           * A dead address, and what is left of the lead decides its fate.
+           *
+           * With a phone number there is still a business to ring — that is
+           * the whole call sheet, and the numbers in this book were expensive
+           * to find. So the address is retired the way a real bounce is and
+           * the lead stays workable by phone.
+           *
+           * With no phone and no address there is nothing left to do with it
+           * at all, and keeping it means carrying a row that can only ever
+           * take up space in a count. Those are deleted.
+           */
+          if (lead.phone) {
+            await prisma.lead
+              .update({
+                where: { id: lead.id },
+                data: {
+                  emailVerifiedAt: now,
+                  emailVerificationStatus: r.status,
+                  emailVerificationSubStatus: r.subStatus,
+                  emailDeliveryFailedAt: now,
+                  emailDeliveryFailedReason: `Address verified as ${r.status}${
+                    r.subStatus ? ` (${r.subStatus})` : ''
+                  }. Nothing was sent — call instead.`,
+                },
+              })
+              .catch(() => null);
+            return;
+          }
+
+          deleted.push(lead.company);
+          await prisma.lead.delete({ where: { id: lead.id } }).catch(() => null);
         })
       );
 
@@ -190,7 +218,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const leads = ordered.filter((l) => isSendableStatus(l.emailVerificationStatus));
+    /*
+     * The daily allowance is spent AFTER the dead addresses come out, not
+     * before.
+     *
+     * Trimming first meant a batch of five hundred that turned out to hold a
+     * hundred dead addresses sent four hundred and burned the whole day's
+     * ceiling doing it. Nothing was ever sent to those hundred, so nothing
+     * should have been charged for them — the limit exists to cap what
+     * reaches a mail server, and an address we refused to use never got near
+     * one.
+     */
+    const sendable = ordered.filter(
+      (l) => !dropped.has(l.id) && isSendableStatus(l.emailVerificationStatus)
+    );
+    const leads = sendable.slice(0, budget.allowed);
     const idsToSend = leads.map((l) => l.id);
 
     const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
@@ -330,7 +372,10 @@ export async function POST(request: NextRequest) {
      * that came back smaller than the one that went in — a trim nobody was
      * told about is how somebody presses send a second time.
      */
-    const heldBack = leadIds.length - idsToSend.length;
+    // Only what the ceiling actually withheld. A dead address was never held
+    // back for tomorrow — it is gone, and counting it here would tell somebody
+    // to come back for leads that no longer exist.
+    const heldBack = Math.max(0, sendable.length - idsToSend.length);
     return NextResponse.json(
       {
         success: true,
@@ -348,6 +393,8 @@ export async function POST(request: NextRequest) {
         // reason attached rather than looking like leads went missing.
         verified,
         rejected,
+        deleted: deleted.length,
+        deletedNames: deleted.slice(0, 5),
         budget: { limit: budget.limit, used: budget.used + sentCount, remaining: Math.max(0, budget.remaining - sentCount) },
       },
       { status: 200 }

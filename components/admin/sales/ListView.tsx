@@ -209,6 +209,10 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
     budget?: { limit: number; used: number; remaining: number };
     /** The batch stopped itself because too many were being refused. */
     haltedBy?: string | null;
+    /** Addresses a verifier confirmed dead, and what happened to them. */
+    rejected?: number;
+    deleted?: number;
+    deletedNames?: string[];
   } | null>(null);
   /** Set when the day is spent and nothing at all could go. */
   const [sendBlocked, setSendBlocked] = useState<string | null>(null);
@@ -507,6 +511,9 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
           heldBack: data.heldBack || 0,
           budget: data.budget,
           haltedBy: data.haltedBy || null,
+          rejected: data.rejected || 0,
+          deleted: data.deleted || 0,
+          deletedNames: data.deletedNames || [],
         });
         setSelected(new Set());
         setPreviewingBatch(null);
@@ -1123,6 +1130,33 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
           {coldSendResult.haltedBy && (
             <p className="mt-2 rounded-lg border border-red-400/30 bg-red-400/[0.08] px-3 py-2 text-xs text-red-200 leading-relaxed">
               {coldSendResult.haltedBy}
+            </p>
+          )}
+          {/* What the verifier caught. Said plainly, because a lead that
+              disappears without explanation is worse than the bounce it was
+              going to cause — and these were never charged against the daily
+              limit, which is the part worth knowing. */}
+          {!!coldSendResult.rejected && coldSendResult.rejected > 0 && (
+            <p className="mt-1.5 text-xs text-white/50 leading-relaxed">
+              {coldSendResult.rejected} {coldSendResult.rejected === 1 ? 'address was' : 'addresses were'}{' '}
+              checked and came back dead, so nothing was sent to{' '}
+              {coldSendResult.rejected === 1 ? 'it' : 'them'} and{' '}
+              {coldSendResult.rejected === 1 ? 'it' : 'they'} did not count against your daily limit.
+              {!!coldSendResult.deleted && coldSendResult.deleted > 0 && (
+                <>
+                  {' '}
+                  <strong className="text-white/70">
+                    {coldSendResult.deleted} had no phone number either and {coldSendResult.deleted === 1 ? 'was' : 'were'}{' '}
+                    deleted
+                  </strong>
+                  {coldSendResult.deletedNames?.length
+                    ? ` — ${coldSendResult.deletedNames.join(', ')}${
+                        coldSendResult.deleted > coldSendResult.deletedNames.length ? ' and others' : ''
+                      }.`
+                    : '.'}{' '}
+                  The rest kept their number and are still callable.
+                </>
+              )}
             </p>
           )}
           {!!coldSendResult.heldBack && coldSendResult.heldBack > 0 && (
