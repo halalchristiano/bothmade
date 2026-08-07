@@ -15,6 +15,7 @@ import {
   sendWelcomeEmail,
 } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { billingPeriod, invoiceDate } from '@/lib/money-dates';
 import {
   notifyAdminsCarePlanEnded,
   notifyAdminsCarePlanPaymentFailed,
@@ -46,11 +47,7 @@ import {
  * different days depending on who is holding it.
  */
 function receiptDate(): string {
-  return new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  return invoiceDate(new Date());
 }
 
 /**
@@ -512,7 +509,7 @@ async function handleCarePlanStarted(
   firstCharge.setMonth(firstCharge.getMonth() + schedule.freeMonths);
   const firstChargeLabel =
     schedule.freeMonths > 0
-      ? `Your first payment of ${formatCents(schedule.discountedCents)} is due on ${firstCharge.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`
+      ? `Your first payment of ${formatCents(schedule.discountedCents)} is due on ${invoiceDate(firstCharge)}.`
       : `Your card has been charged ${formatCents(schedule.discountedCents)} for the first month.`;
 
   await sendCarePlanStartedEmail({
@@ -576,14 +573,7 @@ async function findOfferBySubscription(invoiceOrSubscriptionId: string | null) {
  */
 function periodLabel(invoice: Stripe.Invoice): string | null {
   if (!invoice.period_start || !invoice.period_end) return null;
-  const format = (seconds: number) =>
-    new Date(seconds * 1000).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      timeZone: 'UTC',
-    });
-  return `${format(invoice.period_start)} – ${format(invoice.period_end)}`;
+  return billingPeriod(invoice.period_start, invoice.period_end);
 }
 
 /**
@@ -661,7 +651,7 @@ async function handleCarePlanInvoicePaid(invoice: Stripe.Invoice) {
       chargedCents: amountPaid,
       periodLabel: period,
       discountLabel: discount,
-      date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      date: invoiceDate(new Date()),
     });
 
     await sendCarePlanInvoiceEmail({

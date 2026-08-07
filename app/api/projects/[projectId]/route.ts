@@ -124,6 +124,8 @@ export async function GET(
     const instalments =
       project.instalments.length > 0 ? project.instalments : await ensureInstalments(project.id);
 
+    const siteUrl = resolveSiteUrl();
+
     // Invoice number is the only link between the two — Instalment.invoiceNumber
     // is unique and points at Invoice.number. Used below to give an instalment
     // invoice somewhere to be paid.
@@ -228,11 +230,17 @@ export async function GET(
              * /pay resolves a live session when it is clicked, and refuses for
              * anything settled or cancelled, so this is safe to hand over for
              * any row that is still owed.
+             *
+             * Absolute, not relative. The admin project page reads this same
+             * route and renders a "Copy pay link" button from it — a relative
+             * path in a clipboard is a broken link the moment it is pasted
+             * into an email. It also has to survive being sent from any host
+             * the admin happens to be on, which is what resolveSiteUrl is for.
              */
             const inst = instalmentByInvoiceNumber.get(invoice.number);
             const payableUrl = inst
               ? invoice.status === 'open' && inst.status !== 'paid' && inst.status !== 'void'
-                ? `/pay/${inst.id}`
+                ? `${siteUrl}/pay/${inst.id}`
                 : null
               : invoice.paymentUrl;
 

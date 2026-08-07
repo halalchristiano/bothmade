@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireCronAuth } from '@/lib/cron-auth';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { formatCentsExact } from '@/lib/pricing';
+import { invoiceDayMonth } from '@/lib/money-dates';
 import { hasLapsed } from '@/lib/design-approval';
 import { chaseState } from '@/lib/payment-chase';
 import { sendDesignApprovedEmail, sendPaymentChaseEmail } from '@/lib/email';
@@ -235,7 +236,11 @@ export async function GET(request: NextRequest) {
         amountLabel: formatCentsExact(inst.amountCents),
         subject: state.subject,
         line: state.line,
-        dueLabel: (inst.dueAt ?? now).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
+        // `daysPastDue` above is computed from the raw instant, so a label
+        // rendered in the cron's own timezone can name one day while the
+        // arithmetic calling it overdue means another — and the client is the
+        // one holding the email. See lib/money-dates.
+        dueLabel: invoiceDayMonth(inst.dueAt ?? now),
         // Through our own domain, so the click is ours to see before Stripe's
         // — "never clicked" and "clicked and didn't finish" want completely
         // different responses from us. See app/pay/[instalmentId].

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { invoiceDate } from '@/lib/money-dates';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
@@ -40,7 +41,24 @@ export async function GET(
   // before this shipped, which is exactly how a feature ends up looking like
   // it was never built.
   const instalments = await ensureInstalments(projectId);
-  return NextResponse.json({ success: true, instalments });
+
+  /*
+   * `payUrl` beside the raw one, and it is the one to hand to a client.
+   *
+   * `paymentUrl` on the row is a Stripe Checkout Session, which dies 24 hours
+   * after it was minted. The panel offers a "Copy link" button on every due
+   * payment — the natural thing to reach for when chasing somebody by hand —
+   * and it was copying that, so whatever ops pasted into a message worked
+   * today and was a Stripe error page tomorrow.
+   *
+   * /pay resolves a live session when it is clicked and refuses once the row
+   * is settled or cancelled, so it can be shared freely and does not expire.
+   */
+  const siteUrl = resolveSiteUrl();
+  return NextResponse.json({
+    success: true,
+    instalments: instalments.map((inst) => ({ ...inst, payUrl: `${siteUrl}/pay/${inst.id}` })),
+  });
 }
 
 async function claimInvoiceNumber(): Promise<string> {
@@ -212,8 +230,9 @@ export async function POST(
 
     const now = new Date();
     const dueAt = instalmentDueDate(now);
-    const dateLabel = (d: Date) =>
-      d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    // Both the issue date and the due date printed on the invoice PDF. See
+    // lib/money-dates for why these are not rendered in the server's zone.
+    const dateLabel = invoiceDate;
 
     const gateLine =
       inst.trigger === 'design-approval'

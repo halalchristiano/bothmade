@@ -21,6 +21,7 @@ const sessionsCreate = vi.fn();
 const sessionsExpire = vi.fn();
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
+vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.test' }));
 vi.mock('@/lib/middleware', () => ({
   requireStaff: () => requireStaff(),
   unauthorizedResponse: () => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
@@ -190,6 +191,34 @@ describe('listing the schedule', () => {
 
     expect(data.success).toBe(true);
     expect(data.instalments.map((i: { index: number }) => i.index)).toEqual([1, 2, 3]);
+  });
+
+  /**
+   * The panel offers "Copy link" on every due payment — the natural thing to
+   * reach for when chasing somebody by hand. It was copying `paymentUrl`, the
+   * Stripe Checkout Session itself, which dies 24 hours after it was minted.
+   * So whatever ops pasted into a message worked that day and was a Stripe
+   * error page the next.
+   */
+  it('carries a durable link to hand to a client, beside the perishable one', async () => {
+    const res = await GET({} as Parameters<typeof GET>[0], {
+      params: Promise.resolve({ projectId: 'proj_1' }),
+    });
+    const data = await res.json();
+
+    const rows = data.instalments as Array<{ id: string; payUrl: string }>;
+    for (const row of rows) {
+      expect(row.payUrl).toBe(`https://bothmade.test/pay/${row.id}`);
+    }
+  });
+
+  it('gives an absolute link, because it is going into another inbox', async () => {
+    const res = await GET({} as Parameters<typeof GET>[0], {
+      params: Promise.resolve({ projectId: 'proj_1' }),
+    });
+    const data = await res.json();
+
+    expect((data.instalments as Array<{ payUrl: string }>)[0].payUrl.startsWith('https://')).toBe(true);
   });
 });
 

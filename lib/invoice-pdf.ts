@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 import { LOGO_BACKGROUND, LOGO_HEIGHT, LOGO_WIDTH, logoJpegBytes } from '@/lib/brand-logo';
 import { COMPANY_ADDRESS_LINES, COMPANY_EMAIL, COMPANY_NAME } from '@/lib/company';
 import { winAnsi } from '@/lib/pdf-text';
+import { invoiceDate } from '@/lib/money-dates';
 import {
   ADD_ONS,
   BASE_SERVICES,
@@ -292,7 +293,7 @@ export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInpu
 
   return buildInvoicePdf({
     invoiceNumber: input.invoiceNumber,
-    date: issuedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    date: invoiceDate(issuedAt),
     company: input.company,
     contactName: input.contactName,
     summary: input.description,
@@ -439,7 +440,7 @@ export async function buildInvoiceForProposal(input: InvoiceForProposalInput): P
   const { leadId, company, contactName, baseService, totalPrice, depositOnly } = input;
   const { lineItems, adjustments, subtotal } = itemiseProposal(input);
   const invoiceNumber = leadId.slice(0, 8).toUpperCase();
-  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const date = invoiceDate(new Date());
 
   // Pay-in-full is the one sale with no schedule to show — three rows where
   // one of them is the entire fee reads as a mistake, not as clarity.

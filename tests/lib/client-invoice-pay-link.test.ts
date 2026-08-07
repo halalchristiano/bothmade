@@ -34,6 +34,7 @@ vi.mock('@/lib/middleware', () => ({
   unauthorizedResponse: () => new Response('{}', { status: 401 }),
   forbiddenResponse: () => new Response('{}', { status: 403 }),
 }));
+vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.test' }));
 vi.mock('@/lib/instalments', () => ({
   ensureInstalments: async () => [],
   OWED_INSTALMENT_STATUSES: ['scheduled', 'due'],
@@ -131,7 +132,20 @@ describe('an instalment invoice still owed', () => {
 
     const [row] = await read();
 
-    expect(row.paymentUrl).toBe('/pay/inst_2');
+    expect(row.paymentUrl).toBe('https://bothmade.test/pay/inst_2');
+  });
+
+  /**
+   * Absolute, because the admin project page reads this same route and offers
+   * a "Copy pay link" button from it. A relative path is a broken link the
+   * moment it is pasted into an email to a client.
+   */
+  it('gives a link that survives being copied somewhere else', async () => {
+    prisma.project.findUnique.mockResolvedValue(projectWith([invoice()], [instalment()]));
+
+    const [row] = await read();
+
+    expect(row.paymentUrl?.startsWith('https://')).toBe(true);
   });
 });
 

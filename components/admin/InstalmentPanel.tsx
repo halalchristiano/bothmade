@@ -29,6 +29,8 @@ interface InstalmentRow {
   status: 'scheduled' | 'due' | 'paid' | 'void';
   invoiceNumber: string | null;
   paymentUrl: string | null;
+  /** The durable link. See the GET in the instalments route for why. */
+  payUrl?: string | null;
   dueAt: string | null;
   paidAt: string | null;
   emailSentAt: string | null;
@@ -200,9 +202,16 @@ export function InstalmentPanel({
                     : `Send ${inst.label}`}
                 </button>
               )}
-              {inst.status === 'due' && inst.paymentUrl && (
+              {/*
+                payUrl, not paymentUrl. The latter is the Stripe checkout
+                itself and is dead 24 hours after it was minted, so a link
+                copied out of here and pasted into a message stopped working
+                overnight. payUrl goes through /pay, which mints a live
+                session when the client clicks it.
+              */}
+              {inst.status === 'due' && (inst.payUrl || inst.paymentUrl) && (
                 <button
-                  onClick={() => navigator.clipboard?.writeText(inst.paymentUrl!)}
+                  onClick={() => navigator.clipboard?.writeText((inst.payUrl || inst.paymentUrl)!)}
                   className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/5"
                   title="Copy payment link"
                 >

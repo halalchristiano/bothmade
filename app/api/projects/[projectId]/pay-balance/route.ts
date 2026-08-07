@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { forbiddenResponse, requireClient } from '@/lib/middleware';
 import { amountPaidTowardProject } from '@/lib/billing';
+import { liveCheckoutUrl } from '@/lib/instalment-checkout';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -58,52 +59,44 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           { status: 400 }
         );
       }
-      // Reuse the emailed link only while Stripe still honours it. Checkout
-      // Sessions die after 24 hours; the invoice promises 14 days — so a
-      // client paying on day 3 must get a FRESH session, not the corpse of
-      // the emailed one, and pay-balance is exactly where they land when
-      // the emailed button stops working.
-      if (due.paymentUrl && due.stripeSessionId) {
-        const stored = await stripe.checkout.sessions
-          .retrieve(due.stripeSessionId)
-          .catch(() => null);
-        if (stored?.status === 'open') {
-          return NextResponse.json({ success: true, url: due.paymentUrl }, { status: 200 });
-        }
-      }
-
-      // Carry the ledger invoice into the fresh session's metadata, so the
-      // webhook settles the same invoice the emailed link would have.
+      /*
+       * Reuse the emailed link only while Stripe still honours it. Checkout
+       * Sessions die after 24 hours; the invoice promises 14 days — so a
+       * client paying on day 3 must get a FRESH session, not the corpse of
+       * the emailed one.
+       *
+       * This rule used to be written out here and again, differently, in
+       * /pay/[instalmentId]. Two copies of "when may a stored Stripe URL be
+       * handed to a client" is one copy too many for a question whose wrong
+       * answer is either a dead button or two live checkouts for one payment.
+       * liveCheckoutUrl is the single answer now.
+       */
       const dueInvoice = due.invoiceNumber
         ? await prisma.invoice.findUnique({ where: { number: due.invoiceNumber } })
         : null;
-      const instalmentCheckout = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        customer_email: project.client.email,
-        success_url: `${siteUrl}/client/${project.id}?paid=1&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${siteUrl}/client/${project.id}`,
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: { name: `${project.name} — ${due.label}` },
-              unit_amount: due.amountCents,
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          existingProjectId: project.id,
-          instalmentId: due.id,
-          ...(dueInvoice ? { invoiceId: dueInvoice.id, invoiceNumber: dueInvoice.number } : {}),
-          paymentType: due.index === 1 ? 'deposit' : 'balance',
-        },
-      });
+
+      const live = await liveCheckoutUrl(
+        stripe,
+        due,
+        { id: project.id, name: project.name, clientEmail: project.client.email },
+        siteUrl,
+        dueInvoice?.id
+      );
+      if (!live) {
+        return NextResponse.json(
+          { error: "Couldn't reach Stripe to open a payment. Please try again in a moment." },
+          { status: 502 }
+        );
+      }
+      if (!live.minted) {
+        return NextResponse.json({ success: true, url: live.url }, { status: 200 });
+      }
+
       await prisma.instalment.update({
         where: { id: due.id },
-        data: { paymentUrl: instalmentCheckout.url, stripeSessionId: instalmentCheckout.id },
+        data: { paymentUrl: live.url, stripeSessionId: live.sessionId },
       });
-      return NextResponse.json({ success: true, url: instalmentCheckout.url }, { status: 201 });
+      return NextResponse.json({ success: true, url: live.url }, { status: 201 });
     }
 
     // Legacy projects (no instalment rows) keep the lump-balance flow.
