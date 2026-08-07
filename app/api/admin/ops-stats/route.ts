@@ -126,11 +126,22 @@ export async function GET(request: Request) {
       })
     );
 
-    const awaitingSignature = await prisma.lead.findMany({
-      where: { contractStatus: 'sent' },
-      orderBy: { updatedAt: 'desc' },
-      take: 10,
-      select: { id: true, company: true, updatedAt: true },
+    /**
+     * A number, because the dashboard only ever wanted the number.
+     *
+     * This was a `take: 10` list whose length was rendered as the headline
+     * stat, so the eleventh unsigned contract — and every one after it — was
+     * invisible, and the tile read a flat "10" forever. Nothing consumed the
+     * rows themselves; the list of who to chase comes down the sales half,
+     * per rep, with phone numbers on it.
+     *
+     * Won and lost are excluded, matching /api/admin/today and the sales
+     * half's active-only filter. A dead lead's unsigned contract is not
+     * awaiting anything, and counting it made the tile disagree with the
+     * rows underneath it.
+     */
+    const awaitingSignatureCount = await prisma.lead.count({
+      where: { contractStatus: 'sent', status: { notIn: ['won', 'lost'] } },
     });
 
     const pendingMockups = await prisma.lead.findMany({
@@ -339,7 +350,7 @@ export async function GET(request: Request) {
             round: f.round,
             daysWaiting: Math.floor((now.getTime() - f.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
           })),
-          awaitingSignature: awaitingSignature.map((l) => ({ id: l.id, company: l.company, updatedAt: l.updatedAt })),
+          awaitingSignatureCount,
           pendingMockups: pendingMockups.map((l) => ({ id: l.id, company: l.company, mockupRequestedAt: l.mockupRequestedAt })),
           readyToDeliver: readyToDeliver.map((p) => ({ id: p.id, name: p.name, company: p.client.company, updatedAt: p.updatedAt })),
           revenueThisMonth,

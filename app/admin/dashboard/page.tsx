@@ -214,7 +214,7 @@ interface OpsStats {
     lastPaymentReminderSentAt: string | null;
   }>;
   projectsAwaitingReply: Array<{ id: string; name: string; company: string; waitHours: number }>;
-  awaitingSignature: Array<{ id: string; company: string; updatedAt: string }>;
+  awaitingSignatureCount: number;
   pendingMockups: Array<{ id: string; company: string; mockupRequestedAt: string | null }>;
   revenueThisMonth: number;
   revenueLastMonth: number;
@@ -1288,7 +1288,7 @@ function OpsDashboard({
               note: `Your cut (${Math.round(COMMISSION_RATE * 100)}%): ${formatCents(Math.round(stats.revenueThisMonth * COMMISSION_RATE))}`,
             },
             { icon: UserPlus, label: `New Clients ${stats.periodLabel}`, value: String(stats.newClientsThisWeek), tone: 'purple' },
-            { icon: FileSignature, label: 'Awaiting Signature', value: String(stats.awaitingSignature.length), tone: 'amber' },
+            { icon: FileSignature, label: 'Awaiting Signature', value: String(stats.awaitingSignatureCount), tone: 'amber' },
           ]}
         />
       </div>
