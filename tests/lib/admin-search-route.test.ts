@@ -16,12 +16,15 @@ const clientFindMany = vi.fn();
 const projectFindMany = vi.fn();
 const teamNoteFindMany = vi.fn();
 
+const invoiceFindMany = vi.fn();
+
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     lead: { findMany: (...a: unknown[]) => leadFindMany(...a) },
     client: { findMany: (...a: unknown[]) => clientFindMany(...a) },
     project: { findMany: (...a: unknown[]) => projectFindMany(...a) },
     teamNote: { findMany: (...a: unknown[]) => teamNoteFindMany(...a) },
+    invoice: { findMany: (...a: unknown[]) => invoiceFindMany(...a) },
   },
 }));
 
@@ -51,6 +54,7 @@ beforeEach(() => {
   clientFindMany.mockReset().mockResolvedValue([]);
   projectFindMany.mockReset().mockResolvedValue([]);
   teamNoteFindMany.mockReset().mockResolvedValue([]);
+  invoiceFindMany.mockReset().mockResolvedValue([]);
 });
 
 /** The OR arms the route builds for a model, flattened to comparable JSON. */
@@ -121,5 +125,73 @@ describe('the shape of the answer', () => {
     expect(body.results).toEqual([]);
     expect(clientFindMany).not.toHaveBeenCalled();
     expect(leadFindMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The one identifier a client already has in their hand.
+ *
+ * Every invoice email is subject-lined "Invoice INV-0042 — …", so that
+ * string is what comes back in the reply and what gets read down the phone.
+ * Search could find the company, the project and a passing note mentioning
+ * them, but not the document being asked about.
+ */
+const INVOICE = {
+  id: 'inv_1',
+  number: 'INV-0042',
+  description: 'Deposit',
+  amountCents: 250000,
+  status: 'open',
+  createdAt: new Date('2026-08-02T00:00:00.000Z'),
+  projectId: 'proj_9',
+  client: { company: 'Linpotia Dental' },
+};
+
+describe('searching an invoice number', () => {
+  it('finds it', async () => {
+    invoiceFindMany.mockResolvedValue([INVOICE]);
+
+    const body = await (await GET(request('INV-0042'))).json();
+
+    expect(body.results).toHaveLength(1);
+    expect(body.results[0].title).toBe('Invoice INV-0042');
+    expect(body.results[0].type).toBe('invoice');
+  });
+
+  it('lands on the billing view for that project, where the invoice lives', async () => {
+    invoiceFindMany.mockResolvedValue([INVOICE]);
+
+    const body = await (await GET(request('INV-0042'))).json();
+
+    expect(body.results[0].href).toBe('/admin/billing?projectId=proj_9');
+  });
+
+  it('says whose it is, what it is for and whether it is paid', async () => {
+    // "INV-0042" alone identifies the row and tells you nothing about
+    // whether it is the one you want. Status matters most: the usual reason
+    // to look an invoice up is to find out if the money arrived.
+    invoiceFindMany.mockResolvedValue([INVOICE]);
+
+    const body = await (await GET(request('INV-0042'))).json();
+
+    expect(body.results[0].subtitle).toContain('Linpotia Dental');
+    expect(body.results[0].subtitle).toContain('open');
+  });
+
+  it('matches the description too, for when nobody quoted a number', async () => {
+    await GET(request('deposit'));
+
+    const arms = JSON.stringify(invoiceFindMany.mock.calls[0][0].where.OR);
+    expect(arms).toContain('number');
+    expect(arms).toContain('description');
+  });
+
+  it('sorts in with everything else by recency, not in a section of its own', async () => {
+    invoiceFindMany.mockResolvedValue([INVOICE]);
+    clientFindMany.mockResolvedValue([CLIENT]); // updated 2026-08-01, older
+
+    const body = await (await GET(request('lin'))).json();
+
+    expect(body.results.map((r: { type: string }) => r.type)).toEqual(['invoice', 'client']);
   });
 });

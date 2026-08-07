@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { formatCents } from '@/lib/pricing';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, results: [] }, { status: 200 });
     }
 
-    const [leads, clients, projects, notes] = await Promise.all([
+    const [leads, clients, projects, notes, invoices] = await Promise.all([
       prisma.lead.findMany({
         where: {
           OR: [
@@ -75,6 +76,38 @@ export async function GET(request: NextRequest) {
           project: { select: { id: true, name: true, client: { select: { company: true } } } },
         },
       }),
+
+      /*
+       * Invoice numbers, which is the string clients actually quote at you.
+       *
+       * Every invoice email goes out subject-lined "Invoice INV-0042 — …",
+       * and Invoice.number is unique, so it is the one identifier in the
+       * system a client already has in their hand when they get in touch.
+       * Search knew nothing about it — you could find the company, the
+       * project and a passing note mentioning them, but not the document
+       * they were phoning about, which meant going to Billing and reading
+       * down the list.
+       */
+      prisma.invoice.findMany({
+        where: {
+          OR: [
+            { number: { contains: q, mode: 'insensitive' } },
+            { description: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        take: 6,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          number: true,
+          description: true,
+          amountCents: true,
+          status: true,
+          createdAt: true,
+          projectId: true,
+          client: { select: { company: true } },
+        },
+      }),
     ]);
 
     // When the query was a number, lead with the phone — otherwise the result
@@ -110,6 +143,20 @@ export async function GET(request: NextRequest) {
         subtitle: p.client.company,
         href: `/admin/projects/${p.id}`,
         updatedAt: p.updatedAt,
+      })),
+      ...invoices.map((inv) => ({
+        type: 'invoice' as const,
+        id: inv.id,
+        title: `Invoice ${inv.number}`,
+        // Company and amount, because "INV-0042" alone identifies the row
+        // and tells you nothing about whether it is the one you want. The
+        // status matters most of all — the usual reason to look an invoice
+        // up is to find out whether it has been paid.
+        subtitle: `${inv.client.company} · ${formatCents(inv.amountCents)} · ${inv.status}`,
+        // Billing already deep-links by project; that is where the invoice
+        // and its payment history are shown together.
+        href: `/admin/billing?projectId=${inv.projectId}`,
+        updatedAt: inv.createdAt,
       })),
       ...notes.map((n) => ({
         type: 'note' as const,

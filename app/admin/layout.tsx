@@ -134,7 +134,7 @@ function NavLinks({
 }
 
 interface SearchResult {
-  type: 'lead' | 'client' | 'project' | 'note';
+  type: 'lead' | 'client' | 'project' | 'note' | 'invoice';
   id: string;
   title: string;
   subtitle: string | null;
@@ -146,6 +146,7 @@ const TYPE_LABELS: Record<SearchResult['type'], string> = {
   client: 'Client',
   project: 'Project',
   note: 'Note',
+  invoice: 'Invoice',
 };
 
 // Exported for its own tests: the debounce-and-abort sequence is the kind of
