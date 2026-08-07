@@ -50,6 +50,15 @@ model User {
   // Headshot shown in the outbound-email footer next to the sender's name.
   avatarUrl String?
 
+  /// Where the phone network rings this person when they place a call from
+  /// the app. Their own handset — there is no softphone here and no app to
+  /// install; the call arrives as an ordinary incoming call.
+  ///
+  /// Null means calls fall back to a plain `tel:` link, which is what every
+  /// account did before this existed and what every account does on a
+  /// deployment with no Twilio credentials.
+  callbackNumber String?
+
   // Job title shown in email sign-offs — pre-fills the "Your title" field
   // on cold-outreach/custom templates instead of retyping it every send.
   title String?
@@ -85,6 +94,7 @@ model User {
   refundedInvoices     Invoice[]        @relation("InvoiceRefunder")
   changeOrders         ChangeOrder[]    @relation("ChangeOrderAuthor")
   recurringOffers      RecurringOffer[] @relation("RecurringOfferAuthor")
+  placedCalls          PhoneCall[]      @relation("PhoneCallPlacedBy")
 
   @@map("users")
 }
@@ -494,7 +504,7 @@ model Lead {
   // timestamps only — what they are allowed to mean is decided at read time
   // in lib/lead-opens.ts, because a single open is proof of delivery and
   // nothing more, while five opens across two days is a phone call.
-  coldEmailOpens          Int       @default(0)
+  coldEmailOpens             Int       @default(0)
   /// Claimed by the first pixel fetch that proves a person rather than a mail
   /// server, so the "they opened it" alert fires once per send instead of once
   /// per image load. Cleared on a resend along with the counters.
@@ -684,6 +694,7 @@ model Lead {
 
   activities LeadActivity[]
   mockups    LeadMockup[]
+  phoneCalls PhoneCall[]
 
   // Every list in the admin either filters by owner and stage, sorts by when
   // a lead arrived, or looks one up by name/email — so those are the reads
@@ -1504,4 +1515,60 @@ model RateLimit {
   // Lets the opportunistic sweep find lapsed rows without a full scan.
   @@index([windowStart])
   @@map("rate_limits")
+}
+
+/// A call placed through the phone network, and what the network said about it.
+///
+/// Every other record of a call in this app is somebody's account of one. The
+/// dial log got closer — it records that a number was tapped, with nothing to
+/// press and no way to skip it — but the browser hands off to the operating
+/// system and never hears another word, so a number that rang out and a
+/// twenty-minute conversation are identical to it.
+///
+/// These rows are the carrier's account. Nobody types them, nobody can edit
+/// them, and `answeredAt` and `durationSeconds` are facts rather than claims.
+/// Its own table rather than another `LeadActivity` type because a call has a
+/// life: it is queued, then ringing, then answered, then over, and each of
+/// those arrives as a separate webhook minutes apart. An activity row is
+/// written once and never moves.
+model PhoneCall {
+  id     String @id @default(cuid())
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// Who placed it. Null only if the account is deleted afterwards — the call
+  /// still happened and the lead's history should not lose it.
+  placedById String?
+  placedBy   User?   @relation("PhoneCallPlacedBy", fields: [placedById], references: [id], onDelete: SetNull)
+
+  /// The provider's own id for this call. Unique because every webhook about
+  /// it arrives keyed on this and may arrive more than once — a retry must
+  /// update the row it already wrote, never add a second one.
+  providerSid String @unique
+
+  /// As dialled, in E.164. Kept even if the lead's number is corrected later:
+  /// the only version worth having is the one that was actually rung.
+  toNumber String
+
+  /// queued | ringing | in-progress | completed | busy | no-answer | failed |
+  /// canceled — the provider's vocabulary, stored verbatim and interpreted at
+  /// read time, same reasoning as the email verifier's sub-status.
+  status String @default("queued")
+
+  /// Seconds the two of them were connected. Null until the call ends. This
+  /// is the number that cannot be argued with.
+  durationSeconds Int?
+
+  answeredAt DateTime?
+  endedAt    DateTime?
+
+  /// Why it failed, in the provider's words, when it did.
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([placedById, createdAt])
+  @@map("phone_calls")
 }

@@ -175,6 +175,20 @@ export default function CallCockpit() {
    * to survive exactly the event that makes it true.
    */
   const [dialled, setDialled] = useState(false);
+
+  /**
+   * Placing the call through the phone network rather than handing off to the
+   * handset.
+   *
+   * The difference is the only one that matters here: afterwards the network
+   * says whether the lead picked up and for how long. `null` means the
+   * deployment has no carrier configured, in which case every button falls
+   * back to the plain `tel:` link it always was.
+   */
+  const [networkCall, setNetworkCall] = useState<
+    { state: 'idle' | 'placing' | 'ringing'; error: string | null }
+  >({ state: 'idle', error: null });
+  const [callingAvailable, setCallingAvailable] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const activeRailRef = useRef<HTMLAnchorElement | null>(null);
 
@@ -192,6 +206,16 @@ export default function CallCockpit() {
       setLoadError(true);
     }
   }, [leadId, router]);
+
+  // Whether this deployment can place calls at all, and whether this person
+  // has told it where to ring them. Both have to be true before the button is
+  // offered — a button that always errors is worse than no button.
+  useEffect(() => {
+    fetch('/api/admin/settings/profile')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d) => setCallingAvailable(Boolean(d?.callingConfigured && d?.callbackNumber)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     load();
@@ -513,6 +537,39 @@ export default function CallCockpit() {
    * because the reason somebody presses this is that they are working a queue
    * and this one is in the way.
    */
+  /**
+   * Rings the rep's own phone, then bridges it to the lead.
+   *
+   * Backwards on paper and right for a phone in a pocket: nothing to install,
+   * no microphone permission, and the rep is already on the line when the
+   * lead answers so nobody hears dead air. What it buys is that the network
+   * reports back afterwards — whether they picked up, and for how long. That
+   * is a measurement, and nothing anybody types can move it.
+   */
+  async function callThroughNetwork() {
+    if (!lead) return;
+    setNetworkCall({ state: 'placing', error: null });
+    // The same flag the tel: link sets, so the screen flips to its
+    // after-the-call shape either way.
+    setDialled(true);
+    try {
+      sessionStorage.setItem(`dialled:${leadId}`, '1');
+    } catch {
+      /* private mode — the bar just won't survive the app switch */
+    }
+    try {
+      const res = await fetch(`/api/admin/leads/${lead.id}/call`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setNetworkCall({ state: 'idle', error: data.error || "Couldn't place the call." });
+        return;
+      }
+      setNetworkCall({ state: 'ringing', error: null });
+    } catch {
+      setNetworkCall({ state: 'idle', error: "Couldn't reach the server to place the call." });
+    }
+  }
+
   async function skipFor(days: number) {
     if (!lead) return;
     setSkipping(true);
@@ -646,6 +703,16 @@ export default function CallCockpit() {
               . Check the notes below before you dial.
             </p>
           )}
+          {networkCall.state === 'ringing' && (
+            <p className="mb-2.5 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-200">
+              Answer your phone — it connects you to {lead.company} as soon as you pick up.
+            </p>
+          )}
+          {networkCall.error && (
+            <p className="mb-2.5 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200">
+              {networkCall.error}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="min-w-0">
               <div className="flex items-center gap-2 min-w-0">
@@ -695,7 +762,28 @@ export default function CallCockpit() {
                   {local.time} their time
                 </span>
               )}
-              {lead.phone ? (
+              {lead.phone && callingAvailable ? (
+                /*
+                  * Through the network, so it reports back.
+                  *
+                  * Only offered where a carrier is configured AND this person
+                  * has said where to ring them — a button that always errors
+                  * is worse than no button. Everywhere else this stays the
+                  * `tel:` link it has always been.
+                  */
+                <button
+                  onClick={callThroughNetwork}
+                  disabled={networkCall.state === 'placing'}
+                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-60"
+                >
+                  <Phone size={15} />
+                  {networkCall.state === 'placing'
+                    ? 'Connecting…'
+                    : networkCall.state === 'ringing'
+                      ? 'Your phone is ringing'
+                      : `Call ${lead.phone}`}
+                </button>
+              ) : lead.phone ? (
                 <a
                   href={`tel:${lead.phone}`}
                   onClick={recordDial}
@@ -1141,14 +1229,25 @@ export default function CallCockpit() {
               <ChevronRight size={16} />
             </button>
           ) : (
-            <a
-              href={`tel:${lead.phone}`}
-              onClick={recordDial}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-3 text-sm font-bold text-black"
-            >
-              <Phone size={16} />
-              Call {lead.phone}
-            </a>
+            callingAvailable ? (
+              <button
+                onClick={callThroughNetwork}
+                disabled={networkCall.state === 'placing'}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-3 text-sm font-bold text-black disabled:opacity-60"
+              >
+                <Phone size={16} />
+                {networkCall.state === 'placing' ? 'Connecting…' : `Call ${lead.phone}`}
+              </button>
+            ) : (
+              <a
+                href={`tel:${lead.phone}`}
+                onClick={recordDial}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-3 text-sm font-bold text-black"
+              >
+                <Phone size={16} />
+                Call {lead.phone}
+              </a>
+            )
           )}
         </div>
       )}

@@ -111,6 +111,16 @@ export default function AdminSettingsPage() {
 
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
+  /**
+   * The handset a call from the app rings before it bridges to the lead.
+   *
+   * There is no softphone here and nothing to install: the call arrives as an
+   * ordinary incoming call, and this is where. Refused rather than guessed —
+   * dialling the wrong number means a stranger's phone goes off and a lead
+   * hears a confused hello.
+   */
+  const [callbackNumber, setCallbackNumber] = useState('');
+  const [callingConfigured, setCallingConfigured] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -139,6 +149,8 @@ export default function AdminSettingsPage() {
       .then((data) => {
         setName(data.name || '');
         setTitle(data.title || '');
+        setCallbackNumber(data.callbackNumber || '');
+        setCallingConfigured(Boolean(data.callingConfigured));
         setAvatarUrl(data.avatarUrl || null);
       });
   };
@@ -153,7 +165,7 @@ export default function AdminSettingsPage() {
       const res = await fetch('/api/admin/settings/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, title }),
+        body: JSON.stringify({ name, title, callbackNumber }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -370,6 +382,24 @@ export default function AdminSettingsPage() {
               placeholder="Your title (e.g. Director of Sales)"
               className={inputClass}
             />
+            {/* Only where a carrier is actually configured. An unexplained
+                phone field on a deployment that cannot place calls is a
+                setting nobody can act on. */}
+            {callingConfigured && (
+              <div>
+                <input
+                  value={callbackNumber}
+                  onChange={(e) => setCallbackNumber(e.target.value)}
+                  placeholder="Your mobile, e.g. +44 7496 815847"
+                  className={inputClass}
+                  aria-label="Number to ring you on"
+                />
+                <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+                  Calls placed from the app ring this phone first, then connect you to the lead.
+                  Leave it blank and the Call buttons stay as ordinary dial links.
+                </p>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center justify-between mt-3">
