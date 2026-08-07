@@ -5,6 +5,7 @@ import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { projectBalance, type BalanceInstalment } from '@/lib/billing';
 import { getPeriodStart, type StatsRange } from '@/app/api/admin/sales-stats/route';
 import { MOCKUPS_TO_BUILD_WHERE } from '@/lib/mockups';
+import { sumPaymentsBetween } from '@/lib/revenue';
 
 const RANGE_LABELS: Record<StatsRange, string> = {
   week: 'This Week',
@@ -32,6 +33,29 @@ export async function GET(request: Request) {
     // Prior period of equal length, for the trend comparison.
     const previousPeriodStart = new Date(periodStart.getTime() - (now.getTime() - periodStart.getTime()));
 
+    // Last 6 months, oldest first, for the trend chart.
+    const monthStarts = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const next = new Date(now.getFullYear(), now.getMonth() - (5 - i) + 1, 1);
+      return { start: d, end: next, label: d.toLocaleDateString('en-US', { month: 'short' }) };
+    });
+
+    /*
+     * The earliest instant any revenue figure on this page reaches back to.
+     *
+     * All of them — the six chart bars, the period total, the prior-period
+     * total behind the trend arrow — are sums of the same column over
+     * different windows of one span. They were eight separate findMany calls
+     * returning whole Payment rows so that `.reduce((s, p) => s + p.amount)`
+     * could add up one integer from each: six sequential round trips for the
+     * chart alone, inside a Promise.all that made them look concurrent.
+     *
+     * One query, two columns, bucketed below.
+     */
+    const revenueSince = new Date(
+      Math.min(monthStarts[0].start.getTime(), previousPeriodStart.getTime())
+    );
+
     /**
      * A project somebody has said "not this week" about.
      *
@@ -47,8 +71,7 @@ export async function GET(request: Request) {
       activeProjects,
       newHandoffs,
       newClientsInPeriod,
-      paymentsInPeriod,
-      paymentsInPreviousPeriod,
+      revenuePayments,
       recentClientMessages,
       recentPayments,
       recentLeadWins,
@@ -86,8 +109,10 @@ export async function GET(request: Request) {
         orderBy: { createdAt: 'desc' },
       }),
       prisma.client.count({ where: { createdAt: { gte: periodStart } } }),
-      prisma.payment.findMany({ where: { createdAt: { gte: periodStart } } }),
-      prisma.payment.findMany({ where: { createdAt: { gte: previousPeriodStart, lt: periodStart } } }),
+      prisma.payment.findMany({
+        where: { createdAt: { gte: revenueSince } },
+        select: { amount: true, createdAt: true },
+      }),
       prisma.projectMessage.findMany({
         where: { isFromAdmin: false, createdAt: { gte: periodStart } },
         orderBy: { createdAt: 'desc' },
@@ -113,18 +138,15 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    // Last 6 months of revenue, oldest first, for the trend chart.
-    const monthStarts = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      const next = new Date(now.getFullYear(), now.getMonth() - (5 - i) + 1, 1);
-      return { start: d, end: next, label: d.toLocaleDateString('en-US', { month: 'short' }) };
-    });
-    const revenueHistory = await Promise.all(
-      monthStarts.map(async ({ start, end, label }) => {
-        const payments = await prisma.payment.findMany({ where: { createdAt: { gte: start, lt: end } } });
-        return { label, value: payments.reduce((s, p) => s + p.amount, 0), year: start.getFullYear(), month: start.getMonth() };
-      })
-    );
+    // Every revenue figure on the page, summed out of the one query above.
+    const sumBetween = (from: Date, to?: Date) => sumPaymentsBetween(revenuePayments, from, to);
+
+    const revenueHistory = monthStarts.map(({ start, end, label }) => ({
+      label,
+      value: sumBetween(start, end),
+      year: start.getFullYear(),
+      month: start.getMonth(),
+    }));
 
     /**
      * A number, because the dashboard only ever wanted the number.
@@ -295,8 +317,8 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => b.waitHours - a.waitHours);
 
-    const revenueThisMonth = paymentsInPeriod.reduce((s, p) => s + p.amount, 0);
-    const revenueLastMonth = paymentsInPreviousPeriod.reduce((s, p) => s + p.amount, 0);
+    const revenueThisMonth = sumBetween(periodStart);
+    const revenueLastMonth = sumBetween(previousPeriodStart, periodStart);
 
     return NextResponse.json(
       {
