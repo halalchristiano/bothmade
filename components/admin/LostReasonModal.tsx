@@ -81,7 +81,7 @@ export function LostReasonModal({
           <button
             onClick={handleConfirm}
             disabled={!selected}
-            className="flex-1 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+            className="flex-1 rounded-xl bg-white py-2.5 text-sm font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             Mark as Lost
           </button>

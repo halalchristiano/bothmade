@@ -220,7 +220,7 @@ export function SendGuard() {
             type="button"
             autoFocus
             onClick={() => answer(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-ink hover:opacity-90 transition-opacity"
           >
             <Send size={14} />
             Send it

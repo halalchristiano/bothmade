@@ -513,7 +513,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
             )}
             <button
               onClick={onClose}
-              className="mt-4 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+              className="mt-4 rounded-xl bg-white px-5 py-2 text-sm font-semibold text-ink hover:opacity-90 transition-opacity"
             >
               Done
             </button>
@@ -721,7 +721,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
               <button
                 onClick={handleImport}
                 disabled={importing || preview.length === 0}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-sm font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
               >
                 {importing ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
                 {importing ? 'Importing...' : `Import ${preview.length || ''} lead${preview.length === 1 ? '' : 's'}`}

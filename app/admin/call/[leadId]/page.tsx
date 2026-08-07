@@ -711,7 +711,7 @@ export default function CallCockpit() {
                 <a
                   href={`tel:${lead.phone}`}
                   onClick={armDial}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90"
+                  className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-ink hover:opacity-90"
                 >
                   <Phone size={15} />
                   {lead.phone}
@@ -1156,7 +1156,7 @@ export default function CallCockpit() {
             <a
               href={`tel:${lead.phone}`}
               onClick={armDial}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-3 text-sm font-bold text-black"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-ink"
             >
               <Phone size={16} />
               Call {lead.phone}

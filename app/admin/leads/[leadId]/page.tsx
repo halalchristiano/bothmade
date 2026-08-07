@@ -1482,7 +1482,7 @@ export default function LeadDetailPage() {
           </button>
           <Link
             href="/admin/sales?view=list"
-            className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+            className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-ink hover:opacity-90 transition-opacity"
           >
             Back to Leads
           </Link>
@@ -1648,7 +1648,7 @@ export default function LeadDetailPage() {
             })()}
           <button
             onClick={() => setComposingEmail(true)}
-            className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full bg-white text-ink hover:opacity-90 transition-opacity"
           >
             <Mail size={14} /> Compose email
           </button>
@@ -1922,7 +1922,7 @@ export default function LeadDetailPage() {
               <button
                 onClick={sendFollowUp}
                 disabled={sendingFollowUp}
-                className="flex-1 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+                className="flex-1 rounded-xl bg-white py-2.5 text-sm font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
               >
                 {sendingFollowUp ? 'Sending...' : `Send it to ${lead.email}`}
               </button>
@@ -1963,7 +1963,7 @@ export default function LeadDetailPage() {
               <button
                 onClick={() => handleCallOutcome(o.key, needsDate)}
                 disabled={savingOutcome || (needsDate && !outcomeDate)}
-                className="w-full mt-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+                className="w-full mt-3 rounded-xl bg-white py-2.5 text-sm font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
               >
                 {savingOutcome ? 'Saving...' : `Log it — ${o.label.toLowerCase()}`}
               </button>
@@ -2760,7 +2760,7 @@ export default function LeadDetailPage() {
               onClick={() =>
                 setTab('proposal')
               }
-              className="w-full mb-4 flex items-center justify-center gap-2 text-sm font-bold px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 transition-opacity"
+              className="w-full mb-4 flex items-center justify-center gap-2 text-sm font-bold px-3.5 py-2.5 rounded-lg bg-white text-ink hover:opacity-90 transition-opacity"
             >
               <FileSignature size={15} /> Jump to proposal
             </button>
@@ -2847,7 +2847,7 @@ export default function LeadDetailPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  className="w-full rounded-lg bg-white py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
@@ -2978,10 +2978,14 @@ export default function LeadDetailPage() {
                 <button
                   key={t}
                   onClick={() => setActivityType(t)}
-                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  // A segmented selector, not a primary action. Solid white is
+                  // the Save-button treatment; on a chip that only says which
+                  // of five it is, it shouts. Matches ViewTabs: a raised chip,
+                  // not a filled one.
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-[background-color,color] duration-150 ease-ui ${
                     activityType === t
-                      ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold'
-                      : 'border border-white/15 text-white/60 hover:bg-white/5'
+                      ? 'bg-white/[0.09] text-white shadow-e1'
+                      : 'text-white/50 hover:bg-white/[0.04] hover:text-white/80'
                   }`}
                 >
                   {LEAD_ACTIVITY_LABELS[t]}
@@ -3066,7 +3070,7 @@ export default function LeadDetailPage() {
             <button
               onClick={handleLogActivity}
               disabled={loggingActivity || !activityContent.trim()}
-              className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="rounded-lg bg-white px-5 py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {loggingActivity ? 'Saving...' : 'Log Activity'}
             </button>
@@ -3215,7 +3219,7 @@ export default function LeadDetailPage() {
                 <button
                   onClick={handleSaveFiles}
                   disabled={savingFiles}
-                  className="mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  className="mt-4 px-4 py-2 rounded-lg bg-white text-ink text-sm font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity"
                 >
                   {savingFiles ? 'Saving...' : 'Save'}
                 </button>
@@ -3327,7 +3331,7 @@ export default function LeadDetailPage() {
             <button
               onClick={handleSaveQualification}
               disabled={savingQual}
-              className="mt-4 px-5 py-2.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="mt-4 px-5 py-2.5 rounded-lg bg-white text-ink text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {savingQual ? 'Saving...' : 'Save Qualification'}
             </button>
@@ -3712,7 +3716,7 @@ export default function LeadDetailPage() {
                   <button
                     onClick={doEmailPaymentLink}
                     disabled={emailingLink}
-                    className="flex-1 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                    className="flex-1 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
                   >
                     {emailingLink ? 'Sending...' : 'Yes, send it'}
                   </button>
@@ -3737,7 +3741,7 @@ export default function LeadDetailPage() {
                         ? 'Describe the custom work above before sending — the agreement goes out with this link'
                         : undefined
                   }
-                  className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 font-semibold text-black disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                  className="w-full rounded-lg bg-white px-5 py-3 font-semibold text-ink disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                 >
                   {emailingLink
                     ? 'Sending...'

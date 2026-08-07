@@ -846,7 +846,7 @@ export function Today({
         </div>
         <Link
           href={headline.href}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-ink hover:opacity-90 transition-opacity"
         >
           {headline.cta}
           <ArrowRight size={15} />

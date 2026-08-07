@@ -191,7 +191,7 @@ export function InstalmentPanel({
                 <button
                   onClick={() => send(inst.index)}
                   disabled={sending !== null}
-                  className="shrink-0 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
+                  className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:opacity-90 disabled:opacity-50"
                 >
                   {sending === inst.index
                     ? 'Sending…'

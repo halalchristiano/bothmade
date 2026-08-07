@@ -291,7 +291,7 @@ function NewProjectForm() {
         <button
           onClick={handleSubmit}
           disabled={!canSubmit}
-          className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+          className="w-full rounded-lg bg-white py-3 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
           {saving ? 'Creating...' : 'Create Project'}
         </button>

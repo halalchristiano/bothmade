@@ -134,7 +134,7 @@ export function GatePrompt({
         <button
           onClick={send}
           disabled={sending}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3.5 py-2 text-xs font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           <Send size={12} />
           {sending ? 'Sending…' : `Invoice ${formatCentsExact(gate.amountCents)} now`}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { BrandButton, inputClass } from '@/components/admin/ui';
 
 interface TaskItem {
   id: string;
@@ -125,24 +126,21 @@ export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = 
   const done = tasks.filter((t) => t.done);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
-      <h2 className="text-lg font-bold mb-4">My To-Dos</h2>
+    <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+      <h2 className="mb-4 text-base font-semibold">My to-dos</h2>
 
-      <div className="flex gap-2 mb-4">
+      <div className="mb-4 flex gap-2">
         <input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder="Add a task..."
-          className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white placeholder:text-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/60 focus:border-transparent transition-colors"
+          placeholder="Add a task…"
+          // The shared field style, rather than a fourth local copy of it.
+          className={`${inputClass} flex-1`}
         />
-        <button
-          onClick={handleAdd}
-          disabled={adding || !newTitle.trim()}
-          className="px-3 py-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
-        >
+        <BrandButton onClick={handleAdd} disabled={adding || !newTitle.trim()} className="shrink-0">
           Add
-        </button>
+        </BrandButton>
       </div>
 
       {error && (

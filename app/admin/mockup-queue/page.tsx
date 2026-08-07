@@ -525,7 +525,7 @@ export default function MockupQueuePage() {
                     aria-expanded={sendingOpenId === m.id}
                     className={
                       m.sendFailedAt || m.status === 'draft' || m.expired
-                        ? 'rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90 transition-opacity'
+                        ? 'rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:opacity-90 transition-opacity'
                         : 'rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/5 transition-colors'
                     }
                   >

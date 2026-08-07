@@ -101,7 +101,7 @@ export function MockupDeliveryForm({
           type="button"
           onClick={handleSave}
           disabled={saving || !url.trim()}
-          className={`shrink-0 ${buttonPad} rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity whitespace-nowrap`}
+          className={`shrink-0 ${buttonPad} rounded-lg bg-white text-ink font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity whitespace-nowrap`}
         >
           {saving ? 'Saving...' : submitLabel}
         </button>

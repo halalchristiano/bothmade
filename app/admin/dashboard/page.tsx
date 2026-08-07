@@ -1430,7 +1430,7 @@ function OpsDashboard({
       <div className="flex flex-wrap gap-3">
         <Link
           href="/admin/priorities"
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold hover:opacity-90 transition-opacity"
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-ink font-semibold hover:opacity-90 transition-opacity"
         >
           <ListChecks size={16} /> Priorities
         </Link>

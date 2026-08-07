@@ -532,7 +532,7 @@ export default function AdminProjectDetailPage() {
             <button
               onClick={handleAcknowledgeHandoff}
               disabled={acknowledgingHandoff}
-              className="text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
+              className="text-xs px-3 py-1.5 rounded-lg bg-white text-ink font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity whitespace-nowrap"
             >
               {acknowledgingHandoff ? 'Saving...' : "I've got this — Acknowledge"}
             </button>
@@ -853,7 +853,7 @@ export default function AdminProjectDetailPage() {
               <button
                 onClick={handleStatusUpdate}
                 disabled={statusSaving || (statusDraft === project.status && !statusDescription)}
-                className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                className="w-full rounded-lg bg-white py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
               >
                 {statusSaving ? 'Saving...' : 'Send Status Update'}
               </button>
@@ -1002,7 +1002,7 @@ export default function AdminProjectDetailPage() {
               <button
                 onClick={handleSendMessage}
                 disabled={messageSending || (!messageContent.trim() && messageFiles.length === 0)}
-                className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                className="rounded-lg bg-white px-5 py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
               >
                 {messageSending ? 'Sending...' : 'Send Message'}
               </button>

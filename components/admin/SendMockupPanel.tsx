@@ -172,7 +172,7 @@ export function SendMockupPanel({
       <button
         onClick={() => onSend(overriding ? typed : undefined, kind)}
         disabled={sending || !target || invalid}
-        className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+        className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
       >
         <Send size={14} />
         {sending ? 'Sending…' : resend ? 'Send it again' : 'Send mockup to client'}

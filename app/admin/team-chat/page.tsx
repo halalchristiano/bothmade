@@ -705,7 +705,7 @@ export default function TeamChatPage() {
             <button
               onClick={send}
               disabled={!draft.trim() && pendingFiles.length === 0}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 text-black hover:opacity-90 disabled:opacity-40"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-ink hover:opacity-90 disabled:opacity-40"
               aria-label="Send"
             >
               <Send size={15} />

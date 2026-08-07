@@ -87,7 +87,7 @@ export function BroadcastForm({
         type="button"
         onClick={handleSend}
         disabled={sending || !content.trim()}
-        className="rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+        className="rounded-xl bg-white px-5 py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
       >
         {sending ? sendingLabel : submitLabel}
       </button>

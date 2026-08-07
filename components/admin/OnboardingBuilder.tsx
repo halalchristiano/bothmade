@@ -153,7 +153,7 @@ export function OnboardingBuilder({
             type="button"
             onClick={askThem}
             disabled={busy || unanswered === 0}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3.5 py-2 text-xs font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-ink transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             <Send size={13} />
             {unanswered === 0 ? 'All answered' : busy ? 'Sending…' : 'Ask them to fill it in'}
@@ -364,7 +364,7 @@ export function OnboardingBuilder({
         <button
           onClick={add}
           disabled={busy || !text.trim()}
-          className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="w-full rounded-lg bg-white py-2.5 text-sm font-semibold text-ink transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {busy ? 'Adding…' : 'Add this question'}
         </button>

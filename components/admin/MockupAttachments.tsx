@@ -328,7 +328,7 @@ function MockupRow({
             type="button"
             onClick={handleSend}
             disabled={sending}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             <Send size={12} />
             {sending ? 'Sending…' : mockup.expired ? 'Re-send to client' : 'Send to client'}
@@ -385,7 +385,7 @@ function MockupRow({
               type="button"
               onClick={handleSaveNote}
               disabled={saving}
-              className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+              className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
               {saving ? 'Saving...' : 'Save notes'}
             </button>
@@ -632,7 +632,7 @@ export function MockupAttachments({
               type="button"
               onClick={handleAttachLink}
               disabled={busy || !url.trim()}
-              className="shrink-0 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+              className="shrink-0 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
               {isUploading ? 'Uploading' : busy ? 'Attaching...' : 'Attach'}
             </button>

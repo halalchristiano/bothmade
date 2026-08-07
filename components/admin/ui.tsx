@@ -788,9 +788,14 @@ export function Section({
   };
 
   return (
+    // A real surface, matching Card. The top-to-bottom white wash plus a blur
+    // was the old glass idiom, and a page of twelve of these stacked reads as
+    // twelve sheets of frosted plastic — the gradient fights the one on the
+    // section above it, and blur costs a compositing layer per section for an
+    // effect nothing is behind.
     <section
-      className={`rounded-2xl border bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl ${
-        attention ? 'border-amber-400/30' : 'border-white/[0.08]'
+      className={`relative rounded-2xl border bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent ${
+        attention ? 'border-amber-400/30' : 'border-white/[0.06]'
       } ${className}`}
     >
       <button

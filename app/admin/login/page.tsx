@@ -91,7 +91,10 @@ export default function AdminLoginPage() {
           <Wordmark className="text-2xl" />
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl">
+        {/* The first screen anybody sees, so it is the first thing that says
+            whether this was built carefully. Same surface as everything
+            behind it rather than a frosted panel. */}
+        <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-8 shadow-e4 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.1] before:to-transparent">
           {showForgotPassword ? (
             <>
               <h1 className="text-2xl font-bold mb-2">Reset password</h1>
@@ -137,7 +140,7 @@ export default function AdminLoginPage() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+                      className="w-full rounded-lg bg-white py-3 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
                     >
                       {loading ? 'Sending…' : 'Send reset link'}
                     </button>
@@ -191,7 +194,7 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 py-3 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="w-full rounded-lg bg-white py-3 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {loading ? 'Logging in...' : 'Login'}
             </button>

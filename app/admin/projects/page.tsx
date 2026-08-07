@@ -261,7 +261,7 @@ export default function AdminProjectsPage() {
           </select>
           <Link
             href="/admin/projects/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity whitespace-nowrap"
+            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-ink hover:opacity-90 transition-opacity whitespace-nowrap"
           >
             <Plus size={16} />
             New Project

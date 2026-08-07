@@ -99,7 +99,7 @@ export function QuickAddLeadModal({
           <button
             onClick={() => setMode('single')}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              mode === 'single' ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black' : 'text-white/50'
+              mode === 'single' ? 'bg-white text-ink' : 'text-white/50'
             }`}
           >
             Single
@@ -107,7 +107,7 @@ export function QuickAddLeadModal({
           <button
             onClick={() => setMode('bulk')}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              mode === 'bulk' ? 'bg-gradient-to-r from-sky-400 to-purple-500 text-black' : 'text-white/50'
+              mode === 'bulk' ? 'bg-white text-ink' : 'text-white/50'
             }`}
           >
             Bulk Add
@@ -146,7 +146,7 @@ export function QuickAddLeadModal({
             <button
               onClick={handleCreate}
               disabled={creating || !company.trim()}
-              className="w-full rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="w-full rounded-xl bg-white py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {creating ? 'Adding...' : 'Add Company'}
             </button>
@@ -187,7 +187,7 @@ export function QuickAddLeadModal({
             <button
               onClick={handleBulkCreate}
               disabled={bulkCreating || !bulkText.trim()}
-              className="w-full rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 py-2.5 font-semibold text-black disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="w-full rounded-xl bg-white py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {bulkCreating ? 'Adding...' : 'Add All'}
             </button>
