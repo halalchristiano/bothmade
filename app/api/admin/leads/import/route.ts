@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isUkLead } from '@/lib/uk-leads';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import {
@@ -455,6 +456,23 @@ export async function POST(request: NextRequest) {
         : null;
 
     let skipped = 0;
+    /*
+     * British rows, turned away at the door.
+     *
+     * This is a US book. UK rows arrive from scrapes that wandered and
+     * directories with mixed listings, and every one is a lead nobody will
+     * ever ring — sitting in counts, in the call sheet's ordering, and in a
+     * daily send budget that exists because the account was once restricted.
+     *
+     * They were cleared out once by hand. Without this the next file puts
+     * them straight back, and a cleanup somebody has to repeat after every
+     * import is a cleanup that stops happening.
+     *
+     * Reported by name rather than folded into `skipped`, because "4 rows had
+     * no company name" and "4 rows were British" call for completely
+     * different reactions from whoever ran the file.
+     */
+    const ukRows: string[] = [];
     // Custom line items across the whole file — reported back so whoever ran
     // the import knows immediately which figures are ours to decide, rather
     // than finding out one lead at a time on a call.
@@ -466,6 +484,14 @@ export async function POST(request: NextRequest) {
         const company = (row.company || '').trim();
         if (!company) {
           skipped++;
+          return null;
+        }
+
+        // Judged on the row as written, before anything is normalised or
+        // stored — the same two signals the sweep uses, so a file cannot
+        // import what the cleanup would immediately remove.
+        if (isUkLead({ phone: row.phone, country: row.country })) {
+          ukRows.push(company);
           return null;
         }
 
@@ -804,6 +830,8 @@ export async function POST(request: NextRequest) {
           enriched: enrichments.length,
           enrichedNames: enrichments.slice(0, 5).map((e) => e.company),
           skipped,
+          ukSkipped: ukRows.length,
+          ukSkippedNames: ukRows.slice(0, 5),
           duplicates,
           duplicateNames,
           customPoints: [],
@@ -833,11 +861,20 @@ export async function POST(request: NextRequest) {
           fileName: typeof fileName === 'string' ? fileName.slice(0, 255) : null,
           rowCount: rows.length,
           importedCount: 0,
-          skippedCount: skipped,
+          skippedCount: skipped + ukRows.length,
           importedById: session.userId,
         },
       });
-      return NextResponse.json({ error: 'No valid rows — every row needs a company name' }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            ukRows.length > 0 && skipped === 0
+              ? `Every row in that file is a UK business (${ukRows.length}) — none were imported. This book is US-only.`
+              : 'No valid rows — every row needs a company name',
+          ukSkipped: ukRows.length,
+        },
+        { status: 400 }
+      );
     }
 
     const created = await prisma.$transaction(deduped.map((data) => prisma.lead.create({ data })));
@@ -848,7 +885,9 @@ export async function POST(request: NextRequest) {
           fileName: typeof fileName === 'string' ? fileName.slice(0, 255) : null,
           rowCount: rows.length,
           importedCount: created.length,
-          skippedCount: skipped,
+          // A British row was turned away, not silently dropped — the receipt
+          // has to add up against the file somebody uploaded.
+          skippedCount: skipped + ukRows.length,
           importedById: session.userId,
         },
       })
@@ -866,6 +905,8 @@ export async function POST(request: NextRequest) {
         enriched: enrichments.length,
         enrichedNames: enrichments.slice(0, 5).map((e) => e.company),
         skipped,
+        ukSkipped: ukRows.length,
+        ukSkippedNames: ukRows.slice(0, 5),
         duplicates,
         duplicateNames,
         customPoints: customToReview.slice(0, 50),

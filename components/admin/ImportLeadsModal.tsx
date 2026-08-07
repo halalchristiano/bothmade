@@ -297,6 +297,9 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
     enrichedNames?: string[];
     skipped: number;
     duplicates: number;
+    /** Turned away at the door: this is a US book. */
+    ukSkipped?: number;
+    ukSkippedNames?: string[];
     customPoints: Array<{ company: string; point: string; priceCents: number }>;
     customPointCount: number;
   } | null>(null);
@@ -414,6 +417,8 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
         count: data.count,
         skipped: data.skipped,
         duplicates: data.duplicates ?? 0,
+        ukSkipped: data.ukSkipped ?? 0,
+        ukSkippedNames: data.ukSkippedNames ?? [],
         customPoints: data.customPoints ?? [],
         customPointCount: data.customPointCount ?? 0,
       });
@@ -449,6 +454,21 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
                 {result.enrichedNames?.length ? ` — ${result.enrichedNames.join(', ')}` : ''}
                 {(result.enriched ?? 0) > (result.enrichedNames?.length ?? 0) ? ' and others' : ''}. Only
                 empty fields were touched; nothing you had already written was overwritten.
+              </p>
+            )}
+            {/*
+              * Said by name rather than folded into the skipped count. "4 rows
+              * had no company name" and "4 rows were British" call for
+              * completely different reactions from whoever ran the file — and
+              * a silent drop looks exactly like the importer losing rows.
+              */}
+            {(result.ukSkipped ?? 0) > 0 && (
+              <p className="text-xs text-amber-300/80 mt-2 leading-relaxed">
+                {result.ukSkipped} UK {result.ukSkipped === 1 ? 'business was' : 'businesses were'} left
+                out — this book is US-only
+                {result.ukSkippedNames?.length ? ` (${result.ukSkippedNames.join(', ')}` : ''}
+                {(result.ukSkipped ?? 0) > (result.ukSkippedNames?.length ?? 0) ? ' and others)' : result.ukSkippedNames?.length ? ')' : ''}
+                .
               </p>
             )}
             {result.duplicates > 0 && (
