@@ -47,18 +47,21 @@ export default function PublicStatusPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#05030a] flex items-center justify-center">
-        <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400" />
+      <main className="flex min-h-screen items-center justify-center bg-ink">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-sky-400/80" />
+        <span className="sr-only">Loading project status</span>
       </main>
     );
   }
 
   if (error || !project) {
     return (
-      <main className="min-h-screen bg-[#05030a] text-white flex items-center justify-center px-4">
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 max-w-md text-center">
-          <h1 className="text-2xl font-bold mb-4">Not found</h1>
-          <p className="text-white/50">{error || "This status link doesn't exist or has expired."}</p>
+      <main className="flex min-h-screen items-center justify-center bg-ink px-4 text-white">
+        <div className="relative max-w-md rounded-2xl border border-white/[0.06] bg-surface p-8 text-center shadow-e3 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+          <h1 className="mb-3 text-2xl font-semibold">Not found</h1>
+          <p className="text-sm text-white/50">
+            {error || "This status link doesn't exist or has expired."}
+          </p>
         </div>
       </main>
     );
@@ -66,37 +69,106 @@ export default function PublicStatusPage() {
 
   const stageIndex = Math.min(project.statusStage, 4);
   const currentStage = STATUS_STAGES[stageIndex];
-  const progressPct = ((stageIndex + 1) / STATUS_STAGES.length) * 100;
+  /*
+   * How far along the rail the filled line runs.
+   *
+   * Not `(stageIndex + 1) / 5`, which is the right answer for a plain bar and
+   * the wrong one here: the stops are centred in five equal columns, so stop
+   * `i` sits at `(i + 0.5) / 5`. The old formula overshoots by half a column
+   * every time, which on the last stage draws a line running past the final
+   * dot and off the end.
+   */
+  const progressPct = ((stageIndex + 0.5) / STATUS_STAGES.length) * 100;
+
+  /*
+   * The one page a client looks at more than once, so it is the page the
+   * studio is judged by between calls.
+   *
+   * It used to say the same thing three times — a percentage bar, a "3/5",
+   * and a row of five boxes with the done ones filled in gradient — which is
+   * how a status page ends up looking anxious. One rail, five stops, and the
+   * stop you are on named underneath it answers all three at once.
+   *
+   * Glass panels became real surfaces here for the same reason as everywhere
+   * else, and the blurred purple bloom over the header came down to a trace.
+   * A client checking whether their site is on schedule is not looking for
+   * atmosphere; a page that stays calm while it tells them is worth more than
+   * one that looks impressive while it does.
+   */
+  const card =
+    'relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent';
 
   return (
-    <main className="relative min-h-screen bg-[#05030a] text-white overflow-hidden">
-      <GridBackdrop className="opacity-40" />
+    <main className="relative min-h-screen overflow-hidden bg-ink text-white">
+      <GridBackdrop className="opacity-20" />
       <div
-        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-96 w-[40rem] rounded-full blur-[140px] opacity-20"
-        style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.5), transparent 70%)' }}
+        className="pointer-events-none absolute -top-48 left-1/2 h-96 w-[44rem] -translate-x-1/2 rounded-full opacity-[0.09] blur-[160px]"
+        style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.6), transparent 70%)' }}
       />
 
-      <div className="relative max-w-3xl mx-auto px-6 py-16">
-        <p className="text-xs font-semibold uppercase tracking-wide text-sky-300/80 mb-2">
+      <div className="relative mx-auto max-w-3xl px-6 py-16 md:py-24">
+        <p className="mb-3 text-2xs font-medium uppercase tracking-[0.16em] text-white/35">
           {project.company} · Read-only status
         </p>
-        <h1 className="text-3xl md:text-4xl font-bold mb-10">{project.name}</h1>
+        <h1 className="mb-10 text-3xl font-semibold md:text-4xl">{project.name}</h1>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <span className="font-semibold">{currentStage}</span>
-            <span className="text-sm text-white/50">{stageIndex + 1}/5</span>
+        <section className={`${card} mb-5 p-7 md:p-8`}>
+          <div className="mb-1 flex items-baseline justify-between gap-4">
+            <h2 className="text-lg font-semibold">{currentStage}</h2>
+            <span data-numeric className="text-sm text-white/40">
+              Stage {stageIndex + 1} of {STATUS_STAGES.length}
+            </span>
           </div>
-          <div className="w-full bg-white/10 rounded-full h-2 mb-2">
+          <p className="mb-8 text-sm text-white/40">
+            {stageIndex >= STATUS_STAGES.length - 1
+              ? 'Everything is delivered.'
+              : `Next up: ${STATUS_STAGES[stageIndex + 1]}.`}
+          </p>
+
+          {/* One rail, five stops. The filled length is the progress bar, the
+              nodes are the checklist, and the labels are the legend — the
+              three separate things this card used to draw. */}
+          <div className="relative">
+            <div className="absolute left-0 right-0 top-[7px] h-px bg-white/10" aria-hidden="true" />
             <div
-              className="bg-gradient-to-r from-sky-400 to-purple-500 h-2 rounded-full transition-all"
+              className="absolute left-0 top-[7px] h-px bg-sky-400/70 transition-[width] duration-500 ease-ui"
               style={{ width: `${progressPct}%` }}
+              aria-hidden="true"
             />
+            <ol className="relative grid grid-cols-5 gap-1">
+              {STATUS_STAGES.map((stage, idx) => {
+                const done = idx < stageIndex;
+                const current = idx === stageIndex;
+                return (
+                  <li key={stage} className="flex min-w-0 flex-col items-center text-center">
+                    <span
+                      aria-hidden="true"
+                      className={`mb-3 h-[15px] w-[15px] shrink-0 rounded-full border-2 transition-colors duration-300 ease-ui ${
+                        current
+                          ? 'border-sky-400 bg-sky-400 shadow-[0_0_0_4px_rgba(56,189,248,0.15)]'
+                          : done
+                            ? 'border-sky-400/70 bg-sky-400/70'
+                            : 'border-white/15 bg-ink'
+                      }`}
+                    />
+                    <span
+                      className={`text-2xs font-medium leading-tight md:text-xs ${
+                        current ? 'text-white' : done ? 'text-white/55' : 'text-white/25'
+                      }`}
+                    >
+                      {stage}
+                    </span>
+                    {current && <span className="sr-only">(current stage)</span>}
+                  </li>
+                );
+              })}
+            </ol>
           </div>
+
           {project.estimatedCompletionDate && (
-            <p className="text-xs text-white/40 mb-6">
-              Estimated target:{' '}
-              <span className="text-white/70 font-medium">
+            <p className="mt-8 border-t border-white/[0.06] pt-5 text-sm text-white/40">
+              Estimated target{' '}
+              <span data-numeric className="font-medium text-white/75">
                 {new Date(project.estimatedCompletionDate).toLocaleDateString(undefined, {
                   month: 'long',
                   day: 'numeric',
@@ -105,42 +177,41 @@ export default function PublicStatusPage() {
               </span>
             </p>
           )}
-          {!project.estimatedCompletionDate && <div className="mb-6" />}
+        </section>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {STATUS_STAGES.map((stage, idx) => (
-              <div
-                key={stage}
-                className={`p-3 rounded-lg text-center text-sm font-medium transition-colors ${
-                  idx <= stageIndex
-                    ? 'bg-gradient-to-r from-sky-400/20 to-purple-500/20 border border-sky-400/30 text-white'
-                    : 'bg-white/5 border border-white/10 text-white/30'
-                }`}
-              >
-                {stage}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
-          <h2 className="text-xl font-bold mb-6">Recent Updates</h2>
+        <section className={`${card} p-7 md:p-8`}>
+          <h2 className="mb-6 text-lg font-semibold">Recent updates</h2>
           {project.updates.length === 0 ? (
-            <p className="text-sm text-white/40">No updates yet.</p>
+            <p className="text-sm text-white/35">
+              Nothing posted yet — this fills in as the work moves.
+            </p>
           ) : (
-            <div className="space-y-4">
+            /* A timeline rather than stacked rows separated by rules. The
+               updates are one thread in time, and a continuous line says that
+               where a series of horizontal dividers says the opposite. */
+            <ol className="relative space-y-7 before:absolute before:bottom-2 before:left-[3px] before:top-2 before:w-px before:bg-white/[0.08]">
               {project.updates.map((update) => (
-                <div key={update.id} className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0">
-                  <h3 className="font-semibold mb-1">{update.title}</h3>
-                  <p className="text-white/50 text-sm mb-2">{update.description}</p>
-                  <p className="text-xs text-white/30">{new Date(update.createdAt).toLocaleDateString()}</p>
-                </div>
+                <li key={update.id} className="relative pl-7">
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-0 top-[7px] h-[7px] w-[7px] rounded-full bg-white/25 ring-4 ring-[color:var(--color-surface)]"
+                  />
+                  <p className="text-sm font-semibold text-white">{update.title}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-white/50">{update.description}</p>
+                  <p data-numeric className="mt-2 text-xs text-white/25">
+                    {new Date(update.createdAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                </li>
               ))}
-            </div>
+            </ol>
           )}
-        </div>
+        </section>
 
-        <p className="text-center text-xs text-white/25 mt-10">
+        <p className="mt-10 text-center text-xs text-white/20">
           Shared read-only view — no login required.
         </p>
       </div>
