@@ -118,6 +118,49 @@ export function leadCsv(leads: ExportableLead[]): string {
     .join('\n');
 }
 
+/**
+ * The columns `leadCsv` reads, as a Prisma `select` fragment.
+ *
+ * Here rather than in the route because this is the export's business, and
+ * because the two lists drifting apart is not a failure anything notices: the
+ * button still works, the file still downloads, the headers are all still
+ * there with nothing underneath them. That is exactly what happened when the
+ * leads endpoint was narrowed to the fields the board and the table *render*
+ * — thirteen of these twenty-two columns went blank, and the only way to find
+ * out was to need one of them.
+ *
+ * Spread it into the query instead of restating it. Adding a column to
+ * LEAD_CSV_HEADERS and to `leadCsv` is then one more line here, in the same
+ * file, rather than a change in a route nobody editing an export would think
+ * to open.
+ *
+ * `assignedTo` is not in here: it is a relation, and the route already joins
+ * it for the screens.
+ */
+export const LEAD_EXPORT_SELECT = {
+  company: true,
+  contactName: true,
+  email: true,
+  phone: true,
+  status: true,
+  estimatedValue: true,
+  estimateLowCents: true,
+  estimateHighCents: true,
+  source: true,
+  industry: true,
+  city: true,
+  region: true,
+  companySize: true,
+  employeeCount: true,
+  tags: true,
+  doNotContact: true,
+  mockupUrl: true,
+  invoicePdfUrl: true,
+  addedAt: true,
+  clientTakenOnAt: true,
+  updatedAt: true,
+} as const;
+
 /** `bothmade-leads-2026-08-05.csv` */
 export function leadCsvFilename(now: Date = new Date()): string {
   return `bothmade-leads-${now.toISOString().slice(0, 10)}.csv`;

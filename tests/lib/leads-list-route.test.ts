@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
+import { LEAD_CSV_HEADERS, LEAD_EXPORT_SELECT, leadCsv } from '@/lib/lead-export';
 
 /**
  * What the pipeline board is allowed to send to a browser.
@@ -46,7 +47,7 @@ const { GET } = await import('@/app/api/admin/leads/route');
 const request = (qs = '') =>
   new Request(`http://localhost/api/admin/leads${qs}`) as unknown as NextRequest;
 
-/** Everything the two screens read, and nothing else. */
+/** Everything the two screens read, plus the columns the CSV needs. */
 const lead = {
   id: 'lead_1',
   company: 'Brandon Roofing',
@@ -66,8 +67,22 @@ const lead = {
   emailDeliveryFailedAt: null,
   emailDeliveryFailedReason: null,
   updatedAt: new Date('2026-08-01T00:00:00Z'),
-  assignedTo: null,
+  assignedTo: { id: 'user_1', name: 'Evan', email: 'evan@example.com' },
   activities: [],
+  // The export's half.
+  estimateLowCents: 400_000,
+  estimateHighCents: 600_000,
+  source: 'referral',
+  industry: 'Roofing',
+  city: 'Austin',
+  region: 'TX',
+  companySize: 'small',
+  employeeCount: 12,
+  tags: 'franchise',
+  mockupUrl: 'https://mock.test/1',
+  invoicePdfUrl: 'https://inv.test/1.pdf',
+  addedAt: new Date('2026-07-02T00:00:00Z'),
+  clientTakenOnAt: null,
 };
 
 beforeEach(() => {
@@ -184,5 +199,65 @@ describe('what comes back', () => {
 
     expect(body.leads[0].dealValue).toBe(500_000);
     expect(body.leads[0].dealValueIsFirm).toBe(false);
+  });
+});
+
+
+/**
+ * The regression this file did not catch the first time.
+ *
+ * Narrowing the query to the fields the board and the table render emptied
+ * thirteen of the CSV's twenty-two columns — source, industry, city, state,
+ * company size, employees, tags, both estimate bounds, the mockup and invoice
+ * links, and the two dates the importer reads back.
+ *
+ * Nothing failed. The button worked, the file downloaded, every header was
+ * present with nothing underneath it. An export that quietly loses columns is
+ * worse than one that errors: the file goes on to a spreadsheet, and the gap
+ * is found by whoever needed the column, later, somewhere else.
+ *
+ * So the export owns its column list and the route spreads it, and this holds
+ * the two together.
+ */
+describe('the columns the CSV needs', () => {
+  it('are all in the query, because the export supplies the list', async () => {
+    await GET(request());
+    const select = selectOf();
+
+    for (const column of Object.keys(LEAD_EXPORT_SELECT)) {
+      expect(select[column], `${column} is a CSV column and must be selected`).toBe(true);
+    }
+  });
+
+  it('all survive into the response', async () => {
+    const body = await (await GET(request())).json();
+
+    for (const column of Object.keys(LEAD_EXPORT_SELECT)) {
+      expect(body.leads[0], `${column} is a CSV column and must be sent`).toHaveProperty(column);
+    }
+  });
+
+  /**
+   * The end-to-end version: build the file from what the endpoint actually
+   * returns and check no column came out blank. A header count that matches
+   * with empty cells underneath is the exact shape of the bug.
+   */
+  it('produce a file with something under every header', async () => {
+    const body = await (await GET(request())).json();
+
+    const [header, row] = leadCsv(body.leads).split('\n');
+    expect(header.split(',').length).toBe(LEAD_CSV_HEADERS.length);
+
+    const cells = row.split(',');
+    /*
+     * Two cells are legitimately empty for this fixture and neither is a
+     * missing column: the lead has not been won, so it has no taken-on date,
+     * and `doNotContact` writes 'yes' or nothing at all — an empty cell there
+     * is the value rather than a gap. Everything else is populated, so a
+     * blank anywhere else means a column stopped arriving.
+     */
+    const expectedBlank = ['Client taken on', 'Do not contact'];
+    const blank = LEAD_CSV_HEADERS.filter((h, i) => !cells[i] && !expectedBlank.includes(h));
+    expect(blank).toEqual([]);
   });
 });

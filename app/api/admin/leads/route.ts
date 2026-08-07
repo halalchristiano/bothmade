@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { LEAD_EXPORT_SELECT } from '@/lib/lead-export';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isLeadStatus } from '@/lib/leads';
 import type { Prisma } from '@prisma/client';
@@ -91,24 +92,38 @@ export async function GET(request: NextRequest) {
     const leads = await prisma.lead.findMany({
       where,
       select: {
+        /*
+         * The CSV's columns, owned by the export and spread in here.
+         *
+         * The list's export writes what is on screen, filters and all, from
+         * the rows this endpoint returns — and narrowing the query to what
+         * the board and the table *render* emptied thirteen of the file's
+         * twenty-two columns: source, industry, city, state, company size,
+         * employees, tags, both estimate bounds, the mockup and invoice
+         * links, and the two dates the importer reads back.
+         *
+         * Nothing failed. The button still worked, the file still downloaded,
+         * the headers were all still there — with nothing under them. An
+         * export that silently loses columns is worse than one that errors,
+         * because the file goes on to a spreadsheet and the gap is noticed
+         * only by whoever needed the column.
+         *
+         * First in the object so the screen's own fields read as additions to
+         * it, and so a column the export gains arrives here for free.
+         */
+        ...LEAD_EXPORT_SELECT,
+
+        // What the board and the table render, on top of the above.
         id: true,
-        company: true,
-        contactName: true,
-        email: true,
-        phone: true,
-        status: true,
-        estimatedValue: true,
-        proposalTotalPrice: true,
+        proposalTotalPrice: true, // not rendered; dealValue is computed from it
         hotLead: true,
         qualifiedAt: true,
         painPoints: true,
-        doNotContact: true,
         coldEmailDraft: true,
         coldEmailSentAt: true,
         personalizedObservation: true,
         emailDeliveryFailedAt: true,
         emailDeliveryFailedReason: true,
-        updatedAt: true,
         assignedTo: { select: { id: true, name: true, email: true } },
         // One row: the list shows "last activity" and nothing reads further back.
         activities: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
@@ -171,6 +186,22 @@ export async function GET(request: NextRequest) {
       updatedAt: lead.updatedAt,
       assignedTo: lead.assignedTo,
       activities: lead.activities,
+
+      // The export's columns, carried through. Rendered nowhere; the CSV is
+      // built in the browser from exactly these rows.
+      estimateLowCents: lead.estimateLowCents,
+      estimateHighCents: lead.estimateHighCents,
+      source: lead.source,
+      industry: lead.industry,
+      city: lead.city,
+      region: lead.region,
+      companySize: lead.companySize,
+      employeeCount: lead.employeeCount,
+      tags: lead.tags,
+      mockupUrl: lead.mockupUrl,
+      invoicePdfUrl: lead.invoicePdfUrl,
+      addedAt: lead.addedAt,
+      clientTakenOnAt: lead.clientTakenOnAt,
       dealValue: soldFor.get(lead.id) ?? lead.proposalTotalPrice ?? lead.estimatedValue ?? null,
       /** True when dealValue is a real figure rather than somebody's estimate. */
       dealValueIsFirm: soldFor.has(lead.id) || Boolean(lead.proposalTotalPrice),
