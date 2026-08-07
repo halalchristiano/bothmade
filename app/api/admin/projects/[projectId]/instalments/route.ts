@@ -117,7 +117,15 @@ export async function POST(
     let invoice: { id: string; number: string } | null = null;
     if (inst.invoiceNumber) {
       const existing = await prisma.invoice.findUnique({ where: { number: inst.invoiceNumber } });
-      if (existing && existing.projectId === project.id && existing.amountCents === inst.amountCents) {
+      // Never a voided one. The void clears this pointer, so reaching here
+      // with one means something else went wrong — and re-sending an invoice
+      // the client was told was cancelled is the worst way to find out.
+      if (
+        existing &&
+        existing.status !== 'void' &&
+        existing.projectId === project.id &&
+        existing.amountCents === inst.amountCents
+      ) {
         invoice = existing;
       }
     }

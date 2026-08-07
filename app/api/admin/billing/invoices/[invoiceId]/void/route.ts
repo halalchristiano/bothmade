@@ -77,18 +77,94 @@ export async function POST(
       }
     }
 
-    const voided = await prisma.invoice.update({
-      where: { id: invoice.id },
-      data: {
-        status: 'void',
-        voidedAt: new Date(),
-        voidReason: reason,
-        voidedById: session.userId,
-        // The link is dead; leaving the URL on the record would put a button
-        // on two dashboards that goes to a Stripe page saying nothing useful.
-        paymentUrl: null,
-      },
+    /**
+     * And the schedule's half of it.
+     *
+     * Only custom charges carry a `stripePaymentLinkId`. An instalment
+     * invoice is paid through a Checkout Session held on the Instalment row,
+     * so voiding one used to take nothing down at all — this route's own
+     * promise, that the link dies before the void is recorded, simply did not
+     * apply to the invoices the studio sends most.
+     *
+     * Worse than the live link was the chase. The instalment stayed `due`,
+     * and payment-clock chases every `due` instalment daily-to-weekly, minting
+     * a FRESH Stripe session each time. So the client got an email saying the
+     * invoice was cancelled and there was nothing to pay, and then a working
+     * payment link for it the next morning, forever.
+     */
+    const instalment = await prisma.instalment.findUnique({
+      where: { invoiceNumber: invoice.number },
+      select: { id: true, label: true, stripeSessionId: true },
     });
+
+    if (instalment?.stripeSessionId) {
+      try {
+        await stripe.checkout.sessions.expire(instalment.stripeSessionId);
+      } catch (error) {
+        // Already expired, already paid, or gone. Stripe says which, and only
+        // a session it still considers payable is a reason to stop.
+        const code = (error as { code?: string })?.code;
+        if (code !== 'resource_missing' && code !== 'checkout_session_expired') {
+          console.error(`Void ${invoice.number}: could not expire the checkout session:`, error);
+          return NextResponse.json(
+            {
+              error:
+                "Stripe wouldn't expire the payment session, so the client could still pay this. Nothing has been changed — try again in a moment.",
+            },
+            { status: 502 }
+          );
+        }
+      }
+    }
+
+    const [voided] = await prisma.$transaction([
+      prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: 'void',
+          voidedAt: new Date(),
+          voidReason: reason,
+          voidedById: session.userId,
+          // The link is dead; leaving the URL on the record would put a button
+          // on two dashboards that goes to a Stripe page saying nothing useful.
+          paymentUrl: null,
+        },
+      }),
+      /*
+       * Back to `scheduled`, not to `void`.
+       *
+       * A voided invoice is a cancelled BILL, not cancelled scope — the money
+       * is still owed under the contract, and marking the instalment void
+       * would quietly delete it from the project's remaining balance because
+       * every balance calculation skips void rows. That would turn "we sent
+       * the wrong invoice" into "the client owes us 30% less", silently.
+       *
+       * The invoice number is cleared with it: a re-send reuses the stored
+       * number when it still matches, which would put a voided invoice back
+       * in the client's inbox. Nulling it makes the next send mint a fresh
+       * one. The chase counters go too, so the new invoice gets the full
+       * fourteen days rather than inheriting a schedule that already thinks
+       * it is three chases deep.
+       */
+      ...(instalment
+        ? [
+            prisma.instalment.update({
+              where: { id: instalment.id },
+              data: {
+                status: 'scheduled',
+                invoiceNumber: null,
+                stripeSessionId: null,
+                paymentUrl: null,
+                invoicedAt: null,
+                dueAt: null,
+                emailSentAt: null,
+                lastChasedAt: null,
+                chaseCount: 0,
+              },
+            }),
+          ]
+        : []),
+    ]);
 
     // Only worth telling them if they were told about it in the first place.
     const notifyClient = body?.notifyClient !== false && Boolean(invoice.sentToEmail);
