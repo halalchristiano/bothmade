@@ -35,7 +35,17 @@ export function IconChip({
   return <Icon size={iconDims} strokeWidth={2} className={TONE_TEXT[tone]} />;
 }
 
-/** Standard card shell — one flat surface, generous padding, quiet border. */
+/**
+ * Standard card shell.
+ *
+ * Was a 1px hairline on flat ground, which is what made the app read as a
+ * wireframe of itself: everything sat on exactly the same plane, so nothing
+ * looked like an object you could pick up. This is a real surface — lifted a
+ * step off the ground, an ambient shadow underneath, and a single pixel of
+ * light caught along the top edge where a surface tilted into overhead light
+ * would catch it. That top highlight is doing most of the work; it is the
+ * difference between a rectangle and a thing.
+ */
 export function Card({
   children,
   className = '',
@@ -48,16 +58,20 @@ export function Card({
   hover?: boolean;
 }) {
   const glowBorder: Record<string, string> = {
-    sky: 'border-l-2 border-l-sky-400/60',
-    purple: 'border-l-2 border-l-purple-400/60',
-    emerald: 'border-l-2 border-l-emerald-400/60',
-    amber: 'border-l-2 border-l-amber-400/60',
-    red: 'border-l-2 border-l-red-400/60',
+    sky: 'border-l-2 border-l-sky-400/50',
+    purple: 'border-l-2 border-l-purple-400/50',
+    emerald: 'border-l-2 border-l-emerald-400/50',
+    amber: 'border-l-2 border-l-amber-400/50',
+    red: 'border-l-2 border-l-red-400/50',
   };
   return (
     <div
-      className={`rounded-xl border border-white/[0.07] bg-white/[0.02] ${glow ? glowBorder[glow] : ''} ${
-        hover ? 'transition-colors duration-200 hover:border-white/15' : ''
+      className={`relative rounded-xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent ${
+        glow ? glowBorder[glow] : ''
+      } ${
+        hover
+          ? 'transition-[border-color,box-shadow,transform] duration-200 ease-ui hover:-translate-y-px hover:border-white/12 hover:shadow-e3'
+          : ''
       } ${className}`}
     >
       {children}
@@ -79,12 +93,15 @@ export function CardHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 mb-5">
-      <div className="flex items-center gap-2">
+    // Hardcoded pixel sizes replaced by the scale, which now resolves to the
+    // same 15/13 — the point is that they move together from here on, rather
+    // than being two numbers somebody typed once and nobody can safely change.
+    <div className="mb-5 flex items-start justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
         {icon && <IconChip icon={icon} tone={tone} />}
-        <div>
-          <h2 className="text-[15px] font-semibold text-white leading-tight">{title}</h2>
-          {subtitle && <p className="text-[13px] text-white/40 mt-0.5">{subtitle}</p>}
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold leading-tight text-white">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-white/40">{subtitle}</p>}
         </div>
       </div>
       {action}
@@ -113,29 +130,42 @@ export function StatRow({
 }) {
   return (
     <Card className="p-0 overflow-hidden">
-      <div className="grid grid-cols-2 md:grid-cols-4 divide-y divide-white/[0.06] md:divide-y-0 md:divide-x md:divide-white/[0.06]">
+      <div className="grid grid-cols-2 divide-y divide-white/[0.05] md:grid-cols-4 md:divide-x md:divide-y-0 md:divide-white/[0.05]">
         {items.map((item, i) => (
           <div key={i} className="p-5">
-            <div className="flex items-center gap-1.5 mb-2 text-white/45">
+            {/*
+              Label above, number below, and the number is the loud one. It
+              used to be two lines of nearly the same weight sharing the tile;
+              dropping the label to a quiet tracked-out line and letting the
+              figure take the space is what makes a number read as a headline
+              rather than as a form field's value.
+            */}
+            <div className="mb-2.5 flex items-center gap-1.5 text-white/40">
               <IconChip icon={item.icon} tone={item.tone} size="sm" />
-              <span className="text-[13px]">{item.label}</span>
+              <span className="text-xs font-medium">{item.label}</span>
             </div>
             <div className="flex items-baseline gap-2">
               <p
-                className={`text-2xl font-semibold tracking-tight tabular-nums ${
+                data-numeric
+                className={`text-2xl font-semibold ${
                   item.accent ? TONE_TEXT[item.tone || 'sky'] : 'text-white'
                 }`}
               >
                 {item.value}
               </p>
               {item.trend !== undefined && (
-                <span className={`text-xs font-medium ${item.trend.value >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                <span
+                  data-numeric
+                  className={`text-xs font-medium ${
+                    item.trend.value >= 0 ? 'text-emerald-300/90' : 'text-red-300/90'
+                  }`}
+                >
                   {item.trend.value >= 0 ? '+' : ''}
                   {item.trend.value}%
                 </span>
               )}
             </div>
-            {item.note && <p className="text-xs text-white/30 mt-1.5">{item.note}</p>}
+            {item.note && <p className="mt-2 text-xs text-white/30">{item.note}</p>}
           </div>
         ))}
       </div>
@@ -163,23 +193,26 @@ export function StatCard({
 }) {
   return (
     <Card hover className="p-5">
-      <div className="flex items-center gap-1.5 mb-2 text-white/45">
+      <div className="mb-2.5 flex items-center gap-1.5 text-white/40">
         <IconChip icon={icon} tone={tone} size="sm" />
-        <span className="text-[13px]">{label}</span>
+        <span className="text-xs font-medium">{label}</span>
       </div>
       <div className="flex items-baseline gap-2">
-        <p className={`text-2xl font-semibold tracking-tight tabular-nums ${accent ? TONE_TEXT[tone] : 'text-white'}`}>
+        <p data-numeric className={`text-2xl font-semibold ${accent ? TONE_TEXT[tone] : 'text-white'}`}>
           {value}
         </p>
         {trend !== undefined && (
-          <span className={`text-xs font-medium ${trend.value >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+          <span
+            data-numeric
+            className={`text-xs font-medium ${trend.value >= 0 ? 'text-emerald-300/90' : 'text-red-300/90'}`}
+          >
             {trend.value >= 0 ? '+' : ''}
             {trend.value}%
           </span>
         )}
       </div>
-      {trend?.label && <p className="text-xs text-white/30 mt-1.5">{trend.label}</p>}
-      {note && <p className="text-xs text-white/30 mt-1.5">{note}</p>}
+      {trend?.label && <p className="mt-2 text-xs text-white/30">{trend.label}</p>}
+      {note && <p className="mt-2 text-xs text-white/30">{note}</p>}
     </Card>
   );
 }
@@ -307,12 +340,23 @@ export function ListRow({
 }) {
   const text = (
     <div className="min-w-0">
-      <p className="text-sm font-medium text-white truncate">{title}</p>
-      {subtitle && <p className="text-xs text-white/40 truncate">{subtitle}</p>}
+      <p className="truncate text-sm font-medium text-white">{title}</p>
+      {subtitle && <p className="mt-0.5 truncate text-xs text-white/40">{subtitle}</p>}
     </div>
   );
+  /*
+   * The most repeated element in the app, so its manners set the tone for
+   * everything.
+   *
+   * It used to grow a coloured bar on the left on hover — a 2px accent slab
+   * appearing and disappearing under the pointer, on every row, all day. That
+   * is a lot of colour spent on telling somebody where their own cursor is.
+   * A quiet lift of the background says the same thing without turning the
+   * page into a light show, and it leaves the accent free to mean something
+   * when it does appear.
+   */
   const wrapperClass =
-    'group flex items-center justify-between gap-3 pl-3 pr-3 py-2.5 rounded-lg border-l-2 border-transparent hover:border-l-sky-400/50 hover:bg-white/[0.03] transition-all';
+    'group flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 ease-ui hover:bg-white/[0.04]';
 
   const clickable = href ? (
     <Link href={href} className="block min-w-0 flex-1">
