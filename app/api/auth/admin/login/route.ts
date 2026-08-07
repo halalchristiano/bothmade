@@ -31,7 +31,19 @@ export async function POST(request: NextRequest) {
     // Per address stops one machine grinding; per account stops a proxy pool
     // grinding one known address, which never spends any single IP's budget.
     // Checked without incrementing — only a wrong password costs anything.
-    const accountBudget = accountKey('admin-login', String(email));
+    /*
+     * Folded first, same as the client login and for the same reason.
+     *
+     * Signup stores `email.trim().toLowerCase()`, so every User row is
+     * lowercase — and this looked the account up by the raw string. A staff
+     * address typed with the capital a phone keyboard offers first matched
+     * nothing and answered "Invalid credentials", with the right password, on
+     * an account that plainly exists. The budget key is folded too, or one
+     * account spends two separate allowances depending on how it was typed.
+     */
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const accountBudget = accountKey('admin-login', normalizedEmail);
     const account = await checkFailures(accountBudget, RATE_LIMITS.loginAccount);
     if (!account.allowed) {
       return rateLimitResponse(
@@ -42,7 +54,12 @@ export async function POST(request: NextRequest) {
 
     // Every row in the User table is a Bothmade team member — any role
     // (owner, sales, admin, manager, support, ...) is valid staff access.
-    const user = await prisma.user.findUnique({ where: { email } });
+    // findFirst with an insensitive match, not findUnique: rows predating the
+    // normalisation may hold capitals, and those accounts must not go from
+    // "cannot sign in with capitals" to "cannot sign in at all".
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    });
 
     if (!user) {
       // Counted even though no such account exists, so that spraying

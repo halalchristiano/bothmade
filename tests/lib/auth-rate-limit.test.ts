@@ -12,8 +12,14 @@ import type { NextRequest } from 'next/server';
 const counters = new Map<string, { count: number; windowStart: Date }>();
 
 const prisma = {
-  user: { findUnique: vi.fn(), create: vi.fn() },
-  client: { findUnique: vi.fn(), update: vi.fn() },
+  /*
+   * findFirst as well as findUnique: the login route matches the address
+   * case-insensitively, which findUnique cannot express, so rows already
+   * stored with capitals still resolve. Both are stubbed so this file keeps
+   * testing the budget rather than the lookup.
+   */
+  user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
+  client: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   rateLimit: {
     deleteMany: vi.fn(async ({ where }: { where: { key?: string } }) => {
       if (where?.key) counters.delete(where.key);
@@ -74,7 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   counters.clear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  prisma.user.findUnique.mockResolvedValue({
+  prisma.user.findFirst.mockResolvedValue({
     id: 'u1',
     email: 'evan@bothmade.com',
     password: 'hash',
@@ -174,7 +180,7 @@ describe('POST /api/auth/admin/login', () => {
     for (let i = 0; i < RATE_LIMITS.login.max + 1; i++) {
       await adminLogin(loginRequest(credentials, '4.4.4.4'));
     }
-    prisma.client.findUnique.mockResolvedValue(null);
+    prisma.client.findFirst.mockResolvedValue(null);
 
     const res = await clientLogin(
       loginRequest({ email: 'a@b.com', password: 'x', userType: 'client' }, '4.4.4.4')
@@ -186,7 +192,7 @@ describe('POST /api/auth/admin/login', () => {
 
 describe('POST /api/auth/login', () => {
   it('refuses a flood of client-side guesses', async () => {
-    prisma.client.findUnique.mockResolvedValue(null);
+    prisma.client.findFirst.mockResolvedValue(null);
     const body = { email: 'a@b.com', password: 'wrong', userType: 'client' };
 
     for (let i = 0; i < RATE_LIMITS.login.max; i++) {

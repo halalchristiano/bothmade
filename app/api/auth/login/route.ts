@@ -38,7 +38,22 @@ export async function POST(request: NextRequest) {
 
     // Scoped by userType: a client and a staff account sharing an address
     // are different accounts and must not share a budget.
-    const accountBudget = accountKey(`login-${userType}`, String(email));
+    /*
+     * Case-folded before anything else touches it.
+     *
+     * Signup and password-reset both store `email.trim().toLowerCase()`. This
+     * route looked the account up by the raw string, so an address typed with
+     * any capital — the way a phone keyboard offers it first — matched
+     * nothing and answered "Invalid credentials". The password was right; the
+     * account existed; there was no way to tell from the outside, and no
+     * amount of retrying would have helped.
+     *
+     * The budget key is folded too, or "Dana@" and "dana@" spend two separate
+     * allowances against one account.
+     */
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const accountBudget = accountKey(`login-${userType}`, normalizedEmail);
     const account = await checkFailures(accountBudget, RATE_LIMITS.loginAccount);
     if (!account.allowed) {
       return rateLimitResponse(
@@ -50,8 +65,18 @@ export async function POST(request: NextRequest) {
 
     if (userType === 'client') {
       // Client login
-      const client = await prisma.client.findUnique({
-        where: { email },
+      /*
+       * findFirst with an insensitive match rather than findUnique.
+       *
+       * Lowercasing the input alone would not be enough: rows created before
+       * this — by the manual project form, which stored whatever was typed —
+       * may hold capitals, and those clients would go from "cannot log in
+       * with capitals" to "cannot log in at all". Matching case-insensitively
+       * finds the account whichever way it was stored, so no data migration
+       * is needed and nobody is locked out in the meantime.
+       */
+      const client = await prisma.client.findFirst({
+        where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
       });
 
       if (!client) {
@@ -113,8 +138,9 @@ export async function POST(request: NextRequest) {
       );
     } else {
       // Admin/User login
-      const user = await prisma.user.findUnique({
-        where: { email },
+      // Same as the client branch above.
+      const user = await prisma.user.findFirst({
+        where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
       });
 
       if (!user) {

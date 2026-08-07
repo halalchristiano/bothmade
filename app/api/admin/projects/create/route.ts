@@ -5,6 +5,7 @@ import { generateRandomPassword, hashPassword } from '@/lib/auth';
 import { canOverridePricing, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
 import { sendWelcomeEmail } from '@/lib/email';
+import { FIELD_ERRORS, isValidEmail } from '@/lib/validation';
 import {
   BASE_SERVICES,
   TIMELINES,
@@ -52,6 +53,28 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    /*
+     * This address is not a contact detail. It is the client's login, the
+     * `to:` on every invoice, and the unique key their Client row is found by.
+     *
+     * It was taken exactly as typed and never checked. Two things followed.
+     * A typo — "dana@okafor" with no TLD, a stray space — produced a client
+     * who cannot sign in and never receives an invoice, and the only symptom
+     * is silence from someone who has already paid. And case: the address was
+     * stored verbatim, so a project created for "Dana@Okafor.co.uk" and the
+     * same client typed in lowercase next month are two Client rows, with the
+     * projects split between them.
+     *
+     * The public forms have run isValidEmail since they were written; the one
+     * door where a member of staff creates a paying client by hand ran
+     * nothing. Normalised the way signup and password-reset already normalise,
+     * so all three agree on what one address means.
+     */
+    const email = String(clientEmail).trim().toLowerCase();
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: FIELD_ERRORS.email }, { status: 400 });
+    }
     if (!isBaseService(baseService)) {
       return NextResponse.json({ error: 'Invalid base service' }, { status: 400 });
     }
@@ -92,7 +115,7 @@ export async function POST(request: NextRequest) {
         ? Math.round(totalPriceOverride)
         : calculatedTotal;
 
-    let client = await prisma.client.findUnique({ where: { email: clientEmail } });
+    let client = await prisma.client.findUnique({ where: { email } });
     let generatedPassword: string | null = null;
 
     if (!client) {
@@ -101,7 +124,7 @@ export async function POST(request: NextRequest) {
 
       client = await prisma.client.create({
         data: {
-          email: clientEmail,
+          email,
           password: hashedPassword,
           company,
           contactName: contactName || null,
@@ -175,7 +198,9 @@ export async function POST(request: NextRequest) {
 
     if (generatedPassword) {
       await sendWelcomeEmail(
-        clientEmail,
+        // The normalised address, so the credentials email names the same
+        // string the login lookup will match on.
+        email,
         contactName || company,
         generatedPassword,
         projectName,

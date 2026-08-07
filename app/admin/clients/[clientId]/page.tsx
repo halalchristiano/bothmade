@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil, Building2, FolderKanban, MessageSquare, Archive, ArchiveRestore, Trash2, AlertTriangle, Mail, ShieldCheck } from 'lucide-react';
-import { Card, CardHeader, PageIn, EmptyState, Badge, BrandButton, Kicker, inputClass } from '@/components/admin/ui';
+import { Badge, BrandButton, Card, CardHeader, EmptyState, inputClass, Kicker, LoadError, PageIn } from '@/components/admin/ui';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { BroadcastForm, describeBroadcast } from '@/components/admin/BroadcastForm';
 import { GenerateCertificateButton, type SignatureRecord } from '@/components/admin/SignatureCertificates';
@@ -46,6 +46,19 @@ export default function AdminClientDetailPage() {
   const [confirmDeleteText, setConfirmDeleteText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [composingEmail, setComposingEmail] = useState(false);
+  /*
+   * Every write on this page checked `response.ok` and did nothing when it
+   * was false. Save left the form in edit mode with the change apparently
+   * accepted; Decommission — which blocks the client's login — stopped
+   * spinning and changed nothing; Delete left you on the page having already
+   * typed the company name to confirm. No message in any of them, so the
+   * honest reading of the screen was "it worked" or "the button is broken",
+   * and the dangerous one is believing you have cut off an account you have
+   * not.
+   */
+  const [actionError, setActionError] = useState('');
+  /** A failed initial load, which used to sit on the spinner forever. */
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const loadClient = async () => {
     try {
@@ -55,12 +68,19 @@ export default function AdminClientDetailPage() {
         return;
       }
       const data = await response.json();
+      if (!response.ok || !data?.success) {
+        setLoadFailed(true);
+        return;
+      }
+      setLoadFailed(false);
       if (data.success) {
         setClient(data.client);
         setCompany(data.client.company);
         setPhone(data.client.phone || '');
         setContactName(data.client.contactName || '');
       }
+    } catch {
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -71,18 +91,29 @@ export default function AdminClientDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
+  /** Whatever the server said, or a sentence that at least admits failure. */
+  const reasonFrom = async (response: Response, fallback: string) => {
+    const data = await response.json().catch(() => null);
+    return (data?.error as string) || fallback;
+  };
+
   const handleSave = async () => {
     setSaving(true);
+    setActionError('');
     try {
       const response = await fetch(`/api/admin/clients/${clientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company, phone, contactName }),
       });
-      if (response.ok) {
-        setEditing(false);
-        loadClient();
+      if (!response.ok) {
+        setActionError(await reasonFrom(response, 'Those changes did not save.'));
+        return;
       }
+      setEditing(false);
+      loadClient();
+    } catch {
+      setActionError('Could not reach the server — those changes did not save.');
     } finally {
       setSaving(false);
     }
@@ -90,14 +121,36 @@ export default function AdminClientDetailPage() {
 
   const handleToggleArchive = async () => {
     if (!client) return;
+    const goingDown = !client.archivedAt;
     setArchiving(true);
+    setActionError('');
     try {
       const response = await fetch(`/api/admin/clients/${clientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archived: !client.archivedAt }),
+        body: JSON.stringify({ archived: goingDown }),
       });
-      if (response.ok) loadClient();
+      if (!response.ok) {
+        // Said plainly, because the belief this leaves behind is the
+        // expensive one: decommissioning blocks the client's login, and
+        // somebody who thinks they have done it will not check.
+        setActionError(
+          await reasonFrom(
+            response,
+            goingDown
+              ? 'This client was NOT decommissioned — their login still works.'
+              : 'This client was not reinstated.'
+          )
+        );
+        return;
+      }
+      loadClient();
+    } catch {
+      setActionError(
+        goingDown
+          ? 'Could not reach the server — this client was NOT decommissioned, and their login still works.'
+          : 'Could not reach the server — this client was not reinstated.'
+      );
     } finally {
       setArchiving(false);
     }
@@ -106,19 +159,53 @@ export default function AdminClientDetailPage() {
   const handleDelete = async () => {
     if (!client || confirmDeleteText !== client.company) return;
     setDeleting(true);
+    setActionError('');
     try {
       const response = await fetch(`/api/admin/clients/${clientId}`, { method: 'DELETE' });
-      if (response.ok) router.push('/admin/clients');
+      if (!response.ok) {
+        // The refusal usually has a reason worth reading — a client with
+        // projects cannot be deleted — and it was being thrown away.
+        setActionError(await reasonFrom(response, 'This client was not deleted.'));
+        return;
+      }
+      router.push('/admin/clients');
+    } catch {
+      setActionError('Could not reach the server — this client was not deleted.');
     } finally {
       setDeleting(false);
     }
   };
 
-  if (loading || !client) {
+  if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <p className="text-sm text-white/40">Loading client…</p>
       </div>
+    );
+  }
+
+  /*
+   * A failed load used to fall through `loading || !client` and sit on
+   * "Loading client…" for as long as the tab stayed open — the same
+   * never-resolving spinner the Priorities page had, with the same absence of
+   * anything to read or press.
+   */
+  if (!client) {
+    return (
+      <PageIn className="mx-auto max-w-3xl px-4 py-10 md:px-8">
+        <Link href="/admin/clients" className="text-sm text-white/45 hover:text-white">
+          ← Clients
+        </Link>
+        <Card className="mt-4 p-4">
+          <LoadError
+            what={loadFailed ? 'this client' : 'this client — it may have been deleted'}
+            onRetry={() => {
+              setLoading(true);
+              loadClient();
+            }}
+          />
+        </Card>
+      </PageIn>
     );
   }
 
@@ -136,6 +223,22 @@ export default function AdminClientDetailPage() {
           <Mail size={13} /> Compose email
         </button>
       </div>
+
+      {/*
+        One place for the outcome of any write on this page, at the top where
+        it cannot be missed. role="alert" so it is announced rather than only
+        drawn — somebody who has just pressed Decommission may be looking at
+        the button, not the header.
+      */}
+      {actionError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-400/[0.07] px-4 py-3 text-sm text-red-100/90"
+        >
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-red-300/80" />
+          <span>{actionError}</span>
+        </div>
+      )}
 
       {composingEmail && (
         <EmailComposer
