@@ -290,16 +290,71 @@ export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; 
  * difference between "there is a search page" and "search is always under
  * your hands." Esc or a click outside dismisses.
  */
-function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+// Exported for its own tests: focus behaviour is invisible until somebody
+// tries to use the thing without a mouse.
+export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const reduceMotion = useReducedMotion();
+  const panel = useRef<HTMLDivElement>(null);
+  /** Whatever had focus when the palette was summoned, to hand it back to. */
+  const returnFocusTo = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    /*
+     * Focus, kept where it belongs while this is up and given back when it
+     * closes.
+     *
+     * The dialog declared aria-modal but behaved like nothing of the sort:
+     * Tab walked straight out of it into the page underneath, which a screen
+     * reader has been told is inert — so the reading order and what is
+     * actually reachable disagreed. And nothing remembered where focus came
+     * from, so Esc dropped it on the body and the next Tab restarted from the
+     * top of the document. Summoning search from the keyboard and being
+     * unable to get back to what you were doing is a strange way to lose your
+     * place. The notification menu below already returns focus on close; this
+     * is the same courtesy.
+     */
+    // Captured before anything in the panel takes focus, then the field is
+    // focused deliberately. Leaving that to the input's own `autoFocus` meant
+    // the browser had already moved focus by the time this ran, so what got
+    // remembered was the search field itself — and handing focus back to a
+    // node that is being unmounted is the same as handing it back to nothing.
+    returnFocusTo.current = document.activeElement as HTMLElement | null;
+    panel.current?.querySelector('input')?.focus();
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !panel.current) return;
+      const focusable = panel.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      // Wrap at both ends rather than letting focus escape the dialog.
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (!panel.current.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      // Only if it is still on the page — navigating away from a result
+      // replaces it, and focusing a detached node silently does nothing.
+      const target = returnFocusTo.current;
+      if (target && document.contains(target)) target.focus();
+    };
   }, [open, onClose]);
 
   return (
@@ -319,13 +374,16 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
           aria-label="Search"
         >
           <motion.div
+            ref={panel}
             initial={reduceMotion ? false : { opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }}
             transition={{ duration: 0.15 }}
             className="w-full max-w-xl rounded-2xl border border-white/10 bg-raised shadow-2xl p-3"
           >
-            <SearchBox autoFocus onNavigate={onClose} />
+            {/* Focused by CommandPalette itself, after it has noted where
+                focus came from — see the effect above. */}
+            <SearchBox onNavigate={onClose} />
             <p className="px-1 pt-2 text-[10px] text-white/25">
               Type to search leads, clients and projects · Esc to close
             </p>
