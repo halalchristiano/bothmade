@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isGoogleOAuthConfigured } from '@/lib/gmail-oauth';
 import { readOpens } from '@/lib/lead-opens';
 import { nextTouch } from '@/lib/next-touch';
+import { resolveDayStart } from '@/lib/day-window';
 
 /**
  * The day's call list, in the order it should be worked.
@@ -116,7 +117,7 @@ const CALLABLE_REASONS: CallReason[] = [
 /** Counted and reported, deliberately kept off today's sheet. */
 const HELD_BACK_REASONS: CallReason[] = ['awaiting-mockup', 'scheduled'];
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
@@ -148,10 +149,15 @@ export async function GET() {
     // worst possible failure for a work queue.
     const totalOpen = await prisma.lead.count({ where });
 
-    // Calls logged today, by this person. A rep working a long list has no
-    // sense of progress otherwise — the list only ever shows what's left.
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    /*
+     * Calls logged today, by this person. A rep working a long list has no
+     * sense of progress otherwise — the list only ever shows what's left.
+     *
+     * "Today" is the browser's day, not the server's. Computed here in UTC it
+     * rolled over mid-evening for anyone working US hours, so an afternoon of
+     * calls read as zero. See lib/day-window.ts.
+     */
+    const startOfDay = resolveDayStart(new URL(request.url).searchParams.get('dayStart'));
     const callsToday = await prisma.leadActivity.count({
       where: { type: 'call', createdById: session.userId, createdAt: { gte: startOfDay } },
     });

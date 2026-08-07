@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveDayStart } from '@/lib/day-window';
 import { uninvoicedPayments } from '@/lib/stage-gates';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { MOCKUPS_TO_BUILD_WHERE } from '@/lib/mockups';
@@ -21,14 +22,24 @@ import { nextDesignStage } from '@/lib/design-stages';
  * to get someone out of the dashboard and into the work. A dashboard you
  * spend time on is a dashboard that failed.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await requireStaff();
     if (!session) return unauthorizedResponse();
 
     const now = new Date();
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
+    /*
+     * The browser's midnight, not the server's.
+     *
+     * This used to be `new Date(); setHours(0,0,0,0)` on a server running in
+     * UTC, which for anyone working US hours rolls the day over mid-evening:
+     * an afternoon of calls counted as yesterday and this page said "1 call
+     * logged today" to somebody who had made twelve. See lib/day-window.ts.
+     */
+    const startOfDay = resolveDayStart(
+      new URL(request.url).searchParams.get('dayStart'),
+      now
+    );
     const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
 
     const [
@@ -271,6 +282,76 @@ export async function GET() {
       where: { type: 'call', createdAt: { gte: startOfDay } },
     });
 
+    /*
+     * What each person actually got through, and what came of it.
+     *
+     * A single team-wide "12 calls logged" cannot answer the question anybody
+     * running a two-person sales floor asks, which is not "how many calls"
+     * but "how did that go, and for whom". So each row carries the three
+     * things a call can turn into: it happened, they wanted a mockup, or they
+     * did not and the follow-up sequence picked them up.
+     *
+     * Read off the activity log rather than counted per-metric, because the
+     * activity IS the attribution — a mockup request and a booked sequence
+     * have no author of their own, but the call that caused them does. One
+     * query, and the numbers cannot disagree with each other because they are
+     * all derived from the same rows.
+     */
+    const callRows = await prisma.leadActivity.findMany({
+      where: { type: 'call', createdAt: { gte: startOfDay } },
+      select: {
+        createdById: true,
+        createdBy: { select: { name: true, email: true } },
+        lead: {
+          select: {
+            id: true,
+            mockupRequestedAt: true,
+            autoFollowUpDueAt: true,
+            autoFollowUpStage: true,
+          },
+        },
+      },
+    });
+
+    const byPerson = new Map<
+      string,
+      { userId: string; name: string; calls: number; mockups: Set<string>; sequence: Set<string> }
+    >();
+
+    for (const row of callRows) {
+      const key = row.createdById ?? 'unknown';
+      const entry =
+        byPerson.get(key) ??
+        {
+          userId: key,
+          // Falls back to the address, then to something honest, rather than
+          // rendering a blank row that reads as a bug.
+          name: row.createdBy?.name || row.createdBy?.email || 'Someone',
+          calls: 0,
+          mockups: new Set<string>(),
+          sequence: new Set<string>(),
+        };
+      entry.calls++;
+      // Sets, not counters: two calls to the same business in one day is one
+      // mockup, and counting it twice would flatter the number.
+      if (row.lead?.mockupRequestedAt && row.lead.mockupRequestedAt >= startOfDay) {
+        entry.mockups.add(row.lead.id);
+      } else if (row.lead?.autoFollowUpDueAt && row.lead.autoFollowUpStage === 0) {
+        entry.sequence.add(row.lead.id);
+      }
+      byPerson.set(key, entry);
+    }
+
+    const team = [...byPerson.values()]
+      .map((p) => ({
+        userId: p.userId,
+        name: p.name,
+        calls: p.calls,
+        mockupsRequested: p.mockups.size,
+        intoFollowUp: p.sequence.size,
+      }))
+      .sort((a, b) => b.calls - a.calls);
+
     const uninvoiced = uninvoicedPayments(gateProjects).slice(0, 8);
 
     return NextResponse.json(
@@ -284,6 +365,13 @@ export async function GET() {
           approvedMockups,
           unsignedProposals,
           callsToday,
+          /*
+           * Everybody's day, not just the viewer's — deliberately the same
+           * numbers on every account. Two people working one book need to be
+           * looking at one scoreboard, or "how are we doing" has two answers
+           * and neither of them is the truth.
+           */
+          team,
         },
         money: {
           dueInstalments,

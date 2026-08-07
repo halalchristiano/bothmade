@@ -23,6 +23,7 @@ import { LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { leadLocalTime } from '@/lib/local-time';
 import { formatCents } from '@/lib/pricing';
 import { CALL_OUTCOMES } from '@/lib/call-outcomes';
+import { localDayStartParam } from '@/lib/day-window';
 
 type CallReason =
   | 'replied'
@@ -186,6 +187,51 @@ const ORDER: CallReason[] = [
   'no-follow-up',
   'never-contacted',
 ];
+
+/**
+ * Numbers dialled and not yet logged, kept across a reload.
+ *
+ * On a phone the dialler backgrounds the browser, and a rep working down the
+ * sheet taps Dial several times before coming back to log anything. This was
+ * a single overwritten entry, which meant every dial silently threw away the
+ * prompt for the one before it — an afternoon of calls arriving in the
+ * database as one.
+ */
+const PENDING_CALLS_KEY = 'pendingCalls';
+
+/**
+ * How many unlogged dials are remembered.
+ *
+ * Past a handful this stops being a memory aid and becomes a backlog nobody
+ * will work through, and the oldest of them are the ones whose details have
+ * already gone. Dropping the eldest is honest: the prompt is for calls you
+ * can still remember.
+ */
+const MAX_PENDING_CALLS = 12;
+
+/** Anything unreadable means no prompt, never a crash on a work queue. */
+function readPendingCalls(): { id: string; company: string; at: number }[] {
+  try {
+    const raw = sessionStorage.getItem(PENDING_CALLS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed)) return parsed;
+    // The single-entry shape this replaced. Carried over rather than dropped,
+    // so upgrading mid-afternoon doesn't lose the call in progress.
+    if (parsed && typeof parsed === 'object' && parsed.id) return [parsed];
+  } catch {
+    /* a corrupt entry just means no prompt */
+  }
+  return [];
+}
+
+function writePendingCalls(calls: { id: string; company: string; at: number }[]): void {
+  try {
+    if (calls.length === 0) sessionStorage.removeItem(PENDING_CALLS_KEY);
+    else sessionStorage.setItem(PENDING_CALLS_KEY, JSON.stringify(calls));
+  } catch {
+    /* private mode — the prompt just won't survive a reload */
+  }
+}
 
 /** The things a row can be filtered on. Named so a count can exclude its own. */
 type FilterKey = 'value' | 'opens' | 'industry' | 'region' | 'untried';
@@ -580,7 +626,23 @@ export function QueueView() {
   // started — a browser cannot read the phone's call history, on any OS. So
   // we remember who was dialled and ask on the way back, rather than relying
   // on him to come and log it unprompted.
-  const [pendingCall, setPendingCall] = useState<{ id: string; company: string; at: number } | null>(null);
+  /*
+   * Every number dialled and not yet logged, oldest first.
+   *
+   * This used to be a single entry in sessionStorage, overwritten on every
+   * dial. Working down the sheet — tap Dial, talk, come back, tap the next
+   * one — silently erased the previous prompt each time, so an afternoon of
+   * calls produced one logged outcome and a dashboard that read "1 call
+   * logged today". The rep had done the work; the app had thrown away every
+   * record of it but the last.
+   *
+   * A list, kept in the order they were rung, so nothing dialled can be lost
+   * by dialling the next one.
+   */
+  const [pendingCalls, setPendingCalls] = useState<
+    { id: string; company: string; at: number }[]
+  >([]);
+  const pendingCall = pendingCalls[0] ?? null;
   const [savingQuick, setSavingQuick] = useState(false);
   const [quickOutcomeError, setQuickOutcomeError] = useState('');
   /**
@@ -631,7 +693,11 @@ export function QueueView() {
 
   const load = async () => {
     try {
-      const res = await fetch('/api/admin/leads/call-list');
+      // The browser's midnight, so "calls logged today" counts the rep's day
+      // rather than the server's UTC one. See lib/day-window.ts.
+      const res = await fetch(
+        `/api/admin/leads/call-list?dayStart=${encodeURIComponent(localDayStartParam())}`
+      );
       if (res.status === 401) {
         router.push('/admin/login');
         return;
@@ -673,46 +739,36 @@ export function QueueView() {
   // Survives the page being backgrounded while the dialler is open, which is
   // exactly what happens on a phone.
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('pendingCall');
-      if (raw) setPendingCall(JSON.parse(raw));
-    } catch {
-      /* a corrupt entry just means no prompt */
-    }
-  }, []);
-
-  useEffect(() => {
+    setPendingCalls(readPendingCalls());
     const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      try {
-        const raw = sessionStorage.getItem('pendingCall');
-        if (raw) setPendingCall(JSON.parse(raw));
-      } catch {
-        /* ignore */
-      }
+      if (document.visibilityState === 'visible') setPendingCalls(readPendingCalls());
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   const startCall = (row: CallRow) => {
-    const entry = { id: row.id, company: row.company, at: Date.now() };
-    try {
-      sessionStorage.setItem('pendingCall', JSON.stringify(entry));
-    } catch {
-      /* private mode — the prompt just won't survive a reload */
-    }
     setQuickOutcomeError('');
-    setPendingCall(entry);
+    setPendingCalls((prev) => {
+      // Re-dialling the same business is the same unlogged call, not a second
+      // one — otherwise a number that rang out twice asks to be logged twice.
+      const next = [
+        ...prev.filter((p) => p.id !== row.id),
+        { id: row.id, company: row.company, at: Date.now() },
+      ].slice(-MAX_PENDING_CALLS);
+      writePendingCalls(next);
+      return next;
+    });
   };
 
-  const clearPendingCall = () => {
-    try {
-      sessionStorage.removeItem('pendingCall');
-    } catch {
-      /* ignore */
-    }
-    setPendingCall(null);
+  /** Takes one off the pile — logged, or explicitly dismissed. */
+  const clearPendingCall = (id?: string) => {
+    setPendingCalls((prev) => {
+      const target = id ?? prev[0]?.id;
+      const next = prev.filter((p) => p.id !== target);
+      writePendingCalls(next);
+      return next;
+    });
   };
 
   const logQuickOutcome = async (key: string) => {
@@ -736,7 +792,7 @@ export function QueueView() {
         if (data.askAboutMockup) {
           setMockupAsk({ leadId: pendingCall.id, company: pendingCall.company, dueAt: data.autoFollowUpDueAt ?? null });
         }
-        clearPendingCall();
+        clearPendingCall(pendingCall.id);
         load();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -1140,10 +1196,22 @@ export function QueueView() {
               </p>
               <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
                 One tap logs it, moves them along and books the next follow-up.
+                {/*
+                  * Said out loud, because the whole reason this card exists is
+                  * that unlogged calls used to vanish without trace. Knowing
+                  * three more are stacked up behind this one is what stops a
+                  * rep walking away thinking they're done.
+                  */}
+                {pendingCalls.length > 1 && (
+                  <span className="text-sky-200/80">
+                    {' '}
+                    {pendingCalls.length - 1} more you rang and haven&apos;t logged.
+                  </span>
+                )}
               </p>
             </div>
             <button
-              onClick={clearPendingCall}
+              onClick={() => clearPendingCall(pendingCall.id)}
               className="shrink-0 text-xs text-white/40 hover:text-white transition-colors"
             >
               Dismiss

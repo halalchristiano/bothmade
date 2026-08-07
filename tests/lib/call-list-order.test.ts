@@ -76,7 +76,8 @@ const opened = (count: number, over: Record<string, unknown> = {}) =>
     ...over,
   });
 
-const call = async () => (await GET()).json();
+const call = async () =>
+  (await GET(new Request('https://x/api/admin/leads/call-list') as never)).json();
 
 beforeEach(() => {
   n = 0;

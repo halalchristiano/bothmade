@@ -73,7 +73,8 @@ const lead = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const call = async () => (await GET()).json();
+const call = async () =>
+  (await GET(new Request('https://x/api/admin/leads/call-list') as never)).json();
 const names = (rows: { company: string }[]) => rows.map((r) => r.company);
 
 beforeEach(() => {

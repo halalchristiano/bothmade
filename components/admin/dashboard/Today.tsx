@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { formatCents } from '@/lib/pricing';
 import { readDelivery } from '@/lib/invoice-delivery';
+import { localDayStartParam } from '@/lib/day-window';
 
 /**
  * The top of the dashboard, and the answer to why nobody opened it.
@@ -63,6 +64,20 @@ interface TodayData {
       updatedAt: string;
     }>;
     callsToday: number;
+    /**
+     * Everybody's day, and the same numbers on every account.
+     *
+     * Two people working one book need one scoreboard, or "how are we doing"
+     * has two answers and neither is the truth. Each row carries what a call
+     * turned into, not just that it happened.
+     */
+    team: Array<{
+      userId: string;
+      name: string;
+      calls: number;
+      mockupsRequested: number;
+      intoFollowUp: number;
+    }>;
   };
   money: {
     dueInstalments: Array<{
@@ -214,7 +229,15 @@ export function Today() {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    fetch('/api/admin/today')
+    /*
+     * The browser's midnight goes with the request.
+     *
+     * Without it the server counted a UTC day, which for anyone working US
+     * hours rolls over mid-evening — so an afternoon of calls read as
+     * yesterday and this page said "1 call logged today" to somebody who had
+     * made twelve. See lib/day-window.ts.
+     */
+    fetch(`/api/admin/today?dayStart=${encodeURIComponent(localDayStartParam())}`)
       .then((res) => {
         if (res.status === 401) {
           router.push('/admin/login');
@@ -352,6 +375,83 @@ export function Today() {
   })();
 
 /**
+ * What the phones did today, per person.
+ *
+ * The dashboard could say "12 calls logged" and nothing else, which answers
+ * the least interesting version of the question. What a two-person sales
+ * floor actually asks is "how did that go, and for whom" — so each row
+ * carries the three things a call turns into: it happened, they wanted a
+ * mockup, or they did not and the follow-up sequence picked them up.
+ *
+ * The same numbers on everybody's screen, deliberately. Two people working
+ * one book need one scoreboard; two private ones give "how are we doing" two
+ * answers, neither of them the truth.
+ *
+ * Renders nothing before the first call of the day. A row of zeroes at 9am is
+ * a scolding, not information.
+ */
+function TodayOnThePhones({
+  team,
+}: {
+  team: Array<{ userId: string; name: string; calls: number; mockupsRequested: number; intoFollowUp: number }>;
+}) {
+  if (team.length === 0) return null;
+
+  const total = team.reduce(
+    (a, p) => ({
+      calls: a.calls + p.calls,
+      mockups: a.mockups + p.mockupsRequested,
+      followUp: a.followUp + p.intoFollowUp,
+    }),
+    { calls: 0, mockups: 0, followUp: 0 }
+  );
+
+  return (
+    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/35">
+          On the phones today
+        </p>
+        <p className="text-[11px] text-white/35">
+          {total.calls} {total.calls === 1 ? 'call' : 'calls'} · {total.mockups}{' '}
+          {total.mockups === 1 ? 'mockup' : 'mockups'} · {total.followUp} into follow-up
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {team.map((p) => (
+          <div
+            key={p.userId}
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
+          >
+            <span className="text-sm font-semibold text-white min-w-0 truncate">{p.name}</span>
+            <span className="text-sm text-white/80">
+              {p.calls} {p.calls === 1 ? 'call' : 'calls'}
+            </span>
+            {/*
+              * The two outcomes, and only when they happened. A dash where a
+              * number could be reads as a failure to record something; an
+              * absent clause reads as "that did not come up", which is what
+              * is actually true.
+              */}
+            {p.mockupsRequested > 0 && (
+              <span className="text-xs text-emerald-300/90">
+                {p.mockupsRequested} wanted a mockup
+              </span>
+            )}
+            {p.intoFollowUp > 0 && (
+              <span className="text-xs text-sky-300/80">
+                {p.intoFollowUp} into the follow-up emails
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The things somebody is waiting on us for, pinned above everything else.
  *
  * The three lanes below are ordered by the shape of the work — sell it, get
@@ -473,6 +573,8 @@ function WaitingOnUs({
       </div>
 
       <WaitingOnUs sell={sell} deliver={deliver} />
+
+      <TodayOnThePhones team={sell.team ?? []} />
 
       <div className="grid gap-3 lg:grid-cols-3">
         <Lane

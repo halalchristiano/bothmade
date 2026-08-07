@@ -358,6 +358,27 @@ export async function PATCH(
     // Notify the rest of the team when a mockup is requested or delivered —
     // this is the actual handoff moment ("I need a mockup" / "here's the link").
     if (mockupRequested === true && !existing.mockupRequested) {
+      /*
+       * On the lead's own timeline, with a name on it.
+       *
+       * Two things needed this. The lead's history read "called them" and
+       * then, with no explanation, a mockup existed — the decision that
+       * produced it was nowhere. And nothing else in the system knows who
+       * asked: `mockupRequestedAt` is a bare timestamp, so "how many did Evan
+       * get out of yesterday" had no answer. An activity row has an author,
+       * which makes it both a history and a scoreboard.
+       */
+      await prisma.leadActivity
+        .create({
+          data: {
+            leadId,
+            type: 'note',
+            content: `Mockup requested — they wanted to see one.`,
+            createdById: session.userId,
+          },
+        })
+        .catch((err) => console.error('Could not log the mockup request:', err));
+
       await prisma.teamMessage.create({
         data: {
           content: `🎨 Mockup requested for ${lead.company}`,
