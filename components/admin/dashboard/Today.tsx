@@ -187,14 +187,19 @@ function Lane({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex min-w-0 flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
-      <div className="mb-3 flex items-center gap-2.5">
+    // The three lanes are the most-looked-at surface in the app and were the
+    // last thing still sitting flat on the ground — the same 1px-on-nothing
+    // the rest of the admin moved off. They frame every row inside them, so
+    // leaving them flat kept the whole card reading as a sketch of itself
+    // however finished the contents were.
+    <section className="relative flex min-w-0 flex-col rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+      <div className="mb-4 flex items-center gap-2.5">
         <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${accent}`}>
           <Icon size={15} />
         </span>
         <div className="min-w-0">
-          <h2 className="text-sm font-bold text-white leading-tight">{title}</h2>
-          <p className="text-[11px] text-white/35 leading-tight">{question}</p>
+          <h2 className="text-sm font-semibold leading-tight text-white">{title}</h2>
+          <p className="mt-0.5 text-2xs leading-tight text-white/35">{question}</p>
         </div>
       </div>
       <div className="space-y-1.5">{children}</div>
@@ -401,9 +406,9 @@ function TodayOnThePhones({
   );
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
-      <div className="flex items-baseline justify-between gap-3 mb-3">
-        <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/35">
+    <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-4 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <p className="text-2xs font-medium uppercase tracking-[0.16em] text-white/35">
           On the phones today
         </p>
         <p className="text-[11px] text-white/35">
@@ -416,7 +421,10 @@ function TodayOnThePhones({
         {team.map((p) => (
           <div
             key={p.userId}
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
+            // Sunk, not raised: these sit inside a card that is already
+            // lifted, and stacking a second elevation inside the first is how
+            // a panel starts looking like a pile.
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl border border-white/[0.05] bg-black/20 px-3 py-2.5"
           >
             <span className="text-sm font-semibold text-white min-w-0 truncate">{p.name}</span>
             {/*
