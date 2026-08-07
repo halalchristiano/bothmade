@@ -158,12 +158,31 @@ function BillingWorkspace() {
     };
   }, [query, customer]);
 
-  const pickCustomer = (picked: Customer) => {
-    setCustomer(picked);
-    setProjectId(picked.projects[0]?.id || '');
-    setQuery('');
-    setResults([]);
+  /*
+   * Anything that changes WHO is being charged retracts the confirmation.
+   *
+   * The duplicate warning turns the button into "Yes — charge $1,200 again",
+   * and pressing it sends confirmDuplicate: true, which tells the server to
+   * skip the check entirely. Editing the description or a line already
+   * withdrew that. Changing the customer or the project did not — so the
+   * sequence "warned about a twin on this project, switch to a different
+   * project, press the button" sent a charge to somebody the guard had never
+   * looked at, with the guard switched off. The confirmation was about a
+   * different invoice by then.
+   */
+  const changeTarget = (apply: () => void) => {
+    apply();
+    setNeedsConfirmation(false);
     setError('');
+  };
+
+  const pickCustomer = (picked: Customer) => {
+    changeTarget(() => {
+      setCustomer(picked);
+      setProjectId(picked.projects[0]?.id || '');
+      setQuery('');
+      setResults([]);
+    });
   };
 
   const clearCustomer = () => {
@@ -268,7 +287,7 @@ function BillingWorkspace() {
                 {customer.projects.length > 1 ? (
                   <select
                     value={projectId}
-                    onChange={(e) => setProjectId(e.target.value)}
+                    onChange={(e) => changeTarget(() => setProjectId(e.target.value))}
                     className={`${inputClass} mt-3`}
                   >
                     {customer.projects.map((project) => (

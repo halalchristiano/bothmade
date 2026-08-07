@@ -259,6 +259,20 @@ describe('guards', () => {
     expect(prisma.invoice.create).toHaveBeenCalledOnce();
   });
 
+  /*
+   * The ordinary way a charge gets typed twice inside two minutes is that the
+   * first one was wrong: raise it, spot the figure, cancel it, type it again.
+   * A cancelled invoice has a dead pay link and a client who has been told to
+   * ignore it, so it is not a twin of anything — and warning about it taught
+   * whoever was doing the right thing to click through the warning.
+   */
+  it('does not treat a cancelled invoice as a duplicate', async () => {
+    await POST(request(CHARGE));
+
+    const where = prisma.invoice.findFirst.mock.calls[0][0].where;
+    expect(where.status).toEqual({ not: 'void' });
+  });
+
   it('refuses to bill a decommissioned client', async () => {
     prisma.project.findUnique.mockResolvedValue({
       id: 'proj_1',

@@ -9,9 +9,7 @@ import { sendCustomChargeEmail, sendInvoiceRecordEmail } from '@/lib/email';
 import { buildCustomChargeInvoicePdf } from '@/lib/invoice-pdf';
 import {
   createInvoiceRow as sharedCreateInvoiceRow,
-  formatInvoiceNumber,
   invoiceFilename,
-  invoiceNumberPrefix,
   readChargeDraft,
 } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
@@ -94,6 +92,20 @@ export async function POST(request: NextRequest) {
           description,
           amountCents,
           createdAt: { gte: new Date(Date.now() - DUPLICATE_WINDOW_MS) },
+          /*
+           * A cancelled invoice is not a duplicate of anything.
+           *
+           * Void means "this should never have existed" — the pay link is
+           * dead and the client has been told to ignore it. The ordinary way
+           * that happens is raising a charge, spotting a wrong figure in it,
+           * cancelling, and typing it again, which lands inside this window
+           * every time. The guard then answered with "send it again only if
+           * you meant to bill twice", about an invoice nobody can pay, and
+           * the person doing the right thing had to overrule a warning to do
+           * it. Warnings that are wrong get clicked through, including the
+           * ones that were right.
+           */
+          status: { not: 'void' },
         },
         orderBy: { createdAt: 'desc' },
       });
@@ -308,21 +320,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * The next number in this year's run — a candidate, not a reservation.
- *
- * Counting rows is not a sequence: two charges raised in the same second
- * both read the same count and both try to claim it. The unique index is
- * what actually keeps numbers from colliding, so the collision is expected
- * and handled rather than prevented.
+/*
+ * A second copy of the numbering used to live here — `nextInvoiceNumber`,
+ * unreferenced since the allocator moved into lib/billing, and still
+ * counting rows and formatting a number nobody read. Deleted rather than
+ * left: two implementations of "what number is next" is exactly the pair
+ * that eventually disagrees, and the dead one is always the one somebody
+ * copies.
  */
-async function nextInvoiceNumber(now = new Date()): Promise<string> {
-  const year = now.getUTCFullYear();
-  const issuedThisYear = await prisma.invoice.count({
-    where: { number: { startsWith: invoiceNumberPrefix(year) } },
-  });
-  return formatInvoiceNumber(year, issuedThisYear + 1);
-}
 
 /** Thin alias for the shared allocator — the retry loop lives in lib/billing. */
 async function createInvoiceRow(input: {
