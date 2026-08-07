@@ -77,6 +77,7 @@ interface TodayData {
     overdueFollowUpCount: number;
     unsignedProposalCount: number;
     approvedMockupCount: number;
+    openedMockupCount: number;
     /**
      * Everybody's day, and the same numbers on every account.
      *
@@ -906,9 +907,22 @@ export function Today({
             sell.overdueFollowUps.length +
             sell.unsignedProposals.length ===
             0 && <Quiet text="Nobody is waiting on you." />}
+          {/*
+            All four lists in this lane, not the two that were easy.
+            Approved and opened mockups are pages of five like everything
+            else, so leaving them out of the count reproduced, in one lane,
+            exactly the under-report this footer exists to stop.
+          */}
           <More
-            shown={sell.overdueFollowUps.length + sell.unsignedProposals.length}
+            shown={
+              sell.approvedMockups.length +
+              sell.openedMockups.length +
+              sell.overdueFollowUps.length +
+              sell.unsignedProposals.length
+            }
             total={
+              (sell.approvedMockupCount ?? sell.approvedMockups.length) +
+              (sell.openedMockupCount ?? sell.openedMockups.length) +
               (sell.overdueFollowUpCount ?? sell.overdueFollowUps.length) +
               (sell.unsignedProposalCount ?? sell.unsignedProposals.length)
             }

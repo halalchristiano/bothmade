@@ -26,6 +26,7 @@ const EMPTY = {
     overdueFollowUpCount: 0,
     unsignedProposalCount: 0,
     approvedMockupCount: 0,
+    openedMockupCount: 0,
     repliedCount: 0,
     neverContactedCount: 0,
     openedMockups: [],
@@ -272,5 +273,45 @@ describe('waiting on us', () => {
 
     // One row rendered, sixteen blocked.
     expect(await screen.findByText(/and 15 more, in the lanes below\./)).toBeInTheDocument();
+  });
+});
+
+
+/**
+ * The lane footer, counting every list under it.
+ *
+ * The Sell lane renders four — approved mockups, opened mockups, overdue
+ * follow-ups, unsigned proposals — and the footer first shipped counting two
+ * of them. That reproduced, inside the one component built to stop it, the
+ * under-report the whole change exists for: five approved mockups on screen
+ * out of twelve, and a footer that said nothing was missing.
+ */
+describe('the sell lane footer', () => {
+  it('counts the mockup lists too, not just the follow-ups', async () => {
+    serve({
+      ...EMPTY,
+      sell: {
+        ...EMPTY.sell,
+        approvedMockupCount: 12,
+        approvedMockups: Array.from({ length: 5 }, (_, i) => ({
+          id: `am_${i}`,
+          respondedAt: null,
+          responseNote: null,
+          lead: { id: `l_${i}`, company: `Co ${i}` },
+        })),
+        openedMockupCount: 8,
+        openedMockups: Array.from({ length: 5 }, (_, i) => ({
+          id: `om_${i}`,
+          viewCount: 3,
+          lastViewedAt: null,
+          lead: { id: `o_${i}`, company: `Opened ${i}`, phone: null },
+        })),
+      },
+    });
+
+    render(<Today />);
+
+    // 20 in the lists, 10 on screen.
+    await screen.findByText('10 more →');
   });
 });

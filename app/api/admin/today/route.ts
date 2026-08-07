@@ -321,6 +321,9 @@ export async function GET(request: NextRequest) {
         prisma.leadMockup
           .count({ where: { status: 'approved', lead: { status: { notIn: ['won', 'lost'] } } } })
           .catch(() => 0),
+        prisma.leadMockup
+          .count({ where: { status: 'viewed', lead: { status: { notIn: ['won', 'lost'] } } } })
+          .catch(() => 0),
         prisma.lead
           .count({
             where: {
@@ -356,6 +359,7 @@ export async function GET(request: NextRequest) {
           overdueFollowUpCount,
           unsignedProposalCount,
           approvedMockupCount,
+          openedMockupCount,
           mockupsBuiltNotSentCount,
           unreadDesignFeedbackCount,
           designsOwedCount,
@@ -366,6 +370,7 @@ export async function GET(request: NextRequest) {
           overdueFollowUpCount,
           unsignedProposalCount,
           approvedMockupCount,
+          openedMockupCount,
           mockupsBuiltNotSentCount,
           unreadDesignFeedbackCount,
           designsOwedCount,
@@ -496,6 +501,7 @@ export async function GET(request: NextRequest) {
           overdueFollowUpCount: totals.overdueFollowUpCount,
           unsignedProposalCount: totals.unsignedProposalCount,
           approvedMockupCount: totals.approvedMockupCount,
+          openedMockupCount: totals.openedMockupCount,
           repliedCount: repliedLeads,
           neverContactedCount: neverContacted,
           openedMockups,
