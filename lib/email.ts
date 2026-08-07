@@ -941,6 +941,62 @@ export async function sendCarePlanPaymentFailedEmail(params: {
 }
 
 /**
+ * The plan has stopped, and the client is told so.
+ *
+ * They were not, before. The failed-payment email above ends with "Your plan
+ * stays active in the meantime" — true when it is sent, and the last thing
+ * they ever hear. Stripe then exhausts its retries, deletes the subscription,
+ * and nothing says a word. A client whose card expired goes on believing their
+ * hosting and support are covered, because we told them they were.
+ *
+ * The reason changes the letter entirely. Somebody who cancelled wants a
+ * confirmation and a date; somebody whose card failed wants to know cover has
+ * actually lapsed and how to start it again. Sending the first to the second
+ * is how a lapsed plan becomes a support ticket in six weeks' time.
+ */
+export async function sendCarePlanEndedEmail(params: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  planLabel: string;
+  /** Stripe's cancellation reason, when it gave one. */
+  reason: string | null;
+  /** Where to pick it back up, when there is somewhere. */
+  restartUrl: string | null;
+}): Promise<boolean> {
+  const lapsed = params.reason === 'payment_failed';
+
+  const bodyHtml = lapsed
+    ? `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>We weren't able to take payment for <strong style="color:#fff;">${esc(params.planLabel)}</strong> after several attempts, so the plan has now stopped.</p>
+    <p><strong style="color:#fff;">This means cover has ended</strong> — updates, monitoring and support are no longer running on your site. Nothing has been deleted and your site is still live; it simply isn't being looked after.</p>
+    <p>It is almost always an expired card. Reply to this email and we'll start it again from where it left off — there's no penalty and no re-onboarding.</p>
+  `
+    : `
+    <p>Hi ${esc(params.contactName) || 'there'},</p>
+    <p>Your <strong style="color:#fff;">${esc(params.planLabel)}</strong> has been cancelled, and you won't be billed for it again.</p>
+    <p>Cover has ended, so updates, monitoring and support are no longer running — your site stays live and everything remains yours.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">If you'd like to pick it back up later, just reply. Thanks for having had us on it.</p>
+  `;
+
+  return sendEmail({
+    to: params.toEmail,
+    subject: lapsed
+      ? `${params.planLabel} has stopped — ${params.company}`
+      : `${params.planLabel} cancelled — ${params.company}`,
+    html: renderShell({
+      eyebrow: lapsed ? 'Plan stopped' : 'Plan cancelled',
+      title: `${params.company} — ${params.planLabel}`,
+      bodyHtml,
+      ...(lapsed && params.restartUrl
+        ? { ctaLabel: 'Start the plan again', ctaUrl: params.restartUrl }
+        : {}),
+    }),
+  });
+}
+
+/**
  * The client's copy of a one-off charge: what it's for, what it costs, the
  * invoice as a PDF, and a link that pays it.
  *

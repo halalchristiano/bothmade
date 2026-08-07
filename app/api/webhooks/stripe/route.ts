@@ -8,6 +8,7 @@ import {
   hashPassword,
 } from '@/lib/auth';
 import {
+  sendCarePlanEndedEmail,
   sendCarePlanInvoiceEmail,
   sendCarePlanPaymentFailedEmail,
   sendCarePlanStartedEmail,
@@ -734,6 +735,26 @@ async function handleSubscriptionEnded(subscription: Stripe.Subscription) {
    * nothing bounces, nobody complains, next month is quietly smaller.
    */
   const schedule = scheduleForOffer(offer);
+  const reason = subscription.cancellation_details?.reason ?? null;
+
+  /*
+   * The client, who was the last to know and had been told the opposite.
+   *
+   * sendCarePlanPaymentFailedEmail ends with "Your plan stays active in the
+   * meantime" — true when it is sent, and until now the last thing they ever
+   * heard. Stripe exhausts its retries, deletes the subscription, and a client
+   * whose card expired goes on believing their hosting and support are covered
+   * because we told them they were.
+   */
+  await sendCarePlanEndedEmail({
+    toEmail: offer.project.client.email,
+    contactName: offer.project.client.contactName,
+    company: offer.project.client.company,
+    planLabel: planLabel(schedule.addOns),
+    reason,
+    restartUrl: `${resolveSiteUrl()}/client/${offer.projectId}`,
+  }).catch((error) => console.error('Care plan ended client email failed:', error));
+
   await notifyAdminsCarePlanEnded({
     projectId: offer.projectId,
     clientCompany: offer.project.client.company,
@@ -741,7 +762,7 @@ async function handleSubscriptionEnded(subscription: Stripe.Subscription) {
     monthlyLabel: formatCents(schedule.discountedCents),
     // 'cancellation_requested' reads very differently from 'payment_failed',
     // and it is the only thing distinguishing a decision from a loss.
-    reason: subscription.cancellation_details?.reason ?? null,
+    reason,
   }).catch((error) => console.error('Care plan ended notice failed:', error));
 }
 

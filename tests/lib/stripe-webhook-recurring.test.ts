@@ -35,6 +35,7 @@ vi.mock('@/lib/auth', () => ({
   hashPassword: async () => 'hashed-password',
 }));
 vi.mock('@/lib/email', () => ({
+  sendCarePlanEndedEmail: vi.fn(async () => true),
   sendWelcomeEmail: vi.fn(),
   sendCarePlanOfferEmail: vi.fn(),
   sendCarePlanStartedEmail: vi.fn(async () => true),
@@ -59,6 +60,7 @@ const {
 } = await import('@/lib/email');
 const { notifyAdminsCarePlanStarted, notifyAdminsCarePlanPaymentFailed, notifyAdminsCarePlanEnded } =
   await import('@/lib/notify');
+const { sendCarePlanEndedEmail } = await import('@/lib/email');
 const { buildCarePlanInvoicePdf } = await import('@/lib/invoice-pdf');
 
 function request(body = '{}', signature = 'sig') {
@@ -443,5 +445,63 @@ describe('a care plan ending', () => {
 
     expect(prisma.recurringOffer.update).not.toHaveBeenCalled();
     expect(notifyAdminsCarePlanEnded).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The client, who was the last to know and had been told the opposite.
+ *
+ * sendCarePlanPaymentFailedEmail ends with "Your plan stays active in the
+ * meantime" — true when it is sent, and until now the last thing they ever
+ * heard about it. Stripe exhausts its retries, deletes the subscription, and a
+ * client whose card expired goes on believing their hosting and support are
+ * covered, because we told them they were.
+ */
+describe('telling the client their plan has stopped', () => {
+  it('writes to them at all', async () => {
+    constructWebhookEvent.mockReturnValue(subscriptionDeleted());
+
+    await POST(request());
+
+    expect(sendCarePlanEndedEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ toEmail: 'frell@linpotia.com', company: 'Linpotia Cafe' })
+    );
+  });
+
+  /**
+   * The reason changes the letter. Somebody who cancelled wants a
+   * confirmation; somebody whose card failed needs to know cover has actually
+   * lapsed and how to restart it. Sending the first to the second is how a
+   * lapsed plan becomes a support ticket six weeks later.
+   */
+  it('passes the reason through, so the letter can differ', async () => {
+    constructWebhookEvent.mockReturnValue(
+      subscriptionDeleted({ cancellation_details: { reason: 'payment_failed' } })
+    );
+
+    await POST(request());
+
+    expect(vi.mocked(sendCarePlanEndedEmail).mock.calls[0][0]).toMatchObject({
+      reason: 'payment_failed',
+    });
+  });
+
+  it('stays quiet about a plan already cancelled', async () => {
+    prisma.recurringOffer.findUnique.mockResolvedValue({ ...OFFER, status: 'canceled' });
+    constructWebhookEvent.mockReturnValue(subscriptionDeleted());
+
+    await POST(request());
+
+    expect(sendCarePlanEndedEmail).not.toHaveBeenCalled();
+  });
+
+  /** A failed client email must not cost the studio its own notice. */
+  it('still tells the studio when the client email throws', async () => {
+    vi.mocked(sendCarePlanEndedEmail).mockRejectedValueOnce(new Error('mailbox gone'));
+    constructWebhookEvent.mockReturnValue(subscriptionDeleted());
+
+    await POST(request());
+
+    expect(notifyAdminsCarePlanEnded).toHaveBeenCalledOnce();
   });
 });
