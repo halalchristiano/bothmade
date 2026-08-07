@@ -130,29 +130,56 @@ const TYPE_LABELS: Record<SearchResult['type'], string> = {
   note: 'Note',
 };
 
-function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; autoFocus?: boolean }) {
+// Exported for its own tests: the debounce-and-abort sequence is the kind of
+// thing that regresses back to a plain fetch without anything looking wrong.
+export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; autoFocus?: boolean }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  /** A request is out for what is currently typed — not the same as no results. */
+  const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
   /** Which result the arrow keys have landed on; -1 means "still in the field". */
   const [activeIndex, setActiveIndex] = useState(-1);
   const listboxId = useId();
 
   useEffect(() => {
-    if (query.trim().length < 2) {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
       setResults([]);
+      setSearching(false);
       return;
     }
+    /*
+     * Aborted on the way out, not just de-timed.
+     *
+     * `clearTimeout` alone only cancels a request that has not started. Once
+     * one is in flight nothing stopped it, so typing "linp" while the answer
+     * for "lin" was still coming back let the older, slower response land
+     * last and overwrite the newer one — the list showing matches for a
+     * query the box no longer contained. Aborting the superseded request
+     * makes the newest keystroke the one that wins, every time.
+     */
+    setSearching(true);
+    const controller = new AbortController();
     const timeout = setTimeout(() => {
-      fetch(`/api/admin/search?q=${encodeURIComponent(query.trim())}`)
+      fetch(`/api/admin/search?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data?.success) setResults(data.results);
+          setSearching(false);
         })
-        .catch(() => {});
+        .catch((err) => {
+          // An abort means a newer query is already running and has its own
+          // `searching` flag up — clearing it here would flash "No matches."
+          // between keystrokes.
+          if ((err as { name?: string })?.name !== 'AbortError') setSearching(false);
+        });
     }, 250);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [query]);
 
   // A fresh query invalidates whatever was highlighted.
@@ -219,7 +246,16 @@ function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; autoFoc
           aria-label="Search results"
           className="absolute top-full mt-2 w-full min-w-[280px] max-h-96 overflow-y-auto rounded-xl border border-white/10 bg-raised shadow-2xl z-50"
         >
-          {results.length === 0 ? (
+          {/*
+            "No matches." was shown the instant a second character was typed,
+            while the request for it was still going out — so every search
+            said there was nothing before it said what there was. An empty
+            answer and an unanswered question look identical on screen unless
+            you draw them differently.
+          */}
+          {searching && results.length === 0 ? (
+            <p className="text-white/30 text-sm p-4">Searching…</p>
+          ) : results.length === 0 ? (
             <p className="text-white/30 text-sm p-4">No matches.</p>
           ) : (
             results.map((r, i) => (
