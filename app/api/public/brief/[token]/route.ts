@@ -44,11 +44,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           email: true,
           contactName: true,
           company: true,
+          doNotContact: true,
           assignedTo: { select: { email: true } },
         },
       })
       .catch(() => null);
-    if (!lead) return NextResponse.json({ error: 'That link is no longer valid.' }, { status: 404 });
+
+    /*
+     * A closed link and a link belonging to someone who asked to be left
+     * alone are the same answer, in the same words.
+     *
+     * The page at /f/[token] has always refused to render for a
+     * `doNotContact` lead; this handler never checked, which did not matter
+     * while it sent no mail — it wrote to the database and stopped. It sends
+     * a receipt now, so the gap became the thing the schema calls a hard
+     * stop: "every outreach path checks it before sending or dialling."
+     * A stale tab opened before the flag was set is all it would take.
+     *
+     * Refused rather than recorded-but-not-emailed, so the two halves of the
+     * same link cannot disagree about whether this form is open. And phrased
+     * identically to an unknown token: which of the two it is says something
+     * about a person, and this endpoint answers to anybody.
+     */
+    if (!lead || lead.doNotContact) {
+      return NextResponse.json({ error: 'That link is no longer valid.' }, { status: 404 });
+    }
 
     const submission = parseBriefSubmission(await request.json().catch(() => ({})));
     if (!isWorthRecording(submission)) {

@@ -90,7 +90,18 @@ const ANSWERS = {
 };
 
 beforeEach(() => {
-  leadFindUnique.mockReset().mockResolvedValue({ id: 'lead_1', painPoints: 'poor-seo' });
+  // The whole row the route reads, doNotContact included — it is a hard stop
+  // the handler now checks, and a fixture that omits it only passes because
+  // undefined happens to be falsy.
+  leadFindUnique.mockReset().mockResolvedValue({
+    id: 'lead_1',
+    painPoints: 'poor-seo',
+    email: 'owner@example.com',
+    contactName: 'Dana Okafor',
+    company: 'Okafor Plumbing',
+    doNotContact: false,
+    assignedTo: { email: 'evan@bothmade.studio' },
+  });
   leadUpdate.mockReset().mockResolvedValue({ id: 'lead_1' });
   activityCreate.mockReset().mockResolvedValue({ id: 'act_1' });
   notifyBriefFormCompleted.mockReset().mockResolvedValue(undefined);
@@ -268,5 +279,57 @@ describe('POST /api/public/brief/[token]', () => {
     );
 
     expect(res.status).toBe(400);
+  });
+});
+
+/**
+ * The schema calls `doNotContact` "a hard stop, not a preference — every
+ * outreach path checks it before sending or dialling."
+ *
+ * This handler was not one of them, which cost nothing while it only wrote to
+ * the database. It sends the client a receipt now, so an unchecked flag here
+ * is an email to somebody who asked us to stop — and a stale tab, opened
+ * before the flag was set, is the whole of what it takes.
+ *
+ * The page at /f/[token] has always refused these. Both halves of the link
+ * answer the same way now, in the same words an unknown token gets: which of
+ * the two it is says something about a person, and this endpoint answers to
+ * anybody holding a URL.
+ */
+describe('a lead who asked to be left alone', () => {
+  beforeEach(() => {
+    leadFindUnique.mockResolvedValue({
+      id: 'lead_1',
+      painPoints: 'poor-seo',
+      email: 'owner@example.com',
+      contactName: 'Dana Okafor',
+      company: 'Okafor Plumbing',
+      doNotContact: true,
+      assignedTo: { email: 'evan@bothmade.studio' },
+    });
+  });
+
+  it('is never emailed a receipt', async () => {
+    await POST(request(ANSWERS, freshIp()), { params: params() });
+
+    expect(sendBriefReceivedEmail).not.toHaveBeenCalled();
+  });
+
+  it('is refused, and told only what an unknown token is told', async () => {
+    const res = await POST(request(ANSWERS, freshIp()), { params: params() });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.error).toBe('That link is no longer valid.');
+    // Nothing that lets a holder of the link tell "no such lead" from "that
+    // lead asked us to stop".
+    expect(JSON.stringify(body)).not.toMatch(/contact|suppress|blocked|opted/i);
+  });
+
+  it('writes nothing to the lead', async () => {
+    await POST(request(ANSWERS, freshIp()), { params: params() });
+
+    expect(leadUpdate).not.toHaveBeenCalled();
+    expect(activityCreate).not.toHaveBeenCalled();
   });
 });
