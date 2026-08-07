@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Phone, ExternalLink, ChevronRight, Clock, Sparkles, Check } from 'lucide-react';
@@ -56,14 +56,36 @@ interface LeadDetail {
   mockupUrl?: string | null;
 }
 
+/**
+ * Why this lead is in front of you, in three or four words.
+ *
+ * Every band the call list can produce has to be in here. Three of them were
+ * missing after the bands were added, so the queue rail printed raw keys —
+ * "mockup-sent", "never-contacted" — at the one moment somebody is deciding
+ * which name to click.
+ */
 const REASON_LABEL: Record<string, string> = {
-  replied: 'Replied',
+  replied: 'They wrote back',
+  'mockup-sent': 'Has the mockup',
+  'mockup-stalled': 'Mockup overdue',
+  opened: 'Opened your email',
   bounced: 'Email bounced',
   overdue: 'Overdue',
   today: 'Due today',
   'no-follow-up': 'No follow-up set',
   'never-contacted': 'Never contacted',
+  'awaiting-mockup': 'Waiting on a mockup',
   scheduled: 'Scheduled',
+};
+
+/** The bands worth colouring, because they change how you open the call. */
+const REASON_TONE: Record<string, string> = {
+  replied: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200',
+  'mockup-sent': 'border-teal-400/40 bg-teal-400/10 text-teal-200',
+  'mockup-stalled': 'border-rose-400/40 bg-rose-400/10 text-rose-200',
+  opened: 'border-orange-400/40 bg-orange-400/10 text-orange-200',
+  bounced: 'border-red-400/30 bg-red-400/[0.07] text-red-200',
+  overdue: 'border-amber-400/30 bg-amber-400/[0.07] text-amber-200',
 };
 
 function money(cents: number): string {
@@ -114,6 +136,7 @@ export default function CallCockpit() {
    */
   const [mockupAnswer, setMockupAnswer] = useState<'yes' | 'no' | null>(null);
   const [mockupSaving, setMockupSaving] = useState(false);
+  const [skipping, setSkipping] = useState(false);
 
   /**
    * Everything that follows one logged call, in one place.
@@ -134,6 +157,26 @@ export default function CallCockpit() {
     dueAt: string | null;
     nextTouchLine: string;
   } | null>(null);
+
+  /**
+   * Whether the number has been dialled on this visit.
+   *
+   * This screen is two screens in sequence and only ever admitted to being
+   * one. Before the call you want the script; after it you want the outcome
+   * buttons — and on a phone, where these calls actually get made, the
+   * buttons sat below the whole script and eight objection accordions. Coming
+   * back from the dialler meant a long scroll past everything you no longer
+   * needed to reach the one thing you did, which is a large part of why calls
+   * went unlogged.
+   *
+   * The app already knows which of the two moments it is in, because it
+   * records the dial. Kept in sessionStorage because the phone app takes the
+   * screen and the page may be discarded before it comes back — the state has
+   * to survive exactly the event that makes it true.
+   */
+  const [dialled, setDialled] = useState(false);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
+  const activeRailRef = useRef<HTMLAnchorElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -166,6 +209,29 @@ export default function CallCockpit() {
     return () => clearInterval(t);
   }, []);
 
+  /*
+   * Coming back from the phone app.
+   *
+   * The dial happened on another screen entirely and this page may have been
+   * discarded while it did, so the flag is read back on mount and again every
+   * time the tab becomes visible. Without the second one, returning to a page
+   * the browser kept alive leaves it still showing "Call" — which is the
+   * exact moment the outcome buttons are wanted.
+   */
+  useEffect(() => {
+    const read = () => {
+      try {
+        if (sessionStorage.getItem(`dialled:${leadId}`) === '1') setDialled(true);
+      } catch {
+        /* private mode — the bar just won't survive the app switch */
+      }
+    };
+    read();
+    const onVisible = () => document.visibilityState === 'visible' && read();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [leadId]);
+
   /**
    * Somebody already rang this, recently, and it wasn't necessarily you.
    *
@@ -189,11 +255,67 @@ export default function CallCockpit() {
     return { minsAgo, by: last.createdBy?.name || 'Someone' };
   }, [lead]);
 
+  /*
+   * Number keys pick an outcome, Escape backs out.
+   *
+   * Forty calls in an afternoon is forty round trips from keyboard to mouse
+   * and back, to press one of ten buttons that never move. The shortcut is
+   * not a power feature — it is the difference between logging the call and
+   * deciding to log it later, which in practice means not at all.
+   *
+   * Deliberately does NOT bind Enter to submit. Logging is the one action
+   * here that emails a customer and moves a deal, and a stray Enter from a
+   * textarea somebody thought they were still typing in is not a mistake
+   * worth making fast.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Never while somebody is writing the note — the shortcut would eat
+      // the digit, which is worse than not having one.
+      const el = e.target as HTMLElement | null;
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      if (el?.isContentEditable) return;
+
+      if (e.key === 'Escape') {
+        setPendingOutcome(null);
+        return;
+      }
+      const n = Number(e.key);
+      if (!Number.isInteger(n) || n < 1 || n > CALL_OUTCOMES.length) return;
+      e.preventDefault();
+      const outcome = CALL_OUTCOMES[n - 1]!;
+      setPendingOutcome((prev) => (prev?.key === outcome.key ? null : outcome));
+      setActionError(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   const brief = useMemo(() => (lead ? buildLeadBrief(lead) : null), [lead]);
   const local = lead ? leadLocalTime(lead.phone, now) : null;
 
   const positionInQueue = queue.findIndex((q) => q.id === leadId);
   const nextInQueue = positionInQueue >= 0 ? queue[positionInQueue + 1] : queue[0];
+  /**
+   * Why this business is in front of you.
+   *
+   * The rail says it for every OTHER lead in the queue and said nothing about
+   * the one on screen — so the single most useful thing to know before
+   * dialling ("they opened your email six times") was on the page you had
+   * just left. It changes how the call opens, which makes it a header fact
+   * rather than a detail.
+   */
+  const reason = positionInQueue >= 0 ? queue[positionInQueue]!.reason : null;
+
+  // Keeps the rail pointing at where you actually are in the queue.
+  useEffect(() => {
+    activeRailRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [leadId, queue.length]);
+
+  /** Jumps to the outcome buttons. On a phone they are a long way down. */
+  const goToActions = () =>
+    actionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   /**
    * Hands the scribbled note over to be tidied and fills the fields with
@@ -364,12 +486,55 @@ export default function CallCockpit() {
    */
   function recordDial() {
     if (!lead) return;
+    setDialled(true);
+    try {
+      sessionStorage.setItem(`dialled:${leadId}`, '1');
+    } catch {
+      /* private mode — the bar just won't survive the app switch */
+    }
     try {
       fetch(`/api/admin/leads/${lead.id}/dial`, { method: 'POST', keepalive: true }).catch(
         () => {}
       );
     } catch {
       /* a measurement that fails must never look like a call that failed */
+    }
+  }
+
+  /**
+   * "Not now." The exit this screen never had.
+   *
+   * You open a lead, see it is half seven in the evening where they are, and
+   * the only ways out were the browser's back button or ringing them anyway.
+   * The call sheet has had this since the beginning; the screen you are
+   * standing on when you actually make the decision did not.
+   *
+   * Pushes the follow-up date out and moves straight to the next lead,
+   * because the reason somebody presses this is that they are working a queue
+   * and this one is in the way.
+   */
+  async function skipFor(days: number) {
+    if (!lead) return;
+    setSkipping(true);
+    setActionError(null);
+    try {
+      const when = new Date();
+      when.setDate(when.getDate() + days);
+      const res = await fetch(`/api/admin/leads/${lead.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nextFollowUpAt: when.toISOString() }),
+      });
+      if (!res.ok) {
+        setActionError("Couldn't move that one — try it from the call sheet.");
+        return;
+      }
+      if (nextInQueue && nextInQueue.id !== leadId) router.push(`/admin/call/${nextInQueue.id}`);
+      else router.push('/admin/call');
+    } catch {
+      setActionError("Couldn't move that one — try it from the call sheet.");
+    } finally {
+      setSkipping(false);
     }
   }
 
@@ -434,13 +599,18 @@ export default function CallCockpit() {
       <aside className="hidden xl:flex w-64 shrink-0 flex-col border-r border-white/[0.08]">
         <div className="px-4 py-4 border-b border-white/[0.08]">
           <Kicker>Call queue</Kicker>
-          <p className="text-sm text-white/50 mt-1.5">{queue.length} to call</p>
+          <p className="text-sm text-white/50 mt-1.5">
+            {positionInQueue >= 0 ? `${positionInQueue + 1} of ${queue.length}` : `${queue.length} to call`}
+          </p>
         </div>
         <div className="flex-1 overflow-y-auto">
           {queue.map((q, i) => (
             <Link
               key={q.id}
               href={`/admin/call/${q.id}`}
+              /* Scrolled into view on arrival. Forty leads in, the rail was
+                 showing the first fifteen and no clue where you were in it. */
+              ref={q.id === leadId ? activeRailRef : undefined}
               className={`block px-4 py-3 border-b border-white/[0.04] transition-colors ${
                 q.id === leadId ? 'bg-white/[0.05] border-l-2 border-l-sky-400' : 'hover:bg-white/[0.03]'
               }`}
@@ -478,7 +648,18 @@ export default function CallCockpit() {
           )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="min-w-0">
-              <h1 className="text-lg font-bold truncate">{lead.company}</h1>
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-lg font-bold truncate">{lead.company}</h1>
+                {reason && REASON_LABEL[reason] && (
+                  <span
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold ${
+                      REASON_TONE[reason] ?? 'border-white/15 text-white/50'
+                    }`}
+                  >
+                    {REASON_LABEL[reason]}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-white/40 truncate">
                 {lead.contactName || 'No named contact'} · {LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS] ?? lead.status}
                 {brief.low > 0 && (
@@ -486,6 +667,16 @@ export default function CallCockpit() {
                     {' '}
                     · quoting {money(brief.low)}–{money(brief.high)}
                   </>
+                )}
+                {/* The rail says this too, and the rail is hidden below xl —
+                    so this is the only place it appears on a laptop or a
+                    phone, and duplicated on a big screen rather than absent
+                    on a small one. */}
+                {positionInQueue >= 0 && (
+                  <span className="xl:hidden">
+                    {' '}
+                    · {positionInQueue + 1} of {queue.length} today
+                  </span>
                 )}
               </p>
             </div>
@@ -527,9 +718,19 @@ export default function CallCockpit() {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-[1fr_360px] gap-0">
-          {/* The script */}
-          <div className="px-5 py-6 space-y-6 min-w-0">
+        <div className="flex flex-col lg:grid lg:grid-cols-[1fr_360px] gap-0">
+          {/*
+            * The script, and on a phone it moves out of the way once the
+            * number has been dialled.
+            *
+            * Before the call it is the whole point of the screen. After it,
+            * it is several hundred pixels of words you have already said,
+            * sitting between you and the only thing left to do. The order
+            * flips on the one event that tells the two moments apart. On a
+            * desktop the columns are side by side and neither is ever in the
+            * other's way, so nothing moves.
+            */}
+          <div className={`px-5 py-6 space-y-6 min-w-0 ${dialled ? 'order-2 lg:order-none' : ''}`}>
             <Kicker>The words</Kicker>
             {brief.script.map((block, i) => (
               <div key={i}>
@@ -576,7 +777,12 @@ export default function CallCockpit() {
           </div>
 
           {/* The actions */}
-          <div className="border-l border-white/[0.08] px-5 py-6 space-y-5">
+          <div
+            ref={actionsRef}
+            className={`border-t lg:border-t-0 lg:border-l border-white/[0.08] px-5 py-6 space-y-5 pb-28 lg:pb-6 ${
+              dialled ? 'order-1 lg:order-none' : ''
+            }`}
+          >
             {/*
               * Hidden once a call has been logged, because the wrap-up card
               * below is the only thing left to do. Ten outcome buttons still
@@ -584,16 +790,23 @@ export default function CallCockpit() {
               * unclear whether the call had actually been recorded.
               */}
             <div className={wrapUp ? 'hidden' : undefined}>
-              <Kicker className="mb-3">How did it go?</Kicker>
+              <div className="flex items-baseline justify-between gap-2 mb-3">
+                <Kicker>How did it go?</Kicker>
+                {/* Discoverable without a tour. Desktop only, because there
+                    is no number row on a phone to press. */}
+                <span className="hidden lg:inline text-[10.5px] text-white/25">
+                  press 1–{CALL_OUTCOMES.length}
+                </span>
+              </div>
               <div className="grid grid-cols-2 gap-2">
-                {CALL_OUTCOMES.map((o) => (
+                {CALL_OUTCOMES.map((o, i) => (
                   <button
                     key={o.key}
                     onClick={() => {
                       setPendingOutcome((prev) => (prev?.key === o.key ? null : o));
                       setActionError(null);
                     }}
-                    className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${
+                    className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${
                       pendingOutcome?.key === o.key
                         ? 'border-sky-400/50 bg-sky-400/10 text-white'
                         : o.tone === 'good'
@@ -603,7 +816,10 @@ export default function CallCockpit() {
                         : 'border-white/10 text-white/70 hover:bg-white/5'
                     }`}
                   >
-                    {o.label}
+                    <span className="hidden lg:block shrink-0 mt-[1px] font-mono text-[10px] text-white/25">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0">{o.label}</span>
                   </button>
                 ))}
               </div>
@@ -715,6 +931,30 @@ export default function CallCockpit() {
               )}
 
               {actionError && <p className="mt-2 text-xs text-amber-300">{actionError}</p>}
+
+              {/*
+                * The other honest answer to "how did it go?", which is that
+                * it did not — wrong hour, wrong day, not now. Without it the
+                * only ways off this screen were the back button and ringing
+                * somebody at seven in the evening.
+                */}
+              <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-white/[0.06] pt-3">
+                <span className="text-[11px] text-white/25">Not now —</span>
+                {[
+                  [1, 'tomorrow'],
+                  [3, '3 days'],
+                  [7, 'a week'],
+                ].map(([days, label]) => (
+                  <button
+                    key={label as string}
+                    onClick={() => skipFor(days as number)}
+                    disabled={skipping}
+                    className="rounded-full border border-white/12 px-2.5 py-1 text-[11px] text-white/50 transition-colors hover:border-white/30 hover:text-white disabled:opacity-40"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/*
@@ -874,6 +1114,44 @@ export default function CallCockpit() {
           </div>
         </div>
       </div>
+
+      {/*
+        * The bar that knows which of the two moments you are in.
+        *
+        * This screen is two screens in sequence and only ever admitted to
+        * being one. Before the call you want the script; after it you want
+        * the outcome buttons — and on a phone, where these calls are actually
+        * made, those buttons sat below the entire script and eight objection
+        * accordions. Coming back from the dialler meant scrolling past
+        * everything you no longer needed to reach the only thing you did,
+        * which is a large part of why calls went unlogged.
+        *
+        * Phone only. On a desktop the actions are already in the right-hand
+        * column, permanently in view, and a floating bar would be covering
+        * something useful to say what is already on screen.
+        */}
+      {!wrapUp && lead.phone && (
+        <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-ink/95 backdrop-blur px-4 py-3">
+          {dialled ? (
+            <button
+              onClick={goToActions}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-3 text-sm font-bold text-black"
+            >
+              How did it go? Log it
+              <ChevronRight size={16} />
+            </button>
+          ) : (
+            <a
+              href={`tel:${lead.phone}`}
+              onClick={recordDial}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-purple-500 px-4 py-3 text-sm font-bold text-black"
+            >
+              <Phone size={16} />
+              Call {lead.phone}
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }
