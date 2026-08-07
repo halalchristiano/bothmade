@@ -17,7 +17,6 @@ const prisma = {
     count: vi.fn(),
     findMany: vi.fn(),
     groupBy: vi.fn(),
-    aggregate: vi.fn(),
   },
   user: { findUnique: vi.fn() },
 };
@@ -343,12 +342,18 @@ describe('the ledger totals', () => {
 
   beforeEach(() => {
     prisma.invoice.findMany.mockResolvedValue([]);
-    prisma.invoice.groupBy.mockResolvedValue([
-      { status: 'open', _sum: { amountCents: 340000 }, _count: { _all: 3 } },
-      { status: 'paid', _sum: { amountCents: 900000 }, _count: { _all: 8 } },
-      { status: 'void', _sum: { amountCents: 50000 }, _count: { _all: 1 } },
-    ]);
-    prisma.invoice.aggregate.mockResolvedValue({ _sum: { refundedCents: 25000 } });
+    prisma.invoice.groupBy
+      .mockResolvedValueOnce([
+        { status: 'open', _sum: { amountCents: 340000 }, _count: { _all: 3 } },
+        { status: 'paid', _sum: { amountCents: 900000 }, _count: { _all: 8 } },
+        { status: 'void', _sum: { amountCents: 50000 }, _count: { _all: 1 } },
+      ])
+      .mockResolvedValueOnce([
+        { refundMethod: 'stripe', _sum: { refundedCents: 15000 } },
+        { refundMethod: 'manual', _sum: { refundedCents: 4000 } },
+        { refundMethod: 'credit', _sum: { refundedCents: 60000 } },
+        { refundMethod: null, _sum: { refundedCents: 0 } },
+      ]);
     prisma.invoice.count.mockResolvedValue(12);
   });
 
@@ -360,11 +365,34 @@ describe('the ledger totals', () => {
       outstandingCount: 3,
       paidCents: 900000,
       paidCount: 8,
-      // Reported apart from paid rather than netted off it — "paid" and "paid
-      // then given back" are different sentences.
-      refundedCents: 25000,
+      /*
+       * Reported apart from paid rather than netted off it — "paid" and "paid
+       * then given back" are different sentences. And a credit is not a
+       * refund: a refund is cash that left the account, a credit is value the
+       * client is owed with the money still here. $15,000 + $4,000 went out;
+       * the $60,000 credit did not.
+       */
+      refundedCents: 19000,
+      creditedCents: 60000,
       count: 12,
     });
+  });
+
+  /*
+   * A row carrying refunded cents with no method predates the column. Guessing
+   * "cash left" is the safer way to be wrong about a figure somebody
+   * reconciles against a bank statement.
+   */
+  it('counts a refund of unrecorded method as money that went out', async () => {
+    prisma.invoice.groupBy
+      .mockReset()
+      .mockResolvedValueOnce([{ status: 'open', _sum: { amountCents: 0 }, _count: { _all: 0 } }])
+      .mockResolvedValueOnce([{ refundMethod: null, _sum: { refundedCents: 7500 } }]);
+
+    const body = await (await GET(listRequest())).json();
+
+    expect(body.totals.refundedCents).toBe(7500);
+    expect(body.totals.creditedCents).toBe(0);
   });
 
   it('says when the list stops short rather than letting it read as all of them', async () => {

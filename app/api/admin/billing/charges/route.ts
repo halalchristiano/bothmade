@@ -313,7 +313,7 @@ export async function GET(request: NextRequest) {
         ? { ...(where ?? {}), status }
         : where;
 
-    const [invoices, byStatus, refunded, total, listTotal] = await Promise.all([
+    const [invoices, byStatus, refundsByMethod, total, listTotal] = await Promise.all([
       prisma.invoice.findMany({
         where: listWhere,
         include: {
@@ -330,7 +330,20 @@ export async function GET(request: NextRequest) {
         _sum: { amountCents: true },
         _count: { _all: true },
       }),
-      prisma.invoice.aggregate({ where, _sum: { refundedCents: true } }),
+      /*
+       * Split by method, because "given back" was two different facts added
+       * together.
+       *
+       * A refund is cash that left the account. A credit is value the client
+       * is owed against future work, with the money still here. Summing them
+       * produced a figure that overstated what had actually gone out — which
+       * is the same mistake as netting refunds off "paid", one level down.
+       */
+      prisma.invoice.groupBy({
+        by: ['refundMethod'],
+        where,
+        _sum: { refundedCents: true },
+      }),
       prisma.invoice.count({ where }),
       prisma.invoice.count({ where: listWhere }),
     ]);
@@ -338,6 +351,18 @@ export async function GET(request: NextRequest) {
     const bucket = (status: string) => byStatus.find((row) => row.status === status);
     const open = bucket('open');
     const paid = bucket('paid');
+
+    // Anything not explicitly a credit moved real money: 'stripe' went back to
+    // the card, 'manual' went back by transfer, and a null method on a row
+    // carrying refunded cents predates the column and is far likelier to have
+    // been cash than a credit. Guessing toward "money left" is the safer way
+    // to be wrong about a figure somebody reconciles against a bank statement.
+    const refundedCents = refundsByMethod
+      .filter((row) => row.refundMethod !== 'credit')
+      .reduce((sum, row) => sum + (row._sum.refundedCents ?? 0), 0);
+    const creditedCents = refundsByMethod
+      .filter((row) => row.refundMethod === 'credit')
+      .reduce((sum, row) => sum + (row._sum.refundedCents ?? 0), 0);
 
     return NextResponse.json(
       {
@@ -350,7 +375,11 @@ export async function GET(request: NextRequest) {
           outstandingCount: open?._count._all ?? 0,
           paidCents: paid?._sum.amountCents ?? 0,
           paidCount: paid?._count._all ?? 0,
-          refundedCents: refunded._sum.refundedCents ?? 0,
+          // Cash that actually left the account.
+          refundedCents,
+          // Value the client is owed, with the money still here. A different
+          // fact, and never folded into the one above.
+          creditedCents,
           count: total,
         },
         // How many rows the current filter has, so the screen can say what it

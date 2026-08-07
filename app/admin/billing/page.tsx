@@ -84,7 +84,10 @@ interface LedgerTotals {
   outstandingCount: number;
   paidCents: number;
   paidCount: number;
+  /** Cash that actually left the account. */
   refundedCents: number;
+  /** Value the client is owed with the money still here — never folded in above. */
+  creditedCents: number;
   count: number;
 }
 
@@ -570,10 +573,16 @@ function BillingWorkspace() {
                 </p>
               </div>
               <div>
-                {/* Reported apart from "paid" rather than netted off it.
-                    "Paid" and "paid then given back" are different sentences,
-                    and one net figure hides the second one entirely. */}
-                <p className="text-[10px] uppercase tracking-wider text-white/35">Given back</p>
+                {/* Reported apart from "paid" rather than netted off it —
+                    "paid" and "paid then given back" are different sentences,
+                    and one net figure hides the second entirely.
+
+                    And a credit is not a refund. A refund is cash that left
+                    the account; a credit is value the client is owed with the
+                    money still here. Adding them together overstated what had
+                    actually gone out, which is the same mistake one level
+                    down. */}
+                <p className="text-[10px] uppercase tracking-wider text-white/35">Refunded</p>
                 <p
                   className={`text-lg font-semibold tabular-nums ${
                     totals.refundedCents > 0 ? 'text-purple-300/90' : 'text-white/25'
@@ -581,7 +590,11 @@ function BillingWorkspace() {
                 >
                   {formatCentsExact(totals.refundedCents)}
                 </p>
-                <p className="text-[10px] text-white/30">refunded or credited</p>
+                <p className="text-[10px] text-white/30">
+                  {totals.creditedCents > 0
+                    ? `+ ${formatCentsExact(totals.creditedCents)} credited`
+                    : 'cash returned'}
+                </p>
               </div>
             </div>
           )}
