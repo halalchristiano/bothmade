@@ -763,6 +763,19 @@ model LeadMockup {
   lastViewedAt  DateTime?
   viewCount     Int       @default(0)
 
+  /// Somebody opened this link after it had already expired.
+  ///
+  /// The most actionable fact in the whole pipeline and it used to be thrown
+  /// away: a prospect clicking a link we sent them is trying to look at the
+  /// work, and the ones who do it after thirty days are the slow, considered
+  /// deals still worth having. The page said "reply to the email and we'll
+  /// sort it out" and nobody here ever heard about it unless they did.
+  ///
+  /// Counted rather than flagged, because four attempts and one attempt are
+  /// different amounts of interest.
+  expiredViewCount  Int       @default(0)
+  lastExpiredViewAt DateTime?
+
   // Why this is stamped sent and yet nobody received it.
   //
   // sentAt is set *before* the send, because the tracked link 404s while the

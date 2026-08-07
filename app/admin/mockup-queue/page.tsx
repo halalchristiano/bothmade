@@ -153,6 +153,7 @@ interface LiveMockup {
   responseNote: string | null;
   expired: boolean;
   expiringSoon: boolean;
+  expiredViewCount: number;
   sendFailedAt: string | null;
   sendFailedReason: string | null;
   /**
@@ -324,24 +325,36 @@ export default function MockupQueuePage() {
        * clock, which is the button already on the row.
        */
       const rank = (m: LiveMockup) =>
-        m.sendFailedAt
-          ? -2
-          : m.expiringSoon
-            ? -1
-            : m.status === 'draft'
-              ? 0
-              : m.status === 'approved'
-                ? 1
-                : m.status === 'changes_requested'
-                  ? 2
-                  : m.status === 'viewed'
-                    ? 3
-                    : 4;
+        // Somebody trying to open a dead link is a person doing something
+        // right now, and the fix is one click. Nothing on this page is more
+        // urgent — not even a send that failed, because that client has never
+        // known there was anything to look at.
+        m.expiredViewCount > 0
+          ? -3
+          : m.sendFailedAt
+            ? -2
+            : m.expiringSoon
+              ? -1
+              : m.status === 'draft'
+                ? 0
+                : m.status === 'approved'
+                  ? 1
+                  : m.status === 'changes_requested'
+                    ? 2
+                    : m.status === 'viewed'
+                      ? 3
+                      : 4;
       return rank(a) - rank(b);
     });
   // Named rather than inlined: the summary line at the top of the page says
   // how many, and the count has to be the one the list is actually showing.
   const failedCount = liveVisible.filter((m) => m.sendFailedAt).length;
+  /*
+   * Clients who came back to a dead link. The most urgent number on this
+   * page: somebody wanted to look at the work and could not, and the fix is
+   * one button on the row.
+   */
+  const knockedCount = liveVisible.filter((m) => m.expiredViewCount > 0).length;
   /*
    * Live links about to die. Worth the top of the page because it is the one
    * thing here with a deadline: everything else is as true tomorrow, and this
@@ -365,11 +378,13 @@ export default function MockupQueuePage() {
               : `${leads.length} ${leads.length === 1 ? 'lead is' : 'leads are'} waiting on a mockup, longest-waiting and hot leads first.`
             : liveVisible.length === 0
               ? 'Nothing built yet. Attach a mockup above and it lands here ready to send.'
-              : failedCount > 0
-                ? `${failedCount} did not reach anybody — those are at the top. Then unsent, then anything the client has opened.`
-                : expiringCount > 0
-                  ? `${expiringCount} ${expiringCount === 1 ? 'link stops' : 'links stop'} working within the week — those are at the top. Re-send to reset the clock.`
-                  : `${liveVisible.length} built. Unsent first, then anything the client has opened — those are warm, ring them.`}
+              : knockedCount > 0
+                ? `${knockedCount} ${knockedCount === 1 ? 'client has' : 'clients have'} tried to open a dead link — those are at the top. Re-send and it works again.`
+                : failedCount > 0
+                  ? `${failedCount} did not reach anybody — those are at the top. Then unsent, then anything the client has opened.`
+                  : expiringCount > 0
+                    ? `${expiringCount} ${expiringCount === 1 ? 'link stops' : 'links stop'} working within the week — those are at the top. Re-send to reset the clock.`
+                    : `${liveVisible.length} built. Unsent first, then anything the client has opened — those are warm, ring them.`}
         </p>
       </div>
 
@@ -424,7 +439,7 @@ export default function MockupQueuePage() {
             <div
               key={m.id}
               className={`rounded-xl border p-4 ${
-                m.sendFailedAt
+                m.expiredViewCount > 0 || m.sendFailedAt
                   ? FAILED_TONE
                   : m.expiringSoon
                     ? EXPIRING_TONE
@@ -449,7 +464,11 @@ export default function MockupQueuePage() {
                   )}
                   <p
                     className={`text-xs mt-0.5 ${
-                      m.sendFailedAt ? 'text-red-300' : m.expiringSoon ? 'text-amber-200' : 'text-white/55'
+                      m.expiredViewCount > 0 || m.sendFailedAt
+                        ? 'text-red-300'
+                        : m.expiringSoon
+                          ? 'text-amber-200'
+                          : 'text-white/55'
                     }`}
                   >
                     {m.signal}

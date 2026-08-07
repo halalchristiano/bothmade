@@ -4,6 +4,7 @@ import { RATE_LIMITS, enforceRateLimit } from '@/lib/rate-limit';
 import {
   mockupInclude,
   mockupLinkExpired,
+  recordExpiredMockupView,
   recordMockupView,
   toMockupDTO,
 } from '@/lib/mockups';
@@ -52,6 +53,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (mockupLinkExpired(mockup)) {
+      /*
+       * Recorded, and somebody told.
+       *
+       * This is a person actively trying to look at the work we built for
+       * them — the strongest signal in the pipeline — and it was being thrown
+       * away. The page asks them to reply to the email, and most people will
+       * not, so without this it left no trace at all. The fix on our side is
+       * one click, and the only thing missing was knowing to make it.
+       *
+       * Best-effort, and before the response either way: they came here to
+       * see the mockup, and a bookkeeping failure must not turn a dead link
+       * into a broken page as well.
+       */
+      const { worthAnnouncing } = await recordExpiredMockupView(mockup.id).catch(() => ({
+        worthAnnouncing: false,
+      }));
+
+      if (worthAnnouncing) {
+        // Urgent, because it decays: a prospect who tried today is warm this
+        // afternoon and gone by next week.
+        await postSystemMessage({
+          content: `🔗 ${mockup.lead.company} just tried to open their mockup and the link had expired. Re-send it — it takes one click.`,
+          relatedLeadId: mockup.lead.id,
+          urgent: true,
+        }).catch((e) => console.error('Could not announce the expired mockup view:', e));
+      }
+
       return NextResponse.json(
         { error: 'This link has expired. Reply to the email it came from and we will send a fresh one.', expired: true },
         { status: 410 }

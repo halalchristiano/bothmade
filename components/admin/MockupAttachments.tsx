@@ -45,6 +45,9 @@ export interface LeadMockupItem {
   viewCount?: number;
   expiresAt?: string | null;
   expired?: boolean;
+  /** Times a client hit this link after it had already died. */
+  expiredViewCount?: number;
+  lastExpiredViewAt?: string | null;
   respondedAt?: string | null;
   responseNote?: string | null;
   /** Set when the last send failed — the link is live, the email is not. */
@@ -81,6 +84,8 @@ function asDTO(m: LeadMockupItem): LeadMockupDTO {
     // from a lead page that may have been open for an hour, and "about to
     // expire" goes stale in a way "expired" does not.
     expiringSoon: mockupLinkExpiringSoon({ expiresAt: m.expiresAt ?? null }),
+    expiredViewCount: m.expiredViewCount ?? 0,
+    lastExpiredViewAt: m.lastExpiredViewAt ?? null,
     respondedAt: m.respondedAt ?? null,
     responseNote: m.responseNote ?? null,
     sendFailedAt: m.sendFailedAt ?? null,

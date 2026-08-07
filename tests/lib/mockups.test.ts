@@ -204,6 +204,8 @@ const BASE: LeadMockupDTO = {
   expiresAt: null,
   expired: false,
   expiringSoon: false,
+  expiredViewCount: 0,
+  lastExpiredViewAt: null,
   respondedAt: null,
   responseNote: null,
 };

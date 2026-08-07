@@ -102,6 +102,9 @@ export interface LeadMockupDTO {
   expired: boolean;
   /** Still works, about to stop. See mockupLinkExpiringSoon. */
   expiringSoon: boolean;
+  /** Times somebody hit this link after it had already died. */
+  expiredViewCount: number;
+  lastExpiredViewAt: string | null;
   respondedAt: string | null;
   responseNote: string | null;
   /** Set when the last send failed. The link is live; the email is not. */
@@ -123,6 +126,8 @@ interface MockupRow {
   lastViewedAt?: Date | null;
   viewCount?: number;
   expiresAt?: Date | null;
+  expiredViewCount?: number;
+  lastExpiredViewAt?: Date | null;
   respondedAt?: Date | null;
   sendFailedAt?: Date | null;
   sendFailedReason?: string | null;
@@ -190,6 +195,8 @@ export function toMockupDTO(m: MockupRow): LeadMockupDTO {
     expired: mockupLinkExpired({ expiresAt: m.expiresAt ?? null }),
     // So a list can sort and colour by it without re-deriving the rule.
     expiringSoon: mockupLinkExpiringSoon({ expiresAt: m.expiresAt ?? null }),
+    expiredViewCount: m.expiredViewCount ?? 0,
+    lastExpiredViewAt: m.lastExpiredViewAt?.toISOString() ?? null,
     respondedAt: m.respondedAt?.toISOString() ?? null,
     responseNote: m.responseNote ?? null,
     sendFailedAt: m.sendFailedAt?.toISOString() ?? null,
@@ -208,10 +215,38 @@ export function mockupSignal(m: LeadMockupDTO, now: Date = new Date()): string {
   if (m.status === 'approved') return 'Approved by the client';
   if (m.status === 'changes_requested') return 'They asked for changes';
   /*
-   * Above everything except what the client has already said, because it is
-   * the only line here that means the client has never heard from us. Read as
-   * "sent, not opened", a rep waits, then chases a person who was never
-   * written to — while the fix is to send it again, which takes one click.
+   * Somebody trying to open a dead link outranks everything except what the
+   * client has already said in words.
+   *
+   * It is the only line here that is a person doing something RIGHT NOW, and
+   * the fix takes one click. "Link expired" on its own is a housekeeping note
+   * nobody is in a hurry about; "they tried to open it yesterday" is a reason
+   * to re-send before lunch.
+   */
+  if (m.expiredViewCount > 0) {
+    const last = m.lastExpiredViewAt ? new Date(m.lastExpiredViewAt) : null;
+    const hours = last ? Math.floor((now.getTime() - last.getTime()) / 3_600_000) : null;
+    const when =
+      hours === null
+        ? ''
+        : hours < 1
+          ? ' just now'
+          : hours < 24
+            ? ` ${hours}h ago`
+            : ` ${Math.floor(hours / 24)}d ago`;
+    return m.expiredViewCount === 1
+      ? `They tried to open this${when} and the link was dead — re-send it`
+      : `They have tried to open this ${m.expiredViewCount} times, last${when} — the link is dead. Re-send it`;
+  }
+  /*
+   * Above everything except what the client has said and the knock above,
+   * because it is the only line here that means the client has never heard
+   * from us. Read as "sent, not opened", a rep waits, then chases a person
+   * who was never written to — while the fix is one click.
+   *
+   * It loses to a knock on purpose: somebody who opened the link plainly DID
+   * receive one, so "nobody received this" would be the wrong sentence about
+   * a re-send that failed after an earlier one landed.
    */
   if (m.sendFailedAt) return 'Failed to send — nobody received this. Send it again.';
   if (m.expired) return 'Link expired — re-send to reopen it';
@@ -442,6 +477,40 @@ export async function markMockupSendFailed(mockupId: string, reason: string) {
  * still approved, and overwriting that with 'viewed' would lose the only
  * record of the client saying yes.
  */
+/**
+ * A client who clicked a link that had already died.
+ *
+ * The page tells them to reply to the email, and most people will not — so
+ * without this the single most actionable fact in the pipeline leaves no
+ * trace at all. Recorded separately from a real view because it is a
+ * different thing: nobody saw the work, and somebody here has a job to do.
+ *
+ * Returns whether this is the first attempt in a while, so the caller can
+ * tell the team once rather than on every refresh.
+ */
+export async function recordExpiredMockupView(
+  mockupId: string,
+  at: Date = new Date()
+): Promise<{ worthAnnouncing: boolean }> {
+  const current = await prisma.leadMockup
+    .findUnique({ where: { id: mockupId }, select: { lastExpiredViewAt: true } })
+    .catch(() => null);
+
+  await prisma.leadMockup
+    .update({
+      where: { id: mockupId },
+      data: { expiredViewCount: { increment: 1 }, lastExpiredViewAt: at },
+    })
+    .catch((e) => console.error('Expired mockup view not recorded:', e));
+
+  // Half a day. Long enough that somebody refreshing twice is told about
+  // once, short enough that a prospect coming back the next morning is a
+  // second nudge — because it is, and it is a stronger one.
+  const quiet = 12 * 60 * 60 * 1000;
+  const previous = current?.lastExpiredViewAt ?? null;
+  return { worthAnnouncing: !previous || at.getTime() - previous.getTime() > quiet };
+}
+
 export async function recordMockupView(mockupId: string, at: Date = new Date()) {
   const current = await prisma.leadMockup.findUnique({
     where: { id: mockupId },

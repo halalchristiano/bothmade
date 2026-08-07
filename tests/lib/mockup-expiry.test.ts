@@ -43,6 +43,8 @@ const mockup = (over: Partial<LeadMockupDTO> = {}): LeadMockupDTO => ({
   expiresAt: inDays(3),
   expired: false,
   expiringSoon: true,
+  expiredViewCount: 0,
+  lastExpiredViewAt: null,
   respondedAt: null,
   responseNote: null,
   sendFailedAt: null,
@@ -137,5 +139,86 @@ describe('what the row says', () => {
     expect(mockupSignal(mockup({ status: 'approved', expiresAt: inDays(1) }), NOW)).toBe(
       'Approved by the client'
     );
+  });
+});
+
+/**
+ * A client who came back to a dead link.
+ *
+ * The strongest signal in the pipeline and it used to leave no trace: the page
+ * told them to reply to the email, most people will not, and nobody here found
+ * out it had happened. Whoever hits a thirty-day-old link is in the slow,
+ * considered part of a deal that is still very much alive.
+ */
+describe('somebody knocking on a dead link', () => {
+  it('says so, and says when, instead of just "expired"', () => {
+    const line = mockupSignal(
+      mockup({
+        expired: true,
+        expiringSoon: false,
+        expiresAt: inDays(-2),
+        expiredViewCount: 1,
+        lastExpiredViewAt: inDays(-1),
+      }),
+      NOW
+    );
+
+    expect(line).toMatch(/tried to open this/i);
+    expect(line).toMatch(/24h ago|1d ago/i);
+    expect(line).toMatch(/re-send/i);
+  });
+
+  /** Four attempts and one attempt are different amounts of interest. */
+  it('counts repeat attempts, because they mean more', () => {
+    const line = mockupSignal(
+      mockup({
+        expired: true,
+        expiringSoon: false,
+        expiresAt: inDays(-5),
+        expiredViewCount: 4,
+        lastExpiredViewAt: inDays(-0.02),
+      }),
+      NOW
+    );
+
+    expect(line).toMatch(/4 times/i);
+  });
+
+  /**
+   * Outranks a failed send. That client has never known there was anything to
+   * look at; this one is trying to look right now.
+   */
+  it('outranks a send that never arrived', () => {
+    const line = mockupSignal(
+      mockup({
+        expired: true,
+        expiringSoon: false,
+        sendFailedAt: inDays(-3),
+        expiredViewCount: 1,
+        lastExpiredViewAt: inDays(-0.5),
+      }),
+      NOW
+    );
+
+    expect(line).toMatch(/tried to open this/i);
+  });
+
+  /** But not what the client said in words, which is a decision, not a click. */
+  it('does not outrank an approval', () => {
+    const line = mockupSignal(
+      mockup({ status: 'approved', expired: true, expiringSoon: false, expiredViewCount: 2 }),
+      NOW
+    );
+
+    expect(line).toBe('Approved by the client');
+  });
+
+  it('falls back to the plain expiry line when nobody has knocked', () => {
+    const line = mockupSignal(
+      mockup({ expired: true, expiringSoon: false, expiresAt: inDays(-2) }),
+      NOW
+    );
+
+    expect(line).toBe('Link expired — re-send to reopen it');
   });
 });
