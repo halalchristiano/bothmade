@@ -14,9 +14,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const prisma = {
-  lead: { findMany: vi.fn(async (_a: unknown) => [] as unknown[]), count: vi.fn(async () => 0), findUnique: vi.fn(async (_a: unknown) => null as unknown) },
+  // Every stub declares the argument it is called with, even where the body
+  // ignores it. A `vi.fn(async () => 0)` types its own `mock.calls` as an
+  // empty tuple, so reading `calls[0][0]` — which is the whole point of these
+  // assertions — is a type error rather than a test failure. tsconfig includes
+  // tests, so that error fails `next build` and takes the deploy with it.
+  lead: {
+    findMany: vi.fn(async (_a: unknown) => [] as unknown[]),
+    count: vi.fn(async (_a: unknown) => 0),
+    findUnique: vi.fn(async (_a: unknown) => null as unknown),
+  },
   leadActivity: {
-    count: vi.fn(async () => 0),
+    count: vi.fn(async (_a: unknown) => 0),
     findMany: vi.fn(async (_a: unknown) => [] as unknown[]),
     groupBy: vi.fn(async (_a: unknown) => [] as unknown[]),
     create: vi.fn(async (_a: unknown) => ({})),
