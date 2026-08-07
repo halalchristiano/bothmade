@@ -1197,32 +1197,26 @@ function TeamCard({ refreshSignal }: { refreshSignal: number }) {
   );
 }
 
+/**
+ * The operations half of the breakdown.
+ *
+ * Always rendered below the sales half, never on its own — so the greeting,
+ * the range picker and the refresh control are the page's and not this
+ * component's. It used to carry an `embedded` flag and a second layout for
+ * the standalone case, which has had no call site for a long time: six props
+ * existed only to feed a branch nothing could reach, and one of them was a
+ * RefreshIndicator left behind when the real one moved up to the page header.
+ *
+ * Deleted rather than kept warm. A dead branch holding a duplicate of a
+ * control that has since changed meaning is not a spare — it is a wrong
+ * answer waiting for somebody to render it.
+ */
 function OpsDashboard({
   stats,
-  name,
-  range,
-  onRangeChange,
-  lastUpdated,
-  refreshing,
-  onRefresh,
   refreshSignal,
-  embedded = false,
 }: {
   stats: OpsStats;
-  name: string;
-  range: StatsRange;
-  onRangeChange: (r: StatsRange) => void;
-  lastUpdated: Date | null;
-  refreshing: boolean;
-  onRefresh: () => void;
   refreshSignal: number;
-  /**
-   * Rendered below the sales half rather than on its own. The greeting, the
-   * range picker and the refresh control are shared and already on screen, so
-   * repeating them here would be three duplicate controls arguing over the
-   * same piece of state.
-   */
-  embedded?: boolean;
 }) {
   const [pendingMockups, setPendingMockups] = useState(stats.pendingMockups);
   const [newHandoffs, setNewHandoffs] = useState(stats.newHandoffs);
@@ -1231,36 +1225,15 @@ function OpsDashboard({
       ? Math.round(((stats.revenueThisMonth - stats.revenueLastMonth) / stats.revenueLastMonth) * 100)
       : undefined;
 
-  const Shell = embedded ? 'div' : PageIn;
-
   return (
-    <Shell className={embedded ? '' : 'max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10'}>
-      {embedded ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-10 mb-6 pt-8 border-t border-white/10">
-          <div>
-            <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
-            <p className="text-white/40 text-sm">Delivery, clients and money.</p>
-          </div>
-          <BroadcastComposer />
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mt-10 mb-6 pt-8 border-t border-white/10">
+        <div>
+          <p className="text-sm text-purple-300/70 font-medium mb-1">Operations</p>
+          <p className="text-white/40 text-sm">Delivery, clients and money.</p>
         </div>
-      ) : (
-        <>
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-2">
-            <div>
-              <Kicker className="mb-2">Operations</Kicker>
-              <h1 className="text-3xl font-bold tracking-tight mb-1">Welcome back, {name}</h1>
-              <p className="text-white/40">Here's what needs you today.</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <RangePicker range={range} onChange={onRangeChange} />
-              <BroadcastComposer />
-            </div>
-          </div>
-          <div className="flex justify-end mb-6">
-            <RefreshIndicator lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={onRefresh} />
-          </div>
-        </>
-      )}
+        <BroadcastComposer />
+      </div>
 
       {pendingMockups.length > 0 && (
         <Card className="p-6 mb-6" glow="amber">
@@ -1409,8 +1382,7 @@ function OpsDashboard({
           Team Chat
         </Link>
       </div>
-
-    </Shell>
+    </div>
   );
 }
 
@@ -1721,17 +1693,7 @@ export default function AdminDashboardPage() {
               onRetry={onRefresh}
             />
             {opsStats && (
-              <OpsDashboard
-                stats={opsStats}
-                name={name}
-                range={range}
-                onRangeChange={setRange}
-                lastUpdated={lastUpdated}
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                refreshSignal={retryCount}
-                embedded
-              />
+              <OpsDashboard stats={opsStats} refreshSignal={retryCount} />
             )}
           </div>
         )}
