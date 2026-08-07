@@ -16,6 +16,7 @@ import {
 } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
 import {
+  notifyAdminsCarePlanEnded,
   notifyAdminsCarePlanPaymentFailed,
   notifyAdminsCarePlanStarted,
   notifyAdminsPaymentReceived,
@@ -718,6 +719,7 @@ async function handleCarePlanInvoiceFailed(invoice: Stripe.Invoice) {
 async function handleSubscriptionEnded(subscription: Stripe.Subscription) {
   const offer = await prisma.recurringOffer.findUnique({
     where: { stripeSubscriptionId: subscription.id },
+    include: { project: { include: { client: true } } },
   });
   if (!offer || offer.status === 'canceled') return;
 
@@ -727,6 +729,30 @@ async function handleSubscriptionEnded(subscription: Stripe.Subscription) {
   });
 
   console.log(`Care plan ended: offer=${offer.id} subscription=${subscription.id}`);
+
+  /*
+   * And somebody is told.
+   *
+   * This handler used to end at the log line above. A care plan starting
+   * notifies the studio, and a failed monthly charge notifies the studio and
+   * the client — but the plan actually ENDING, which is the outcome those
+   * failures lead to, notified nobody. Stripe gives up after its retry
+   * schedule and the subscription is deleted, so the last thing anyone heard
+   * about that client was "payment failed, Stripe will retry automatically".
+   *
+   * Recurring revenue is the only kind that disappears without an event:
+   * nothing bounces, nobody complains, next month is quietly smaller.
+   */
+  const schedule = scheduleForOffer(offer);
+  await notifyAdminsCarePlanEnded({
+    projectId: offer.projectId,
+    clientCompany: offer.project.client.company,
+    planLabel: planLabel(schedule.addOns),
+    monthlyLabel: formatCents(schedule.discountedCents),
+    // 'cancellation_requested' reads very differently from 'payment_failed',
+    // and it is the only thing distinguishing a decision from a loss.
+    reason: subscription.cancellation_details?.reason ?? null,
+  }).catch((error) => console.error('Care plan ended notice failed:', error));
 }
 
 async function handleExistingProjectPayment(

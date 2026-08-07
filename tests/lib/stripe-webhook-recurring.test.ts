@@ -45,6 +45,7 @@ vi.mock('@/lib/notify', () => ({
   notifyAdminsPaymentReceived: vi.fn(),
   notifyAdminsCarePlanStarted: vi.fn(),
   notifyAdminsCarePlanPaymentFailed: vi.fn(),
+  notifyAdminsCarePlanEnded: vi.fn(),
 }));
 vi.mock('@/lib/invoice-pdf', () => ({
   buildCarePlanInvoicePdf: vi.fn(async () => new Uint8Array([1, 2, 3])),
@@ -56,7 +57,8 @@ const {
   sendCarePlanInvoiceEmail,
   sendCarePlanPaymentFailedEmail,
 } = await import('@/lib/email');
-const { notifyAdminsCarePlanStarted, notifyAdminsCarePlanPaymentFailed } = await import('@/lib/notify');
+const { notifyAdminsCarePlanStarted, notifyAdminsCarePlanPaymentFailed, notifyAdminsCarePlanEnded } =
+  await import('@/lib/notify');
 const { buildCarePlanInvoicePdf } = await import('@/lib/invoice-pdf');
 
 function request(body = '{}', signature = 'sig') {
@@ -368,5 +370,78 @@ describe('a subscription ending', () => {
     await POST(request());
 
     expect(prisma.recurringOffer.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A subscription ending used to reach a console.log and stop.
+ *
+ * Stripe deletes a subscription for three quite different reasons and this
+ * handler fires for all of them: cancelled here, cancelled there, or the
+ * retries after a failed payment finally exhausted. Only the first is a
+ * decision anybody made, and the third is the ending of the story the
+ * payment-failed notice starts — so the last thing the studio heard about that
+ * client was "Stripe will retry automatically", and then nothing, ever.
+ *
+ * A recurring charge is the only revenue that leaves without an event: nothing
+ * bounces, nobody complains, next month is simply smaller.
+ */
+function subscriptionDeleted(overrides: Record<string, unknown> = {}) {
+  return {
+    type: 'customer.subscription.deleted',
+    data: { object: { id: 'sub_1', ...overrides } },
+  };
+}
+
+describe('a care plan ending', () => {
+  it('marks the offer cancelled', async () => {
+    constructWebhookEvent.mockReturnValue(subscriptionDeleted());
+
+    await POST(request());
+
+    expect(prisma.recurringOffer.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'canceled' }) })
+    );
+  });
+
+  it('tells the studio the revenue has stopped', async () => {
+    constructWebhookEvent.mockReturnValue(subscriptionDeleted());
+
+    await POST(request());
+
+    expect(notifyAdminsCarePlanEnded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'proj_1',
+        clientCompany: 'Linpotia Cafe',
+        planLabel: 'Managed Hosting',
+        monthlyLabel: '$150',
+      })
+    );
+  });
+
+  /**
+   * 'cancellation_requested' reads very differently from 'payment_failed', and
+   * it is the only thing separating a decision from a loss worth a phone call.
+   */
+  it('passes on the reason Stripe gave, when it gave one', async () => {
+    constructWebhookEvent.mockReturnValue(
+      subscriptionDeleted({ cancellation_details: { reason: 'payment_failed' } })
+    );
+
+    await POST(request());
+
+    expect(vi.mocked(notifyAdminsCarePlanEnded).mock.calls[0][0]).toMatchObject({
+      reason: 'payment_failed',
+    });
+  });
+
+  it('says nothing twice about a plan already cancelled', async () => {
+    prisma.recurringOffer.findUnique.mockResolvedValue({ ...OFFER, status: 'canceled' });
+    constructWebhookEvent.mockReturnValue(subscriptionDeleted());
+
+    await POST(request());
+
+    expect(prisma.recurringOffer.update).not.toHaveBeenCalled();
+    expect(notifyAdminsCarePlanEnded).not.toHaveBeenCalled();
   });
 });

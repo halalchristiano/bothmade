@@ -303,6 +303,45 @@ export async function notifyAdminsCarePlanPaymentFailed(params: {
   await notifyAdmins(`Payment failed: ${params.clientCompany}`, html, { alsoStudioInbox: true });
 }
 
+/**
+ * The plan has stopped billing, for good.
+ *
+ * Stripe ends a subscription for three quite different reasons and this fires
+ * for all of them: somebody cancelled it here, the client cancelled it there,
+ * or the retries after a failed payment finally ran out. Only the first is a
+ * decision anybody here made, and the third is the one that matters — it is
+ * the end of the story the payment-failed notice started, and until now that
+ * story had no ending. The plan simply stopped appearing in the revenue and
+ * the only record was a line in a server log nobody reads.
+ *
+ * A recurring charge is the one kind of revenue that disappears without an
+ * event: nothing bounces, nobody complains, and next month is quietly smaller.
+ */
+export async function notifyAdminsCarePlanEnded(params: {
+  projectId: string;
+  clientCompany: string;
+  planLabel: string;
+  monthlyLabel: string;
+  /** Stripe's own word for why, when it gave one. */
+  reason: string | null;
+}): Promise<void> {
+  const html = wrap(
+    'Care plan ended',
+    `<p><strong>${escapeHtml(params.clientCompany)}</strong>'s
+      <strong>${escapeHtml(params.planLabel)}</strong> at
+      <strong>${escapeHtml(params.monthlyLabel)}/month</strong> has ended, and will not bill again.</p>
+     <p style="color:#555;">${
+       params.reason
+         ? `Stripe gave the reason as <strong>${escapeHtml(params.reason)}</strong>. `
+         : ''
+     }If this followed a run of failed payments it is worth a call — a card that
+     expired is a plan that can be restarted, and nobody decided to lose it.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'View Project'
+  );
+  await notifyAdmins(`Care plan ended: ${params.clientCompany}`, html, { alsoStudioInbox: true });
+}
+
 export async function notifyAdminsStaleLeads(
   leads: Array<{ id: string; company: string; daysSinceActivity: number }>
 ): Promise<void> {
