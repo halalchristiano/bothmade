@@ -19,6 +19,7 @@ const prisma = {
   lead: {
     findMany: vi.fn(async (_a: unknown) => [] as Row[]),
     update: vi.fn(async (_a: unknown) => ({}) as Row),
+    count: vi.fn(async (_a: unknown) => 0),
   },
   leadActivity: {
     count: vi.fn(async (_a: unknown) => 0),
@@ -80,6 +81,7 @@ beforeEach(() => {
   delete process.env.AUTO_FOLLOW_UP_FROM;
   prisma.user.findFirst.mockResolvedValue(SENDER);
   prisma.lead.findMany.mockResolvedValue([]);
+  prisma.lead.count.mockResolvedValue(0);
   prisma.leadActivity.count.mockResolvedValue(0);
   prisma.leadActivity.findMany.mockResolvedValue([]);
   prisma.$transaction.mockResolvedValue([]);
@@ -327,5 +329,56 @@ describe('a lead a person just emailed', () => {
     const data = (prisma.lead.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
     expect(data.autoFollowUpDueAt).toBeInstanceOf(Date);
     expect((data.autoFollowUpDueAt as Date).getTime()).toBeGreaterThan(Date.now());
+  });
+});
+
+/**
+ * A ceiling that says so.
+ *
+ * Forty a run is the right ceiling for a mailbox that is meant to be warming
+ * up. It was a SILENT one: a run that found ninety due and sent forty
+ * answered "sent: 40" with nothing to say the other fifty existed, which
+ * reads as "everybody who was due" — precisely the shape of report nobody
+ * checks twice.
+ */
+describe('more due than one run will take', () => {
+  const atCeiling = () =>
+    prisma.lead.findMany.mockResolvedValue(
+      Array.from({ length: 40 }, () => lead())
+    );
+
+  it('says how many are waiting for tomorrow', async () => {
+    atCeiling();
+    prisma.lead.count.mockResolvedValue(90);
+
+    const { body } = await run();
+
+    expect(body.dueTotal).toBe(90);
+    expect(body.heldBack).toBe(50);
+  });
+
+  /** Counting the overflow must not cost a query on an ordinary day. */
+  it('does not go looking when the run was under the ceiling', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead(), lead()]);
+
+    const { body } = await run();
+
+    expect(prisma.lead.count).not.toHaveBeenCalled();
+    expect(body.dueTotal).toBe(2);
+    expect(body.heldBack).toBe(0);
+  });
+
+  /** Both ceilings are the same fact to whoever reads the number. */
+  it('adds the daily limit share to the same total', async () => {
+    process.env.DAILY_EMAIL_LIMIT = '10';
+    atCeiling();
+    prisma.lead.count.mockResolvedValue(60);
+
+    const { body } = await run();
+
+    // 20 beyond the per-run ceiling, plus 30 of the 40 taken that the daily
+    // budget would not allow.
+    expect(body.heldBack).toBe(50);
+    delete process.env.DAILY_EMAIL_LIMIT;
   });
 });

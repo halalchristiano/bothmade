@@ -300,6 +300,7 @@ export async function GET(request: NextRequest) {
      */
     const lastTouchByLead = new Map<string, { at: Date; byId: string | null; byName: string }>();
     const lastCallByLead = new Map<string, { at: Date }>();
+    const dialsByLead = new Map<string, number>();
 
     if (leads.length > 0) {
       const ids = leads.map((l) => l.id);
@@ -323,6 +324,20 @@ export async function GET(request: NextRequest) {
           select: { leadId: true, createdAt: true },
         }),
       ]);
+
+      /*
+       * How many times each number was actually dialled.
+       *
+       * Prisma will not filter one relation two ways in a single select, and
+       * this cannot ride on the `_count` above for that reason — so it is its
+       * own group-by, which is a cheap index read either way.
+       */
+      const dials = await prisma.leadActivity.groupBy({
+        by: ['leadId'],
+        where: { type: 'dial', leadId: { in: ids } },
+        _count: { _all: true },
+      });
+      for (const d of dials) dialsByLead.set(d.leadId, d._count._all);
 
       for (const t of touches) {
         lastTouchByLead.set(t.leadId, {
@@ -397,6 +412,23 @@ export async function GET(request: NextRequest) {
        */
       const lastCall = lastCallByLead.get(lead.id) ?? null;
       const lastTouch = lastTouchByLead.get(lead.id) ?? null;
+
+      /*
+       * How many times somebody has actually tried this number.
+       *
+       * The larger of the two counts, never their sum. A dial is the app
+       * recording that a number was rung; a logged call is somebody's write-up
+       * of one — so a call that was both dialled AND written up is one
+       * attempt, and adding them would count it twice.
+       *
+       * Taking the larger is what makes this work for the person it is meant
+       * to help. It used to count only write-ups, so a rep who dials all
+       * afternoon and logs nothing never tripped "rung four times and never
+       * reached" — the rep whose dead numbers are least visible got the least
+       * warning. Older leads with logged calls and no dial history still
+       * count, because the other side of the max covers them.
+       */
+      const attempts = Math.max(lead._count.activities, dialsByLead.get(lead.id) ?? 0);
       const mockupNeedsCall =
         !!mockupSentAt && (!lastCall || lastCall.at.getTime() < mockupSentAt.getTime());
 
@@ -491,7 +523,7 @@ export async function GET(request: NextRequest) {
         openHeadline: opens.headline,
         openNextStep: opens.nextStep,
         openScore: opens.score,
-        timesCalled: lead._count.activities,
+        timesCalled: attempts,
         /*
          * How long they have been waiting on something we promised, and
          * whether the thing exists yet.
@@ -531,8 +563,7 @@ export async function GET(request: NextRequest) {
          * follow-up. Advice rather than a rule: it says the number out loud
          * and leaves the decision alone.
          */
-        neverReached:
-          lead._count.activities >= 4 && !lead.replyReceivedAt && lead.status !== 'qualified',
+        neverReached: attempts >= 4 && !lead.replyReceivedAt && lead.status !== 'qualified',
         lastActivity: lead.activities[0] ?? null,
         activities: undefined,
         _count: undefined,

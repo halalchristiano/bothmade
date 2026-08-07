@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   LEAD_STATUSES,
   LEAD_STATUS_LABELS,
-  LEAD_ACTIVITY_TYPES,
+  LEAD_ACTIVITY_MANUAL_TYPES,
   LEAD_ACTIVITY_LABELS,
   leadActivityIsInternal,
   PAIN_POINTS,
@@ -2974,7 +2974,7 @@ export default function LeadDetailPage() {
           >
 
             <div className="flex flex-wrap gap-2 mb-3">
-              {LEAD_ACTIVITY_TYPES.map((t) => (
+              {LEAD_ACTIVITY_MANUAL_TYPES.map((t) => (
                 <button
                   key={t}
                   onClick={() => setActivityType(t)}

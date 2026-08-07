@@ -18,7 +18,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const prisma = {
   user: { findUnique: vi.fn(async () => ({ role: 'admin', googleRefreshToken: 'x', gmailNeedsReconnect: false })) },
   lead: { count: vi.fn(async () => 0), findMany: vi.fn() },
-  leadActivity: { count: vi.fn(async () => 0), findMany: vi.fn(async (_a: unknown) => [] as { leadId: string; createdAt: Date; createdById: string | null; createdBy: { name: string } | null }[]) },
+  leadActivity: {
+    count: vi.fn(async () => 0),
+    findMany: vi.fn(
+      async (_a: unknown) =>
+        [] as {
+          leadId: string;
+          createdAt: Date;
+          createdById: string | null;
+          createdBy: { name: string } | null;
+        }[]
+    ),
+    groupBy: vi.fn(async (_a: unknown) => [] as { leadId: string; _count: { _all: number } }[]),
+  },
 };
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
@@ -90,6 +102,7 @@ beforeEach(() => {
   prisma.lead.count.mockResolvedValue(0);
   prisma.leadActivity.count.mockResolvedValue(0);
   prisma.leadActivity.findMany.mockResolvedValue([]);
+  prisma.leadActivity.groupBy.mockResolvedValue([]);
 });
 
 describe('an opened lead against the follow-up bands', () => {

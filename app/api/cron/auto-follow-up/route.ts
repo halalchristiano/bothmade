@@ -85,18 +85,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    /*
+     * Named, because it is asked twice: once for the rows this run sends to,
+     * and once to count how many more were due than it could take. Two
+     * copies of a rule this careful would eventually disagree.
+     */
+    const dueWhere = {
+      // A non-null due date IS the sequence. It is nulled when the last
+      // email goes, so there is no separate "finished" flag to keep in step.
+      autoFollowUpDueAt: { lte: new Date() },
+      replyReceivedAt: null,
+      doNotContact: false,
+      status: { notIn: ['won', 'lost'] },
+      email: { not: null },
+      emailDeliveryFailedAt: null,
+      mockupRequested: false,
+    };
+
     const due = await prisma.lead.findMany({
-      where: {
-        // A non-null due date IS the sequence. It is nulled when the last
-        // email goes, so there is no separate "finished" flag to keep in step.
-        autoFollowUpDueAt: { lte: new Date() },
-        replyReceivedAt: null,
-        doNotContact: false,
-        status: { notIn: ['won', 'lost'] },
-        email: { not: null },
-        emailDeliveryFailedAt: null,
-        mockupRequested: false,
-      },
+      where: dueWhere,
       select: {
         id: true,
         company: true,
@@ -114,6 +121,29 @@ export async function GET(request: NextRequest) {
       orderBy: { autoFollowUpDueAt: 'asc' },
       take: AUTO_FOLLOW_UP_MAX_PER_RUN,
     });
+
+    /*
+     * How many were due beyond what this run took.
+     *
+     * `take` is a ceiling on a mailbox that is meant to be warming up, and it
+     * is the right ceiling — but until now it was a SILENT one. A run that
+     * found ninety due and sent forty answered "sent: 40" with nothing to say
+     * the other fifty existed, which reads as "everybody who was due", and
+     * that is precisely the shape of report nobody checks twice.
+     *
+     * Counted rather than fetched, so saying so costs one cheap query rather
+     * than pulling rows this run will not use.
+     */
+    const dueTotal =
+      due.length < AUTO_FOLLOW_UP_MAX_PER_RUN
+        ? due.length
+        : await prisma.lead.count({ where: dueWhere });
+    const overCeiling = Math.max(0, dueTotal - due.length);
+    if (overCeiling > 0) {
+      console.warn(
+        `[auto-follow-up] ${dueTotal} leads were due and this run takes ${AUTO_FOLLOW_UP_MAX_PER_RUN}. ${overCeiling} wait for tomorrow.`
+      );
+    }
 
     if (due.length === 0) {
       return NextResponse.json({ success: true, sent: 0, failed: 0, overflow: 0 }, { status: 200 });
@@ -162,7 +192,10 @@ export async function GET(request: NextRequest) {
 
     const ready = due.filter((l) => !recentlyEmailed.has(l.id));
     if (ready.length === 0) {
-      return NextResponse.json({ success: true, sent: 0, failed: 0, deferred }, { status: 200 });
+      return NextResponse.json(
+        { success: true, sent: 0, failed: 0, deferred, heldBack: overCeiling, dueTotal },
+        { status: 200 }
+      );
     }
 
     /*
@@ -285,7 +318,10 @@ export async function GET(request: NextRequest) {
         deferred,
         // Never silently dropped: a run that was trimmed says by how much, so
         // "40 sent" cannot be mistaken for "everybody who was due".
-        heldBack: ready.length - batch.length,
+        // Everything that was due and is not going today, whichever ceiling
+        // held it: the per-run cap, or the daily send budget.
+        heldBack: overCeiling + (ready.length - batch.length),
+        dueTotal,
         budgetRemaining: Math.max(0, budget.remaining - sent),
       },
       { status: 200 }

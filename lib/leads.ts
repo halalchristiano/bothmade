@@ -224,6 +224,25 @@ export const LEAD_ACTIVITY_TYPES = [
 ] as const;
 export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
 
+/**
+ * The types a person may write by hand.
+ *
+ * `dial` is missing from this on purpose, and it is the whole reason the list
+ * exists. A dial is the one entry in the timeline nobody types: it is
+ * recorded as the phone app takes the screen, which is what makes it a
+ * measurement rather than a self-report. Offering it in the activity picker
+ * put a button next to it reading "Number dialled" — and a number anybody can
+ * add to by hand is a number that answers nothing.
+ */
+export const LEAD_ACTIVITY_MANUAL_TYPES = LEAD_ACTIVITY_TYPES.filter(
+  (t) => t !== 'dial'
+) as readonly LeadActivityType[];
+
+/** True for a type the app records for itself and no one may write. */
+export function isMachineActivityType(type: string): boolean {
+  return type === 'dial';
+}
+
 export const LEAD_ACTIVITY_LABELS: Record<LeadActivityType, string> = {
   note: 'Note',
   email: 'Email',

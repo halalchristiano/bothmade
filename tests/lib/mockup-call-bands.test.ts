@@ -21,6 +21,7 @@ const prisma = {
   leadActivity: {
     count: vi.fn(async () => 0),
     findMany: vi.fn(async (_a: unknown) => [] as { leadId: string; createdAt: Date; createdById: string | null; createdBy: { name: string } | null }[]),
+    groupBy: vi.fn(async (_a: unknown) => [] as { leadId: string; _count: { _all: number } }[]),
   },
 };
 
@@ -87,6 +88,7 @@ beforeEach(() => {
   prisma.lead.count.mockResolvedValue(0);
   prisma.leadActivity.count.mockResolvedValue(0);
   prisma.leadActivity.findMany.mockResolvedValue([]);
+  prisma.leadActivity.groupBy.mockResolvedValue([]);
 });
 
 describe('a lead waiting on a mockup', () => {
@@ -324,6 +326,43 @@ describe('who rang this last', () => {
 describe('a lead rung again and again', () => {
   const tried = (n: number, over: Record<string, unknown> = {}) =>
     lead({ _count: { activities: n }, ...over });
+
+  /**
+   * Attempts are the larger of the two counts, never their sum.
+   *
+   * A dial is the app recording that a number was rung; a logged call is
+   * somebody's write-up of one. A call that was both dialled AND written up is
+   * one attempt, so adding them would count it twice — and counting only the
+   * write-ups (which is what this did) meant a rep who dials all afternoon and
+   * logs nothing never tripped the warning at all. The person whose dead
+   * numbers are least visible was getting the least help.
+   */
+  it('counts dials for a rep who never writes anything up', async () => {
+    prisma.lead.findMany.mockResolvedValue([tried(0)]);
+    prisma.leadActivity.groupBy.mockResolvedValue([{ leadId: 'lead_1', _count: { _all: 5 } }]);
+
+    const row = (await call()).callable[0];
+
+    expect(row.timesCalled).toBe(5);
+    expect(row.neverReached).toBe(true);
+  });
+
+  it('does not count one call twice for being dialled and written up', async () => {
+    prisma.lead.findMany.mockResolvedValue([tried(3)]);
+    prisma.leadActivity.groupBy.mockResolvedValue([{ leadId: 'lead_1', _count: { _all: 3 } }]);
+
+    const row = (await call()).callable[0];
+
+    expect(row.timesCalled).toBe(3);
+    expect(row.neverReached).toBe(false);
+  });
+
+  /** Leads from before dials were recorded still count their logged calls. */
+  it('still counts an older lead with no dial history', async () => {
+    prisma.lead.findMany.mockResolvedValue([tried(6)]);
+
+    expect((await call()).callable[0].timesCalled).toBe(6);
+  });
 
   it('is flagged after four attempts with nobody reached', async () => {
     prisma.lead.findMany.mockResolvedValue([tried(4)]);

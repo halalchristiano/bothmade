@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { isLeadActivityType, advanceToContactedOnOutreach } from '@/lib/leads';
+import { isLeadActivityType, isMachineActivityType, advanceToContactedOnOutreach } from '@/lib/leads';
 import { sendEmail } from '@/lib/email';
 import { escMultiline } from '@/lib/html';
 
@@ -20,6 +20,25 @@ export async function POST(
 
     if (!type || !isLeadActivityType(type) || !content) {
       return NextResponse.json({ error: 'Type and content are required' }, { status: 400 });
+    }
+
+    /*
+     * A dial is not something anybody gets to write.
+     *
+     * It is recorded as the phone app takes the screen, which is the only
+     * reason the dashboard can say "14 dialled, 3 written up" and have that
+     * mean anything. A hand-written one costs the number the single property
+     * that makes it worth having, so it is refused here as well as being
+     * absent from the picker — a UI that merely hides a field is not a rule.
+     */
+    if (isMachineActivityType(type)) {
+      return NextResponse.json(
+        {
+          error:
+            'Dials are recorded by the app when a number is actually called — they cannot be added by hand.',
+        },
+        { status: 400 }
+      );
     }
 
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
