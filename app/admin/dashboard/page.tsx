@@ -228,6 +228,13 @@ interface NextAction {
   company: string;
   reason: string;
   tone: ActionTone;
+  /**
+   * The word on the badge. It used to be derived from the tone, which meant
+   * three tones could only ever say three things — so a row could not say
+   * what it was without also changing colour. A contract sitting unsigned is
+   * urgent and is not a "hot lead"; it needed its own word, not its own hue.
+   */
+  badge: string;
   meta: string;
   phone: string | null;
   email: string | null;
@@ -242,27 +249,55 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
   for (const l of stats.followUpsOverdue) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: l.nextFollowUpAt });
+    actions.push({ id: l.id, company: l.company, reason: 'Overdue follow-up', tone: 'red', badge: 'urgent', meta: new Date(l.nextFollowUpAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: l.nextFollowUpAt });
   }
   for (const l of stats.followUpsToday) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', meta: '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
+    actions.push({ id: l.id, company: l.company, reason: 'Follow up today', tone: 'sky', badge: 'today', meta: '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
+  }
+  /**
+   * Above the hot leads, below the dated promises.
+   *
+   * The endpoint has computed this from the start and nothing rendered it, so
+   * a contract sitting with a client reached the browser and stopped there.
+   * It only ever surfaced once the generic stall checks caught up with it —
+   * as "Stalled in Contract Sent", which names the symptom and not the thing
+   * to do about it. Ranked here because it is the closest any row gets to
+   * money: they have the paperwork, and nobody has asked them to sign it.
+   */
+  for (const l of stats.awaitingSignature) {
+    if (seen.has(l.id) || dismissed.has(l.id)) continue;
+    seen.add(l.id);
+    actions.push({
+      id: l.id,
+      company: l.company,
+      reason:
+        l.daysWaiting === 0
+          ? 'Contract sent today — unsigned'
+          : `Contract unsigned — ${l.daysWaiting}d with them`,
+      tone: l.daysWaiting >= 3 ? 'red' : 'amber',
+      badge: 'unsigned',
+      meta: '',
+      phone: l.phone,
+      email: l.email,
+      previousNextFollowUpAt: null,
+    });
   }
   for (const l of stats.hotLeads) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
+    actions.push({ id: l.id, company: l.company, reason: 'Hot lead', tone: 'amber', badge: 'hot', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.staleLeads) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: null });
+    actions.push({ id: l.id, company: l.company, reason: 'Going stale — 5+ days idle', tone: 'red', badge: 'stale', meta: new Date(l.updatedAt).toLocaleDateString(), phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
   for (const l of stats.stageAging) {
     if (seen.has(l.id) || dismissed.has(l.id)) continue;
     seen.add(l.id);
-    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
+    actions.push({ id: l.id, company: l.company, reason: `Stalled in ${l.stageLabel} — ${l.daysIdle}d idle`, tone: 'red', badge: 'stalled', meta: l.estimatedValue ? formatCents(l.estimatedValue) : '', phone: l.phone, email: l.email, previousNextFollowUpAt: null });
   }
 
   return (
@@ -287,7 +322,7 @@ function NextActionsCard({ stats }: { stats: SalesStats }) {
               trailing={
                 <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   {a.meta && <span className="text-white/40 text-xs whitespace-nowrap hidden sm:inline">{a.meta}</span>}
-                  <Badge tone={a.tone}>{a.tone === 'red' ? 'urgent' : a.tone === 'sky' ? 'today' : 'hot'}</Badge>
+                  <Badge tone={a.tone}>{a.badge}</Badge>
                   {a.phone && (
                     <a
                       href={`tel:${a.phone}`}
@@ -871,6 +906,71 @@ function ShowMoreButton({ remaining, onClick }: { remaining: number; onClick: ()
   );
 }
 
+/**
+ * Money that has been invoiced and not paid.
+ *
+ * The endpoint has always sent this and the page has always thrown it away —
+ * the type was declared, the rows crossed the wire, and the only thing left
+ * of the card that once read them was an unused `Wallet` import. So the page
+ * whose own strapline is "sell it, get paid for it, ship it" covered the
+ * selling and the shipping and went quiet in the middle.
+ *
+ * `balanceDue` is `projectBalance().dueNowCents` — invoiced and unpaid, not
+ * "everything not yet paid". Work that hasn't reached its gate isn't late and
+ * doesn't belong on a list you're meant to act on.
+ *
+ * The last-reminder date is here because it decides what you do next: chasing
+ * somebody you emailed this morning is a different act from chasing somebody
+ * nobody has contacted at all, and the row should not make you go and look.
+ */
+function UnpaidBalancesCard({ projects }: { projects: OpsStats['overdueBalances'] }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const shown = projects.slice(0, visible);
+  const total = projects.reduce((sum, p) => sum + p.balanceDue, 0);
+
+  return (
+    <Card className="p-6 mb-5" glow={projects.length > 0 ? 'amber' : undefined}>
+      <CardHeader
+        icon={Wallet}
+        tone="amber"
+        title="Invoiced and unpaid"
+        subtitle="Sent, past its gate, still outstanding"
+        action={
+          projects.length > 0 ? (
+            <span className="text-sm text-amber-300 font-semibold">{formatCents(total)}</span>
+          ) : undefined
+        }
+      />
+      {projects.length === 0 ? (
+        <EmptyState icon={Wallet} text="Nothing outstanding — everyone's paid up." tone="clear" />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            {shown.map((p) => (
+              <ListRow
+                key={p.id}
+                href={`/admin/projects/${p.id}`}
+                title={p.company}
+                subtitle={
+                  p.lastPaymentReminderSentAt
+                    ? `Reminded ${new Date(p.lastPaymentReminderSentAt).toLocaleDateString()}`
+                    : 'Never reminded'
+                }
+                trailing={
+                  <span className="text-amber-300/90 text-xs font-medium whitespace-nowrap">
+                    {formatCents(p.balanceDue)}
+                  </span>
+                }
+              />
+            ))}
+          </div>
+          <ShowMoreButton remaining={projects.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
+        </>
+      )}
+    </Card>
+  );
+}
+
 function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects'] }) {
   const [visible, setVisible] = useState(PAGE_SIZE);
   const shown = projects.slice(0, visible);
@@ -1172,6 +1272,10 @@ function OpsDashboard({
           ]}
         />
       </div>
+
+      {/* Before the six-month chart on purpose: what's owed now is something
+          you can do about today, and revenue history is something to read. */}
+      <UnpaidBalancesCard projects={stats.overdueBalances ?? []} />
 
       <RevenueChartCard revenueHistory={stats.revenueHistory} />
 
