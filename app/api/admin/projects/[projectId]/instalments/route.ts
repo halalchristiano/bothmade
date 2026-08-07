@@ -258,7 +258,16 @@ export async function POST(
     const sent = await sendInstalmentEmail({
       toEmail: project.client.email,
       copy,
-      paymentUrl: checkout.url || '',
+      /*
+       * Our own address, not Stripe's, for the same reason the chase emails
+       * use it. A Checkout Session dies 24 hours after it is minted and this
+       * invoice gives the client fourteen days, so pasting the Stripe URL in
+       * here shipped a button that worked on the day it landed and was an
+       * error page for the rest of the period they were being asked to pay
+       * in. /pay resolves a live session at click time — and records the
+       * click, which until now only the chases could see.
+       */
+      paymentUrl: `${siteUrl}/pay/${inst.id}`,
       invoicePdf,
       invoiceFilename: `${invoiceNumber}.pdf`,
       instalmentId: inst.id,
