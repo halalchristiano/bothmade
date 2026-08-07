@@ -605,8 +605,34 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <AdminSessionContext.Provider value={{ userName, userRole, userId }}>
       <div className="min-h-screen bg-ink text-white">
+        {/*
+          The first thing in the tab order, and invisible until it is focused.
+
+          The sidebar comes before the content in the DOM, so reaching the page
+          meant tabbing past the search button and every nav item — sixteen or
+          so stops — and then doing it again on the next page, and the next.
+          The marketing site has had one of these since launch; the tool people
+          use all day did not.
+
+          `#admin-main` rather than a heading: admin pages own their own H1s
+          and several have more than one region above the fold, so the reliable
+          target is the landmark itself.
+        */}
+        <a
+          href="#admin-main"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[200] focus:rounded-full focus:bg-white focus:px-6 focus:py-3 focus:text-sm focus:font-medium focus:text-black"
+        >
+          Skip to content
+        </a>
+
         {/* Desktop sidebar — the brand's ground, the brand's mark. */}
-        <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-white/[0.08] bg-ink z-40">
+        <aside
+          // Named, because a screen reader listing this page's regions
+          // otherwise announced "navigation" twice — this one and the mobile
+          // sheet — with nothing to tell them apart.
+          aria-label="Main"
+          className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-white/[0.08] bg-ink z-40"
+        >
           <Link href="/admin/dashboard" className="flex items-center gap-2.5 px-6 h-16 shrink-0 border-b border-white/[0.08]">
             <Wordmark className="text-xl" />
           </Link>
@@ -715,7 +741,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <SearchBox onNavigate={() => setMobileOpen(false)} />
                   {/* No onNavigate here: the effect keyed on `pathname` already
                       closes this sheet on every route change. */}
-                  <nav>
+                  <nav aria-label="Main, mobile">
                     <NavLinks items={navItems} pathname={pathname} unreadCount={unreadCount} />
                   </nav>
                   <div className="flex items-center justify-between pt-3 border-t border-white/[0.08]">
@@ -742,7 +768,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             name, an unbroken URL) makes the document wider than the viewport,
             and iOS Safari responds by zooming the whole page out — which reads
             as "everything is squashed into the left with dead space beside it". */}
-        <main className="lg:pl-64 relative w-full min-w-0 overflow-x-hidden">{children}</main>
+        <main
+          id="admin-main"
+          // Focusable only as a skip-link target: without it the browser moves
+          // the scroll position but leaves focus on the link, so the next Tab
+          // goes back into the sidebar the skip was for getting out of.
+          tabIndex={-1}
+          className="lg:pl-64 relative w-full min-w-0 overflow-x-hidden outline-none"
+        >
+          {children}
+        </main>
 
         {/* In front of every send in the admin, on every screen, whether or
             not the button that made the request knows it is here. */}
