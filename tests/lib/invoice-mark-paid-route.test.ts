@@ -31,6 +31,16 @@ vi.mock('@/lib/middleware', () => ({
   requireStaff: () => requireStaff(),
   unauthorizedResponse: () => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
 }));
+vi.mock('@/lib/invoice-dispatch', () => ({
+  restoreInvoicePdfAsPaid: vi.fn(async () => 'https://blob.test/BM-2026-0007-paid.pdf'),
+}));
+vi.mock('@/lib/email', () => ({
+  sendPaymentReceiptEmail: vi.fn(async () => ({ sent: true })),
+}));
+vi.mock('@/lib/project-standing', () => ({
+  projectStanding: vi.fn(async () => ({ kind: 'settled' })),
+}));
+vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.test' }));
 vi.mock('stripe', () => ({
   default: class {
     paymentLinks = { update: (...args: unknown[]) => paymentLinksUpdate(...args) };
@@ -39,6 +49,8 @@ vi.mock('stripe', () => ({
 }));
 
 const { POST } = await import('@/app/api/admin/billing/invoices/[invoiceId]/mark-paid/route');
+const { restoreInvoicePdfAsPaid } = await import('@/lib/invoice-dispatch');
+const { sendPaymentReceiptEmail } = await import('@/lib/email');
 
 function call(body: unknown = { method: 'Bank transfer, ref ACME0312' }, invoiceId = 'inv_1') {
   return POST({ json: async () => body } as never, { params: Promise.resolve({ invoiceId }) });
@@ -52,7 +64,10 @@ const OPEN_INVOICE = {
   amountCents: 120000,
   status: 'open',
   stripePaymentLinkId: 'plink_1',
-  project: { id: 'proj_1' },
+  lineItems: [{ label: 'Design round', priceCents: 120000 }],
+  createdAt: new Date('2026-02-01T10:00:00Z'),
+  client: { id: 'c1', company: 'Acme Dental', email: 'owner@acme.test', contactName: 'Dana' },
+  project: { id: 'proj_1', name: 'Acme — Website' },
 };
 
 beforeEach(() => {
@@ -75,6 +90,8 @@ beforeEach(() => {
     prisma.invoice.findUnique.mockResolvedValueOnce({ ...OPEN_INVOICE, status: 'paid' });
     return fn(prisma);
   });
+  vi.mocked(restoreInvoicePdfAsPaid).mockResolvedValue('https://blob.test/BM-2026-0007-paid.pdf');
+  vi.mocked(sendPaymentReceiptEmail).mockResolvedValue({ sent: true });
 });
 
 describe('recording a payment that did not come through Stripe', () => {
@@ -221,5 +238,55 @@ describe('what it refuses', () => {
 
     expect(res.status).toBe(401);
     expect(prisma.invoice.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A card payment gets both of these from the Stripe webhook. Money that
+ * arrives by transfer used to get neither: no acknowledgement that it landed,
+ * and an invoice PDF still headed "Amount due" for a bill already settled —
+ * which is the copy the client's bookkeeper files.
+ */
+describe('what the client gets afterwards', () => {
+  it('rebuilds the invoice as a receipt and emails one', async () => {
+    const res = await call();
+    const body = await res.json();
+
+    expect(restoreInvoicePdfAsPaid).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendPaymentReceiptEmail).mock.calls[0][0]).toMatchObject({
+      toEmail: 'owner@acme.test',
+      invoiceNumber: 'BM-2026-0007',
+      forLabel: 'Invoice BM-2026-0007',
+      // A one-off charge says nothing about the build, so it claims nothing.
+      standing: { kind: 'unrelated' },
+    });
+    expect(body.receiptSent).toBe(true);
+    expect(body.invoice.pdfUrl).toBe('https://blob.test/BM-2026-0007-paid.pdf');
+    expect(body.warnings).toEqual([]);
+  });
+
+  /*
+   * Both are after the ledger and both best-effort. The money is recorded; a
+   * receipt that fails to send is worth reporting, not worth undoing a
+   * payment over.
+   */
+  it('still records the payment when the receipt will not send', async () => {
+    vi.mocked(sendPaymentReceiptEmail).mockResolvedValue({ sent: false, reason: 'mailbox full' });
+
+    const res = await call();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prisma.payment.create).toHaveBeenCalledOnce();
+    expect(body.receiptSent).toBe(false);
+    expect(body.warnings.join(' ')).toContain('tell them by hand');
+  });
+
+  it('says so rather than lying when the PDF cannot be rebuilt', async () => {
+    vi.mocked(restoreInvoicePdfAsPaid).mockResolvedValue(null);
+
+    const body = await (await call()).json();
+
+    expect(body.warnings.join(' ')).toContain('still reads as unpaid');
   });
 });

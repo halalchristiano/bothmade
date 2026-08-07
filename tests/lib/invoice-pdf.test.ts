@@ -166,6 +166,34 @@ describe('buildCustomChargeInvoicePdf', () => {
       expect(drawn).toContain(line);
     }
   });
+
+  /*
+   * The stored PDF is what a client's bookkeeper files, and it said "Amount
+   * due" forever — including on the copy they download from their own
+   * dashboard weeks after paying, which their accountant then files as an
+   * outstanding bill. A document that contradicts their bank statement loses
+   * that argument every time.
+   */
+  it('reads as a receipt once the money has arrived', async () => {
+    const drawn = drawnStrings(
+      await PDFDocument.load(
+        await buildCustomChargeInvoicePdf({ ...CHARGE, paidAt: new Date('2026-08-11T10:00:00Z') })
+      )
+    );
+
+    expect(drawn).toContain('Paid');
+    expect(drawn).not.toContain('Amount due');
+    // The date is the useful half: "paid" without one cannot be reconciled
+    // against a bank statement. The footer word-wraps, so match on the line
+    // that carries it rather than on the whole sentence.
+    expect(drawn.replace(/\n/g, ' ')).toContain('Paid in full on August 11, 2026');
+  });
+
+  it('still asks for the money while it is still owed', async () => {
+    const drawn = drawnStrings(await PDFDocument.load(await buildCustomChargeInvoicePdf(CHARGE)));
+
+    expect(drawn).toContain('Amount due');
+  });
 });
 
 /**

@@ -275,6 +275,16 @@ export interface CustomChargeInvoiceInput {
   description: string;
   lineItems: ChargeLine[];
   issuedAt?: Date;
+  /**
+   * When the money arrived, if it has.
+   *
+   * The stored PDF is the document a client's bookkeeper files, and it said
+   * "Amount due: $1,200" forever — including on an invoice they had paid
+   * weeks earlier, downloaded from their own dashboard, filed as an
+   * outstanding bill. A care-plan invoice has always said "Paid"; this one
+   * never learned how, because nothing regenerated it after the payment.
+   */
+  paidAt?: Date | null;
 }
 
 /**
@@ -304,8 +314,13 @@ export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInpu
     subtotal: formatCentsExact(total),
     total: formatCentsExact(total),
     amountDue: formatCentsExact(total),
-    footerNote:
-      'This invoice covers work agreed with Bothmade outside the original project scope. Payment is processed securely by Stripe.',
+    // "Amount due" on a settled invoice is a document that contradicts the
+    // client's own bank statement, and theirs is the one their accountant
+    // believes.
+    amountDueLabel: input.paidAt ? 'Paid' : undefined,
+    footerNote: input.paidAt
+      ? `Paid in full on ${invoiceDate(input.paidAt)}. Thank you. This invoice covered work agreed with Bothmade outside the original project scope.`
+      : 'This invoice covers work agreed with Bothmade outside the original project scope. Payment is processed securely by Stripe.',
   });
 }
 

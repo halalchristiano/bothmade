@@ -4,6 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { readReason } from '@/lib/invoice-lifecycle';
 import { canMarkPaid, manualPaymentType } from '@/lib/invoice-settlement';
+import { restoreInvoicePdfAsPaid } from '@/lib/invoice-dispatch';
+import { sendPaymentReceiptEmail } from '@/lib/email';
+import { projectStanding } from '@/lib/project-standing';
+import { invoiceDate } from '@/lib/money-dates';
+import { resolveSiteUrl } from '@/lib/site-url';
+import { formatCentsExact } from '@/lib/pricing';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -166,7 +172,9 @@ export async function POST(
       return tx.invoice.findUnique({
         where: { id: invoice.id },
         include: {
-          client: { select: { id: true, company: true, email: true } },
+          // contactName is here for the receipt's greeting and the rebuilt
+          // PDF's "billed to"; the rest is what the ledger row on screen needs.
+          client: { select: { id: true, company: true, email: true, contactName: true } },
           project: { select: { id: true, name: true } },
           issuedBy: { select: { name: true, email: true } },
         },
@@ -180,7 +188,64 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({ success: true, invoice: settled }, { status: 200 });
+    /*
+     * The client hears about it, and the document stops asking for the money.
+     *
+     * A card payment gets both of these from the Stripe webhook. Money that
+     * arrives by transfer used to get neither: no acknowledgement that it
+     * landed, and an invoice PDF still headed "Amount due" for a bill they
+     * had already settled — which is the copy their bookkeeper files.
+     *
+     * Both after the ledger and both best-effort. The money is recorded; a
+     * receipt that fails to send is worth reporting, not worth undoing a
+     * payment over.
+     */
+    const receiptPdfUrl = await restoreInvoicePdfAsPaid(prisma, settled, paidAt).catch((error) => {
+      console.error(`Invoice ${invoice.number}: receipt PDF not rebuilt:`, error);
+      return null;
+    });
+
+    let receiptSent = false;
+    if (settled.client.email) {
+      const receipt = await sendPaymentReceiptEmail({
+        toEmail: settled.client.email,
+        contactName: settled.client.contactName,
+        company: settled.client.company,
+        projectName: settled.project.name,
+        amountLabel: formatCentsExact(settled.amountCents),
+        paidOnLabel: invoiceDate(paidAt),
+        forLabel: `Invoice ${settled.number}`,
+        invoiceNumber: settled.number,
+        /*
+         * 'unrelated' for a one-off charge, which says nothing about the
+         * build; an instalment reports where the schedule now stands, the
+         * same sentence the card path sends.
+         */
+        standing: instalment ? await projectStanding(settled.projectId) : { kind: 'unrelated' },
+        dashboardUrl: `${resolveSiteUrl()}/client/${settled.projectId}`,
+      }).catch((error) => {
+        console.error(`Invoice ${invoice.number}: receipt did not send:`, error);
+        return { sent: false as const };
+      });
+      receiptSent = receipt.sent;
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        invoice: receiptPdfUrl ? { ...settled, pdfUrl: receiptPdfUrl } : settled,
+        receiptSent,
+        warnings: [
+          settled.client.email
+            ? receiptSent
+              ? null
+              : `The receipt didn't reach ${settled.client.email}. The payment is recorded either way — tell them by hand.`
+            : 'This client has no email address on file, so no receipt was sent.',
+          receiptPdfUrl ? null : "The invoice PDF couldn't be rebuilt as a receipt, so their copy still reads as unpaid.",
+        ].filter((warning): warning is string => Boolean(warning)),
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Mark invoice paid error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -24,6 +24,8 @@ import {
   notifyAdminsPaymentReceived,
 } from '@/lib/notify';
 import { buildCarePlanInvoicePdf } from '@/lib/invoice-pdf';
+import { restoreInvoicePdfAsPaid } from '@/lib/invoice-dispatch';
+import { projectStanding } from '@/lib/project-standing';
 import { OWED_INSTALMENT_STATUSES, seedInstalments } from '@/lib/instalments';
 import { createInvoiceRow } from '@/lib/billing';
 import { discountLabel, scheduleForOffer } from '@/lib/care-offers';
@@ -49,37 +51,6 @@ import {
  */
 function receiptDate(): string {
   return invoiceDate(new Date());
-}
-
-/**
- * Where the client stands once this payment has landed, in one sentence.
- *
- * Read from the instalment rows after the settling transaction has committed,
- * so it reflects what was just paid rather than what was owed a moment ago.
- *
- * Only ever 'owing' or 'settled': a project always has a standing, one way or
- * the other. The receipt's third state, 'unrelated', is not this function's to
- * return — it belongs to one-off charges, which never consult the schedule.
- */
-async function projectStanding(
-  projectId: string
-): Promise<{ kind: 'owing'; label: string } | { kind: 'settled' }> {
-  const open = await prisma.instalment.findMany({
-    // Not `not: 'paid'` — that counts voided rows as owed. See
-    // OWED_INSTALMENT_STATUSES for what it cost the last time.
-    where: { projectId, status: { in: OWED_INSTALMENT_STATUSES } },
-    orderBy: { index: 'asc' },
-    select: { label: true, amountCents: true },
-  });
-  if (open.length === 0) return { kind: 'settled' };
-
-  const total = open.reduce((sum, row) => sum + row.amountCents, 0);
-  return {
-    kind: 'owing',
-    label: `${open.length} payment${open.length === 1 ? '' : 's'} still to come, totalling ${formatCentsExact(
-      total
-    )} — the next is ${open[0].label}. We invoice each one when it falls due, so there is nothing to do now.`,
-  };
 }
 
 export async function POST(request: NextRequest) {
@@ -930,6 +901,41 @@ async function handleExistingProjectPayment(
     }
   } catch (receiptError) {
     console.error(`Receipt for project ${projectId} did not send:`, receiptError);
+  }
+
+  /*
+   * And the invoice PDF stops asking for money that has arrived.
+   *
+   * The stored document is what a client's bookkeeper files, and it said
+   * "Amount due: $1,200" forever — including on the copy they download from
+   * their own dashboard weeks after paying. Nothing regenerated it, because
+   * nothing ever had a reason to look at it again after the send.
+   *
+   * Best-effort and after the ledger, for the same reason as the receipt
+   * above: the money is already recorded, and throwing over a document that
+   * can be rebuilt by pressing a button would make Stripe redeliver an event
+   * whose real work is done.
+   */
+  if (invoiceId) {
+    try {
+      const settledInvoice = await prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        select: {
+          id: true,
+          number: true,
+          description: true,
+          lineItems: true,
+          createdAt: true,
+          paidAt: true,
+          client: { select: { company: true, contactName: true } },
+        },
+      });
+      if (settledInvoice?.paidAt) {
+        await restoreInvoicePdfAsPaid(prisma, settledInvoice, settledInvoice.paidAt);
+      }
+    } catch (pdfError) {
+      console.error(`Receipt PDF for invoice ${invoiceId} was not rebuilt:`, pdfError);
+    }
   }
 
   console.log(`Existing-project payment: project=${projectId} amount=${amountPaid}`);
