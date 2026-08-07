@@ -57,6 +57,15 @@ export async function POST(
     const siteUrl = resolveSiteUrl();
 
     const paymentLink = await stripe.paymentLinks.create({
+      // A Payment Link is reusable and permanent unless told otherwise — it
+      // never expires and Stripe will take money through it every time it is
+      // opened. That is the double-collection window this codebase closes
+      // carefully everywhere it uses Checkout Sessions ("two live links for
+      // one instalment") and left wide open here: the invoice is marked paid
+      // once, because that update is scoped to a still-open row, while the
+      // card is charged on every completion. A forwarded email, a back
+      // button, or a client revisiting the link next month all collect again.
+      restrictions: { completed_sessions: { limit: 1 } },
       after_completion: {
         type: 'redirect',
         redirect: { url: `${siteUrl}/checkout/success` },
