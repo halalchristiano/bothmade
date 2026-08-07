@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2 } from 'lucide-react';
-import { Badge, Card, Kicker, PageIn, PageTitle } from '@/components/admin/ui';
+import { Badge, Card, Kicker, LoadError, PageIn, PageTitle } from '@/components/admin/ui';
 
 interface ClientRow {
   id: string;
@@ -38,25 +38,37 @@ export default function AdminClientsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+      /*
+       * "No X found" is a claim about the data, and a failed fetch is not
+       * entitled to make it. See LoadError in components/admin/ui.
+       */
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/admin/clients');
+      if (response.status === 401) {
+        router.push('/admin/login');
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        setFailed(true);
+        return;
+      }
+      setClients(data.clients ?? []);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const response = await fetch('/api/admin/clients');
-        if (response.status === 401) {
-          router.push('/admin/login');
-          return;
-        }
-        const data = await response.json();
-        if (data.success) {
-          setClients(data.clients);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
     load();
-  }, [router]);
+  }, [load]);
 
   const archivedCount = useMemo(() => clients.filter((c) => c.archivedAt).length, [clients]);
 
@@ -107,7 +119,11 @@ export default function AdminClientsPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {failed ? (
+        <Card className="p-4">
+          <LoadError what="the client list" onRetry={load} />
+        </Card>
+      ) : filtered.length === 0 ? (
         <Card className="p-12 text-center text-white/40">
           No clients found.
         </Card>

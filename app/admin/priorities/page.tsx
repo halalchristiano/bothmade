@@ -15,7 +15,7 @@ import {
   Undo2,
   PenLine,
 } from 'lucide-react';
-import { PageIn, PageTitle, Card, Kicker } from '@/components/admin/ui';
+import { Card, Kicker, LoadError, PageIn, PageTitle } from '@/components/admin/ui';
 
 /**
  * Priorities: the one list of work that needs a person today.
@@ -133,6 +133,7 @@ export default function PrioritiesPage() {
   const [rows, setRows] = useState<PriorityRow[] | null>(null);
   const [snoozed, setSnoozed] = useState<OpsStats['snoozed']>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -142,7 +143,18 @@ export default function PrioritiesPage() {
         return;
       }
       const data = await res.json();
-      if (!data.success) return;
+      if (!res.ok || !data?.success) {
+        /*
+         * This used to be a bare `return`, leaving `rows` at its initial
+         * null — which is the loading sentinel, so the page sat on
+         * "Loading priorities…" for as long as anybody left it open. A
+         * spinner that never resolves is the one failure state with no
+         * recovery in it at all: nothing to read, nothing to press.
+         */
+        setFailed(true);
+        setRows([]);
+        return;
+      }
       const stats: OpsStats = data.stats;
 
       // Every project gets at most one row, in the band that matters most
@@ -238,7 +250,11 @@ export default function PrioritiesPage() {
 
       setRows(out);
       setSnoozed(stats.snoozed ?? []);
+      setFailed(false);
     } catch {
+      // An empty list here reads as "nothing needs you right now", which is a
+      // sentence this page should only ever say when it knows it is true.
+      setFailed(true);
       setRows([]);
     }
   }, [router]);
@@ -292,12 +308,20 @@ export default function PrioritiesPage() {
       <Kicker className="mb-2">Delivery</Kicker>
       <PageTitle icon={ListChecks} title="Priorities" />
       <p className="text-sm text-white/45 mt-1 mb-6">
-        {rows.length === 0
+        {failed
+          ? 'This list could not be loaded — it is not a quiet day, it is a failed request.'
+          : rows.length === 0
           ? 'Nothing needs you right now.'
           : `${rows.length} ${rows.length === 1 ? 'project needs' : 'projects need'} attention, most urgent first.`}
       </p>
 
-      {grouped.length === 0 ? (
+      {failed && (
+        <div className="mb-4">
+          <LoadError what="the priority list" onRetry={load} />
+        </div>
+      )}
+
+      {failed ? null : grouped.length === 0 ? (
         <Card className="p-12 text-center text-white/40">Everything&apos;s current. Nice.</Card>
       ) : (
         <div className="space-y-8">

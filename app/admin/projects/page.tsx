@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { amountPaidTowardProject, projectBalance } from '@/lib/billing';
 import { AlertTriangle, FolderKanban, MessageSquare, Plus } from 'lucide-react';
-import { Badge, Card, Kicker, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { Badge, Card, Kicker, LoadError, matchesSearch, PageIn, PageTitle, SearchFilter } from '@/components/admin/ui';
 
 interface ProjectRow {
   id: string;
@@ -188,31 +188,42 @@ export default function AdminProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'attention' | 'newest' | 'stalest'>('attention');
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const query = statusFilter !== 'all' ? `?status=${statusFilter}` : '';
-        const response = await fetch(`/api/admin/projects${query}`);
-        if (response.status === 401) {
-          router.push('/admin/login');
-          return;
-        }
-        const data = await response.json();
-        if (data.success) {
-          setProjects(data.projects);
-        }
-      } finally {
-        setLoading(false);
+      /*
+       * "No X found" is a claim about the data, and a failed fetch is not
+       * entitled to make it. See LoadError in components/admin/ui.
+       */
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const query = statusFilter !== 'all' ? `?status=${statusFilter}` : '';
+      const response = await fetch(`/api/admin/projects${query}`);
+      if (response.status === 401) {
+        router.push('/admin/login');
+        return;
       }
-    };
-    load();
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        setFailed(true);
+        return;
+      }
+      setProjects(data.projects ?? []);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, [router, statusFilter]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const shown = projects
     .filter((p) => matchesSearch(search, p.name, p.client.company, p.client.email, p.status))
@@ -292,6 +303,10 @@ export default function AdminProjectsPage() {
         <div className="flex min-h-[60vh] items-center justify-center">
           <p className="text-sm text-white/40">Loading projects…</p>
         </div>
+      ) : failed ? (
+        <Card className="p-4">
+          <LoadError what="the project list" onRetry={load} />
+        </Card>
       ) : shown.length === 0 ? (
         <Card className="p-12 text-center text-white/40">
           {search ? `Nothing matches "${search}".` : 'No projects found.'}

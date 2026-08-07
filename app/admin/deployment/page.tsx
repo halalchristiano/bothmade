@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, ExternalLink, Globe, Rocket, ShieldCheck } from 'lucide-react';
-import { Card, EmptyState, Kicker, PageIn, PageTitle } from '@/components/admin/ui';
+import { Card, EmptyState, Kicker, LoadError, PageIn, PageTitle } from '@/components/admin/ui';
 import { LANE_COPY, domainAccessLabel, type LaunchLane } from '@/lib/launch';
 
 /**
@@ -93,26 +93,39 @@ export default function DeploymentPage() {
   const router = useRouter();
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  /*
+   * Same reason as the design queue: `rows` starts `[]`, and a failed request
+   * left it that way — so a board that could not load announced "Projects
+   * appear here once they reach Build. Nothing has yet." to a studio that may
+   * have had three sites waiting to go live.
+   */
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/deployment');
+      if (res.status === 401) {
+        router.push('/admin/login');
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setFailed(true);
+        return;
+      }
+      setRows(data.projects ?? []);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/admin/deployment');
-        if (res.status === 401) {
-          router.push('/admin/login');
-          return;
-        }
-        const data = await res.json();
-        if (!cancelled && data?.success) setRows(data.projects ?? []);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -132,7 +145,9 @@ export default function DeploymentPage() {
         <Kicker className="mb-2">Delivery</Kicker>
         <PageTitle icon={Rocket} title="Deployment" />
         <p className="mt-1 text-sm text-white/45">
-          {rows.length === 0
+          {failed
+            ? 'The board could not be loaded — what is below may be incomplete.'
+            : rows.length === 0
             ? 'Nothing is close enough to launch to be worth watching yet.'
             : shippable > 0
               ? `${shippable} ${shippable === 1 ? 'project is' : 'projects are'} clear to go live right now.`
@@ -142,7 +157,13 @@ export default function DeploymentPage() {
         </p>
       </div>
 
-      {rows.length === 0 && (
+      {failed && (
+        <Card className="p-4">
+          <LoadError what="the launch board" onRetry={load} />
+        </Card>
+      )}
+
+      {!failed && rows.length === 0 && (
         <Card className="p-4">
           <EmptyState
             icon={Rocket}

@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ChevronRight, Search, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Search, X, type LucideIcon } from 'lucide-react';
 
 /*
  * Design language, take two. The mono-uppercase-label-on-every-box style
@@ -360,6 +360,53 @@ export function EmptyState({
     <div className="flex flex-col items-center justify-center text-center py-8 text-white/30">
       <Icon size={20} strokeWidth={1.5} className="mb-2 opacity-40" />
       <p className="text-sm">{text}</p>
+    </div>
+  );
+}
+
+/**
+ * "This did not load", which is a different sentence from "there is nothing".
+ *
+ * Every queue on the Delivery pages fetched once, kept its rows in a `[]` that
+ * a failed request never replaced, and rendered the empty state — so an API
+ * that was down said "Nothing in design right now" and "Projects appear here
+ * once they reach Build. Nothing has yet." Confident, specific, and wrong.
+ *
+ * These are work queues. Empty is not a neutral display state on them, it is
+ * an instruction: it means today's design round is nobody's problem and no
+ * launch is waiting. A page that can say that because a fetch failed is worse
+ * than a page that shows a spinner forever, because the spinner at least
+ * makes somebody reload.
+ *
+ * Retry rather than a bare apology: a queue nobody can reload is a page you
+ * leave, and the thing that failed is usually one dropped request.
+ */
+export function LoadError({
+  what,
+  onRetry,
+}: {
+  /** Names the thing that failed, e.g. "the design queue". */
+  what: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col items-center justify-center rounded-xl border border-amber-400/25 bg-amber-400/[0.06] py-8 text-center"
+    >
+      <AlertTriangle size={20} strokeWidth={1.5} className="mb-2 text-amber-300/80" />
+      <p className="text-sm font-medium text-amber-100/90">Could not load {what}.</p>
+      <p className="mt-1 max-w-sm px-6 text-xs text-white/45">
+        This is a loading problem, not an empty list — there may well be work here. Nothing has been
+        lost.
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/5"
+      >
+        Try again
+      </button>
     </div>
   );
 }

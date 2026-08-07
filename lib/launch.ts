@@ -234,14 +234,35 @@ export function launchReadiness(
   checklist: LaunchChecklist,
   context: LaunchContext
 ): LaunchReadiness {
-  const total = LAUNCH_CHECKS.length;
-  const done = LAUNCH_CHECKS.filter((c) => checklist[c.key]?.done).length;
+  /*
+   * The ring counts the gates nobody ticks, not just the boxes.
+   *
+   * `percent` used to be done-over-LAUNCH_CHECKS while `ready` also depended
+   * on two things that are not checks at all: whether the final instalment
+   * has cleared, and whether a domain has been recorded. So a project with
+   * every box ticked and Payment 3 outstanding drew a full ring and could not
+   * go live — and the ring is the number people scan on the board, in a lane
+   * headed "clear to go live right now".
+   *
+   * Counting the gates makes 100% mean what a full ring should mean: nothing
+   * left in the way. See the invariant pinned in tests/lib/launch-readiness —
+   * percent === 100 implies ready.
+   */
+  const paymentGateApplies = context.hasSchedule !== false;
+  const paymentGateCleared = context.finalInstalmentPaid;
+  const domainRecorded = Boolean(context.domainName?.trim());
+
+  const total = LAUNCH_CHECKS.length + (paymentGateApplies ? 1 : 0) + 1;
+  const done =
+    LAUNCH_CHECKS.filter((c) => checklist[c.key]?.done).length +
+    (paymentGateApplies && paymentGateCleared ? 1 : 0) +
+    (domainRecorded ? 1 : 0);
 
   const blockers: LaunchBlocker[] = LAUNCH_CHECKS.filter(
     (c) => c.blocking && !checklist[c.key]?.done
   ).map((c) => ({ key: c.key, label: c.label, reason: c.hint }));
 
-  if (context.hasSchedule !== false && !context.finalInstalmentPaid) {
+  if (paymentGateApplies && !paymentGateCleared) {
     blockers.unshift({
       key: 'payment-3',
       label: 'The final payment has not cleared',
@@ -250,7 +271,7 @@ export function launchReadiness(
     });
   }
 
-  if (!context.domainName?.trim()) {
+  if (!domainRecorded) {
     blockers.push({
       key: 'domain-name',
       label: 'No domain recorded',

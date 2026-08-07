@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Clock, ExternalLink, CheckCircle2, MessageSquare, PenTool, Send } from 'lucide-react';
-import { Card, EmptyState, Kicker, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
+import { Card, EmptyState, Kicker, LoadError, PageIn, PageTitle, SearchFilter, matchesSearch } from '@/components/admin/ui';
 import type { DesignStep } from '@/app/api/admin/design-queue/route';
 
 /**
@@ -83,25 +83,43 @@ export default function DesignPage() {
   const router = useRouter();
   const [rows, setRows] = useState<DesignRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch('/api/admin/design-queue');
-        if (res.status === 401) {
-          router.push('/admin/login');
-          return;
-        }
-        const data = await res.json();
-        if (data.success) setRows(data.projects);
-      } finally {
-        setLoading(false);
+  /*
+   * A failed load is its own state, not an empty queue.
+   *
+   * `rows` starts `[]` and a failed request never replaced it, so a request
+   * that 500'd or never arrived rendered "Nothing in design right now" — on
+   * the screen whose whole job is to say who is waiting on us.
+   */
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/design-queue');
+      if (res.status === 401) {
+        router.push('/admin/login');
+        return;
       }
-    };
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setFailed(true);
+        return;
+      }
+      setRows(data.projects ?? []);
+      setFailed(false);
+    } catch {
+      // Network gone, or a body that was not JSON. Either way we do not know
+      // what is in the queue, and saying "nothing" would be a guess.
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
+
+  useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [load]);
 
   if (loading) {
     return (
@@ -123,7 +141,9 @@ export default function DesignPage() {
         <Kicker className="mb-2">Delivery</Kicker>
         <PageTitle icon={PenTool} title="Design" />
         <p className="mt-1 text-sm text-white/45">
-          {rows.length === 0
+          {failed
+            ? 'The queue could not be loaded — what is below may be incomplete.'
+            : rows.length === 0
             ? 'No projects in design right now.'
             : owed > 0
               ? `${owed} waiting on us to send the next round — those are at the top. Their review clock has stopped, and so has the payment gate behind it.`
@@ -141,7 +161,13 @@ export default function DesignPage() {
         />
       </div>
 
-      {visible.length === 0 && (
+      {failed && (
+        <Card className="p-4">
+          <LoadError what="the design queue" onRetry={load} />
+        </Card>
+      )}
+
+      {!failed && visible.length === 0 && (
         <Card className="p-4">
           <EmptyState icon={PenTool} text="Nothing in design right now." tone="clear" />
         </Card>

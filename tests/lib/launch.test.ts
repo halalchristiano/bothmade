@@ -134,3 +134,78 @@ describe('launchLane', () => {
     expect(launchLane({ liveUrl: 'https://x.com' })).toBe('live');
   });
 });
+
+/**
+ * The ring on the launch board, and the promise a full one makes.
+ *
+ * `percent` was done-over-LAUNCH_CHECKS while `ready` also turned on two
+ * things nobody ticks: whether the final instalment cleared, and whether a
+ * domain was ever recorded. So a project with every box ticked and Payment 3
+ * outstanding drew a 100% ring and could not legally go live — under a lane
+ * heading that reads "clear to go live right now", next to a number that is
+ * the first thing anyone looks at.
+ *
+ * The invariant below is the fix stated as a rule: a full ring means nothing
+ * is in the way. It holds across every combination rather than the two or
+ * three somebody thought of.
+ */
+describe('the readiness ring agrees with the verdict', () => {
+  const blocking = LAUNCH_CHECKS.filter((c) => c.blocking).map((c) => c.key);
+
+  it('never shows a full ring on a project that cannot go live', () => {
+    for (const finalInstalmentPaid of [true, false]) {
+      for (const domainName of ['havis.co.uk', '']) {
+        for (const ticks of [{}, Object.fromEntries(blocking.map((k) => [k, { done: true }])), allDone]) {
+          const verdict = launchReadiness(ticks, { finalInstalmentPaid, domainName });
+          if (verdict.percent === 100) {
+            expect(verdict.ready).toBe(true);
+            expect(verdict.blockers).toEqual([]);
+          }
+        }
+      }
+    }
+  });
+
+  // The exact shape of the bug: every box ticked, the money still out.
+  it('does not read 100% while the final payment is outstanding', () => {
+    const verdict = launchReadiness(allDone, { ...paid, finalInstalmentPaid: false });
+
+    expect(verdict.ready).toBe(false);
+    expect(verdict.percent).toBeLessThan(100);
+  });
+
+  it('does not read 100% while no domain has been recorded', () => {
+    const verdict = launchReadiness(allDone, { finalInstalmentPaid: true, domainName: '  ' });
+
+    expect(verdict.ready).toBe(false);
+    expect(verdict.percent).toBeLessThan(100);
+  });
+
+  it('still reaches 100% once the gates are actually cleared', () => {
+    expect(launchReadiness(allDone, paid).percent).toBe(100);
+  });
+
+  /**
+   * A project with no schedule has no Payment 3 to wait for, so the gate is
+   * not counted against it — otherwise it could never reach a full ring for
+   * a reason that does not apply to it.
+   */
+  it('does not hold a no-schedule project below 100% over a payment it will never make', () => {
+    const verdict = launchReadiness(allDone, {
+      finalInstalmentPaid: false,
+      hasSchedule: false,
+      domainName: 'havis.co.uk',
+    });
+
+    expect(verdict.ready).toBe(true);
+    expect(verdict.percent).toBe(100);
+  });
+
+  it('moves the ring when a gate clears, not only when a box is ticked', () => {
+    const before = launchReadiness(allDone, { ...paid, finalInstalmentPaid: false }).percent;
+    const after = launchReadiness(allDone, paid).percent;
+
+    // Money arriving is progress toward launch. The old ring could not say so.
+    expect(after).toBeGreaterThan(before);
+  });
+});
