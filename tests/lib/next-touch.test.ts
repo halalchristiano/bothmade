@@ -158,12 +158,23 @@ describe('how a day is written', () => {
     expect(touchDay(inDays(-4), NOW)).toBe('4 days ago');
   });
 
+  /*
+   * Derived, not hardcoded. touchDay renders in local time on purpose — a rep
+   * reads their own Wednesday, not UTC's — so pinning the strings to /Wed/ and
+   * /12/ made this pass only for machines within a few hours of Greenwich. At
+   * UTC+14 the same instant is already Thursday the 13th and the test failed
+   * on a function that was working correctly.
+   *
+   * Locale decides the order; what matters is that all three parts are there
+   * and describe the right local day.
+   */
   it('gives a weekday and a date once it is far enough out', () => {
-    // Locale decides the order; what matters is that all three parts are there.
-    const out = touchDay(inDays(5), NOW);
-    expect(out).toMatch(/Wed/);
-    expect(out).toMatch(/Aug/);
-    expect(out).toMatch(/12/);
+    const target = inDays(5);
+    const out = touchDay(target, NOW);
+
+    expect(out).toMatch(new RegExp(target.toLocaleDateString(undefined, { weekday: 'short' })));
+    expect(out).toMatch(new RegExp(target.toLocaleDateString(undefined, { month: 'short' })));
+    expect(out).toMatch(new RegExp(`\\b${target.getDate()}\\b`));
   });
 
   /**

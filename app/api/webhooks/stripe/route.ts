@@ -562,7 +562,17 @@ async function findOfferBySubscription(invoiceOrSubscriptionId: string | null) {
   });
 }
 
-/** "August 4 – September 4, 2026", or null when Stripe sent no period. */
+/**
+ * "August 4 – September 4, 2026", or null when Stripe sent no period.
+ *
+ * Read in UTC, because that is what the number means. Stripe sends the period
+ * as a UTC instant on a day boundary, and rendering it in whatever timezone
+ * the server happens to sit in walks it to the day before: a billing period
+ * starting midnight UTC on the 4th prints as the 3rd anywhere west of
+ * Greenwich. This string goes on an invoice email and into the PDF, so it is
+ * the client's record of what they paid for — it cannot depend on where the
+ * process ran.
+ */
 function periodLabel(invoice: Stripe.Invoice): string | null {
   if (!invoice.period_start || !invoice.period_end) return null;
   const format = (seconds: number) =>
@@ -570,6 +580,7 @@ function periodLabel(invoice: Stripe.Invoice): string | null {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+      timeZone: 'UTC',
     });
   return `${format(invoice.period_start)} – ${format(invoice.period_end)}`;
 }
