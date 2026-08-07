@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { updatedAt: 'desc' },
         take: 6,
+        // Six columns of the hundred-odd on a Lead. This runs on every
+        // debounced keystroke, so the whole row was crossing the wire four
+        // times a word to fill in a title and a subtitle.
+        select: { id: true, company: true, contactName: true, email: true, phone: true, updatedAt: true },
       }),
       prisma.client.findMany({
         where: {
@@ -38,47 +42,64 @@ export async function GET(request: NextRequest) {
             { company: { contains: q, mode: 'insensitive' } },
             { contactName: { contains: q, mode: 'insensitive' } },
             { email: { contains: q, mode: 'insensitive' } },
+            // The same phone match the leads above get.
+            //
+            // It was missing here, which meant searching a number found
+            // people who had not bought anything and not the ones who had:
+            // an inbound call from a paying client returned nothing at all.
+            // Clients carry a phone column like leads do, and the moment you
+            // most need a name on a ringing number is when it belongs to
+            // somebody with work in progress.
+            ...(phoneDigits ? [{ phone: { contains: phoneDigits } }] : []),
+            { phone: { contains: q } },
           ],
         },
         orderBy: { updatedAt: 'desc' },
         take: 6,
+        select: { id: true, company: true, contactName: true, email: true, phone: true, updatedAt: true },
       }),
       prisma.project.findMany({
         where: { name: { contains: q, mode: 'insensitive' } },
-        include: { client: { select: { company: true } } },
         orderBy: { updatedAt: 'desc' },
         take: 6,
+        select: { id: true, name: true, updatedAt: true, client: { select: { company: true } } },
       }),
       prisma.teamNote.findMany({
         where: { content: { contains: q, mode: 'insensitive' } },
-        include: { project: { select: { id: true, name: true, client: { select: { company: true } } } } },
         take: 6,
         orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+          project: { select: { id: true, name: true, client: { select: { company: true } } } },
+        },
       }),
     ]);
 
+    // When the query was a number, lead with the phone — otherwise the result
+    // gives no clue why it matched.
+    const matchedOnPhone = (phone: string | null) =>
+      phoneDigits.length >= 3 && !!phone && phone.replace(/[^0-9]/g, '').includes(phoneDigits);
+
     const results = [
-      ...leads.map((l) => {
-        // When the query was a number, lead with the phone — otherwise the
-        // result gives no clue why it matched.
-        const matchedOnPhone =
-          phoneDigits.length >= 3 && !!l.phone && l.phone.replace(/[^0-9]/g, '').includes(phoneDigits);
-        return {
-          type: 'lead' as const,
-          id: l.id,
-          title: l.company,
-          subtitle: matchedOnPhone
-            ? [l.phone, l.contactName].filter(Boolean).join(' · ')
-            : l.contactName || l.email || 'Lead',
-          href: `/admin/leads/${l.id}`,
-          updatedAt: l.updatedAt,
-        };
-      }),
+      ...leads.map((l) => ({
+        type: 'lead' as const,
+        id: l.id,
+        title: l.company,
+        subtitle: matchedOnPhone(l.phone)
+          ? [l.phone, l.contactName].filter(Boolean).join(' · ')
+          : l.contactName || l.email || 'Lead',
+        href: `/admin/leads/${l.id}`,
+        updatedAt: l.updatedAt,
+      })),
       ...clients.map((c) => ({
         type: 'client' as const,
         id: c.id,
         title: c.company,
-        subtitle: c.contactName || c.email,
+        subtitle: matchedOnPhone(c.phone)
+          ? [c.phone, c.contactName].filter(Boolean).join(' · ')
+          : c.contactName || c.email,
         href: `/admin/clients/${c.id}`,
         updatedAt: c.updatedAt,
       })),
