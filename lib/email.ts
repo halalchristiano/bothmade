@@ -10,6 +10,7 @@ import { captureForPreview } from '@/lib/email-preview';
 import { type MockupKind } from '@/lib/mockup-kinds';
 export { MOCKUP_KINDS, readMockupKind, type MockupKind } from '@/lib/mockup-kinds';
 import { firstNameOf, personalize, splitDraft } from '@/lib/cold-email';
+import { RESET_TOKEN_TTL_LABEL } from '@/lib/password-policy';
 import {
   esc,
   escMultiline,
@@ -1104,7 +1105,7 @@ export async function sendClientSignedContractEmail(input: {
 export async function sendPasswordResetEmail(toEmail: string, resetUrl: string): Promise<boolean> {
   const bodyHtml = `
     <p>We got a request to reset the password on this account. Click below to choose a new one.</p>
-    <p style="font-size:13px; color:rgba(255,255,255,0.5);">This link expires in 24 hours. If you didn't request this, you can safely ignore this email — your password won't change.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">This link expires in ${RESET_TOKEN_TTL_LABEL}. If you didn't request this, you can safely ignore this email — your password won't change.</p>
   `;
 
   return sendEmail({
@@ -2424,6 +2425,71 @@ export async function sendDesignDirectionSignedEmail(input: {
       bodyHtml,
       ctaLabel: 'Open your dashboard',
       ctaUrl: input.dashboardUrl,
+    }),
+  });
+}
+
+/**
+ * "Your password was just changed." Sent after the fact, to the account.
+ *
+ * The one email in the set that exists to be unwelcome. Every other path
+ * through this file tells somebody about something they did; this one is
+ * addressed to the case where they did not do it — a mailbox borrowed for
+ * ten minutes, a shared laptop, a password typed into the wrong site. A
+ * reset that goes through in silence gives an attacker the account and the
+ * owner no reason to look, and the owner is the only person who can tell the
+ * difference in time to matter.
+ *
+ * Deliberately has no button. Every other security email in the world that
+ * says "if this wasn't you, click here" has taught people to click the link
+ * in the security email, which is the exact reflex phishing depends on. This
+ * one names an address to write to and asks them to type it, or to reach us
+ * however they normally do.
+ *
+ * Sent to the account's own address, which is the address that was just used
+ * to change the password — so on the bad path it lands in a mailbox the
+ * attacker may also hold. That is not a reason to skip it: they do not always
+ * hold it, they do not always still hold it, and a copy sitting in Sent is
+ * evidence of when this happened.
+ */
+export async function sendPasswordChangedEmail(input: {
+  toEmail: string;
+  /** "reset from a link" or "changed in settings" — they are different stories. */
+  via: 'reset' | 'settings';
+  changedAtLabel: string;
+}): Promise<boolean> {
+  const how =
+    input.via === 'reset'
+      ? 'using a password-reset link sent to this address'
+      : 'from your account settings, using your existing password';
+
+  const bodyHtml = `
+    <p>The password on your Bothmade account was changed on
+       <strong style="color:#fff;">${esc(input.changedAtLabel)}</strong>, ${how}.</p>
+    <p>If that was you, there is nothing to do — this is only a record of it.</p>
+    <div style="background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.25); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">If it was not you</p>
+      <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.75);">
+        Somebody else has access to this account. Write to
+        <span style="color:#fff;">${esc(COMPANY_EMAIL)}</span> straight away — type the address in
+        yourself rather than following a link from any email, including this one — and we will lock
+        it while we sort it out.
+      </p>
+    </div>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">
+      Everyone who was signed in has been signed out, on every device. That is deliberate: a
+      password change is how somebody takes an account back, and it would not take it back if the
+      other sessions kept working.
+    </p>
+  `;
+
+  return sendEmail({
+    to: input.toEmail,
+    subject: 'Your Bothmade password was changed',
+    html: renderShell({
+      eyebrow: 'Security',
+      title: 'Your password was changed',
+      bodyHtml,
     }),
   });
 }

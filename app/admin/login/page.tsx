@@ -120,8 +120,9 @@ export default function AdminLoginPage() {
                 <>
                   <form onSubmit={handlePasswordReset} className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-white/70">Email</label>
+                      <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="admin-reset-email">Email</label>
                       <input
+                        id="admin-reset-email"
                         type="email"
                         value={resetEmail}
                         onChange={(e) => setResetEmail(e.target.value)}
@@ -162,8 +163,9 @@ export default function AdminLoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Email</label>
+              <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="admin-email">Email</label>
               <input
+                id="admin-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -173,8 +175,9 @@ export default function AdminLoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Password</label>
+              <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="admin-password">Password</label>
               <input
+                id="admin-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

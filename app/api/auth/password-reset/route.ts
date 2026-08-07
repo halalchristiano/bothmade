@@ -3,8 +3,8 @@ import { resolveSiteUrl } from '@/lib/site-url';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
-import { sendPasswordResetEmail } from '@/lib/email';
-import { checkPasswordStrength } from '@/lib/password-policy';
+import { sendPasswordChangedEmail, sendPasswordResetEmail } from '@/lib/email';
+import { checkPasswordStrength, RESET_TOKEN_TTL_MS } from '@/lib/password-policy';
 import { RATE_LIMITS, checkRateLimit, clientIp, enforceRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 /**
@@ -18,7 +18,13 @@ import { RATE_LIMITS, checkRateLimit, clientIp, enforceRateLimit, rateLimitRespo
  * we emailed, with a real expiry and single-use enforcement.
  */
 
-const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour — a reset link is used within minutes or not at all
+/**
+ * Shared with the email that states it, because the two disagreed: this was a
+ * one-hour token while the mail said "expires in 24 hours", so anyone who read
+ * that and came back after lunch met "Invalid or expired token". See
+ * lib/password-policy.ts.
+ */
+const TOKEN_TTL_MS = RESET_TOKEN_TTL_MS;
 
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -187,6 +193,27 @@ export async function PUT(request: NextRequest) {
         data: { password: hashedPassword, sessionsValidFrom: revokedAt },
       });
     }
+
+    /*
+     * Tell the account it just happened.
+     *
+     * This is the one flow where nobody being told is the whole problem. A
+     * reset link is all it takes to own an account, and until now a
+     * successful one was completely silent: the owner's next sign-in simply
+     * failed, with nothing anywhere to say when it changed or that it was
+     * changed at all. Sent after the password is committed, so it can only
+     * ever report something that actually happened, and best-effort — the
+     * reset has already succeeded and must not be undone by a mail provider.
+     */
+    await sendPasswordChangedEmail({
+      toEmail: record.email,
+      via: 'reset',
+      changedAtLabel: revokedAt.toLocaleString('en-US', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC',
+    }).catch((error) => console.error(`Password-changed notice failed for ${record.email}:`, error));
 
     return NextResponse.json(
       { success: true, message: 'Password reset successful' },

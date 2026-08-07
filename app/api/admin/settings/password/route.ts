@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { createToken, hashPassword, setAuthCookie, verifyPassword } from '@/lib/auth';
 import { checkPasswordStrength } from '@/lib/password-policy';
+import { sendPasswordChangedEmail } from '@/lib/email';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -47,6 +48,28 @@ export async function PATCH(request: NextRequest) {
         type: 'user',
       })
     );
+
+
+    /*
+     * And the account is told, after the fact.
+     *
+     * A password change is what somebody does when they think a session was
+     * stolen — but it is equally what the thief does once they are in, and
+     * the two are indistinguishable from the inside. The owner is the only
+     * person who can tell them apart, and only if they hear about it.
+     * Best-effort: the password is already changed and the other sessions
+     * are already gone, so a mail failure must not report otherwise.
+     */
+    await sendPasswordChangedEmail({
+      toEmail: session.email,
+      via: 'settings',
+      changedAtLabel:
+        new Date().toLocaleString('en-US', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+          timeZone: 'UTC',
+        }) + ' UTC',
+    }).catch((error) => console.error('Password-changed notice failed:', error));
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

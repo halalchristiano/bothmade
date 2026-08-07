@@ -125,10 +125,11 @@ export default function ClientLoginPage() {
               ) : (
                 <form onSubmit={handlePasswordReset} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-white/70">
+                    <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="reset-email">
                       Email Address
                     </label>
                     <input
+                      id="reset-email"
                       type="email"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
@@ -169,10 +170,11 @@ export default function ClientLoginPage() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-white/70">
+                  <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="login-email">
                     Email Address
                   </label>
                   <input
+                    id="login-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -183,8 +185,9 @@ export default function ClientLoginPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-white/70">Password</label>
+                  <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="login-password">Password</label>
                   <input
+                    id="login-password"
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

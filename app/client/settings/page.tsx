@@ -261,8 +261,9 @@ function ClientSettingsInner() {
 
           <form onSubmit={handleChangePassword} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Current Password</label>
+              <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="current-password">Current Password</label>
               <input
+                id="current-password"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -271,8 +272,9 @@ function ClientSettingsInner() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">New Password</label>
+              <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="new-password">New Password</label>
               <input
+                id="new-password"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -282,8 +284,9 @@ function ClientSettingsInner() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Confirm New Password</label>
+              <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="confirm-password">Confirm New Password</label>
               <input
+                id="confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
