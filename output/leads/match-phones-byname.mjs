@@ -26,14 +26,18 @@ const leads=[];
 for(const f of runs) for(const r of parseCsv(readFileSync(dir+f,'utf8')))
   if(!(r.phone||'').trim() && !done.has(norm(r.company))) leads.push(r);
 
-const harvest=readFileSync('p3.tsv','utf8').trim().split('\n').map(l=>l.split('\t'))
+const harvest=readFileSync('p4.tsv','utf8').trim().split('\n').map(l=>l.split('\t'))
   .filter(p=>p.length===2).map(([name,phone])=>({name,phone,key:norm(name)}));
 
 const out=[],used=new Set();
 for(const lead of leads){
   const k=norm(lead.company);
-  const hit=harvest.filter(h=>h.key.length>=8 && (k.includes(h.key)||h.key.includes(k)))
-    .sort((a,b)=>b.key.length-a.key.length)[0];
+  // An exact match is safe at any length — the floor exists to stop a short
+  // name being CONTAINED in an unrelated longer one, which is a different
+  // failure. Without this, "Renov8" (six characters) could never match its
+  // own lead.
+  const hit=harvest.filter(h=>h.key===k || (h.key.length>=8 && (k.includes(h.key)||h.key.includes(k))))
+    .sort((a,b)=>(a.key===k?1e9:b.key.length)-(b.key===k?1e9:a.key.length))[0];
   if(!hit||used.has(k)) continue;
   used.add(k);
   out.push({company:lead.company,email:lead.email,phone:hit.phone,matched:hit.name});
