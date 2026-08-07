@@ -268,9 +268,25 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/** The page shows this many rows; the totals below are computed over all of them. */
+const LIST_LIMIT = 100;
+
 /**
  * Every invoice raised, newest first — the studio's own copy of the record,
  * and what the billing page lists.
+ *
+ * ## Why the totals are computed here and not on the screen
+ *
+ * The list is capped at a hundred rows, and adding up what is on screen would
+ * silently start under-reporting the day the hundred-and-first invoice is
+ * raised — with no visible change, because a wrong total looks exactly like a
+ * right one. The only question anybody opens this page to answer is "how much
+ * is outstanding", so that number has to be true about the books rather than
+ * about the page.
+ *
+ * Refunds are reported apart from payments rather than netted off. "Paid" and
+ * "paid then given back" are different sentences to whoever is reading, and a
+ * single net figure hides the second one entirely.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -280,18 +296,72 @@ export async function GET(request: NextRequest) {
     }
 
     const projectId = request.nextUrl.searchParams.get('projectId');
-    const invoices = await prisma.invoice.findMany({
-      where: projectId ? { projectId } : undefined,
-      include: {
-        client: { select: { id: true, company: true, email: true } },
-        project: { select: { id: true, name: true } },
-        issuedBy: { select: { name: true, email: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    const where = projectId ? { projectId } : undefined;
 
-    return NextResponse.json({ success: true, invoices }, { status: 200 });
+    /*
+     * The filter is applied here, not on the rows that come back.
+     *
+     * Filtering a hundred newest-first rows in the browser answers "which of
+     * the recent ones are unpaid", and the question is "which are unpaid".
+     * The invoice sitting there since March is exactly the one worth finding
+     * and exactly the one a recency cap drops — so each bucket gets its own
+     * hundred rather than sharing one.
+     */
+    const status = request.nextUrl.searchParams.get('status');
+    const listWhere =
+      status === 'open' || status === 'paid' || status === 'void'
+        ? { ...(where ?? {}), status }
+        : where;
+
+    const [invoices, byStatus, refunded, total, listTotal] = await Promise.all([
+      prisma.invoice.findMany({
+        where: listWhere,
+        include: {
+          client: { select: { id: true, company: true, email: true } },
+          project: { select: { id: true, name: true } },
+          issuedBy: { select: { name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: LIST_LIMIT,
+      }),
+      prisma.invoice.groupBy({
+        by: ['status'],
+        where,
+        _sum: { amountCents: true },
+        _count: { _all: true },
+      }),
+      prisma.invoice.aggregate({ where, _sum: { refundedCents: true } }),
+      prisma.invoice.count({ where }),
+      prisma.invoice.count({ where: listWhere }),
+    ]);
+
+    const bucket = (status: string) => byStatus.find((row) => row.status === status);
+    const open = bucket('open');
+    const paid = bucket('paid');
+
+    return NextResponse.json(
+      {
+        success: true,
+        invoices,
+        totals: {
+          // The only figure that is a to-do list: raised, not cancelled, not
+          // paid. Everything else on this page is history.
+          outstandingCents: open?._sum.amountCents ?? 0,
+          outstandingCount: open?._count._all ?? 0,
+          paidCents: paid?._sum.amountCents ?? 0,
+          paidCount: paid?._count._all ?? 0,
+          refundedCents: refunded._sum.refundedCents ?? 0,
+          count: total,
+        },
+        // How many rows the current filter has, so the screen can say what it
+        // is showing out of what. Said out loud rather than left to be
+        // discovered: a list that quietly stops at a hundred reads as "that is
+        // all of them".
+        matching: listTotal,
+        truncated: listTotal > invoices.length,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('List invoices error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

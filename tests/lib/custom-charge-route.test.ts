@@ -10,7 +10,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const prisma = {
   project: { findUnique: vi.fn() },
-  invoice: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), count: vi.fn(), findMany: vi.fn() },
+  invoice: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    count: vi.fn(),
+    findMany: vi.fn(),
+    groupBy: vi.fn(),
+    aggregate: vi.fn(),
+  },
   user: { findUnique: vi.fn() },
 };
 
@@ -37,7 +45,7 @@ vi.mock('@/lib/email', () => ({
   sendInvoiceRecordEmail: vi.fn(async () => true),
 }));
 
-const { POST } = await import('@/app/api/admin/billing/charges/route');
+const { POST, GET } = await import('@/app/api/admin/billing/charges/route');
 const { sendCustomChargeEmail, sendInvoiceRecordEmail } = await import('@/lib/email');
 const { buildCustomChargeInvoicePdf } = await import('@/lib/invoice-pdf');
 
@@ -297,5 +305,72 @@ describe('guards', () => {
   it('404s on a project that no longer exists rather than inventing one', async () => {
     prisma.project.findUnique.mockResolvedValue(null);
     expect((await POST(request(CHARGE))).status).toBe(404);
+  });
+});
+
+/**
+ * The ledger's numbers.
+ *
+ * The list is capped at a hundred rows. Adding the money up on screen would
+ * silently start under-reporting the day the hundred-and-first invoice is
+ * raised — with no visible change, because a wrong total looks exactly like a
+ * right one, and "how much is outstanding" is the only question anybody opens
+ * this page to answer.
+ */
+describe('the ledger totals', () => {
+  function listRequest(url = 'https://bothmade.test/api/admin/billing/charges') {
+    return { nextUrl: new URL(url) } as unknown as Parameters<typeof GET>[0];
+  }
+
+  beforeEach(() => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+    prisma.invoice.groupBy.mockResolvedValue([
+      { status: 'open', _sum: { amountCents: 340000 }, _count: { _all: 3 } },
+      { status: 'paid', _sum: { amountCents: 900000 }, _count: { _all: 8 } },
+      { status: 'void', _sum: { amountCents: 50000 }, _count: { _all: 1 } },
+    ]);
+    prisma.invoice.aggregate.mockResolvedValue({ _sum: { refundedCents: 25000 } });
+    prisma.invoice.count.mockResolvedValue(12);
+  });
+
+  it('counts the whole book, not the page', async () => {
+    const body = await (await GET(listRequest())).json();
+
+    expect(body.totals).toMatchObject({
+      outstandingCents: 340000,
+      outstandingCount: 3,
+      paidCents: 900000,
+      paidCount: 8,
+      // Reported apart from paid rather than netted off it — "paid" and "paid
+      // then given back" are different sentences.
+      refundedCents: 25000,
+      count: 12,
+    });
+  });
+
+  it('says when the list stops short rather than letting it read as all of them', async () => {
+    const body = await (await GET(listRequest())).json();
+
+    expect(body.truncated).toBe(true);
+    expect(body.matching).toBe(12);
+  });
+
+  /*
+   * Filtering the hundred newest rows in the browser answers "which of the
+   * recent ones are unpaid". The question is "which are unpaid" — and the one
+   * sitting there since March is exactly what a shared recency cap drops.
+   */
+  it('filters by status in the query, not on the rows that come back', async () => {
+    await GET(listRequest('https://bothmade.test/api/admin/billing/charges?status=open'));
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].where).toMatchObject({ status: 'open' });
+    // The money summary still covers everything — it does not follow the filter.
+    expect(prisma.invoice.groupBy.mock.calls[0][0].where).toBeUndefined();
+  });
+
+  it('ignores a status nobody uses rather than returning an empty ledger', async () => {
+    await GET(listRequest('https://bothmade.test/api/admin/billing/charges?status=nonsense'));
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].where).toBeUndefined();
   });
 });

@@ -8,6 +8,16 @@ import { Badge, BrandButton, Card, CardHeader, EmptyState, Kicker, PageIn, PageT
 import { MAX_CHARGE_CENTS, MIN_CHARGE_CENTS, dollarsToCents } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
+import {
+  FILTER_STATUS,
+  LEDGER_FILTER_LABELS,
+  ageBand,
+  chaseLine,
+  daysOutstanding,
+  matchesQuery,
+  stateTone,
+  type LedgerFilter,
+} from '@/lib/invoice-ledger';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { RefundEstimate } from '@/components/admin/RefundEstimate';
 
@@ -63,6 +73,21 @@ interface LineDraft {
   amount: string;
 }
 
+/**
+ * Computed over every invoice in the books, not over the hundred rows below.
+ * See the GET handler for why: a total added up on screen starts under-
+ * reporting the day the hundred-and-first invoice is raised, and looks
+ * identical to a correct one while it does.
+ */
+interface LedgerTotals {
+  outstandingCents: number;
+  outstandingCount: number;
+  paidCents: number;
+  paidCount: number;
+  refundedCents: number;
+  count: number;
+}
+
 export default function BillingPage() {
   return (
     <Suspense
@@ -97,17 +122,34 @@ function BillingWorkspace() {
   const [result, setResult] = useState<{ number: string; amountLabel: string; warnings: string[] } | null>(null);
 
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [totals, setTotals] = useState<LedgerTotals | null>(null);
+  const [matching, setMatching] = useState(0);
+  const [truncated, setTruncated] = useState(false);
+  // Opens on what needs doing rather than on what happened most recently.
+  const [filter, setFilter] = useState<LedgerFilter>('chase');
+  const [ledgerQuery, setLedgerQuery] = useState('');
 
   const loadInvoices = useCallback(async () => {
     try {
-      const response = await fetch('/api/admin/billing/charges');
+      // The filter goes to the server: an invoice unpaid since March is
+      // exactly the one worth finding and exactly the one a recency cap on a
+      // single shared list would drop.
+      const status = FILTER_STATUS[filter];
+      const response = await fetch(
+        `/api/admin/billing/charges${status ? `?status=${status}` : ''}`
+      );
       const data = await response.json();
-      if (response.ok) setInvoices(data.invoices || []);
+      if (response.ok) {
+        setInvoices(data.invoices || []);
+        setTotals(data.totals ?? null);
+        setMatching(data.matching ?? (data.invoices?.length || 0));
+        setTruncated(Boolean(data.truncated));
+      }
     } catch {
       // The list is context, not the job — a failed load must not look like
       // a failed charge.
     }
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
     loadInvoices();
@@ -198,6 +240,10 @@ function BillingWorkspace() {
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
     setNeedsConfirmation(false);
   };
+
+  // The status half already happened on the server; this is the typed search
+  // over what came back.
+  const visible = invoices.filter((invoice) => matchesQuery(invoice, ledgerQuery));
 
   const parsedLines = lines.map((line) => ({ label: line.label.trim(), cents: dollarsToCents(line.amount) }));
   const total = parsedLines.reduce((sum, line) => sum + (line.cents ?? 0), 0);
@@ -474,11 +520,98 @@ function BillingWorkspace() {
             subtitle="Every invoice raised — instalments and one-off charges, newest first"
             tone="sky"
           />
+
+          {/* The three numbers, before the rows.
+              This card used to open straight onto a hundred rows newest-first,
+              which answers "what happened recently" and nothing else. The
+              question people actually arrive with is "how much is owed", and
+              it was only answerable by adding up on screen. */}
+          {totals && totals.count > 0 && (
+            <div className="mb-4 grid grid-cols-3 gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-white/35">Outstanding</p>
+                <p
+                  className={`text-lg font-semibold tabular-nums ${
+                    totals.outstandingCents > 0 ? 'text-amber-300' : 'text-white/40'
+                  }`}
+                >
+                  {formatCentsExact(totals.outstandingCents)}
+                </p>
+                <p className="text-[10px] text-white/30">
+                  {totals.outstandingCount} invoice{totals.outstandingCount === 1 ? '' : 's'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-white/35">Paid</p>
+                <p className="text-lg font-semibold tabular-nums text-emerald-300/90">
+                  {formatCentsExact(totals.paidCents)}
+                </p>
+                <p className="text-[10px] text-white/30">
+                  {totals.paidCount} invoice{totals.paidCount === 1 ? '' : 's'}
+                </p>
+              </div>
+              <div>
+                {/* Reported apart from "paid" rather than netted off it.
+                    "Paid" and "paid then given back" are different sentences,
+                    and one net figure hides the second one entirely. */}
+                <p className="text-[10px] uppercase tracking-wider text-white/35">Given back</p>
+                <p
+                  className={`text-lg font-semibold tabular-nums ${
+                    totals.refundedCents > 0 ? 'text-purple-300/90' : 'text-white/25'
+                  }`}
+                >
+                  {formatCentsExact(totals.refundedCents)}
+                </p>
+                <p className="text-[10px] text-white/30">refunded or credited</p>
+              </div>
+            </div>
+          )}
+
+          {invoices.length > 0 && (
+            <div className="mb-4 space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(LEDGER_FILTER_LABELS) as LedgerFilter[]).map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => setFilter(key)}
+                    className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                      filter === key
+                        ? 'bg-white/[0.12] text-white'
+                        : 'bg-white/[0.03] text-white/45 hover:bg-white/[0.06] hover:text-white/70'
+                    }`}
+                  >
+                    {LEDGER_FILTER_LABELS[key]}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={ledgerQuery}
+                onChange={(e) => setLedgerQuery(e.target.value)}
+                placeholder="Find by company, invoice number or what it was for"
+                className={inputClass}
+              />
+            </div>
+          )}
+
           {invoices.length === 0 ? (
             <EmptyState icon={Receipt} text="No invoices have been raised yet." />
+          ) : visible.length === 0 ? (
+            /* A filter that hides everything must say it was the filter.
+               An empty list under "Needs chasing" is good news and reads as a
+               broken page unless it says which it is. */
+            <EmptyState
+              icon={Receipt}
+              text={
+                ledgerQuery.trim()
+                  ? `Nothing matches “${ledgerQuery.trim()}” in ${LEDGER_FILTER_LABELS[filter].toLowerCase()}.`
+                  : filter === 'chase'
+                    ? 'Nothing outstanding — every invoice raised has been paid or cancelled.'
+                    : `No invoices in ${LEDGER_FILTER_LABELS[filter].toLowerCase()}.`
+              }
+            />
           ) : (
             <div className="divide-y divide-white/[0.06]">
-              {invoices.map((invoice) => (
+              {visible.map((invoice) => (
                 <div key={invoice.id} className="py-3 first:pt-0 last:pb-0">
                   {/* The whole row opens the project. Only the company name
                       was a link before, which is a two-millimetre target for
@@ -497,6 +630,30 @@ function BillingWorkspace() {
                         {' · '}
                         {new Date(invoice.createdAt).toLocaleDateString()}
                       </p>
+                      {/* How long it has been sitting there and whether
+                          anybody has asked about it since. Neither half is
+                          enough alone: nineteen days with three reminders is a
+                          client ignoring you, nineteen days with none is an
+                          invoice nobody remembered to send, and those want
+                          opposite responses. */}
+                      {(() => {
+                        const line = chaseLine(invoice);
+                        if (!line) return null;
+                        const band = ageBand(daysOutstanding(invoice));
+                        return (
+                          <p
+                            className={`mt-0.5 text-[11px] ${
+                              band === 'stale'
+                                ? 'text-red-300/80'
+                                : band === 'ageing'
+                                  ? 'text-amber-300/70'
+                                  : 'text-white/30'
+                            }`}
+                          >
+                            {line}
+                          </p>
+                        );
+                      })()}
                     </div>
                     {/* An invoice is no longer just open/paid/void: it can be
                         part refunded, fully refunded, or credited, and those
@@ -510,16 +667,8 @@ function BillingWorkspace() {
                       </p>
                       {(() => {
                         const state = displayState(invoice);
-                        const tone =
-                          state === 'paid'
-                            ? 'emerald'
-                            : state === 'void'
-                              ? 'neutral'
-                              : state === 'refunded' || state === 'part-refunded' || state === 'credited'
-                                ? 'purple'
-                                : 'amber';
                         return (
-                          <Badge tone={tone} solid>
+                          <Badge tone={stateTone(state)} solid>
                             {DISPLAY_STATE_LABELS[state]}
                           </Badge>
                         );
@@ -576,6 +725,17 @@ function BillingWorkspace() {
                   )}
                 </div>
               ))}
+              {/* Said out loud rather than left to be discovered. A list that
+                  quietly stops at a hundred reads as "that is all of them",
+                  and the totals above are the reason it does not have to. */}
+              {truncated && (
+                <p className="pt-3 text-[11px] text-white/30">
+                  Showing the {invoices.length} most recent of {matching} in{' '}
+                  {LEDGER_FILTER_LABELS[filter].toLowerCase()}
+                  {ledgerQuery.trim() ? ' — the search covers only these' : ''}. The figures above
+                  cover every invoice.
+                </p>
+              )}
             </div>
           )}
         </Card>
