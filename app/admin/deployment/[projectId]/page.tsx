@@ -14,6 +14,7 @@ import {
   Server,
   ShieldCheck,
 } from 'lucide-react';
+import { finalInstalment } from '@/lib/instalments';
 import { BrandButton, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
 import {
   DOMAIN_ACCESS,
@@ -107,6 +108,48 @@ export default function DeploymentDetailPage() {
     load();
   }, [load]);
 
+  /*
+   * Don't let the DNS notes go without asking.
+   *
+   * Everything else on this page saves the instant it is pressed — the
+   * checklist ticks PATCH on click. The domain block is the one section
+   * behind an explicit Save, and it is also the one holding free text:
+   * "MX records point at Microsoft 365 — do not touch them. Cutover agreed
+   * for Tuesday morning." That is written once, from a phone call, at the
+   * point somebody finally got hold of the client's IT company, and the
+   * button that loses it is the "← Launch board" link three inches above it.
+   *
+   * beforeunload covers the tab being closed or reloaded; the link guards
+   * below cover the in-app navigations, which are the likely ones. Both, or
+   * it only half works.
+   */
+  useEffect(() => {
+    if (!domainDirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Browsers show their own wording now and ignore ours; assigning
+      // returnValue is still what marks the event as wanting the prompt.
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [domainDirty]);
+
+  /**
+   * Stops an in-app link when the domain block has unsaved edits.
+   *
+   * Deliberately a confirm rather than a block: somebody who genuinely wants
+   * to leave should get to leave on the second press, not be held on a page
+   * by a note they no longer want.
+   */
+  const confirmLeave = (e: React.MouseEvent) => {
+    if (!domainDirty) return;
+    const ok = window.confirm(
+      'The domain and DNS notes have not been saved. Leave the page and lose them?'
+    );
+    if (!ok) e.preventDefault();
+  };
+
   const patch = async (body: Record<string, unknown>, busyKey: string) => {
     setSaving(busyKey);
     setError('');
@@ -150,9 +193,19 @@ export default function DeploymentDetailPage() {
 
   const checklist: LaunchChecklist = readChecklist(project.launchChecklist);
   const instalments = (project.instalments ?? []).filter((i) => i.status !== 'void');
-  const finalInstalment = instalments.length > 0 ? instalments[instalments.length - 1] : null;
+  /*
+   * Same rule as the launch board, from the same helper.
+   *
+   * This page happened to be right — the API behind it orders by index — but
+   * it was right by luck rather than by construction, reading the last row of
+   * whatever array it was handed. The board did the identical thing against a
+   * query with no ORDER BY and reached the opposite verdict on the same
+   * project. One of them being accidentally correct is not a state worth
+   * leaving in place.
+   */
+  const finalRow = finalInstalment(project.instalments ?? []);
   const readiness = launchReadiness(checklist, {
-    finalInstalmentPaid: finalInstalment ? finalInstalment.status === 'paid' : true,
+    finalInstalmentPaid: finalRow ? finalRow.status === 'paid' : true,
     hasSchedule: instalments.length > 0,
     domainName: domain.domainName,
   });
@@ -163,6 +216,7 @@ export default function DeploymentDetailPage() {
     <PageIn className="mx-auto max-w-3xl px-4 py-6 md:px-8 md:py-10">
       <Link
         href="/admin/deployment"
+        onClick={confirmLeave}
         className="mb-5 inline-block text-sm text-white/45 transition-colors hover:text-white"
       >
         ← Launch board
@@ -172,7 +226,11 @@ export default function DeploymentDetailPage() {
       <PageTitle icon={Rocket} title={project.client.company} />
       <p className="mt-1 text-sm text-white/45">
         {project.name} ·{' '}
-        <Link href={`/admin/projects/${project.id}`} className="text-sky-300 hover:underline">
+        <Link
+          href={`/admin/projects/${project.id}`}
+          onClick={confirmLeave}
+          className="text-sky-300 hover:underline"
+        >
           open the project
         </Link>
       </p>
@@ -351,10 +409,17 @@ export default function DeploymentDetailPage() {
         </p>
 
         {domainDirty && (
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <BrandButton onClick={() => patch(domain, 'domain')} disabled={saving === 'domain'}>
               {saving === 'domain' ? 'Saving…' : 'Save'}
             </BrandButton>
+            {/* A button appearing is a weak signal for "you have unsaved work" —
+                it reads as an affordance, not a warning. Everything else here
+                writes on click, so this block is the only place on the page
+                where leaving costs you something. */}
+            <p role="status" className="text-xs text-amber-200/80">
+              Not saved yet.
+            </p>
           </div>
         )}
       </section>
@@ -506,9 +571,9 @@ export default function DeploymentDetailPage() {
                 >
                   {saving === 'handover' ? 'Recording…' : 'Mark it handed over'}
                 </BrandButton>
-                {finalInstalment && finalInstalment.status !== 'paid' && (
+                {finalRow && finalRow.status !== 'paid' && (
                   <p className="mt-2 text-[11px] text-amber-200/70">
-                    {finalInstalment.label} has not cleared. Section 7 holds the transfer until it
+                    {finalRow.label} has not cleared. Section 7 holds the transfer until it
                     does — the finished site stays visible on the preview environment meanwhile.
                   </p>
                 )}

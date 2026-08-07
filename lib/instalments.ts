@@ -229,6 +229,35 @@ export function nextUnpaid(instalments: Instalment[]): Instalment | null {
   return instalments.find((i) => i.status === 'scheduled' || i.status === 'due') ?? null;
 }
 
+/**
+ * The last payment in the schedule — the one Section 7 gates the launch on.
+ *
+ * By index, never by position in the array, and that distinction cost
+ * something. The launch board selected a project's instalments with no
+ * `orderBy` and then took `rows[rows.length - 1]`, which is only the final
+ * payment if Postgres happens to hand them back in insertion order. It does
+ * not promise to: an UPDATE rewrites a row and it moves, so marking Payment 1
+ * and then Payment 2 as paid can leave the physical order [3, 1, 2] — and the
+ * "final instalment" the board read was Payment 2, already paid, while
+ * Payment 3 was still outstanding.
+ *
+ * A project in that state showed a full readiness ring and "Clear to go
+ * live", against a contract that says nothing goes live until the final
+ * payment clears — while the project's own deployment page, reading an API
+ * that does order its rows, said the opposite. Two screens, one project, two
+ * answers, and the wrong one was on the board people scan.
+ *
+ * Void rows are not the final payment: a scope reduction voids the instalments
+ * it removed, and the launch cannot be gated on money nobody will ever owe.
+ */
+export function finalInstalment<T extends { index: number; status: string }>(
+  instalments: T[]
+): T | null {
+  const live = instalments.filter((i) => i.status !== 'void');
+  if (live.length === 0) return null;
+  return live.reduce((latest, row) => (row.index > latest.index ? row : latest));
+}
+
 /** True once every instalment has settled — the "nothing owed" state. */
 export function fullyPaid(instalments: Instalment[]): boolean {
   return instalments.length > 0 && instalments.every((i) => i.status === 'paid' || i.status === 'void');

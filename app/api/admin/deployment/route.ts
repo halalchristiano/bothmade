@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { launchLane, launchReadiness, readChecklist, warrantyState } from '@/lib/launch';
+import { finalInstalment } from '@/lib/instalments';
 
 /**
  * The launch board: every project close enough to going live to be worth
@@ -42,17 +43,21 @@ export async function GET() {
         // Section 7's gate. Read rather than asked about: the system already
         // knows whether the money arrived, and a checkbox claiming it did is
         // a checkbox somebody ticks optimistically on a Friday.
-        instalments: { select: { index: true, status: true, amountCents: true, label: true } },
+        instalments: {
+          orderBy: { index: 'asc' },
+          select: { index: true, status: true, amountCents: true, label: true },
+        },
       },
     });
 
     const rows = projects.map((project) => {
-      const instalments = project.instalments;
-      const live = instalments.filter((i) => i.status !== 'void');
-      const finalInstalment = live.length > 0 ? live[live.length - 1] : null;
+      const live = project.instalments.filter((i) => i.status !== 'void');
+      // By index, not by array position — see finalInstalment() for what the
+      // positional read did to Section 7's gate on this very board.
+      const finalRow = finalInstalment(project.instalments);
       const checklist = readChecklist(project.launchChecklist);
       const readiness = launchReadiness(checklist, {
-        finalInstalmentPaid: finalInstalment ? finalInstalment.status === 'paid' : true,
+        finalInstalmentPaid: finalRow ? finalRow.status === 'paid' : true,
         hasSchedule: live.length > 0,
         domainName: project.domainName,
       });
@@ -64,11 +69,11 @@ export async function GET() {
         lane: launchLane(project),
         readiness,
         warranty: warrantyState(project.warrantyEndsAt),
-        finalInstalment: finalInstalment
+        finalInstalment: finalRow
           ? {
-              label: finalInstalment.label,
-              status: finalInstalment.status,
-              amountCents: finalInstalment.amountCents,
+              label: finalRow.label,
+              status: finalRow.status,
+              amountCents: finalRow.amountCents,
             }
           : null,
       };
