@@ -4,8 +4,10 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { CHANGE_ORDER_STATEMENT, USER_AGENT_MAX, normalizeSignerName } from '@/lib/clickwrap';
 import { applyScope, recutSchedule, type ChangeOrderItem, type ScheduleRow } from '@/lib/change-orders';
-import { addOnLabel } from '@/lib/pricing';
+import { addOnLabel, formatCents } from '@/lib/pricing';
 import { notifyAdminsChangeOrderSigned } from '@/lib/notify';
+import { sendChangeOrderSignedEmail } from '@/lib/email';
+import { resolveSiteUrl } from '@/lib/site-url';
 
 /**
  * The client's side of a Change Order: read it, then sign or decline.
@@ -113,7 +115,7 @@ export async function POST(
             addOns: true,
             customItems: true,
             estimatedCompletionDate: true,
-            client: { select: { company: true, contactName: true } },
+            client: { select: { company: true, contactName: true, email: true } },
           },
         },
       },
@@ -270,6 +272,53 @@ export async function POST(
       newTotalCents: order.newTotalCents,
       projectId: order.projectId,
     }).catch((error) => console.error(`Change order ${order.number}: admin notify failed:`, error));
+
+    /*
+     * The client's countersigned copy.
+     *
+     * They have just agreed to a new project total and, often, a later
+     * delivery date — and until now the only party that got an email about it
+     * was us. The copy goes to the client record's own address rather than
+     * the `signerEmail` typed into the form: that field is unvalidated free
+     * text on a public endpoint, and mailing whatever it contains would let
+     * anyone holding a change-order link post our branded confirmation to an
+     * address of their choosing. The contracting party is who the record
+     * says it is.
+     *
+     * Best-effort, and last: the signature, the price and the schedule are
+     * already committed, and a failed email must not tell the client their
+     * signature didn't take.
+     */
+    if (order.project.client.email) {
+      await sendChangeOrderSignedEmail({
+        toEmail: order.project.client.email,
+        contactName: order.project.client.contactName,
+        company: order.project.client.company,
+        projectName: order.project.name,
+        number: order.number,
+        summary: order.summary,
+        signerName,
+        signedOnLabel: new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }),
+        deltaLabel: `${order.deltaCents >= 0 ? '+' : '−'}${formatCents(Math.abs(order.deltaCents))}`,
+        newTotalLabel: formatCents(order.newTotalCents),
+        timelineExtensionDays: order.timelineExtensionDays,
+        newCompletionLabel:
+          order.timelineExtensionDays > 0 && extendedDate
+            ? extendedDate.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })
+            : null,
+        dashboardUrl: `${resolveSiteUrl()}/client/${order.projectId}`,
+      }).catch((error) =>
+        console.error(`Change order ${order.number}: client copy failed:`, error)
+      );
+    }
 
     return NextResponse.json(
       { success: true, status: 'signed', direction, newTotalCents: order.newTotalCents },

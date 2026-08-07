@@ -622,3 +622,90 @@ export async function notifyAdminsDesignDirectionSigned(params: {
   );
   await notifyAdmins(`Design direction agreed: ${params.company}`, html);
 }
+
+/**
+ * A prospect filled in the brief form we sent them.
+ *
+ * Nobody was told this happened. The answers landed on the lead and the row's
+ * updatedAt moved, which is only a signal to someone already looking at that
+ * lead — so the warmest thing a prospect can do short of replying was also
+ * the quietest. A brief arriving is a cue to call, and it goes stale.
+ *
+ * To the assigned rep where there is one, because that is who should make the
+ * call; to the admins otherwise, so an unassigned lead's brief is not a tree
+ * falling in an empty forest.
+ */
+export async function notifyBriefFormCompleted(params: {
+  /** The assigned rep, when the lead has one. */
+  toEmail: string | null;
+  leadId: string;
+  contactName: string | null;
+  company: string;
+  email: string;
+  problemCount: number;
+  summary: string | null;
+}): Promise<void> {
+  const who = params.contactName
+    ? `<strong>${escapeHtml(params.contactName)}</strong> at <strong>${escapeHtml(params.company)}</strong>`
+    : `<strong>${escapeHtml(params.company)}</strong>`;
+
+  const html = wrap(
+    'A brief just came in',
+    `<p>${who} filled in the brief form.</p>
+     ${
+       params.problemCount > 0
+         ? `<p style="color:#555;">They flagged ${params.problemCount} problem${
+             params.problemCount === 1 ? '' : 's'
+           } to look at — all of it is on the lead, and the recommended work is already picked out.</p>`
+         : ''
+     }
+     ${
+       params.summary
+         ? `<blockquote style="border-left:3px solid #000;padding-left:12px;color:#555;white-space:pre-wrap;">${escMultiline(
+             params.summary
+           )}</blockquote>`
+         : ''
+     }
+     <p style="color:#555;">Somebody who has just answered a page of questions about their own business
+       is as warm as this gets. Worth calling today rather than adding to a list.</p>
+     <p>Reply to them directly at
+       <a href="mailto:${encodeURI(params.email)}">${escapeHtml(params.email)}</a>.</p>`,
+    `${siteUrl()}/admin/leads/${encodeURIComponent(params.leadId)}`,
+    'Open the lead'
+  );
+
+  const subject = `Brief completed: ${params.company}`;
+  if (params.toEmail) {
+    await sendEmail({ to: params.toEmail, replyTo: params.email, subject, html });
+    return;
+  }
+  await notifyAdmins(subject, html);
+}
+
+/**
+ * A client finished onboarding.
+ *
+ * Onboarding is saved one answer at a time, so there was never a moment that
+ * announced itself — the last answer looked exactly like the first. That
+ * matters because this is a gate: discovery cannot really start until the
+ * answers are in, and the only way to find out they were in was to go and
+ * look at the project.
+ */
+export async function notifyAdminsOnboardingComplete(params: {
+  projectId: string;
+  projectName: string;
+  company: string;
+  questionCount: number;
+}): Promise<void> {
+  const html = wrap(
+    'Onboarding complete',
+    `<p><strong>${escapeHtml(params.company)}</strong> has answered all ${
+      params.questionCount
+    } onboarding question${params.questionCount === 1 ? '' : 's'} on
+      <strong>${escapeHtml(params.projectName)}</strong>.</p>
+     <p style="color:#555;">Everything needed to start discovery is now on the project.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'Read their answers'
+  );
+  await notifyAdmins(`Onboarding complete: ${params.company}`, html);
+}

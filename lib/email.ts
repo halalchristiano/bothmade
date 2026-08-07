@@ -2107,3 +2107,306 @@ export async function sendDesignFeedbackAckEmail(input: {
     }),
   });
 }
+
+/**
+ * One row of the little detail table the confirmations below share.
+ *
+ * Kept here rather than repeated inline five times: these emails are read
+ * side by side by the same client over the life of a project, and a receipt
+ * whose layout drifts from the one before it looks like it came from
+ * somewhere else.
+ */
+function detailRows(rows: Array<[string, string] | null>): string {
+  const present = rows.filter((row): row is [string, string] => row !== null);
+  if (present.length === 0) return '';
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; margin:20px 0; border-collapse:collapse;">
+    ${present
+      .map(
+        ([label, value], i) => `<tr>
+          <td style="padding:9px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13px; color:rgba(255,255,255,0.45);">${esc(
+            label
+          )}</td>
+          <td style="padding:9px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:14px; color:${
+            i === 0 ? '#7dd3fc' : '#fff'
+          }; text-align:right; font-weight:${i === 0 ? '700' : '400'};">${esc(value)}</td>
+        </tr>`
+      )
+      .join('')}
+  </table>`;
+}
+
+/**
+ * "Your money arrived." The receipt for a payment that has already cleared.
+ *
+ * Every other party to a payment heard about it before the person who made
+ * it: the admins get notifyAdminsPaymentReceived, the ledger gets a numbered
+ * and settled Invoice row, the dashboard gets a timeline entry — and the
+ * client who was just charged got an email about none of it. Care-plan
+ * subscribers have always had a receipt for every monthly charge, so the one
+ * category of payment going unacknowledged was the large one.
+ *
+ * Deliberately not gated on the statusUpdates preference. That switch is for
+ * progress mail somebody may reasonably not want; a record of money taken is
+ * not progress mail, and the invoice and care-plan receipts alongside it have
+ * never been optional either.
+ *
+ * Says nothing is owed, in as many words. A receipt that merely states an
+ * amount reads, at a glance, exactly like a request for one.
+ */
+export async function sendPaymentReceiptEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  projectName: string;
+  amountLabel: string;
+  paidOnLabel: string;
+  /** What the money settled — "Payment 2 of 3", "Deposit", "Invoice INV-0042". */
+  forLabel: string;
+  invoiceNumber?: string | null;
+  /** Where they stand afterwards. Null when the project is settled in full. */
+  outstandingLabel?: string | null;
+  dashboardUrl: string;
+  invoicePdf?: Buffer | null;
+  fileName?: string;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Thank you — your payment of <strong style="color:#fff;">${esc(
+      input.amountLabel
+    )}</strong> for <strong style="color:#fff;">${esc(input.projectName)}</strong> has cleared.</p>
+    ${detailRows([
+      ['Amount paid', input.amountLabel],
+      ['Paid on', input.paidOnLabel],
+      ['For', input.forLabel],
+      input.invoiceNumber ? ['Invoice', input.invoiceNumber] : null,
+      ['Project', input.projectName],
+    ])}
+    ${
+      input.outstandingLabel
+        ? `<p style="font-size:14px; color:rgba(255,255,255,0.7);">${esc(input.outstandingLabel)}</p>`
+        : `<p style="font-size:14px; color:#7dd3fc;">That settles the project in full — nothing further is owed.</p>`
+    }
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">This is a receipt, not a request for payment. Nothing to do — keep it for your records.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `Payment received — ${input.amountLabel} for ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Payment received',
+      title: `${input.company} — thank you`,
+      bodyHtml,
+      ctaLabel: 'Open your dashboard',
+      ctaUrl: input.dashboardUrl,
+      footerNote: 'Payments are processed securely by Stripe.',
+    }),
+    ...(input.invoicePdf && input.fileName
+      ? { attachments: [{ filename: input.fileName, content: input.invoicePdf }] }
+      : {}),
+  });
+}
+
+/**
+ * "We've got your brief."
+ *
+ * The contact form sends an invite to this form the moment somebody enquires,
+ * so a person who fills it in is following an instruction we gave them. Until
+ * now that ended in silence: the answers were written to the lead, and
+ * nothing went back to the person who had just spent ten minutes typing them.
+ * Silence after effort is how a form gets filled in twice, and then phoned
+ * about.
+ */
+export async function sendBriefReceivedEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  /** How many of the tick-box problems they flagged, for a specific sentence. */
+  answeredCount: number;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Thanks — your brief came through and it's on your file. That's everything we need to prepare properly before we speak.</p>
+    ${
+      input.answeredCount > 0
+        ? `<p style="font-size:14px; color:rgba(255,255,255,0.7);">You flagged ${input.answeredCount} thing${
+            input.answeredCount === 1 ? '' : 's'
+          } you want looked at. We'll come to the call having read them rather than asking you to say it all again.</p>`
+        : ''
+    }
+    <p>Someone will be in touch shortly to talk it through. If you left anything out, just reply to this email — it reaches the same person.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `We've got your brief — ${input.company}`,
+    html: renderShell({
+      eyebrow: 'Brief received',
+      title: 'Thanks — that gives us what we need',
+      bodyHtml,
+    }),
+  });
+}
+
+/**
+ * "Onboarding is done." Sent once, when the last question gets an answer.
+ *
+ * Onboarding saves a question at a time, so there is no submit button to hang
+ * this off — the client simply stops typing, and neither side gets told the
+ * set is complete. See the caller for how "once" is enforced without a schema
+ * change.
+ */
+export async function sendOnboardingCompleteEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  projectName: string;
+  questionCount: number;
+  dashboardUrl: string;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>That's onboarding complete for <strong style="color:#fff;">${esc(
+      input.projectName
+    )}</strong> — all ${input.questionCount} question${
+      input.questionCount === 1 ? '' : 's'
+    } answered. Thank you.</p>
+    <p>Your answers are with the team and are what we'll design and build from. You can revisit or change any of them on your dashboard; if you do, tell us, because we may already have started on the old answer.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">Next you'll hear from us when there's something to look at.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `Onboarding complete — ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Onboarding complete',
+      title: `${input.projectName} — we have what we need`,
+      bodyHtml,
+      ctaLabel: 'Review your answers',
+      ctaUrl: input.dashboardUrl,
+    }),
+  });
+}
+
+/**
+ * The client's own copy of a change order they just signed.
+ *
+ * This is a signature against money and a date, and the only party who got an
+ * email about it was us. A countersigned copy is the thing anyone expects to
+ * receive on signing something, and its absence is most conspicuous exactly
+ * when it matters — a client disputing a total months later had nothing in
+ * their inbox to check against.
+ */
+export async function sendChangeOrderSignedEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  company: string;
+  projectName: string;
+  number: string;
+  summary: string;
+  signerName: string;
+  signedOnLabel: string;
+  deltaLabel: string;
+  newTotalLabel: string;
+  timelineExtensionDays: number;
+  newCompletionLabel: string | null;
+  dashboardUrl: string;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>This confirms you've agreed <strong style="color:#fff;">${esc(
+      input.number
+    )}</strong> on ${esc(input.projectName)}. Here it is in writing, for your records.</p>
+    <p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">What changed</p>
+    <p style="margin:0 0 4px; padding:0 0 0 14px; border-left:2px solid rgba(255,255,255,0.18); white-space:pre-wrap;">${escMultiline(
+      input.summary
+    )}</p>
+    ${detailRows([
+      ['New project total', input.newTotalLabel],
+      ['Change', input.deltaLabel],
+      input.timelineExtensionDays > 0
+        ? [
+            'Timeline',
+            `Extended by ${input.timelineExtensionDays} day${
+              input.timelineExtensionDays === 1 ? '' : 's'
+            }${input.newCompletionLabel ? ` — now ${input.newCompletionLabel}` : ''}`,
+          ]
+        : null,
+      ['Signed by', input.signerName],
+      ['Signed on', input.signedOnLabel],
+    ])}
+    <p style="font-size:14px; color:rgba(255,255,255,0.7);">Your remaining payments have been recalculated to match the new total — the updated schedule is on your dashboard, and any instalment already paid is untouched.</p>
+    <p style="font-size:13px; color:rgba(255,255,255,0.5);">If anything above doesn't match what you agreed, reply to this email straight away and we'll stop and sort it out.</p>
+  `;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `Agreed: ${input.number} — ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Change order agreed',
+      title: `${input.number} — confirmed`,
+      bodyHtml,
+      ctaLabel: 'See the updated schedule',
+      ctaUrl: input.dashboardUrl,
+    }),
+  });
+}
+
+/**
+ * The client's copy of the design direction they signed off.
+ *
+ * Same gap as the change order, and the same reason it matters: this document
+ * is the standard the work gets measured against. "If what we present doesn't
+ * match it, that's ours to put right" is only a fair promise if the client is
+ * actually holding the thing being matched against.
+ */
+export async function sendDesignDirectionSignedEmail(input: {
+  toEmail: string;
+  contactName: string | null;
+  projectName: string;
+  adjectives: string[];
+  likeCount: number;
+  dislikeCount: number;
+  notes: string | null;
+  signedOnLabel: string;
+  dashboardUrl: string;
+}): Promise<SendResult> {
+  const bodyHtml = `
+    <p>Hi ${esc(input.contactName) || 'there'},</p>
+    <p>Thanks — that's the design direction for <strong style="color:#fff;">${esc(
+      input.projectName
+    )}</strong> agreed, and it's what we'll design to. Your copy is below.</p>
+    ${detailRows([
+      input.adjectives.length > 0 ? ['The feel you chose', input.adjectives.join(', ')] : null,
+      ['References you liked', String(input.likeCount)],
+      ['References you ruled out', String(input.dislikeCount)],
+      ['Agreed on', input.signedOnLabel],
+    ])}
+    ${
+      input.notes
+        ? `<p style="margin:0 0 8px; color:rgba(255,255,255,0.45); font-size:13px;">What you added</p>
+           <p style="margin:0 0 20px; padding:0 0 0 14px; border-left:2px solid rgba(255,255,255,0.18); white-space:pre-wrap;">${escMultiline(
+             input.notes
+           )}</p>`
+        : ''
+    }
+    <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px 20px; margin:20px 0;">
+      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">What this means</p>
+      <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.7);">
+        If what we present doesn't match this brief, putting it right costs you nothing. If you
+        change your mind about the direction itself, that uses one of your included revision
+        rounds. Either way, tell us — we would always rather know.
+      </p>
+    </div>
+  `;
+
+  return sendEmailDetailed({
+    to: input.toEmail,
+    subject: `Design direction agreed — ${input.projectName}`,
+    html: renderShell({
+      eyebrow: 'Design direction agreed',
+      title: `${input.projectName} — that's the brief`,
+      bodyHtml,
+      ctaLabel: 'Open your dashboard',
+      ctaUrl: input.dashboardUrl,
+    }),
+  });
+}

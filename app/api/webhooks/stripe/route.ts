@@ -11,8 +11,10 @@ import {
   sendCarePlanInvoiceEmail,
   sendCarePlanPaymentFailedEmail,
   sendCarePlanStartedEmail,
+  sendPaymentReceiptEmail,
   sendWelcomeEmail,
 } from '@/lib/email';
+import { resolveSiteUrl } from '@/lib/site-url';
 import {
   notifyAdminsCarePlanPaymentFailed,
   notifyAdminsCarePlanStarted,
@@ -36,6 +38,41 @@ import {
   type BaseService,
   type TimelineKey,
 } from '@/lib/pricing';
+
+/**
+ * The date on a receipt. Spelled out rather than numeric, because this is
+ * read by clients on both sides of the Atlantic and 04/08/2026 is two
+ * different days depending on who is holding it.
+ */
+function receiptDate(): string {
+  return new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+/**
+ * Where the client stands once this payment has landed, in one sentence.
+ *
+ * Read from the instalment rows after the settling transaction has committed,
+ * so it reflects what was just paid rather than what was owed a moment ago.
+ * Returns null when nothing is left, which is the receipt's cue to say the
+ * project is settled in full rather than to stay quiet about it.
+ */
+async function outstandingAfterPayment(projectId: string): Promise<string | null> {
+  const open = await prisma.instalment.findMany({
+    where: { projectId, status: { not: 'paid' } },
+    orderBy: { index: 'asc' },
+    select: { label: true, amountCents: true },
+  });
+  if (open.length === 0) return null;
+
+  const total = open.reduce((sum, row) => sum + row.amountCents, 0);
+  return `${open.length} payment${open.length === 1 ? '' : 's'} still to come, totalling ${formatCentsExact(
+    total
+  )} — the next is ${open[0].label}. We invoice each one when it falls due, so there is nothing to do now.`;
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -309,13 +346,21 @@ async function handleCheckoutSessionCompleted(
    * cleared and the project exists, so failing to number the paperwork must
    * not throw away the event.
    */
+  // Kept so the receipt below can quote the number this payment was written
+  // to the ledger under, rather than sending a receipt that references
+  // nothing the client could look up.
+  let signingInvoiceNumber: string | null = null;
+
   try {
     const paidRows = await prisma.instalment.findMany({
       where: { projectId: project.id, status: 'paid' },
       orderBy: { index: 'asc' },
     });
     for (const row of paidRows) {
-      if (row.invoiceNumber) continue;
+      if (row.invoiceNumber) {
+        signingInvoiceNumber ??= row.invoiceNumber;
+        continue;
+      }
       const invoice = await createInvoiceRow(prisma, {
         clientId: client.id,
         projectId: project.id,
@@ -331,6 +376,7 @@ async function handleCheckoutSessionCompleted(
           where: { id: row.id },
           data: { invoiceNumber: invoice.number },
         });
+        signingInvoiceNumber ??= invoice.number;
       }
     }
   } catch (ledgerError) {
@@ -352,6 +398,36 @@ async function handleCheckoutSessionCompleted(
     BASE_SERVICES[baseService].label,
     timelineLabel
   );
+
+  /*
+   * A receipt for the signing payment, separately from the welcome.
+   *
+   * The welcome email confirms the project exists and hands over login
+   * details; it has never mentioned money at all. So the single largest
+   * payment most clients ever make here — the deposit or the full fee, taken
+   * at signing — was the one payment with no acknowledgement of any kind,
+   * even though the ledger had already numbered and settled its invoice.
+   *
+   * Two emails rather than one paragraph added to the welcome: a receipt is
+   * a financial record people search their inbox for later, and burying it
+   * inside "here is your password" is how it becomes unfindable.
+   */
+  try {
+    await sendPaymentReceiptEmail({
+      toEmail: email,
+      contactName: contactName || null,
+      company,
+      projectName,
+      amountLabel: formatCentsExact(amountPaid),
+      paidOnLabel: receiptDate(),
+      forLabel: metadata.paymentType === 'deposit' ? 'Deposit — Payment 1 of 3' : 'Project fee, paid in full',
+      invoiceNumber: signingInvoiceNumber,
+      outstandingLabel: await outstandingAfterPayment(project.id),
+      dashboardUrl: `${resolveSiteUrl()}/client/${project.id}`,
+    });
+  } catch (receiptError) {
+    console.error(`Signing receipt for project ${project.id} did not send:`, receiptError);
+  }
 
   console.log(`Checkout completed: client=${client.id} project=${project.id}`);
 }
@@ -749,6 +825,56 @@ async function handleExistingProjectPayment(
     clientCompany: project.client.company,
     amountLabel,
   });
+
+  /*
+   * The receipt, to the one party that wasn't being told.
+   *
+   * By this line the money is in the ledger, the instalment and invoice are
+   * settled, the dashboard has a timeline entry and the admins have an email.
+   * The client who was just charged had none of it — while care-plan
+   * subscribers have always had a receipt for every monthly charge, so the
+   * payments going unacknowledged were the large ones.
+   *
+   * Best-effort and last. Everything above has committed; throwing here would
+   * make Stripe redeliver an event whose work is already done, and the
+   * idempotency guard at the top would swallow the retry anyway.
+   */
+  try {
+    if (project.client.email) {
+      const settled = metadata.instalmentId
+        ? await prisma.instalment.findUnique({
+            where: { id: metadata.instalmentId },
+            select: { label: true, invoiceNumber: true },
+          })
+        : null;
+
+      await sendPaymentReceiptEmail({
+        toEmail: project.client.email,
+        contactName: project.client.contactName,
+        company: project.client.company,
+        projectName: project.name,
+        amountLabel,
+        paidOnLabel: receiptDate(),
+        forLabel:
+          settled?.label ??
+          (type === 'custom'
+            ? metadata.invoiceNumber
+              ? `Invoice ${metadata.invoiceNumber}`
+              : 'Additional work'
+            : type === 'deposit'
+            ? 'Project deposit'
+            : 'Project balance'),
+        invoiceNumber: metadata.invoiceNumber || settled?.invoiceNumber || null,
+        // A one-off charge settles its own invoice and says nothing about the
+        // project schedule, so it must not claim the build is paid off.
+        outstandingLabel:
+          type === 'custom' ? null : await outstandingAfterPayment(projectId),
+        dashboardUrl: `${resolveSiteUrl()}/client/${projectId}`,
+      });
+    }
+  } catch (receiptError) {
+    console.error(`Receipt for project ${projectId} did not send:`, receiptError);
+  }
 
   console.log(`Existing-project payment: project=${projectId} amount=${amountPaid}`);
 }

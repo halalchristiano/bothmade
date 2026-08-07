@@ -7,6 +7,8 @@ import {
   parseBriefSubmission,
 } from '@/lib/client-brief-form';
 import { buildSalesNote } from '@/lib/contact-enquiry';
+import { sendBriefReceivedEmail } from '@/lib/email';
+import { notifyBriefFormCompleted } from '@/lib/notify';
 
 /**
  * A client filling in their own brief.
@@ -32,7 +34,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { token } = await params;
     const lead = await prisma.lead
-      .findUnique({ where: { shareToken: token }, select: { id: true, painPoints: true } })
+      .findUnique({
+        where: { shareToken: token },
+        select: {
+          id: true,
+          painPoints: true,
+          // For the two emails at the bottom: the client's receipt, and the
+          // rep's cue to call while this is still warm.
+          email: true,
+          contactName: true,
+          company: true,
+          assignedTo: { select: { email: true } },
+        },
+      })
       .catch(() => null);
     if (!lead) return NextResponse.json({ error: 'That link is no longer valid.' }, { status: 404 });
 
@@ -89,6 +103,50 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       })
       .catch((e) => console.error('Brief form activity not written:', e));
+
+    /*
+     * Tell both sides it landed.
+     *
+     * Everything above has already committed, so neither of these may fail
+     * the request: someone who has just filled in a page of questions and is
+     * shown an error will fill it in again, and the second copy overwrites
+     * the first for no gain. Awaited rather than fired and forgotten, because
+     * this route runs serverless and a floating promise is killed when the
+     * response is returned.
+     */
+    if (lead.email) {
+      const receipt = await sendBriefReceivedEmail({
+        toEmail: lead.email,
+        contactName: lead.contactName,
+        company: lead.company,
+        answeredCount: submission.problems.length,
+      }).catch((e) => {
+        console.error('Brief receipt failed:', e);
+        return { sent: false as const, reason: 'threw' };
+      });
+
+      await prisma.leadActivity
+        .create({
+          data: {
+            leadId: lead.id,
+            type: 'email',
+            content: receipt.sent
+              ? `Client was sent the receipt for their brief (${lead.email}).`
+              : `Brief receipt to ${lead.email} did not send.`,
+          },
+        })
+        .catch((e) => console.error('Brief receipt activity not written:', e));
+    }
+
+    await notifyBriefFormCompleted({
+      toEmail: lead.assignedTo?.email ?? null,
+      leadId: lead.id,
+      contactName: lead.contactName,
+      company: lead.company,
+      email: lead.email ?? '',
+      problemCount: submission.problems.length,
+      summary: fields.currentSiteAssessment || null,
+    }).catch((e) => console.error('Brief completion notify failed:', e));
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

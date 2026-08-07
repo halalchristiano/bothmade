@@ -9,6 +9,8 @@ import {
 } from '@/lib/design-direction';
 import { normalizeSignerName, USER_AGENT_MAX } from '@/lib/clickwrap';
 import { notifyAdminsDesignDirectionSigned } from '@/lib/notify';
+import { sendDesignDirectionSignedEmail } from '@/lib/email';
+import { resolveSiteUrl } from '@/lib/site-url';
 
 /**
  * The design direction brief: written by the client, signed by the client.
@@ -85,7 +87,7 @@ export async function POST(
         status: true,
         clientId: true,
         designDirection: { select: { id: true, signedAt: true } },
-        client: { select: { email: true, company: true } },
+        client: { select: { email: true, company: true, contactName: true } },
       },
     });
     if (!project) {
@@ -189,6 +191,40 @@ export async function POST(
         likeCount: likes.length,
         dislikeCount: dislikes.length,
       }).catch((error) => console.error(`Direction notify failed for ${projectId}:`, error));
+
+      /*
+       * Their copy of what they just signed.
+       *
+       * The timeline entry above tells them it landed, but only inside the
+       * dashboard — and this brief is the standard the work gets measured
+       * against. "If what we present doesn't match it, that's ours to put
+       * right at no charge" is a promise the client can only hold us to if
+       * they are actually holding the brief; the version they have to log in
+       * and go looking for is not that.
+       *
+       * Not gated on the statusUpdates preference: this is a signed record,
+       * the same class of mail as a countersigned agreement, not an update
+       * about progress.
+       */
+      if (project.client.email) {
+        await sendDesignDirectionSignedEmail({
+          toEmail: project.client.email,
+          contactName: project.client.contactName,
+          projectName: project.name,
+          adjectives,
+          likeCount: likes.length,
+          dislikeCount: dislikes.length,
+          notes: notes || null,
+          signedOnLabel: now.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          }),
+          dashboardUrl: `${resolveSiteUrl()}/client/${projectId}`,
+        }).catch((error) =>
+          console.error(`Direction client copy failed for ${projectId}:`, error)
+        );
+      }
     }
 
     return NextResponse.json(
