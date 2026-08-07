@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkSendBudget } from '@/lib/send-budget';
+import { BounceWatch, recentBounceRate, verifiedFirst } from '@/lib/send-safety';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { renderShell } from '@/lib/email';
@@ -63,9 +64,44 @@ export async function POST(request: NextRequest) {
     if (budget.error) {
       return NextResponse.json({ error: budget.error, budget }, { status: 429 });
     }
-    const idsToSend = leadIds.slice(0, budget.allowed);
 
-    const leads = await prisma.lead.findMany({ where: { id: { in: idsToSend } } });
+    /*
+     * Yesterday's bounces, before today's batch.
+     *
+     * A hard bounce arrives minutes or hours after the send loop has already
+     * finished, so the in-flight watch below cannot see it — by the time the
+     * postmaster replies, the batch is long done. Checking the standing rate
+     * first is what turns last week's evidence into this week's decision,
+     * and it is the only guard that can stop a bad list before any of it
+     * goes out. Refused rather than trimmed: there is no safe amount of a
+     * list that is bouncing.
+     */
+    const recent = await recentBounceRate();
+    if (recent.sent >= 20 && recent.rate >= 0.1) {
+      return NextResponse.json(
+        {
+          error: `${recent.bounced} of the last ${recent.sent} cold emails bounced (${Math.round(
+            recent.rate * 100
+          )}%). Anything over about 2% puts a sending account at risk, and most of these addresses were guessed from a domain rather than found published. Verify the list before sending more.`,
+          bounceRate: recent.rate,
+        },
+        { status: 409 }
+      );
+    }
+
+    /*
+     * Ordered before it is trimmed, which is the whole point of ordering.
+     *
+     * Roughly three quarters of this book carries an `info@` guessed from the
+     * company domain rather than an address anybody has seen. When the daily
+     * ceiling cuts a batch of a hundred down to forty, whatever sits at the
+     * front is what actually goes — so a limited and hard-won allowance was
+     * being spent on whichever addresses happened to be selected first,
+     * guesses included. Verified addresses now lead.
+     */
+    const selected = await prisma.lead.findMany({ where: { id: { in: leadIds } } });
+    const leads = verifiedFirst(selected).slice(0, budget.allowed);
+    const idsToSend = leads.map((l) => l.id);
 
     const results: Array<{ leadId: string; company: string; ok: boolean; reason?: string; sentVia?: string }> = [];
 
@@ -81,7 +117,23 @@ export async function POST(request: NextRequest) {
         ? createGmailBatchTransport(sender.gmailAddress, sender.gmailAppPassword)
         : undefined;
 
+    /*
+     * Watching the batch as it goes.
+     *
+     * A run that is being refused one message in five is not a list with a
+     * few dead addresses in it — it is a list the provider is already unhappy
+     * about, and every further message makes the account's position worse.
+     * The remaining leads are reported as held back rather than failed, so
+     * nothing is marked as attempted that never was.
+     */
+    const bounces = new BounceWatch();
+    let haltedBy: string | undefined;
+
     for (const lead of leads) {
+      if (haltedBy) {
+        results.push({ leadId: lead.id, company: lead.company, ok: false, reason: 'Held back — batch stopped' });
+        continue;
+      }
       // A hard stop, not a preference. The mockup-send route already refused
       // these; this one did not, so a business that asked to be left alone was
       // still emailed by a batch send — and the record showed we knew.
@@ -136,12 +188,19 @@ export async function POST(request: NextRequest) {
         { gmailTransport, gmailOAuthClient }
       );
 
+      // Only what the mail server actually refused counts toward the rate —
+      // a lead skipped for do-not-contact or a missing address says nothing
+      // about deliverability, and counting it would halt a batch for being
+      // careful.
+      bounces.record(result.ok);
+
       if (!result.ok) {
         const reason = "Couldn't send — the address may be invalid or no longer active. Call instead.";
         results.push({ leadId: lead.id, company: lead.company, ok: false, reason });
         await prisma.lead
           .update({ where: { id: lead.id }, data: { emailDeliveryFailedAt: new Date(), emailDeliveryFailedReason: reason } })
           .catch(() => null);
+        haltedBy = bounces.verdict().reason;
         continue;
       }
 
@@ -190,6 +249,11 @@ export async function POST(request: NextRequest) {
         results,
         sentViaResend,
         heldBack,
+        // Reported separately from a per-lead failure: this is the batch
+        // being stopped, not a lead being skipped, and it is the one thing
+        // here that should change what somebody does next.
+        haltedBy: haltedBy ?? null,
+        bounceRate: bounces.verdict().rate,
         budget: { limit: budget.limit, used: budget.used + sentCount, remaining: Math.max(0, budget.remaining - sentCount) },
       },
       { status: 200 }

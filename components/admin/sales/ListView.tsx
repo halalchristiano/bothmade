@@ -207,6 +207,8 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
     /** Trimmed off by the daily ceiling — reported, never silently dropped. */
     heldBack?: number;
     budget?: { limit: number; used: number; remaining: number };
+    /** The batch stopped itself because too many were being refused. */
+    haltedBy?: string | null;
   } | null>(null);
   /** Set when the day is spent and nothing at all could go. */
   const [sendBlocked, setSendBlocked] = useState<string | null>(null);
@@ -485,7 +487,10 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
       const data = await res.json();
       // 429 is the daily ceiling, and it is the one failure worth its own
       // message: everything else here is per-lead, this is "stop for today".
-      if (res.status === 429) {
+      // 429 is the daily ceiling; 409 is the standing bounce rate. Both mean
+      // "nothing went, and pressing send again is the wrong move", which is
+      // the one thing that has to be unmistakable.
+      if (res.status === 429 || res.status === 409) {
         setSendBlocked(data.error);
         setPreviewingBatch(null);
         return;
@@ -501,6 +506,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
           sentViaResend: data.sentViaResend || 0,
           heldBack: data.heldBack || 0,
           budget: data.budget,
+          haltedBy: data.haltedBy || null,
         });
         setSelected(new Set());
         setPreviewingBatch(null);
@@ -1111,6 +1117,14 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
               Dismiss
             </button>
           </div>
+          {/* A batch that stopped itself. Above the trim message and in a
+              louder colour, because it is the difference between "you have
+              used your allowance" and "this list is damaging your account". */}
+          {coldSendResult.haltedBy && (
+            <p className="mt-2 rounded-lg border border-red-400/30 bg-red-400/[0.08] px-3 py-2 text-xs text-red-200 leading-relaxed">
+              {coldSendResult.haltedBy}
+            </p>
+          )}
           {!!coldSendResult.heldBack && coldSendResult.heldBack > 0 && (
             <p className="mt-1.5 text-xs text-amber-200/80 leading-relaxed">
               {coldSendResult.heldBack} more {coldSendResult.heldBack === 1 ? 'was' : 'were'} held back —

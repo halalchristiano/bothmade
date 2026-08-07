@@ -12,7 +12,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const prisma = {
-  lead: { findMany: vi.fn(), update: vi.fn(async () => ({})) },
+  lead: {
+    findMany: vi.fn(),
+    update: vi.fn(async () => ({})),
+    // The pre-flight bounce check reads sends and bounces off this table. A
+    // mock without it throws inside the route and every send below fails for
+    // a reason that has nothing to do with what is being tested.
+    count: vi.fn(async () => 0),
+  },
   leadActivity: {
     create: vi.fn(async () => ({})),
     // The daily send budget counts sent email off this table, so a mock
