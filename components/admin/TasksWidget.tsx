@@ -14,6 +14,7 @@ export function TasksWidget() {
   const [newTitle, setNewTitle] = useState('');
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState('');
 
   const load = async () => {
     try {
@@ -32,34 +33,85 @@ export function TasksWidget() {
   const handleAdd = async () => {
     if (!newTitle.trim()) return;
     setAdding(true);
+    setError('');
     try {
       const response = await fetch('/api/admin/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newTitle }),
       });
-      const data = await response.json();
-      if (data.success) {
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.success) {
         setTasks((prev) => [data.task, ...prev]);
         setNewTitle('');
+      } else {
+        // The title stays in the box on purpose — it is the only copy.
+        setError("Couldn't save that task — try again.");
       }
+    } catch {
+      setError('Could not reach the server — check your connection.');
     } finally {
       setAdding(false);
     }
   };
 
+  /*
+   * Both of these update the list first and ask the server after, which is
+   * right — a checkbox that waits on a round trip feels broken.
+   *
+   * What was missing is the other half of that bargain. Neither looked at the
+   * response, so a failed write left the screen showing the change anyway: a
+   * task ticked off that was still open, or one removed that was still there,
+   * and no way to tell until a reload silently put it back. A to-do list that
+   * loses a tick is worse than one that is slow to take it, so a write that
+   * did not land now puts the row back the way it was and says so.
+   */
   const handleToggle = async (task: TaskItem) => {
+    setError('');
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done: !t.done } : t)));
-    await fetch(`/api/admin/tasks/${task.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ done: !task.done }),
-    });
+    const revert = () =>
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done: task.done } : t)));
+    try {
+      const response = await fetch(`/api/admin/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ done: !task.done }),
+      });
+      if (!response.ok) {
+        revert();
+        setError("Couldn't update that task — put it back.");
+      }
+    } catch {
+      revert();
+      setError('Could not reach the server — check your connection.');
+    }
   };
 
   const handleDelete = async (taskId: string) => {
+    setError('');
+    // Captured before the removal so a failed delete can put the row back
+    // where it was rather than at the top of the list.
+    const index = tasks.findIndex((t) => t.id === taskId);
+    const removed = tasks[index];
+    if (!removed) return;
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
-    await fetch(`/api/admin/tasks/${taskId}`, { method: 'DELETE' });
+    const revert = () =>
+      setTasks((prev) => {
+        if (prev.some((t) => t.id === taskId)) return prev;
+        const next = prev.slice();
+        next.splice(Math.min(index, next.length), 0, removed);
+        return next;
+      });
+    try {
+      const response = await fetch(`/api/admin/tasks/${taskId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        revert();
+        setError("Couldn't remove that task — put it back.");
+      }
+    } catch {
+      revert();
+      setError('Could not reach the server — check your connection.');
+    }
   };
 
   const pending = tasks.filter((t) => !t.done);
@@ -85,6 +137,12 @@ export function TasksWidget() {
           Add
         </button>
       </div>
+
+      {error && (
+        <p role="status" className="text-xs text-amber-300/90 mb-3">
+          {error}
+        </p>
+      )}
 
       {loading ? (
         <p className="text-white/30 text-sm">Loading...</p>
