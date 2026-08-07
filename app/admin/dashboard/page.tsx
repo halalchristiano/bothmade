@@ -86,6 +86,52 @@ function OpenStatusButton({ projectId, shareToken }: { projectId: string; shareT
   );
 }
 
+/**
+ * One half of the breakdown failed while the other did not.
+ *
+ * Sales and operations are separate endpoints, and a failure in one used to
+ * replace the whole panel with a single apology — discarding data from the
+ * other that had already arrived and parsed. Two people share this screen, so
+ * a delivery query falling over is not a reason to stop telling the rep what
+ * is about to land.
+ *
+ * `stale` is the distinction that matters. Numbers left from an earlier load
+ * are worth keeping on screen, but only if the page admits they are old:
+ * a figure that has quietly stopped updating is worse than a missing one,
+ * because nothing about it looks wrong.
+ */
+function HalfFailureNotice({
+  error,
+  visible,
+  stale,
+  onRetry,
+}: {
+  error: string | null;
+  visible: boolean;
+  stale: boolean;
+  onRetry: () => void;
+}) {
+  if (!error || !visible) return null;
+  return (
+    <div
+      role="status"
+      className="my-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-4 py-3 text-sm text-amber-200/80"
+    >
+      <AlertTriangle size={15} className="shrink-0" />
+      <span className="min-w-0 flex-1">
+        {error} {stale ? 'Showing the last figures that loaded.' : 'The rest of the page is current.'}
+      </span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="shrink-0 rounded-lg border border-amber-400/30 px-2.5 py-1 text-xs font-semibold transition-colors hover:bg-amber-400/10"
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
 function RangePicker({ range, onChange }: { range: StatsRange; onChange: (r: StatsRange) => void }) {
   return (
     <div className="inline-flex gap-1 rounded-xl border border-white/10 p-1 bg-white/[0.02]">
@@ -1486,8 +1532,9 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [salesError, setSalesError] = useState<string | null>(null);
+  const [opsError, setOpsError] = useState<string | null>(null);
   const [todayUpdatedAt, setTodayUpdatedAt] = useState<Date | null>(null);
   const [todayRefreshing, setTodayRefreshing] = useState(false);
   const [range, setRange] = useState<StatsRange>('week');
@@ -1529,10 +1576,21 @@ export default function AdminDashboardPage() {
     if (!open) return;
     let cancelled = false;
 
+    /** One half's response, unwrapped. Throws with a sentence worth showing. */
+    const readHalf = async (res: Response, label: string) => {
+      if (!res.ok) throw new Error(`${label} didn't load (${res.status}).`);
+      const body = await res.json();
+      if (!body.success) throw new Error(body.error || `${label} didn't load.`);
+      return body.stats;
+    };
+    const reason = (err: unknown, label: string) =>
+      err instanceof Error ? err.message : `${label} didn't load.`;
+
     const load = async () => {
       if (salesStats || opsStats) setRefreshing(true);
       else setLoading(true);
-      setError(null);
+      setSalesError(null);
+      setOpsError(null);
       try {
         // Both halves, for everyone. This used to fetch one or the other off
         // the signed-in role, which is what made two people in the same studio
@@ -1549,19 +1607,35 @@ export default function AdminDashboardPage() {
           router.push('/admin/login');
           return;
         }
-        if (!salesRes.ok) throw new Error(`Failed to load sales data (${salesRes.status}).`);
-        if (!opsRes.ok) throw new Error(`Failed to load operations data (${opsRes.status}).`);
-        const [salesData, opsData] = await Promise.all([salesRes.json(), opsRes.json()]);
-        if (!salesData.success) throw new Error(salesData.error || 'Failed to load sales data.');
-        if (!opsData.success) throw new Error(opsData.error || 'Failed to load operations data.');
 
+        /*
+         * Settled, not all-or-nothing.
+         *
+         * These are two independent endpoints and the first `throw` used to
+         * end the whole load — so a 500 in ops discarded sales data that had
+         * already arrived intact, and the page showed one error where half of
+         * it was sitting in a variable, parsed and fine. Two people share this
+         * screen; a delivery query falling over is not a reason to stop
+         * telling the rep what is about to land.
+         */
+        const [sales, ops] = await Promise.allSettled([
+          readHalf(salesRes, 'Sales'),
+          readHalf(opsRes, 'Operations'),
+        ]);
         if (cancelled) return;
-        setSalesStats(salesData.stats);
-        setOpsStats(opsData.stats);
-        setLastUpdated(new Date());
+
+        if (sales.status === 'fulfilled') setSalesStats(sales.value);
+        else setSalesError(reason(sales.reason, 'Sales'));
+        if (ops.status === 'fulfilled') setOpsStats(ops.value);
+        else setOpsError(reason(ops.reason, 'Operations'));
+        if (sales.status === 'fulfilled' || ops.status === 'fulfilled') setLastUpdated(new Date());
       } catch (err) {
+        // Only the fetches themselves rejecting lands here — no connection, so
+        // neither half made it.
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Something went wrong loading the breakdown.');
+          const message = reason(err, 'The breakdown');
+          setSalesError(message);
+          setOpsError(message);
         }
       } finally {
         if (!cancelled) {
@@ -1699,12 +1773,18 @@ export default function AdminDashboardPage() {
               <p className="py-10 text-center text-sm text-white/40">Loading the breakdown…</p>
             )}
 
-            {error && (
+            {/*
+              The full-width apology, for when there is genuinely nothing to
+              show. It used to appear whenever either half failed, on top of a
+              page that was still rendering the half that had loaded — an
+              error and its own contradiction, stacked.
+            */}
+            {salesError && opsError && !salesStats && !opsStats && (
               <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
                 <AlertTriangle className="text-red-400" size={26} />
                 <div>
                   <p className="font-semibold mb-1">Couldn&apos;t load the breakdown</p>
-                  <p className="text-white/40 text-sm">{error}</p>
+                  <p className="text-white/40 text-sm">{salesError}</p>
                 </div>
                 <BrandButton variant="primary" onClick={onRefresh}>
                   Try again
@@ -1712,9 +1792,23 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
+            {/* One half down, the other fine: say which, in its own place,
+                and leave the working half alone. */}
+            <HalfFailureNotice
+              error={salesError}
+              visible={!!salesStats || !!opsStats}
+              stale={!!salesStats}
+              onRetry={onRefresh}
+            />
             {salesStats && (
               <SalesDashboard stats={salesStats} refreshSignal={retryCount} />
             )}
+            <HalfFailureNotice
+              error={opsError}
+              visible={!!salesStats || !!opsStats}
+              stale={!!opsStats}
+              onRetry={onRefresh}
+            />
             {opsStats && (
               <OpsDashboard
                 stats={opsStats}
