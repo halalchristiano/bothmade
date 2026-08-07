@@ -27,6 +27,15 @@ export const FIELD_LIMITS = {
    */
   nationalNumber: 24,
   message: 4000,
+  /**
+   * A staff member's job title, as it appears beside their name.
+   *
+   * Here rather than beside the route that happened to need it first: the
+   * same two fields are written from three places — your own Settings page,
+   * an owner adding a teammate, and an owner editing one — and a cap that
+   * lives in one of them is a cap the other two do not have.
+   */
+  title: 120,
 } as const;
 
 export const NAME_MIN = 2;

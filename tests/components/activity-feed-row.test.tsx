@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ActivityRow } from '@/app/admin/dashboard/page';
+import { ActivityRow } from '@/components/admin/dashboard/ActivityRow';
 
 /**
  * A feed row is only a link when there is somewhere to go.

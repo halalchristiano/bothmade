@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FIELD_LIMITS } from '@/lib/validation';
 
 /**
  * The headshot column, and the upload policy it was quietly ignoring.
@@ -102,7 +103,9 @@ describe('the text fields beside it', () => {
     const { status } = await patch({ name: 'K'.repeat(5000) });
 
     expect(status).toBe(200);
-    expect(String(written().name)).toHaveLength(120);
+    // The shared limit, not a number written out here — the same cap the two
+    // /admin/team routes apply to the same field.
+    expect(String(written().name)).toHaveLength(FIELD_LIMITS.name);
   });
 
   it('still refuses an empty name', async () => {

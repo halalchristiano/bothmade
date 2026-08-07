@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
+import { FIELD_LIMITS } from '@/lib/validation';
 
 export async function GET() {
   try {
@@ -22,9 +23,6 @@ export async function GET() {
   }
 }
 
-/** Room for a real name, and nothing like enough for a payload. */
-const NAME_MAX = 120;
-const TITLE_MAX = 120;
 /** A Blob URL is well under this; the cap is a typo guard, not a policy. */
 const AVATAR_URL_MAX = 2048;
 
@@ -82,7 +80,7 @@ export async function PATCH(request: NextRequest) {
     const data: { name?: string; avatarUrl?: string | null; title?: string | null } = {};
     if (typeof name === 'string') {
       if (!name.trim()) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 });
-      data.name = name.trim().slice(0, NAME_MAX);
+      data.name = name.trim().slice(0, FIELD_LIMITS.name);
     }
     if (avatarUrl === null) {
       // Explicitly clearing the headshot.
@@ -100,7 +98,7 @@ export async function PATCH(request: NextRequest) {
       data.avatarUrl = clean;
     }
     if (typeof title === 'string') {
-      data.title = title.trim().slice(0, TITLE_MAX) || null;
+      data.title = title.trim().slice(0, FIELD_LIMITS.title) || null;
     }
     await prisma.user.update({ where: { id: session.userId }, data });
 

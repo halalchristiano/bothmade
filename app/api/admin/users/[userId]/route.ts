@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { forbiddenResponse, requireOwner } from '@/lib/middleware';
 import { isUserRole } from '@/lib/roles';
+import { FIELD_LIMITS } from '@/lib/validation';
 
 /**
  * Would this change leave nobody holding `owner`?
@@ -46,11 +47,16 @@ export async function PATCH(
 
     const data: { name?: string | null; role?: string; title?: string | null } = {};
 
+    // Capped the same way Settings caps them when somebody edits their own.
+    // These two fields are written from three places; a limit that lives in
+    // one of them is a limit the other two do not have.
     if (name !== undefined) {
-      data.name = typeof name === 'string' && name.trim() ? name.trim() : null;
+      data.name =
+        typeof name === 'string' && name.trim() ? name.trim().slice(0, FIELD_LIMITS.name) : null;
     }
     if (title !== undefined) {
-      data.title = typeof title === 'string' && title.trim() ? title.trim() : null;
+      data.title =
+        typeof title === 'string' && title.trim() ? title.trim().slice(0, FIELD_LIMITS.title) : null;
     }
 
     if (role !== undefined) {

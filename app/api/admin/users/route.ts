@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword, generateRandomPassword } from '@/lib/auth';
 import { forbiddenResponse, requireOwner, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { isUserRole } from '@/lib/roles';
+import { FIELD_LIMITS, isValidEmail } from '@/lib/validation';
 
 /**
  * Team-member list. Any staff account can read it — assignment dropdowns
@@ -52,6 +53,25 @@ export async function POST(request: NextRequest) {
     if (typeof email !== 'string' || !email.trim()) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
+    /*
+     * The one field on this form that has to be right.
+     *
+     * Any non-empty string used to pass. That is worse here than on a public
+     * form, because there is no second chance: the password is generated,
+     * shown once in this response and stored only as a hash, so an address
+     * with a typo in it produces an account that cannot be signed into and
+     * cannot be recovered either — a reset mail goes to a mailbox that does
+     * not exist. The row then sits in the team list looking like a colleague.
+     *
+     * The same predicate the public forms use, so an address the contact form
+     * would have refused is not one an owner can create a login with.
+     */
+    if (!isValidEmail(email)) {
+      return NextResponse.json(
+        { error: 'That does not look like an email address.' },
+        { status: 400 }
+      );
+    }
     if (!isUserRole(role)) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
     }
@@ -74,8 +94,10 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.create({
       data: {
         email: cleanEmail,
-        name: typeof name === 'string' && name.trim() ? name.trim() : null,
-        title: typeof title === 'string' && title.trim() ? title.trim() : null,
+        // Capped the same way Settings caps them when somebody edits their
+        // own — the fields are the same fields whichever page writes them.
+        name: typeof name === 'string' && name.trim() ? name.trim().slice(0, FIELD_LIMITS.name) : null,
+        title: typeof title === 'string' && title.trim() ? title.trim().slice(0, FIELD_LIMITS.title) : null,
         role,
         password: await hashPassword(initialPassword),
       },

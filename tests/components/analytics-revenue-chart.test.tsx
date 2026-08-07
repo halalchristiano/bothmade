@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RevenueChart } from '@/app/admin/analytics/page';
+import { RevenueChart } from '@/components/admin/analytics/RevenueChart';
 
 /**
  * The split between project work and care plans, on a device with no hover.
