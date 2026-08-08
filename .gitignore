@@ -68,3 +68,9 @@ next-env.d.ts
 # and the disclosure decision are the owner's calls to make, not something a
 # .gitignore line closes out.
 /output
+
+# Throwaway scripts used to drive the app in a browser during a session —
+# seeds, screenshot passes, accessibility audits. They point at a local
+# database and a local dev server and are worthless anywhere else, and
+# `git add -A` had already carried three of them into main.
+*.local.mjs
