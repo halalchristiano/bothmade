@@ -177,6 +177,34 @@ export const NOTIFICATION_GUIDE: NotificationGroup[] = [
         where: ['email'],
         timing: 'Weekdays, 1pm UTC',
       },
+      /*
+       * The two that send mail *for* you, and were missing from this list
+       * entirely — which is the failure the file header says it exists to
+       * prevent. Both are in vercel.json and have been running.
+       *
+       * auto-follow-up is the one worth reading twice. It sends through
+       * sendAsUser, so the mail leaves from the rep's own Gmail and lands in
+       * their Sent folder. A rep who does not know it runs can message a lead
+       * the same morning it did, or get a reply to something they never wrote.
+       */
+      {
+        trigger: 'A cold lead has gone quiet for a couple of days',
+        tells:
+          'The next of three follow-ups is sent from your own Gmail, and the lead moves to Contacted. ' +
+          'After the third, the sequence ends and the lead is left for you',
+        where: ['email'],
+        timing: 'Weekdays, 4pm UTC',
+        basis: 'Up to 40 leads a run, and never inside 2 days of the last one',
+      },
+      {
+        trigger: 'Somebody filled in the contact form and then went quiet',
+        tells:
+          'They are nudged once a day, with copy that changes as the days pass, and an unsubscribe ' +
+          'link in every one. After 14 we stop and leave them for a human',
+        where: ['email'],
+        timing: 'Daily, 3pm UTC',
+        basis: 'MAX_NUDGES = 14 — this is not cold mail, it is a conversation they started',
+      },
     ],
   },
   {
