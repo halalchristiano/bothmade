@@ -38,6 +38,13 @@ interface LeadRow {
   emailDeliveryFailedReason: string | null;
   doNotContact: boolean;
   assignedTo: { name: string | null } | null;
+  /**
+   * When somebody here last worked it — the newest timeline row the app did
+   * not write for itself. Null for a business nobody has worked yet, which is
+   * not the same as one worked a long time ago.
+   */
+  lastActivityAt: string | null;
+  /** Only ever asked "is this empty", for the never-contacted count. */
   activities: Array<{ createdAt: string }>;
 }
 
@@ -186,7 +193,9 @@ const SORTABLE_COLUMNS: Array<[SortKey, string]> = [
   ['status', 'Status'],
   ['value', 'Value'],
   ['assigned', 'Assigned'],
-  ['activity', 'Last Activity'],
+  // "Last worked", not "last activity". The two are different questions now
+  // and only one of them is worth a column: see the sort comment below.
+  ['activity', 'Last worked'],
 ];
 
 export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
@@ -369,8 +378,26 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
     if (!sortKey) return searched;
     const dir = sortDir === 'asc' ? 1 : -1;
     const text = (v: string | null | undefined) => (v || '').toLowerCase();
-    const lastActivity = (l: LeadRow) =>
-      l.activities[0] ? new Date(l.activities[0].createdAt).getTime() : 0;
+    /*
+     * When somebody here last worked this lead — the same reading the board
+     * uses, and deliberately not "the last row on the timeline".
+     *
+     * Six things write that timeline with nobody doing the work they
+     * describe, the nightly follow-up cron above all. Sorting on the raw
+     * timeline meant a lead the cron emailed at 3am read as freshly attended
+     * to and sank out of view, and this is the one sort a rep uses to ask who
+     * has been neglected — so the leads it was built to surface were exactly
+     * the ones it hid. It also disagreed with the board, which says "Not
+     * worked yet" about the same business on the next tab along.
+     *
+     * Never worked sorts last on the default (most recent first) and first on
+     * the other. `-Infinity` rather than `0` is intent rather than behaviour —
+     * no real timestamp predates the epoch, so the two sort identically — but
+     * it says "no date" instead of "1 January 1970", which is what somebody
+     * adding a third case here needs to know.
+     */
+    const lastWorked = (l: LeadRow) =>
+      l.lastActivityAt ? new Date(l.lastActivityAt).getTime() : -Infinity;
     return [...searched].sort((a, b) => {
       switch (sortKey) {
         case 'company':
@@ -384,7 +411,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
         case 'assigned':
           return text(a.assignedTo?.name).localeCompare(text(b.assignedTo?.name)) * dir;
         case 'activity':
-          return (lastActivity(a) - lastActivity(b)) * dir;
+          return (lastWorked(a) - lastWorked(b)) * dir;
       }
     });
   }, [searched, sortKey, sortDir]);
@@ -1445,8 +1472,8 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                       </td>
                       <td className="px-6 py-4 text-white/50">{lead.assignedTo?.name || '—'}</td>
                       <td className="px-6 py-4 text-white/50">
-                        {lead.activities[0]
-                          ? new Date(lead.activities[0].createdAt).toLocaleDateString()
+                        {lead.lastActivityAt
+                          ? new Date(lead.lastActivityAt).toLocaleDateString()
                           : '—'}
                       </td>
                       <td className="px-6 py-4">
