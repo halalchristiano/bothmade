@@ -4,6 +4,8 @@ import { projectBalance } from '@/lib/billing';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
 import { unreadWhere } from '@/lib/team-chat';
+import { autoFollowUpSender } from '@/lib/auto-follow-up';
+import { autoFollowUpBlocker } from '@/lib/outreach-health';
 
 export interface NotificationItem {
   id: string;
@@ -195,6 +197,44 @@ export async function GET() {
         detail: `${(balanceDue / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' })} due`,
         href: `/admin/projects/${p.id}`,
         severity: 'urgent',
+      });
+    }
+
+    /*
+     * The cron that cannot start.
+     *
+     * /api/cron/auto-follow-up refuses to run when no account holds the
+     * outreach mailbox, and says so clearly — into Vercel's cron log, which
+     * nobody opens. So it can decline every weekday for weeks while the
+     * sequence silently stops advancing, and the only symptom is leads who
+     * were spoken to on the phone never hearing back.
+     *
+     * Same lookup the cron does, by gmailAddress OR email, so the two cannot
+     * disagree about whether it is configured.
+     *
+     * Last in the list and deliberately not 'urgent': it is a setup task, not
+     * a person waiting, and putting it above "they wrote back" would be
+     * wrong every day it stayed unfixed.
+     */
+    const senderEmail = autoFollowUpSender();
+    const senderAccount = await prisma.user.findFirst({
+      where: { OR: [{ gmailAddress: senderEmail }, { email: senderEmail }] },
+      select: {
+        email: true,
+        gmailAddress: true,
+        gmailAppPassword: true,
+        googleRefreshToken: true,
+      },
+    });
+
+    const blocked = autoFollowUpBlocker(senderEmail, senderAccount);
+    if (blocked) {
+      items.push({
+        id: `outreach-${blocked.reason}`,
+        label: blocked.label,
+        detail: blocked.detail,
+        href: blocked.href,
+        severity: 'warning',
       });
     }
 
