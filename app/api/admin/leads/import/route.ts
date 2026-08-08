@@ -687,6 +687,12 @@ export async function POST(request: NextRequest) {
           ...(nextFollowUpAt ? { nextFollowUpAt } : {}),
 
           assignedToId,
+          // Who ran the upload, kept apart from who owns the lead. They start
+          // equal — assignedToId defaults to this same user — and diverge the
+          // first time anything is reassigned. The open alert follows this
+          // one, because the person who sent the batch is the person waiting
+          // to hear back from it.
+          importedById: session.userId,
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null);

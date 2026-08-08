@@ -102,6 +102,23 @@ export interface EmailData {
    * Set on outreach, absent from client mail. See lib/unsubscribe.ts.
    */
   unsubscribeUrl?: string | null;
+  /**
+   * The mailbox this leaves from, when it must not be the studio's shared
+   * inbox.
+   *
+   * Everything here has always gone out as info@, which is right for anything
+   * a client might reply to — a reply lands where somebody reads it. It is
+   * wrong for machine-generated internal alerts: they are not a conversation,
+   * and a reply to one is a reply nobody sees.
+   *
+   * Two things to know before setting it. On the delegated path this is the
+   * mailbox impersonated through Google Workspace, so it has to exist there;
+   * and on the Resend path the domain has to be verified with Resend. A
+   * delegated send that fails already falls through to Resend below, so a
+   * missing Workspace mailbox degrades rather than breaks — but an unverified
+   * domain means nothing arrives at all.
+   */
+  from?: string;
 }
 
 /**
@@ -163,6 +180,9 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
 
   const fromName = sanitizeDisplayName(data.fromName) || 'Bothmade';
   const replyTo = data.replyTo ? sanitizeEmailAddress(data.replyTo) : null;
+  // Sanitized like every other header value, and falling back to the shared
+  // inbox rather than to nothing if a caller passes something unusable.
+  const fromAddress = (data.from && sanitizeEmailAddress(data.from)) || CONTACT_EMAIL;
 
   /**
    * Gmail first, Resend as the fallback.
@@ -194,7 +214,7 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
   if (canDelegate) {
     const results = await Promise.all(
       recipients.map((recipient) =>
-        sendAsDelegatedUser(CONTACT_EMAIL, {
+        sendAsDelegatedUser(fromAddress, {
           fromName,
           to: recipient,
           subject: sanitizeSubject(data.subject),
@@ -226,7 +246,7 @@ export async function sendEmailDetailed(data: EmailData): Promise<SendResult> {
     }
 
     const result = await resend.emails.send({
-      from: `${fromName} <${CONTACT_EMAIL}>`,
+      from: `${fromName} <${fromAddress}>`,
       to: recipients,
       subject: sanitizeSubject(data.subject),
       html: data.html,

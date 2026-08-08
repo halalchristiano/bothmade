@@ -30,11 +30,40 @@ import { readOpens } from '@/lib/lead-opens';
 /**
  * How many opens a lead needs before an alert is worth sending.
  *
- * Every open below this still counts, still ranks the lead on the call sheet
- * and still shows on the row — this is only the bar for interrupting a person
- * with a notification, which is a far more expensive thing to get wrong.
+ * One. Set by the studio's owner, and the reasoning is theirs to make: a
+ * single eyeball on a cold email is worth knowing about, and a batch of a few
+ * hundred that produces one notification looks indistinguishable from a
+ * tracker that has stopped working.
+ *
+ * The bar has now been at one, then three, then one again, so the trade is
+ * worth writing down rather than rediscovering. Three suppressed the noise
+ * from Apple Mail Privacy Protection and Gmail's image proxy, both of which
+ * fetch on delivery whether or not a human looks — so at one, some share of
+ * these alerts are a machine, not a reader. What that buys is never missing
+ * the ones that are real. At the volumes this studio sends, that is the right
+ * side to err on; at a thousand a day it would not be, and the number to
+ * change is here.
+ *
+ * The wording already tells the two apart on its own: `confirmedReader` is
+ * what decides between "is reading it" and the flatter "opened it", so an
+ * alert fired on a single open never claims more than it knows.
  */
-export const ALERT_MIN_OPENS = 3;
+export const ALERT_MIN_OPENS = 1;
+
+/**
+ * Who these leave from.
+ *
+ * Not the shared info@ inbox. An open alert is a machine telling you to pick
+ * up the phone — nobody replies to it, and a reply that did arrive would land
+ * in the inbox the studio answers clients from.
+ *
+ * The domain has to be verified with Resend, and ideally exist as a Workspace
+ * mailbox so the delegated transport can use it too; a delegated failure
+ * falls through to Resend, an unverified domain does not fall through to
+ * anything. Overridable so that can be changed without a deploy.
+ */
+export const ALERT_FROM_EMAIL =
+  process.env.ALERT_FROM_EMAIL?.trim() || 'no-reply@bothmadestudio.com';
 
 export interface OpenAlertResult {
   /** Whether this fetch was the one that claimed the alert. */
@@ -64,6 +93,7 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
       coldEmailLastOpenedAt: true,
       coldEmailOpenNotifiedAt: true,
       assignedTo: { select: { id: true, email: true, name: true } },
+      importedBy: { select: { id: true, email: true, name: true } },
     },
   });
 
@@ -90,9 +120,15 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
   if (reading.opens < ALERT_MIN_OPENS) {
     return { sent: false, reason: `only ${reading.opens} open(s) — below the alert threshold` };
   }
-  // And still only when the pattern says a person rather than a mail server,
-  // which is the discount `confirmedReader` exists to apply.
-  if (!reading.confirmedReader) return { sent: false, reason: 'not a person yet' };
+  /*
+   * No second gate on `confirmedReader`.
+   *
+   * It used to require the open pattern to look like a person before anything
+   * was sent, which at a threshold of one is a contradiction: a first open can
+   * never have come back to anything. The distinction is not lost — it decides
+   * the wording below, so a single open is reported as an open and only a
+   * repeat one is called reading.
+   */
 
   /*
    * The claim, and the check, in one statement.
@@ -139,13 +175,22 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
     urgent: true,
   }).catch((err) => console.error('Open alert chat message failed:', err));
 
-  // And to the inbox, because that is what reaches a phone. Deliberately
-  // short: this email exists to cause one phone call, so the only things in
-  // it are who, how many times, and the number to ring.
-  const to = lead.assignedTo?.email;
+  /*
+   * The person who uploaded the batch, first.
+   *
+   * They ran the import and they pressed send on the emails, so they are the
+   * one sitting waiting to hear whether any of it landed — and a lead handed
+   * to somebody else afterwards should not redirect that. The assignee is the
+   * fallback, which is also what every lead that predates the column gets,
+   * and is what this used to do for all of them.
+   */
+  const to = lead.importedBy?.email ?? lead.assignedTo?.email;
   if (to) {
     await sendEmail({
       to,
+      // Not the shared client inbox: nobody replies to an alert, and a reply
+      // that did arrive would land where the studio answers clients.
+      from: ALERT_FROM_EMAIL,
       subject: reader
         ? `${lead.company} is reading your email`
         : `${lead.company} opened your email`,

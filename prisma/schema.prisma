@@ -72,6 +72,8 @@ model User {
   clientMessages       ProjectMessage[] @relation("SentByUser")
   adminUpdates         ProjectUpdate[]  @relation("CreatedByAdmin")
   assignedLeads        Lead[]           @relation("AssignedLeads")
+  /// Leads this user put in the system, whoever owns them now.
+  importedLeads        Lead[]           @relation("ImportedLeads")
   leadActivities       LeadActivity[]   @relation("LeadActivityAuthor")
   teamNotes            TeamNote[]       @relation("TeamNoteAuthor")
   tasks                Task[]           @relation("TaskAssignee")
@@ -690,6 +692,14 @@ model Lead {
 
   assignedToId String?
   assignedTo   User?   @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  // Who put this lead in the system, which is not the same question as who
+  // owns it now. The CSV importer defaults the assignee to itself, so the two
+  // start equal and diverge the first time anything is reassigned — and the
+  // open alert is addressed to the person who uploaded the batch, because
+  // they are the one who sent the emails and is waiting to hear back.
+  importedById String?
+  importedBy   User?   @relation("ImportedLeads", fields: [importedById], references: [id], onDelete: SetNull)
 
   // When this business entered the pipeline, as opposed to when the row was
   // written. They're the same for a lead added by hand and different for one

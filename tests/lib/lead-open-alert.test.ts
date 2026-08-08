@@ -90,54 +90,71 @@ describe('the alert', () => {
     expect(posted.content).toContain('Ridgeline Roofing');
   });
 
-  /**
-   * A mail server fetching the image on delivery is not news, and at the
-   * volume this account sends it is a notification every few minutes. The
-   * open is still recorded and the lead is still on the call sheet — nothing
-   * is thrown away except the interruption.
+  /*
+   * One open is enough now, and the four tests this replaces said the
+   * opposite. They were right for the bar that existed then — three opens
+   * plus a `confirmedReader` check — and that bar was lowered deliberately by
+   * the studio's owner, on the grounds that a batch of a few hundred
+   * producing one notification is indistinguishable from a tracker that has
+   * stopped working.
+   *
+   * What that costs is written down here rather than lost: Apple Mail Privacy
+   * Protection and Gmail's image proxy both fetch on delivery whether or not
+   * a human looks, so some share of these alerts are a machine. The gain is
+   * never missing one that is real, and the wording is what stops the alert
+   * overclaiming — see the two tests below.
    */
-  it('stays silent on a mail server fetch', async () => {
+  it('fires on a single open', async () => {
     prisma.lead.findUnique.mockResolvedValue(
       lead({ coldEmailOpens: 1, coldEmailOpenedAt: at(2000), coldEmailLastOpenedAt: at(2000) })
     );
 
     const result = await alertOnFirstRealOpen('lead_1');
 
-    expect(result.sent).toBe(false);
-    expect(sendEmail).not.toHaveBeenCalled();
-    // Unclaimed, so a third open can still earn the alert.
-    expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+    expect(result.sent).toBe(true);
+    expect(sendEmail).toHaveBeenCalled();
   });
 
-  it('stays silent on one open, however late it arrives', async () => {
-    for (const delay of [3 * 60 * 60 * 1000, 26 * 60 * 60 * 1000]) {
-      vi.clearAllMocks();
-      prisma.lead.updateMany.mockResolvedValue({ count: 1 });
-      prisma.lead.findUnique.mockResolvedValue(
-        lead({ coldEmailOpens: 1, coldEmailOpenedAt: at(delay), coldEmailLastOpenedAt: at(delay) })
-      );
-
-      expect((await alertOnFirstRealOpen('lead_1')).sent, `${delay}ms`).toBe(false);
-    }
-  });
-
-  /** Two is a proxy plus one glance. It is not yet worth a phone buzzing. */
-  it('stays silent on two opens', async () => {
+  it('fires on one open that arrives hours later', async () => {
     prisma.lead.findUnique.mockResolvedValue(
       lead({
-        coldEmailOpens: 2,
-        coldEmailOpenedAt: at(30 * 1000),
-        coldEmailLastOpenedAt: at(4 * 60 * 60 * 1000),
+        coldEmailOpens: 1,
+        coldEmailOpenedAt: at(26 * 60 * 60 * 1000),
+        coldEmailLastOpenedAt: at(26 * 60 * 60 * 1000),
       })
     );
 
-    const result = await alertOnFirstRealOpen('lead_1');
-
-    expect(result.sent).toBe(false);
-    expect(result.reason).toMatch(/threshold/i);
+    expect((await alertOnFirstRealOpen('lead_1')).sent).toBe(true);
   });
 
-  it('fires on the third open', async () => {
+  /*
+   * The distinction the old gate enforced still exists — it just decides the
+   * words instead of deciding whether to send. A fetch that could be a proxy
+   * is reported as an open; only a return visit is called reading.
+   */
+  it('does not claim somebody is reading it on a single fetch', async () => {
+    prisma.lead.findUnique.mockResolvedValue(
+      lead({ coldEmailOpens: 1, coldEmailOpenedAt: at(2000), coldEmailLastOpenedAt: at(2000) })
+    );
+
+    await alertOnFirstRealOpen('lead_1');
+
+    const mail = sendEmail.mock.calls[0][0] as unknown as { subject: string; html: string };
+    expect(mail.subject).toMatch(/opened your email/i);
+    expect(mail.subject).not.toMatch(/is reading/i);
+    expect(mail.html).not.toMatch(/come back to it/i);
+  });
+
+  it('still says "is reading it" once they have come back', async () => {
+    prisma.lead.findUnique.mockResolvedValue(lead());
+
+    await alertOnFirstRealOpen('lead_1');
+
+    const mail = sendEmail.mock.calls[0][0] as unknown as { subject: string };
+    expect(mail.subject).toMatch(/is reading/i);
+  });
+
+  it('fires on the third open, as it always did', async () => {
     prisma.lead.findUnique.mockResolvedValue(
       lead({
         coldEmailOpens: 3,
@@ -149,24 +166,65 @@ describe('the alert', () => {
     expect((await alertOnFirstRealOpen('lead_1')).sent).toBe(true);
   });
 
-  /**
-   * Three opens is necessary but not sufficient: a proxy that fetched on
-   * delivery and then twice more in the same minute is still a machine, and
-   * `confirmedReader` is the discount that catches it.
-   */
-  it('stays silent on three fetches that all look like the delivery', async () => {
-    prisma.lead.findUnique.mockResolvedValue(
-      lead({
-        coldEmailOpens: 3,
-        coldEmailOpenedAt: at(2000),
-        coldEmailLastOpenedAt: at(4000),
-      })
-    );
+  describe('who it comes from and who it reaches', () => {
+    /*
+     * Not info@. An open alert is a machine saying "pick up the phone" — it
+     * is not a conversation, and a reply to it would land in the inbox the
+     * studio answers clients from, where nobody is looking for it.
+     */
+    it('leaves from the alert mailbox, not the shared client inbox', async () => {
+      prisma.lead.findUnique.mockResolvedValue(lead());
 
-    const result = await alertOnFirstRealOpen('lead_1');
+      await alertOnFirstRealOpen('lead_1');
 
-    expect(result.sent).toBe(false);
-    expect(result.reason).toMatch(/not a person/i);
+      const mail = sendEmail.mock.calls[0][0] as unknown as { from?: string };
+      expect(mail.from).toBe('no-reply@bothmadestudio.com');
+      expect(mail.from).not.toMatch(/^info@/);
+    });
+
+    /*
+     * The person who ran the import pressed send on the batch and is the one
+     * waiting to hear whether any of it landed. Handing the lead to somebody
+     * else afterwards is a decision about who works it, not about who wanted
+     * to know it had been opened.
+     */
+    it('goes to whoever uploaded the CSV, not whoever owns the lead now', async () => {
+      prisma.lead.findUnique.mockResolvedValue(
+        lead({
+          importedBy: { id: 'user_k', email: 'kiana@bothmadestudio.com', name: 'Kiana' },
+          assignedTo: { id: 'user_1', email: 'evan@bothmade.studio', name: 'Evan' },
+        })
+      );
+
+      await alertOnFirstRealOpen('lead_1');
+
+      const mail = sendEmail.mock.calls[0][0] as unknown as { to: string };
+      expect(mail.to).toBe('kiana@bothmadestudio.com');
+    });
+
+    /** Every lead predating the column has no importer. Those keep the old behaviour. */
+    it('falls back to the assignee when nobody is recorded as having imported it', async () => {
+      prisma.lead.findUnique.mockResolvedValue(lead({ importedBy: null }));
+
+      await alertOnFirstRealOpen('lead_1');
+
+      const mail = sendEmail.mock.calls[0][0] as unknown as { to: string };
+      expect(mail.to).toBe('evan@bothmade.studio');
+    });
+
+    /*
+     * The team-chat message still posts either way, so an unassigned,
+     * un-imported lead is not silent — it just has no inbox to reach.
+     */
+    it('still posts to the team thread when there is nobody to email', async () => {
+      prisma.lead.findUnique.mockResolvedValue(lead({ importedBy: null, assignedTo: null }));
+
+      const result = await alertOnFirstRealOpen('lead_1');
+
+      expect(result.sent).toBe(true);
+      expect(postSystemMessage).toHaveBeenCalled();
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
   });
 
   it('does not alert twice for the same send', async () => {
