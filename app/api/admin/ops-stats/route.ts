@@ -290,6 +290,11 @@ export async function GET(request: Request) {
       const balance = projectBalance({
         totalPrice: p.totalPrice,
         statusStage: p.statusStage,
+        // The two recorded moments outrank the stage — see gateReached().
+        // Without them the priorities list calls a payment "gated" on a
+        // project we have already told the client is ready to go live.
+        designApprovedAt: p.designApprovedAt,
+        readyForLaunchAt: p.readyForLaunchAt,
         payments: paymentsByProject.get(p.id) ?? [],
         instalments: instalmentsByProject.get(p.id) ?? [],
       });

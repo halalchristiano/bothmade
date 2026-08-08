@@ -347,6 +347,58 @@ describe('the trigger each payment is for', () => {
     expect(prisma.invoice.create).toHaveBeenCalled();
   });
 
+  /**
+   * The gate reads the record, not just the dropdown.
+   *
+   * Confirming a project Ready for Launch on the launch board IS the moment
+   * Section 1 defines, and Section 7 makes it what Payment 3 is due on. It
+   * stamps readyForLaunchAt and tells the client the final invoice follows.
+   * Moving the stage is a separate, later act that emails them again — so
+   * requiring it here made the studio confirm readiness, promise the invoice,
+   * and then be refused by the only route that can send it.
+   */
+  it('sends Payment 3 once the launch is confirmed in writing, whatever the stage says', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_1',
+      clientId: 'client_1',
+      name: 'Northgate — Custom Website',
+      totalPrice: 2000000,
+      status: 'build',
+      statusStage: 2,
+      readyForLaunchAt: new Date('2026-08-01T09:00:00.000Z'),
+      client: { id: 'client_1', email: 'priya@northgate.com', company: 'Northgate', contactName: 'Priya' },
+    });
+    prisma.instalment.findMany.mockResolvedValue(
+      structuredClone(SCHEDULE).map((i: { index: number; status: string }) =>
+        i.index === 2 ? { ...i, status: 'paid' } : i
+      )
+    );
+
+    const res = await call({ index: 3 });
+
+    expect(res.status).toBe(200);
+    expect(prisma.invoice.create).toHaveBeenCalled();
+  });
+
+  it('sends Payment 2 once the design approval is on the record', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_1',
+      clientId: 'client_1',
+      name: 'Northgate — Custom Website',
+      totalPrice: 2000000,
+      // Still in Design: a review period that lapsed under Section 4 approves
+      // the design without anybody moving a dropdown on the client's behalf.
+      status: 'design',
+      statusStage: 1,
+      designApprovedAt: new Date('2026-08-01T09:00:00.000Z'),
+      client: { id: 'client_1', email: 'priya@northgate.com', company: 'Northgate', contactName: 'Priya' },
+    });
+
+    const res = await call({ index: 2 });
+
+    expect(res.status).toBe(200);
+  });
+
   it('never stands in the way of the signing payment', async () => {
     prisma.project.findUnique.mockResolvedValue({
       id: 'proj_1',

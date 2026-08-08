@@ -145,11 +145,11 @@ export async function POST(
      * Has the thing this payment is FOR actually happened?
      *
      * Every instalment carries a trigger out of the agreement — "on signing",
-     * "on design approval", "when ready for launch" — and the project's stage
-     * is the record of whether that moment arrived. gateReached() has existed
-     * in lib/billing.ts the whole time and is what the ops list uses to
-     * surface money sitting past its gate. The one path that actually bills a
-     * client never asked it.
+     * "on design approval", "when ready for launch" — and the project is the
+     * record of whether that moment arrived. gateReached() has existed in
+     * lib/billing.ts the whole time and is what the ops list uses to surface
+     * money sitting past its gate. The one path that actually bills a client
+     * never asked it.
      *
      * So Payment 3, labelled "When ready to launch", could be invoiced at a
      * client while their project was still in Design — an invoice for a
@@ -162,7 +162,10 @@ export async function POST(
      * that sends a routine invoice. `acknowledgeGate` is that second press;
      * the panel asks for it in the client's own words.
      */
-    if (!gateReached(inst.trigger, project.statusStage) && body?.acknowledgeGate !== true) {
+    if (
+      !gateReached(inst.trigger, project.statusStage, project) &&
+      body?.acknowledgeGate !== true
+    ) {
       return NextResponse.json(
         {
           error: `${inst.label} falls due ${TRIGGER_PHRASE[inst.trigger] ?? 'later in the project'}, and that has not happened yet — this project is still at ${STAGE_LABEL[project.statusStage] ?? 'an earlier stage'}.`,

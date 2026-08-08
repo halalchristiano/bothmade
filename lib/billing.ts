@@ -30,18 +30,54 @@ export function amountPaidTowardProject(payments: Array<{ amount: number; type: 
 }
 
 /**
+ * What the project itself records about the two moments the contract names.
+ *
+ * Both are stamped by a deliberate act with a date on it, and both are more
+ * authoritative than the stage dropdown — because both ARE the definition:
+ *
+ *   §4  Design Approval happens when the client approves, or when the review
+ *       period lapses without a reply. `designApprovedAt` is that moment.
+ *   §1  "Ready for Launch" means the Agency "has confirmed in writing through
+ *       the dashboard that it is ready to go live." `readyForLaunchAt` is
+ *       that confirmation — see the deployment route, which writes it and
+ *       puts it on the client's timeline.
+ */
+export interface GateRecord {
+  designApprovedAt?: Date | string | null;
+  readyForLaunchAt?: Date | string | null;
+}
+
+/**
  * Has the schedule's gate for this instalment actually been passed?
  *
  * The instalment triggers are written in the language of the contract — "on
- * signing", "on design approval", "when ready for launch" — and the project's
- * stage is the only record of whether those moments have happened. Sending is
- * still a deliberate act by a person; this only answers whether it *would* be
- * fair to send, which is the difference between "we haven't billed them yet"
- * and "we can't bill them yet".
+ * signing", "on design approval", "when ready for launch". Sending is still a
+ * deliberate act by a person; this only answers whether it *would* be fair to
+ * send, which is the difference between "we haven't billed them yet" and "we
+ * can't bill them yet".
+ *
+ * The stage is the fallback, not the source. It used to be the only thing
+ * read, and that made the system contradict itself out loud: a project could
+ * be confirmed Ready for Launch on the launch board — the exact act Section 1
+ * defines the phrase as, announced to the client on their own timeline, in a
+ * lane captioned "what makes Payment 3 due" — and the one route that bills
+ * Payment 3 would still refuse it as a milestone that had not happened.
+ *
+ * Design Approval had the same hole, half-patched: uninvoicedPayments() in
+ * lib/stage-gates carried its own inline exception for `designApprovedAt` so
+ * a lapsed review period would surface the money, and nothing else in the
+ * codebase knew about it. Both records belong here, where every caller
+ * already looks.
  */
-export function gateReached(trigger: string, statusStage: number): boolean {
-  if (trigger === 'design-approval') return statusStage >= 2; // past Design
-  if (trigger === 'ready-for-launch') return statusStage >= 3; // Launch or later
+export function gateReached(
+  trigger: string,
+  statusStage: number,
+  recorded: GateRecord = {}
+): boolean {
+  // past Design, or the approval is on the record
+  if (trigger === 'design-approval') return statusStage >= 2 || Boolean(recorded.designApprovedAt);
+  // Launch or later, or we confirmed it in writing
+  if (trigger === 'ready-for-launch') return statusStage >= 3 || Boolean(recorded.readyForLaunchAt);
   return true; // signing — they signed, or there'd be no project
 }
 
@@ -83,12 +119,14 @@ export interface BalanceInstalment {
   trigger: string;
 }
 
-export function projectBalance(project: {
-  totalPrice: number;
-  statusStage: number;
-  payments: Array<{ amount: number; type: string }>;
-  instalments: BalanceInstalment[];
-}): ProjectBalance {
+export function projectBalance(
+  project: {
+    totalPrice: number;
+    statusStage: number;
+    payments: Array<{ amount: number; type: string }>;
+    instalments: BalanceInstalment[];
+  } & GateRecord
+): ProjectBalance {
   const paid = amountPaidTowardProject(project.payments);
   const remainingCents = Math.max(0, project.totalPrice - paid);
 
@@ -106,7 +144,7 @@ export function projectBalance(project: {
   for (const inst of live) {
     if (inst.status === 'paid') continue;
     if (inst.status === 'due') dueNowCents += inst.amountCents;
-    else if (gateReached(inst.trigger, project.statusStage)) unbilledCents += inst.amountCents;
+    else if (gateReached(inst.trigger, project.statusStage, project)) unbilledCents += inst.amountCents;
     else gatedCents += inst.amountCents;
   }
 

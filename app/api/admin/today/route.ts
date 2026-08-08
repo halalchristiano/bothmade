@@ -175,6 +175,7 @@ export async function GET(request: NextRequest) {
             name: true,
             statusStage: true,
             designApprovedAt: true,
+            readyForLaunchAt: true,
             client: { select: { company: true } },
             instalments: {
               where: { status: 'scheduled' },

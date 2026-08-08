@@ -136,6 +136,12 @@ export default function PrioritiesPage() {
   const [snoozed, setSnoozed] = useState<OpsStats['snoozed']>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  /** A snooze that did not take, kept so the page can say which one. */
+  const [snoozeError, setSnoozeError] = useState<{
+    projectId: string;
+    days: number | null;
+    message: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -265,16 +271,49 @@ export default function PrioritiesPage() {
     load();
   }, [load]);
 
-  /** `days: null` undoes it. Optimistic either way — the list is the point. */
+  /**
+   * `days: null` undoes it.
+   *
+   * A failure used to be a bare `return`. The row stayed, nothing was said,
+   * and the button had simply not worked — on the one screen whose entire
+   * value is that a row you put down stays down. The failure mode that makes
+   * is worse than a visibly broken button: you press "a week", the row does
+   * not move, you assume you misclicked, you press it again, and either way
+   * the project is back on the list tomorrow morning having been, as far as
+   * you know, dealt with.
+   *
+   * So the row deliberately stays where it is — the snooze genuinely did not
+   * happen — and the page says so, naming the project and offering the press
+   * again rather than leaving you to guess which of five rows failed.
+   */
   const snooze = async (projectId: string, days: number | null) => {
     setBusyId(projectId);
+    setSnoozeError(null);
+    const company = rows?.find((r) => r.id === projectId)?.company
+      ?? snoozed.find((s) => s.id === projectId)?.company
+      ?? 'That project';
     try {
       const res = await fetch(`/api/admin/projects/${projectId}/snooze`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // The route's own sentence where it has one — it is the half that
+        // knows whether this was a vanished project or a bad number.
+        const said = await res.json().catch(() => null);
+        setSnoozeError({
+          projectId,
+          days,
+          message:
+            typeof said?.error === 'string'
+              ? said.error
+              : days === null
+                ? `${company} could not be brought back — it is still snoozed.`
+                : `${company} could not be snoozed, so it is still on the list.`,
+        });
+        return;
+      }
       if (days === null) {
         setSnoozed((prev) => prev.filter((s) => s.id !== projectId));
         await load();
@@ -288,6 +327,17 @@ export default function PrioritiesPage() {
           ]);
         }
       }
+    } catch {
+      // The request never landed. Same rule as a refusal: the row has not
+      // moved, so the page must not imply it has.
+      setSnoozeError({
+        projectId,
+        days,
+        message:
+          days === null
+            ? `${company} could not be brought back — the request did not get through.`
+            : `${company} could not be snoozed — the request did not get through, so it is still on the list.`,
+      });
     } finally {
       setBusyId(null);
     }
@@ -320,6 +370,30 @@ export default function PrioritiesPage() {
       {failed && (
         <div className="mb-4">
           <LoadError what="the priority list" onRetry={load} />
+        </div>
+      )}
+
+      {snoozeError && (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] px-3.5 py-3"
+        >
+          <p className="text-sm text-amber-100">{snoozeError.message}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => snooze(snoozeError.projectId, snoozeError.days)}
+              disabled={busyId === snoozeError.projectId}
+              className="rounded-lg border border-amber-400/30 px-2.5 py-1 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-400/10 disabled:opacity-40"
+            >
+              {busyId === snoozeError.projectId ? 'Trying…' : 'Try again'}
+            </button>
+            <button
+              onClick={() => setSnoozeError(null)}
+              className="rounded-lg px-2.5 py-1 text-xs font-medium text-amber-100/60 transition-colors hover:text-amber-100"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
