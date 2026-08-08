@@ -716,10 +716,22 @@ export default function AdminProjectDetailPage() {
               the link was reachable from nowhere at all.
             */}
             {project.shareToken && (
-              <div className="mt-4 flex items-center gap-2 border-t border-white/[0.06] pt-4">
+              /*
+               * Labelled once above, then short controls beneath.
+               *
+               * "Copy status link" as a button label wrapped onto two lines in
+               * this column and shoved Revoke out of line with it. Naming the
+               * thing in a caption and letting the buttons say only what they
+               * do fits, and reads better besides: three verbs in a row rather
+               * than one sentence and two orphans.
+               */
+              <div className="mt-4 border-t border-white/[0.06] pt-4">
+                <p className="text-xs font-medium text-white/40">Client status link</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                 <CopyButton
                   value={`${typeof window === 'undefined' ? '' : window.location.origin}/status/${project.id}?t=${project.shareToken}`}
-                  label="Copy status link"
+                  label="Copy"
+                  title="Copy the client's status link"
                 />
                 <a
                   href={`/status/${project.id}?t=${encodeURIComponent(project.shareToken)}`}
@@ -746,10 +758,11 @@ export default function AdminProjectDetailPage() {
                   onClick={handleRotateShareLink}
                   disabled={rotatingLink}
                   title="Replace this link — every copy already sent stops working"
-                  className="ml-auto rounded-lg px-2 py-1 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-amber-300 disabled:opacity-50"
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-amber-300 disabled:opacity-50"
                 >
                   {rotatingLink ? 'Replacing…' : 'Revoke'}
                 </button>
+                </div>
               </div>
             )}
             {linkNotice && (
