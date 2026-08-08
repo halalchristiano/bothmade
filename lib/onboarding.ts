@@ -12,6 +12,28 @@
  * question on a project is one click rather than a blank box and a decision.
  */
 
+/**
+ * The order the questions are asked in, which for a long time was no order.
+ *
+ * Both list queries sorted on `order` alone, and nothing ever set it: the
+ * builder posts a question and a type, the create route defaulted the column
+ * to 0, and so every row on every project carried the same value. A sort key
+ * with one distinct value is not a sort — Postgres is free to return ties in
+ * whatever order the heap has them in, and it changes. So the client's form
+ * could ask for their brand palette before it asked what the company is
+ * called, and could ask in a different order the next time they opened it,
+ * which reads as a form that has lost its place.
+ *
+ * `createdAt` is the tiebreak rather than the fix. New questions get a real
+ * position from the create route, but every question written before that
+ * still has a 0 in the column and always will; falling through to when it was
+ * added puts those in the order somebody typed them, which is the order they
+ * meant. Exported so the two routes that list this form cannot drift apart —
+ * the client answering in one order while the studio reads the answers back
+ * in another is its own small confusion.
+ */
+export const ONBOARDING_ORDER = [{ order: 'asc' }, { createdAt: 'asc' }] as const;
+
 export type OnboardingType = 'text' | 'textarea' | 'select' | 'multi' | 'yesno';
 
 export interface OnboardingTypeSpec {

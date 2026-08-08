@@ -4,6 +4,7 @@ import { requirePrincipal, unauthorizedResponse, forbiddenResponse } from '@/lib
 import { sendOnboardingCompleteEmail } from '@/lib/email';
 import { notifyAdminsOnboardingComplete } from '@/lib/notify';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { ONBOARDING_ORDER } from '@/lib/onboarding';
 
 /**
  * The title of the ProjectUpdate row that doubles as the "already announced"
@@ -38,7 +39,9 @@ export async function GET(
 
     const questions = await prisma.onboardingQuestion.findMany({
       where: { projectId },
-      orderBy: { order: 'asc' },
+      // The same order the studio sees. See ONBOARDING_ORDER: sorting on
+      // `order` alone sorted nothing, because nothing ever set it.
+      orderBy: ONBOARDING_ORDER,
       include: { response: true },
     });
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
-import { ONBOARDING_TYPES } from '@/lib/onboarding';
+import { ONBOARDING_ORDER, ONBOARDING_TYPES } from '@/lib/onboarding';
 
 // The one list, shared with both sides of the form. It grew — "pick any"
 // and "yes or no" — and a route with its own copy silently rejected the new
@@ -28,7 +28,7 @@ export async function GET(
 
     const questions = await prisma.onboardingQuestion.findMany({
       where: { projectId },
-      orderBy: { order: 'asc' },
+      orderBy: ONBOARDING_ORDER,
       include: { response: true },
     });
 
@@ -55,7 +55,7 @@ export async function POST(
 
 
     const { projectId } = await params;
-    const { question, type = 'text', options = '', order = 0 } = await request.json();
+    const { question, type = 'text', options = '', order } = await request.json();
 
     if (!question || !VALID_TYPES.includes(type)) {
       return NextResponse.json(
@@ -64,8 +64,30 @@ export async function POST(
       );
     }
 
+    /*
+     * Where in the form this one goes.
+     *
+     * `order` used to default to 0, and the builder has never sent one — so
+     * every question on every project shared a single position and the sort
+     * on it did nothing. New questions now land after whatever is already
+     * there, which is what "add a question" has always meant on screen: the
+     * one you just wrote appears at the bottom of the list and stays there.
+     *
+     * A caller may still name a position; nothing does today, and refusing
+     * one would make reordering unimplementable from outside.
+     */
+    const position =
+      typeof order === 'number' && Number.isFinite(order)
+        ? order
+        : ((
+            await prisma.onboardingQuestion.aggregate({
+              where: { projectId },
+              _max: { order: true },
+            })
+          )._max.order ?? -1) + 1;
+
     const created = await prisma.onboardingQuestion.create({
-      data: { projectId, question, type, options, order },
+      data: { projectId, question, type, options, order: position },
     });
 
     return NextResponse.json({ success: true, question: created }, { status: 201 });
