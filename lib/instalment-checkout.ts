@@ -68,9 +68,35 @@ export async function liveCheckoutUrl(
   inst: CheckoutInstalment,
   project: CheckoutProject,
   siteUrl: string,
-  invoiceId?: string | null
+  invoiceId?: string | null,
+  /**
+   * What is actually still owed, when that is less than what was billed.
+   *
+   * An instalment carries what it BILLED and nothing about what has arrived,
+   * and it stays `due` until an invoice is settled in full — which is right,
+   * because the rest is still owed. But money can reach a bill without
+   * closing it: a client who transfers half of a $12,000 instalment leaves a
+   * `due` row for $12,000 with $6,000 outstanding. Charging the row's face
+   * value takes $12,000 from somebody who has already sent $6,000.
+   *
+   * Optional, and absent means the full amount, because every caller that
+   * cannot see the ledger should keep behaving exactly as it did.
+   */
+  outstandingCents?: number
 ): Promise<{ url: string; sessionId: string | null; minted: boolean } | null> {
-  if (inst.paymentUrl && (await sessionStillOpen(stripe, inst.stripeSessionId))) {
+  const dueCents =
+    typeof outstandingCents === 'number' && outstandingCents > 0
+      ? Math.min(outstandingCents, inst.amountCents)
+      : inst.amountCents;
+  const partPaid = dueCents < inst.amountCents;
+
+  /*
+   * A cached link is only reusable while it still asks for the right money.
+   * The stored session was minted for the face value; once part of it has
+   * been paid, that session is a request for more than is owed and reusing it
+   * is the same overcharge by a slower route.
+   */
+  if (!partPaid && inst.paymentUrl && (await sessionStillOpen(stripe, inst.stripeSessionId))) {
     return { url: inst.paymentUrl, sessionId: inst.stripeSessionId, minted: false };
   }
 
@@ -85,8 +111,12 @@ export async function liveCheckoutUrl(
           quantity: 1,
           price_data: {
             currency: 'usd',
-            unit_amount: inst.amountCents,
-            product_data: { name: `${project.name} — ${inst.label}` },
+            unit_amount: dueCents,
+            product_data: {
+              name: partPaid
+                ? `${project.name} — ${inst.label} (balance)`
+                : `${project.name} — ${inst.label}`,
+            },
           },
         },
       ],

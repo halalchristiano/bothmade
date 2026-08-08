@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { forbiddenResponse, requireClient } from '@/lib/middleware';
 import { amountPaidTowardProject } from '@/lib/billing';
 import { liveCheckoutUrl } from '@/lib/instalment-checkout';
+import { receivedCents } from '@/lib/invoice-settlement';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -72,15 +73,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
        * liveCheckoutUrl is the single answer now.
        */
       const dueInvoice = due.invoiceNumber
-        ? await prisma.invoice.findUnique({ where: { number: due.invoiceNumber } })
+        ? await prisma.invoice.findUnique({
+            where: { number: due.invoiceNumber },
+            // What has already arrived against it. An invoice can hold money
+            // without being settled, and the instalment row does not know.
+            include: { payments: { select: { amount: true } } },
+          })
         : null;
+
+      /*
+       * The ledger decides the amount, not the schedule.
+       *
+       * A client who has transferred half of this instalment is looking at a
+       * button on their own dashboard. Charging them the face value takes the
+       * half they already sent a second time — and unlike the chase email,
+       * nobody else is in the loop to notice.
+       */
+      const paidAlreadyCents = receivedCents(dueInvoice?.payments);
+      const outstandingCents = due.amountCents - paidAlreadyCents;
+      if (outstandingCents <= 0) {
+        return NextResponse.json(
+          { error: "That payment is already covered — thank you. Nothing more is owed on it." },
+          { status: 400 }
+        );
+      }
 
       const live = await liveCheckoutUrl(
         stripe,
         due,
         { id: project.id, name: project.name, clientEmail: project.client.email },
         siteUrl,
-        dueInvoice?.id
+        dueInvoice?.id,
+        outstandingCents
       );
       if (!live) {
         return NextResponse.json(
@@ -106,23 +130,49 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'No balance remaining on this project' }, { status: 400 });
     }
 
-    const checkoutSession = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: project.client.email,
-      success_url: `${siteUrl}/client/${project.id}?paid=1`,
-      cancel_url: `${siteUrl}/client/${project.id}`,
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: { name: `${project.name} — Balance Due` },
-            unit_amount: balanceDue,
+    const checkoutSession = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        customer_email: project.client.email,
+        success_url: `${siteUrl}/client/${project.id}?paid=1`,
+        cancel_url: `${siteUrl}/client/${project.id}`,
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: { name: `${project.name} — Balance Due` },
+              unit_amount: balanceDue,
+            },
+            quantity: 1,
           },
-          quantity: 1,
-        },
-      ],
-      metadata: { existingProjectId: project.id, paymentType: 'balance' },
-    });
+        ],
+        metadata: { existingProjectId: project.id, paymentType: 'balance' },
+      },
+      /*
+       * Nothing on this path remembers the session it minted, so nothing can
+       * expire it — every POST was a brand-new live checkout for the whole
+       * balance, and a client double-tapping their own Pay button ended up
+       * with two of them. This is the largest single amount anybody sends us
+       * and it is the one mint site in the app with no guard at all. The
+       * instalment path closes the window by storing and reusing the session;
+       * with nothing to store, Stripe's own replay is the guard, keyed on the
+       * project and the amount so a genuinely changed balance still mints.
+       */
+      { idempotencyKey: `paybalance-${project.id}-${balanceDue}` }
+    );
+
+    /*
+     * Stripe can answer without a URL — an already-finished session, or an
+     * embedded ui_mode — which is not the same as throwing. Returning it as a
+     * success sends the browser to `undefined` on the one button whose entire
+     * job is reaching a checkout. Same guard /pay/[instalmentId] already has.
+     */
+    if (!checkoutSession.url) {
+      return NextResponse.json(
+        { error: "Couldn't open a payment page just now. Please try again in a moment." },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({ success: true, url: checkoutSession.url }, { status: 201 });
   } catch (error) {
