@@ -24,7 +24,7 @@ async function main() {
   // rate_limits too: a handful of runs in a row trips the login limiter, and
   // a screenshot script that cannot sign in on its fourth go is a screenshot
   // script nobody runs.
-  for (const table of ['instalments', 'project_updates', 'project_messages', 'payments', 'projects', 'clients', 'users', 'rate_limits']) {
+  for (const table of ['invoices', 'instalments', 'project_updates', 'project_messages', 'payments', 'projects', 'clients', 'users', 'rate_limits']) {
     await prisma.$executeRawUnsafe(`TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE`).catch(() => {});
   }
 
@@ -117,8 +117,26 @@ async function main() {
     },
   });
 
+  /*
+   * An invoice that has gone out and not come back, so decommissioning
+   * Havisham has both halves of the refusal to name: a live project and money
+   * still owed. This is the ordinary shape of the mistake — the client looks
+   * finished on the list, and is not.
+   */
+  await prisma.invoice.create({
+    data: {
+      number: 'BM-2026-0042',
+      clientId: havisham.id,
+      projectId: havishamProject.id,
+      description: 'Payment 3 of 3 — Havisham Joinery',
+      amountCents: 180_000,
+      status: 'open',
+    },
+  });
+
   console.log('SEEDED');
   console.log('havishamProjectId=' + havishamProject.id);
+  console.log('havishamClientId=' + havisham.id);
 }
 
 main()
