@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Search, Bell, LogOut, Menu, X, Command } from 'lucide-react';
-import { ADMIN_NAV_ITEMS, adminPageTitle, groupSections, type NavItem } from '@/lib/admin-nav';
+import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
 import { Wordmark } from '@/components/Wordmark';
 import { useAdminPoll } from '@/lib/use-admin-poll';
 import { SendGuard } from '@/components/admin/SendGuard';
@@ -579,9 +579,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
    * lead in a third; identical titles make choosing between them guesswork and
    * turn browser history into a column of the same sentence.
    */
-  useEffect(() => {
-    document.title = adminPageTitle(pathname);
-  }, [pathname]);
 
   // Session: once per signed-in period, not per navigation. Keyed on the
   // login boundary — with [] deps a user landing on /admin/login first (i.e.

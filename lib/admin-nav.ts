@@ -140,12 +140,15 @@ export function adminPageTitle(pathname: string): string {
   /*
    * Real pages with no nav entry, named explicitly.
    *
-   * Four of them, and they are not oversights: the three lead lenses became
-   * tabs inside /admin/sales, so Leads, Pipeline and Who-to-call lost their
-   * sidebar entries while keeping their routes — they are still reached from
-   * the sidebar search, from a dashboard row, and from every link that names a
-   * lead. /admin/leads/[leadId] in particular is where most of a sales day is
-   * spent and is exactly the tab somebody needs to find again.
+   * Four of them, and they are not oversights. The three lead lenses became
+   * tabs inside /admin/sales, and their old routes were kept as redirects
+   * rather than deleted — so /admin/leads, /admin/pipeline and /admin/call-list
+   * resolve to /admin/sales and their own titles never appear. `/admin/leads`
+   * earns its entry regardless, because /admin/leads/[leadId] does NOT
+   * redirect: it is the lead detail page, where most of a sales day is spent,
+   * and it inherits this name. The other two are here so that if either
+   * redirect is ever replaced by a real page again, the tab is already right
+   * rather than silently falling through to the bare suffix.
    *
    * A list rather than a fallback that prettifies the URL segment, because
    * "Call list" is not what this page is called and guessing a name from a

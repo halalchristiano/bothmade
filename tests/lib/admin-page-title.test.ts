@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ADMIN_NAV_ITEMS, adminPageTitle } from '@/lib/admin-nav';
 
@@ -130,6 +132,69 @@ describe('the titles are actually distinguishable', () => {
     // truncates to the part every tab shares, which is the bug being fixed.
     for (const item of ADMIN_NAV_ITEMS) {
       expect(adminPageTitle(item.href).startsWith(item.label)).toBe(true);
+    }
+  });
+});
+
+describe('every admin segment actually carries the title', () => {
+  /*
+   * The resolver above is a pure function, and pure functions are exactly what
+   * you can get completely right while the page still shows the wrong tab.
+   *
+   * Two earlier attempts did. `document.title` assigned in an effect from
+   * app/admin/layout.tsx is reconciled back by App Router's own <title>, and a
+   * <title> element rendered from that same client layout is appended *after*
+   * the root layout's — and `document.title` is the first one in the document,
+   * so every admin tab still read "Bothmade | Web & Apple Native Development".
+   * Both were caught by reading the title out of a real browser, not here.
+   *
+   * A client component cannot export `metadata` at all, so the title has to
+   * come from a server `layout.tsx` per segment. This walks app/admin and
+   * fails if one is missing — which is the only part of this a unit test can
+   * usefully hold.
+   */
+  const adminDir = path.join(process.cwd(), 'app', 'admin');
+
+  const segments = fs
+    .readdirSync(adminDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith('[') && !e.name.startsWith('('))
+    .map((e) => e.name);
+
+  it('finds the segments by reading the directory, not from a list', () => {
+    // Guards the guard: an empty sweep would make the assertions below pass
+    // for the wrong reason.
+    expect(segments.length).toBeGreaterThan(10);
+    expect(segments).toEqual(expect.arrayContaining(['billing', 'leads', 'settings']));
+  });
+
+  it.each(segments.map((s) => [s]))('/admin/%s has a layout that sets a title', (segment) => {
+    const layout = path.join(adminDir, segment, 'layout.tsx');
+    expect(fs.existsSync(layout), `app/admin/${segment}/layout.tsx is missing`).toBe(true);
+
+    const source = fs.readFileSync(layout, 'utf8');
+    expect(source, `app/admin/${segment}/layout.tsx sets no metadata title`).toMatch(
+      /export const metadata[\s\S]*title/
+    );
+  });
+
+  it('covers the catch-all too, which the segment sweep above skips', () => {
+    // Directories starting with `[` are excluded from the sweep, so the
+    // catch-all behind the admin 404 had no layout and its tab fell through to
+    // the marketing title. Asserted separately rather than folded in, because
+    // it is the one segment whose name is not a section.
+    const layout = path.join(adminDir, '[...unmatched]', 'layout.tsx');
+    expect(fs.existsSync(layout), 'app/admin/[...unmatched]/layout.tsx is missing').toBe(true);
+    expect(fs.readFileSync(layout, 'utf8')).toMatch(/export const metadata[\s\S]*title/);
+  });
+
+  it('derives each one from adminPageTitle rather than a hand-typed string', () => {
+    // So the tab and the sidebar cannot drift. A literal would work today and
+    // be wrong the first time a nav label is reworded.
+    for (const segment of segments) {
+      const source = fs.readFileSync(path.join(adminDir, segment, 'layout.tsx'), 'utf8');
+      expect(source, `app/admin/${segment} hardcodes its title`).toContain(
+        `adminPageTitle('/admin/${segment}')`
+      );
     }
   });
 });
