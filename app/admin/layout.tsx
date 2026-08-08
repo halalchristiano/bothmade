@@ -471,9 +471,15 @@ function NotificationBell() {
       >
         <Bell size={17} aria-hidden="true" />
         {items.length > 0 && (
+          // Matched to the chat unread count in the nav below, for the reason
+          // that one was changed: a count is information, not decoration. Two
+          // gradients three rows apart, on two different counts, make neither
+          // of them mean anything — and the gradient is spoken for by the
+          // active-nav bar.
           <span
             aria-hidden="true"
-            className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-[9px] font-bold text-black px-1"
+            data-numeric
+            className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-400/25 px-1 text-2xs font-semibold text-sky-100"
           >
             {items.length}
           </span>

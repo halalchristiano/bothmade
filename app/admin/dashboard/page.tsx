@@ -136,13 +136,21 @@ function HalfFailureNotice({
 
 function RangePicker({ range, onChange }: { range: StatsRange; onChange: (r: StatsRange) => void }) {
   return (
-    <div className="inline-flex gap-1 rounded-xl border border-white/10 p-1 bg-white/[0.02]">
+    // The same control as ViewTabs — one section shown several ways — so it
+    // gets the same shape: a raised chip inside a sunken track, which says
+    // which one is in front before the colour has to. It kept the old flat
+    // treatment through the makeover, and the two sit close enough on the
+    // breakdown header to be read as a pair.
+    <div className="inline-flex items-center gap-1 rounded-lg border border-white/[0.06] bg-black/20 p-1">
       {RANGE_OPTIONS.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
-          className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
-            range === opt.value ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+          aria-pressed={range === opt.value}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-[background-color,color] duration-150 ease-ui ${
+            range === opt.value
+              ? 'bg-white/[0.09] text-white shadow-e1'
+              : 'text-white/45 hover:bg-white/[0.04] hover:text-white/80'
           }`}
         >
           {opt.label}
