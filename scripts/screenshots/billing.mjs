@@ -207,6 +207,7 @@ let overflowed = false;
 
 for (const device of DEVICES) {
 const context = await browser.newContext({
+  acceptDownloads: true,
   viewport: device.viewport,
   deviceScaleFactor: device.scale,
   isMobile: device.mobile,
@@ -225,6 +226,23 @@ await page.route('**/api/**', (route) => {
   }
   if (url.includes('/api/admin/billing/customers')) {
     return json({ success: true, customers: url.includes('q=') ? CUSTOMERS : [] });
+  }
+  if (url.includes('/api/admin/billing/charges/export')) {
+    // What the server would build, so the browser half of the download —
+    // the filename, and that pressing it does not navigate away — is real.
+    return route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="bothmade-invoices-${
+          url.includes('status=open') ? 'open' : url.includes('status=paid') ? 'paid' : 'all'
+        }-2026-08-08.csv"`,
+      },
+      body:
+        'Invoice,Type,Raised,Client,Project,For,Amount\r\n' +
+        'BM-2026-0031,One-off charge,2026-07-08,Northgate Dental,Northgate — Website,Second round of homepage design,1200.00\r\n' +
+        'BM-2026-0028,Scheduled payment,2026-07-29,Northgate Dental,Northgate — Website,Payment 2 of 3,6000.00',
+    });
   }
   if (url.includes('/api/admin/billing/charges')) {
     if (route.request().method() === 'POST') {
@@ -343,6 +361,34 @@ await shot('all-states', 'paid, cancelled, a scheduled payment, and open togethe
  * reach at all. The sentence beside the control has to match the order the
  * list is actually in — on the chase bucket, longest outstanding first.
  */
+/*
+ * The file an accountant asks for, downloaded for real rather than asserted
+ * about. The stub answers the export route with the CSV the server would
+ * build, so what is checked here is the browser's half: that the link is a
+ * download, that it is named for what is in it, and that pressing it does not
+ * navigate away from the page.
+ */
+await page.getByRole('link', { name: /Download .* as CSV/ }).scrollIntoViewIfNeeded();
+await page.waitForTimeout(200);
+await shot('export', 'the whole matching set as a file, not the hundred on screen');
+
+const [file] = await Promise.all([
+  page.waitForEvent('download', { timeout: 8000 }).catch(() => null),
+  page.getByRole('link', { name: /Download .* as CSV/ }).click(),
+]);
+if (file) {
+  const name = file.suggestedFilename();
+  if (!/^bothmade-invoices-(open|paid|cancelled|all)-\d{4}-\d{2}-\d{2}\.csv$/.test(name)) {
+    overflowed = true;
+    console.log(`  !! ${device.key}: the download is called "${name}", which says nothing about what is in it.`);
+  } else {
+    console.log(`  ${device.key}: downloaded ${name}`);
+  }
+} else {
+  overflowed = true;
+  console.log(`  !! ${device.key}: pressing Download did not download anything.`);
+}
+
 await page.getByRole('button', { name: 'Needs chasing' }).click();
 await page.waitForTimeout(700);
 await page.getByRole('button', { name: /^Show \d+ more$/ }).scrollIntoViewIfNeeded();
