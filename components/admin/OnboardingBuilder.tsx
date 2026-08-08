@@ -53,6 +53,14 @@ export function OnboardingBuilder({
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [showPresets, setShowPresets] = useState(false);
+  /** The question whose bin has been pressed once, awaiting a real answer. */
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  /**
+   * Kept apart from `error`, which belongs to the form at the bottom of this
+   * card. A failure to remove the second question in the list, reported six
+   * inches below the button that adds a new one, is a message nobody reads.
+   */
+  const [removeError, setRemoveError] = useState('');
 
   const spec = onboardingType(type);
   const progress = onboardingProgress(questions);
@@ -102,9 +110,41 @@ export function OnboardingBuilder({
     }
   };
 
+  /**
+   * Taking a question off the form, and the answer underneath it.
+   *
+   * OnboardingResponse cascades from the question, so this is the only
+   * control in the onboarding flow that can destroy something a client
+   * typed — and it was a bin icon, one click, no question asked, sitting
+   * directly beside the answer it would delete. There is no undo and no
+   * copy of that text anywhere else.
+   *
+   * It also reported nothing. `await fetch(...)` then `onChanged()`
+   * regardless, so a failure redrew the list with the question still in it:
+   * indistinguishable from the button doing nothing, which invites a second
+   * press. A 404 is the one exception worth swallowing — it means the
+   * question had already gone, which is what was wanted, so the refresh IS
+   * the right answer.
+   */
   const remove = async (questionId: string) => {
-    await fetch(`/api/admin/projects/${projectId}/onboarding/${questionId}`, { method: 'DELETE' });
-    onChanged();
+    setConfirmRemove(null);
+    setRemoveError('');
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/onboarding/${questionId}`, {
+        method: 'DELETE',
+      });
+      // 404: somebody else already removed it. The list below is simply out
+      // of date, and reloading it is the whole fix.
+      if (!res.ok && res.status !== 404) {
+        setRemoveError(
+          'Could not remove that question — it is still on the form. Try again in a moment.'
+        );
+      }
+    } catch {
+      setRemoveError('Could not reach the server, so nothing was removed.');
+    } finally {
+      onChanged();
+    }
   };
 
   const askThem = async () => {
@@ -202,13 +242,52 @@ export function OnboardingBuilder({
                   </p>
                 </div>
                 <button
-                  onClick={() => remove(q.id)}
-                  aria-label="Delete this question"
+                  onClick={() => {
+                    setRemoveError('');
+                    setConfirmRemove(q.id);
+                  }}
+                  aria-label={`Remove the question “${q.question}”`}
                   className="shrink-0 rounded-lg p-1.5 text-white/30 transition-colors hover:bg-red-400/10 hover:text-red-300"
                 >
                   <Trash2 size={13} />
                 </button>
               </div>
+
+              {/*
+                The step that was missing. Inline rather than a dialogue, so
+                the answer it is about to destroy stays on screen while the
+                question is asked — a modal would cover the one thing worth
+                looking at.
+              */}
+              {confirmRemove === q.id && (
+                <div
+                  role="group"
+                  aria-label="Confirm removing this question"
+                  className="mt-2.5 rounded-lg border border-red-400/25 bg-red-400/[0.06] px-3 py-2.5"
+                >
+                  <p className="text-xs leading-relaxed text-red-200">
+                    {answered
+                      ? 'Remove this question? Their answer goes with it, and there is no copy of it anywhere else.'
+                      : 'Remove this question from the form?'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => remove(q.id)}
+                      className="inline-flex min-h-8 items-center rounded-md border border-red-400/30 bg-red-400/10 px-3 py-1 text-xs font-semibold text-red-200 transition-colors hover:bg-red-400/15"
+                    >
+                      {answered ? 'Remove it and the answer' : 'Remove it'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRemove(null)}
+                      className="inline-flex min-h-8 items-center rounded-md px-2.5 py-1 text-xs font-medium text-white/50 transition-colors hover:text-white/80"
+                    >
+                      Keep it
+                    </button>
+                  </div>
+                </div>
+              )}
               {answered ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {answers.map((a) => (
@@ -228,6 +307,12 @@ export function OnboardingBuilder({
           );
         })}
       </div>
+
+      {removeError && (
+        <p role="alert" className="mb-3 text-xs leading-relaxed text-red-300">
+          {removeError}
+        </p>
+      )}
 
       {notice && <p className="mb-3 text-xs text-emerald-300">{notice}</p>}
 
