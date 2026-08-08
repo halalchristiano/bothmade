@@ -192,7 +192,23 @@ export async function GET(
               }
             : {}),
           amountPaid,
-          balanceDue: project.totalPrice - amountPaid,
+          /*
+           * Never below zero, which the raw subtraction here was.
+           *
+           * `projectBalance()` in lib/billing has clamped this since it was
+           * written, and every admin surface goes through it. This endpoint
+           * did the arithmetic itself — `totalPrice - amountPaid` — and it is
+           * the one that feeds the CLIENT's own portal. A project that has
+           * been overpaid, or that carries a payment recorded against it
+           * beyond the quoted total, showed the person who paid it a
+           * "Balance Due" of minus four thousand pounds, a progress bar
+           * pinned at full, and a button underneath asking them for the next
+           * instalment.
+           *
+           * The same figure goes into the "Copy status summary" text, which
+           * gets pasted into emails to that client.
+           */
+          balanceDue: Math.max(0, project.totalPrice - amountPaid),
           payments: project.payments,
           // The schedule the whole instalment feature reads. Fetched above
           // since the feature shipped — but never actually returned, which
