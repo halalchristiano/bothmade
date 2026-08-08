@@ -149,6 +149,25 @@ const TYPE_LABELS: Record<SearchResult['type'], string> = {
   invoice: 'Invoice',
 };
 
+/*
+ * A colour per kind, because these are no longer four things.
+ *
+ * Results are deliberately interleaved by recency rather than grouped by
+ * type — on a two-person team you usually know what you are looking for and
+ * only need to know where it moved. That works right up until the list has
+ * five kinds in it, at which point the only thing distinguishing a Lead row
+ * from an Invoice row is a grey word at the far right that you have to stop
+ * and read. Adding invoices and client-matched projects is what pushed it
+ * over; a tint makes the shape of the list legible before any of it is read.
+ */
+const TYPE_TONES: Record<SearchResult['type'], string> = {
+  lead: 'bg-sky-400/15 text-sky-200/90',
+  client: 'bg-emerald-400/15 text-emerald-200/90',
+  project: 'bg-purple-400/15 text-purple-200/90',
+  invoice: 'bg-amber-400/15 text-amber-200/90',
+  note: 'bg-white/[0.07] text-white/45',
+};
+
 // Exported for its own tests: the debounce-and-abort sequence is the kind of
 // thing that regresses back to a plain fetch without anything looking wrong.
 export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; autoFocus?: boolean }) {
@@ -289,11 +308,17 @@ export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; 
                   activeIndex === i ? 'bg-white/10' : 'hover:bg-white/5'
                 }`}
               >
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">{r.title}</span>
-                  <span className="text-[10px] uppercase tracking-wide text-white/30">{TYPE_LABELS[r.type]}</span>
+                <div className="flex items-center justify-between gap-3">
+                  {/* Truncates rather than shoving the type chip off the row —
+                      a long project name used to squeeze it to nothing. */}
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.title}</span>
+                  <span
+                    className={`shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-medium ${TYPE_TONES[r.type]}`}
+                  >
+                    {TYPE_LABELS[r.type]}
+                  </span>
                 </div>
-                {r.subtitle && <p className="text-xs text-white/40 mt-0.5">{r.subtitle}</p>}
+                {r.subtitle && <p className="mt-0.5 truncate text-xs text-white/40">{r.subtitle}</p>}
               </button>
             ))
           )}
