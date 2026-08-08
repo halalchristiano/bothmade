@@ -393,11 +393,12 @@ export default function StartPage() {
 
           <div className="space-y-4 mb-6">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
+              <label htmlFor="start-contact-name" className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
               <input
                 type="text"
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
+                id="start-contact-name"
                 placeholder="Jane Doe"
                 className={inputClass}
                 required
@@ -405,11 +406,12 @@ export default function StartPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Email Address</label>
+              <label htmlFor="start-email" className="block text-sm font-medium mb-2 text-white/70">Email Address</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                id="start-email"
                 placeholder="your@company.com"
                 className={inputClass}
                 required
@@ -417,11 +419,12 @@ export default function StartPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Company Name</label>
+              <label htmlFor="start-company" className="block text-sm font-medium mb-2 text-white/70">Company Name</label>
               <input
                 type="text"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
+                id="start-company"
                 placeholder="Your company"
                 className={inputClass}
                 required
