@@ -434,6 +434,45 @@ describe('the ledger totals', () => {
   it('ignores a status nobody uses rather than returning an empty ledger', async () => {
     await GET(listRequest('https://bothmade.test/api/admin/billing/charges?status=nonsense'));
 
-    expect(prisma.invoice.findMany.mock.calls[0][0].where).toBeUndefined();
+    expect(prisma.invoice.findMany.mock.calls[0][0].where.status).toBeUndefined();
+  });
+
+  /*
+   * Typing in the box used to filter the rows already on screen — the hundred
+   * most recent in whichever bucket was open. So searching past a hundred
+   * invoices answered about the recent ones and said "nothing matches" about
+   * the one from March, which is exactly what somebody hunts for when a
+   * client rings about an old unpaid bill. A search that quietly means
+   * "search the visible page" is worse than none, because it answers
+   * confidently.
+   */
+  it('searches the books rather than the page', async () => {
+    await GET(listRequest('https://bothmade.test/api/admin/billing/charges?q=northgate'));
+
+    const or = prisma.invoice.findMany.mock.calls[0][0].where.OR;
+    expect(or).toHaveLength(4);
+    // The four things printed on the row, so all three ways somebody arrives
+    // — a number off a bank statement, a company name off a phone call, a
+    // half-remembered description — find it.
+    expect(JSON.stringify(or)).toContain('northgate');
+    expect(JSON.stringify(or)).toContain('insensitive');
+
+    // The money summary is deliberately not narrowed by the search: it
+    // answers "how much is outstanding", not "how much of what I typed".
+    expect(prisma.invoice.groupBy.mock.calls[0][0].where).toBeUndefined();
+  });
+
+  it('combines the bucket and the search rather than letting one win', async () => {
+    await GET(listRequest('https://bothmade.test/api/admin/billing/charges?status=open&q=acme'));
+
+    const where = prisma.invoice.findMany.mock.calls[0][0].where;
+    expect(where.status).toBe('open');
+    expect(where.OR).toHaveLength(4);
+  });
+
+  it('does not search on an empty box', async () => {
+    await GET(listRequest('https://bothmade.test/api/admin/billing/charges?q=%20%20'));
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].where.OR).toBeUndefined();
   });
 });

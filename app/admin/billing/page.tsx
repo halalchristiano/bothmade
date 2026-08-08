@@ -15,7 +15,6 @@ import {
   chaseLine,
   daysOutstanding,
   issuedByLabel,
-  matchesQuery,
   readInvoiceLines,
   stateTone,
   type LedgerFilter,
@@ -136,6 +135,13 @@ function BillingWorkspace() {
   // Opens on what needs doing rather than on what happened most recently.
   const [filter, setFilter] = useState<LedgerFilter>('chase');
   const [ledgerQuery, setLedgerQuery] = useState('');
+  /*
+   * The query the LIST was actually fetched with, debounced away from the one
+   * being typed. Refetching on every keystroke would put a request per
+   * character on a hundred-row query; a quarter of a second is the pause
+   * between typing a word and looking up.
+   */
+  const [ledgerSearch, setLedgerSearch] = useState('');
   // One row open at a time. Several breakdowns at once turns a sheet built for
   // scanning back into a wall, and the question this answers is about one
   // invoice.
@@ -146,10 +152,15 @@ function BillingWorkspace() {
       // The filter goes to the server: an invoice unpaid since March is
       // exactly the one worth finding and exactly the one a recency cap on a
       // single shared list would drop.
+      const params = new URLSearchParams();
       const status = FILTER_STATUS[filter];
-      const response = await fetch(
-        `/api/admin/billing/charges${status ? `?status=${status}` : ''}`
-      );
+      if (status) params.set('status', status);
+      // The search goes with it. Filtering what is already on screen answered
+      // about the hundred most recent rows and said "nothing matches" about
+      // the invoice from March — which is the one anybody is actually hunting.
+      if (ledgerSearch) params.set('q', ledgerSearch);
+      const query = params.toString();
+      const response = await fetch(`/api/admin/billing/charges${query ? `?${query}` : ''}`);
       const data = await response.json();
       if (response.ok) {
         setInvoices(data.invoices || []);
@@ -161,11 +172,16 @@ function BillingWorkspace() {
       // The list is context, not the job — a failed load must not look like
       // a failed charge.
     }
-  }, [filter]);
+  }, [filter, ledgerSearch]);
 
   useEffect(() => {
     loadInvoices();
   }, [loadInvoices]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLedgerSearch(ledgerQuery.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [ledgerQuery]);
 
   // Arrived from a project's "New charge" link — the customer is already known.
   useEffect(() => {
@@ -253,9 +269,9 @@ function BillingWorkspace() {
     setNeedsConfirmation(false);
   };
 
-  // The status half already happened on the server; this is the typed search
-  // over what came back.
-  const visible = invoices.filter((invoice) => matchesQuery(invoice, ledgerQuery));
+  // Both halves of the filter now happen in the query, so what comes back is
+  // already what to show.
+  const visible = invoices;
 
   const parsedLines = lines.map((line) => ({ label: line.label.trim(), cents: dollarsToCents(line.amount) }));
   const total = parsedLines.reduce((sum, line) => sum + (line.cents ?? 0), 0);
@@ -626,7 +642,15 @@ function BillingWorkspace() {
             </div>
           )}
 
-          {invoices.length > 0 && (
+          {/*
+            Gated on the whole book, not on what came back.
+            Gated on `invoices.length` these controls unmounted themselves the
+            moment a search returned nothing — so typing something with no
+            matches took away the box you would clear it in, and the only way
+            out was reloading the page. The filter chips went with it, which
+            meant an empty bucket also hid the way to a different one.
+          */}
+          {totals && totals.count > 0 && (
             <div className="mb-4 space-y-2">
               <div className="flex flex-wrap gap-1.5">
                 {(Object.keys(LEDGER_FILTER_LABELS) as LedgerFilter[]).map((key) => (
@@ -652,20 +676,31 @@ function BillingWorkspace() {
             </div>
           )}
 
-          {invoices.length === 0 ? (
-            <EmptyState icon={Receipt} text="No invoices have been raised yet." />
-          ) : visible.length === 0 ? (
-            /* A filter that hides everything must say it was the filter.
-               An empty list under "Needs chasing" is good news and reads as a
-               broken page unless it says which it is. */
+          {/*
+            An empty list has four meanings and they are not interchangeable.
+            "Nothing outstanding" is good news. "Nothing matches what you
+            typed" is a dead end. "Nothing has ever been raised" is a brand-new
+            studio. Saying the wrong one is how a working page reads as a
+            broken one.
+
+            Which it is used to come from comparing the fetched rows against
+            the filtered ones — and that stopped meaning anything the moment
+            the search moved into the query, because the server now returns
+            nothing rather than everything-then-filtered. `totals.count` is the
+            honest source: it counts the whole book, past the bucket and past
+            the search.
+          */}
+          {visible.length === 0 ? (
             <EmptyState
               icon={Receipt}
               text={
-                ledgerQuery.trim()
-                  ? `Nothing matches “${ledgerQuery.trim()}” in ${LEDGER_FILTER_LABELS[filter].toLowerCase()}.`
-                  : filter === 'chase'
-                    ? 'Nothing outstanding — every invoice raised has been paid or cancelled.'
-                    : `No invoices in ${LEDGER_FILTER_LABELS[filter].toLowerCase()}.`
+                ledgerSearch
+                  ? `Nothing in ${LEDGER_FILTER_LABELS[filter].toLowerCase()} matches “${ledgerSearch}”.`
+                  : !totals || totals.count === 0
+                    ? 'No invoices have been raised yet.'
+                    : filter === 'chase'
+                      ? 'Nothing outstanding — every invoice raised has been paid or cancelled.'
+                      : `No invoices in ${LEDGER_FILTER_LABELS[filter].toLowerCase()}.`
               }
             />
           ) : (
@@ -845,10 +880,8 @@ function BillingWorkspace() {
                   and the totals above are the reason it does not have to. */}
               {truncated && (
                 <p className="pt-3 text-[11px] text-white/30">
-                  Showing the {invoices.length} most recent of {matching} in{' '}
-                  {LEDGER_FILTER_LABELS[filter].toLowerCase()}
-                  {ledgerQuery.trim() ? ' — the search covers only these' : ''}. The figures above
-                  cover every invoice.
+                  Showing the {invoices.length} most recent of {matching} matching. The figures
+                  above cover every invoice.
                 </p>
               )}
             </div>

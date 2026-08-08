@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 /**
@@ -219,5 +219,56 @@ describe('the sheet as a whole', () => {
 
     const chase = screen.getByRole('button', { name: 'Needs chasing' });
     expect(within(chase.parentElement as HTMLElement).getAllByRole('button').length).toBe(4);
+  });
+});
+
+describe('finding one invoice', () => {
+  /*
+   * The box used to filter what was already on screen. Past a hundred
+   * invoices that answers about the recent ones and says "nothing matches"
+   * about the one from March — which is what somebody hunts for when a client
+   * rings about an old unpaid bill.
+   */
+  it('asks the server, rather than filtering the page', async () => {
+    render(<BillingPage />);
+    await screen.findByText('open 31 days · sent 3×');
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Find by company, invoice number/),
+      'northgate'
+    );
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls.map((c) => String(c[0]));
+      expect(calls.some((url) => url.includes('q=northgate'))).toBe(true);
+    });
+  });
+
+  it('keeps the bucket it was searched inside', async () => {
+    render(<BillingPage />);
+    await screen.findByText('open 31 days · sent 3×');
+
+    await userEvent.type(screen.getByPlaceholderText(/Find by company/), 'acme');
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls.map((c) => String(c[0]));
+      expect(calls.some((url) => url.includes('status=open') && url.includes('q=acme'))).toBe(true);
+    });
+  });
+
+  it('says which bucket came up empty rather than looking broken', async () => {
+    render(<BillingPage />);
+    await screen.findByText('open 31 days · sent 3×');
+
+    invoices = [];
+    stubFetch();
+    await userEvent.type(screen.getByPlaceholderText(/Find by company/), 'nobody');
+
+    expect(
+      await screen.findByText(/Nothing in needs chasing matches/, {}, { timeout: 3000 })
+    ).toBeTruthy();
+    // And the box you would clear it in is still there. Gated on the rows
+    // that came back, it unmounted itself and the only way out was a reload.
+    expect(screen.getByPlaceholderText(/Find by company/)).toBeTruthy();
   });
 });

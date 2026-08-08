@@ -308,10 +308,39 @@ export async function GET(request: NextRequest) {
      * hundred rather than sharing one.
      */
     const status = request.nextUrl.searchParams.get('status');
-    const listWhere =
-      status === 'open' || status === 'paid' || status === 'void'
-        ? { ...(where ?? {}), status }
-        : where;
+
+    /*
+     * And so is the search, for the same reason and with more teeth.
+     *
+     * Typing in the box filtered the rows already on screen — the hundred
+     * most recent in whichever bucket was open. So searching "Northgate" past
+     * a hundred invoices answered about the recent ones and said "nothing
+     * matches" about the invoice from March, which is the single most likely
+     * thing anybody is hunting for: an old one, unpaid, that a client has
+     * just rung about. A search that quietly means "search the visible page"
+     * is worse than no search, because it answers confidently.
+     *
+     * Matched across the four things printed on the row, so all three ways
+     * somebody arrives — a number off a bank statement, a company name off a
+     * phone call, a half-remembered description of the work — find it.
+     */
+    const q = (request.nextUrl.searchParams.get('q') || '').trim().slice(0, 100);
+    const search = q
+      ? {
+          OR: [
+            { number: { contains: q, mode: 'insensitive' as const } },
+            { description: { contains: q, mode: 'insensitive' as const } },
+            { client: { company: { contains: q, mode: 'insensitive' as const } } },
+            { project: { name: { contains: q, mode: 'insensitive' as const } } },
+          ],
+        }
+      : null;
+
+    const listWhere = {
+      ...(where ?? {}),
+      ...(status === 'open' || status === 'paid' || status === 'void' ? { status } : {}),
+      ...(search ?? {}),
+    };
 
     const [invoices, byStatus, refundsByMethod, total, listTotal] = await Promise.all([
       prisma.invoice.findMany({
