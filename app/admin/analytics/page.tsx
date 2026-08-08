@@ -13,7 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { formatCents } from '@/lib/pricing';
-import { Card, CardHeader, StatRow, PageIn, PageTitle, Kicker } from '@/components/admin/ui';
+import { Card, CardHeader, StatRow, LoadError, PageIn, PageTitle, Kicker } from '@/components/admin/ui';
 import { ANALYTICS_RANGES, type AnalyticsRange } from '@/lib/reporting';
 import { Legend, RevenueChart } from '@/components/admin/analytics/RevenueChart';
 
@@ -66,13 +66,21 @@ function RangePicker({
   onChange: (r: AnalyticsRange) => void;
 }) {
   return (
-    <div className="inline-flex flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+    // The third segmented control in the app, and the last one still drawn
+    // the old way — a lighter rectangle on a flat strip. ViewTabs and the
+    // dashboard's range picker both became a raised chip in a sunken track,
+    // where the shape says which one is in front before the colour has to.
+    // Three controls doing one job should not need three explanations.
+    <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-white/[0.06] bg-black/20 p-1">
       {ANALYTICS_RANGES.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
-          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-            range === opt.value ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+          aria-pressed={range === opt.value}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-[background-color,color] duration-150 ease-ui ${
+            range === opt.value
+              ? 'bg-white/[0.09] text-white shadow-e1'
+              : 'text-white/45 hover:bg-white/[0.04] hover:text-white/80'
           }`}
         >
           {opt.label}
@@ -94,6 +102,8 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: stri
 export default function AdminAnalyticsPage() {
   const router = useRouter();
   const [range, setRange] = useState<AnalyticsRange>('12mo');
+  /** Bumped by the retry button, so a dropped request costs a click. */
+  const [retry, setRetry] = useState(0);
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -146,13 +156,36 @@ export default function AdminAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [range, router]);
+  }, [range, router, retry]);
 
   if (failed) {
+    /*
+     * "Refresh to retry" is not a retry.
+     *
+     * LoadError exists for exactly this and is used on five other pages; its
+     * own comment makes the case — a page nobody can reload is a page you
+     * leave, and the thing that failed is usually one dropped request. This
+     * one asked somebody to reload the whole app to re-run a single fetch.
+     *
+     * The range picker stays on screen too. It used to be replaced along with
+     * everything else, so a range whose query fell over left you unable to
+     * pick a different one without a reload — the one action most likely to
+     * get you a working page.
+     */
     return (
-      <div className="flex min-h-[60vh] items-center justify-center px-4">
-        <p className="text-amber-300 text-sm">Couldn&apos;t load analytics — refresh to retry.</p>
-      </div>
+      <PageIn className="mx-auto max-w-5xl px-4 py-6 md:px-8 md:py-10">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <PageTitle icon={BarChart3} title="Analytics" tone="purple" />
+          <RangePicker range={range} onChange={choose} />
+        </div>
+        <LoadError
+          what="analytics"
+          onRetry={() => {
+            setFailed(false);
+            setRetry((n) => n + 1);
+          }}
+        />
+      </PageIn>
     );
   }
 
