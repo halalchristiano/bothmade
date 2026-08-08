@@ -140,6 +140,16 @@ export const SEND_ROUTES: SendRouteSpec[] = [
   },
   {
     match: /^\/api\/admin\/projects\/[^/]+\/design-review$/,
+    /*
+     * POST only. The PATCH on the same path records that the client approved
+     * the design and mails nobody at all — but with no method listed here,
+     * every spec catches every write verb, so pressing "They've approved it"
+     * opened a dialog asking to "Send the design for review, and start the
+     * five-day clock". Wrong act, wrong clock, and an email that does not
+     * exist. A guard that cries wolf on the presses that send nothing is how
+     * people learn to click through the ones that do.
+     */
+    methods: ['POST'],
     action: 'Send the design for review, and start the five-day clock',
     preview: 'design-review',
   },

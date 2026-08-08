@@ -351,3 +351,22 @@ describe('a stage move, which sometimes sends and sometimes does not', () => {
     expect(spec?.action).toMatch(/whatever is written/i);
   });
 });
+
+describe('the design review path, which is two different acts', () => {
+  const path = '/api/admin/projects/p_1/design-review';
+
+  it('guards presenting, which emails the client and starts the clock', () => {
+    expect(sendRouteFor(path, 'POST', {})?.action).toMatch(/five-day clock/i);
+  });
+
+  /**
+   * And not the PATCH beside it. That records that the client approved the
+   * design — it mails nobody. With no method listed, one spec caught both, so
+   * "They've approved it" asked to send an email that does not exist, about a
+   * clock it was not starting. A guard that cries wolf on the presses that
+   * send nothing is how people learn to click through the ones that do.
+   */
+  it('leaves recording their approval alone, because it sends nothing', () => {
+    expect(sendRouteFor(path, 'PATCH', {})).toBeNull();
+  });
+});

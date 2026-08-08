@@ -134,9 +134,48 @@ async function main() {
     },
   });
 
+  /* ---- A design out for review, with Payment 2 still unsent -------- */
+  const marlowe = await prisma.client.create({
+    data: {
+      email: 'sam@marlowebakery.co.uk',
+      password: await bcrypt.hash('screenshot-only', 10),
+      company: 'Marlowe Bakery',
+      contactName: 'Sam Marlowe',
+    },
+  });
+
+  const marloweProject = await prisma.project.create({
+    data: {
+      clientId: marlowe.id,
+      name: 'Marlowe Bakery — Custom Website',
+      baseService: 'custom',
+      status: 'design',
+      statusStage: 1,
+      totalPrice: 500_000,
+      basePrice: 500_000,
+      // The Section 4 clock, running: presented three days ago, two to go.
+      designPresentedAt: ago(3),
+      designReviewEndsAt: new Date(Date.now() + 2 * day),
+      designUrl: 'https://figma.com/file/marlowe-bakery',
+      designRound: 1,
+      updatedAt: ago(1),
+    },
+  });
+
+  await prisma.instalment.createMany({
+    data: [
+      { projectId: marloweProject.id, index: 1, count: 3, label: 'Payment 1 of 3', percent: 40, amountCents: 200_000, trigger: 'signing', status: 'paid', paidAt: ago(20) },
+      // The one Design Approval makes due — and which used to be announced
+      // by nothing when somebody recorded that approval.
+      { projectId: marloweProject.id, index: 2, count: 3, label: 'Payment 2 of 3', percent: 30, amountCents: 150_000, trigger: 'design-approval', status: 'scheduled' },
+      { projectId: marloweProject.id, index: 3, count: 3, label: 'Payment 3 of 3', percent: 30, amountCents: 150_000, trigger: 'ready-for-launch', status: 'scheduled' },
+    ],
+  });
+
   console.log('SEEDED');
   console.log('havishamProjectId=' + havishamProject.id);
   console.log('havishamClientId=' + havisham.id);
+  console.log('marloweProjectId=' + marloweProject.id);
 }
 
 main()
