@@ -17,7 +17,17 @@ export async function POST(request: NextRequest) {
     if (leadIds.length > MAX_LEADS) {
       return NextResponse.json({ error: `Max ${MAX_LEADS} leads per reassign` }, { status: 400 });
     }
-    if (assignedToId !== null && typeof assignedToId !== 'string') {
+    /*
+     * `null` means unassign, and is a real answer — unassigned leads show up
+     * for everybody by design, so nothing falls through the cracks.
+     *
+     * An empty string is not that. It is a string, so it passed the type
+     * check, and it is falsy, so it skipped the "does this user exist" lookup
+     * below — arriving at updateMany as an assignedToId of '', which is not a
+     * user but a foreign key violation. On a five-hundred-row bulk action
+     * that surfaced as a 500 rather than as "that is not a valid assignee".
+     */
+    if (assignedToId !== null && (typeof assignedToId !== 'string' || assignedToId.trim() === '')) {
       return NextResponse.json({ error: 'Invalid assignee' }, { status: 400 });
     }
     if (assignedToId) {
