@@ -84,6 +84,32 @@ describe('status helpers', () => {
     expect(nextUnpaid(rows(['paid', 'paid', 'paid']))).toBeNull();
   });
 
+  /*
+   * The same trap `finalInstalment` was already caught in, in the function
+   * directly above it.
+   *
+   * Its comment spells out what this costs: a query with no `orderBy` gets
+   * rows back in whatever physical order Postgres has them in, and an UPDATE
+   * moves a row — so marking Payment 1 and then Payment 2 as paid can leave
+   * the order [3, 1, 2]. `finalInstalment` was rewritten to read `index`
+   * because of it. `nextUnpaid` still takes the first match in array order
+   * while its own doc, and the name of the test above, both say "lowest
+   * index".
+   *
+   * Nothing calls it today, so this is a trap rather than a live bug. It is
+   * also one line, and the next caller is not going to read the paragraph on
+   * the neighbouring function before passing it a findMany.
+   */
+  it('nextUnpaid reads the index, not the order the rows arrived in', () => {
+    const outOfOrder = [
+      { index: 3, status: 'scheduled' },
+      { index: 1, status: 'paid' },
+      { index: 2, status: 'due' },
+    ] as Parameters<typeof nextUnpaid>[0];
+
+    expect(nextUnpaid(outOfOrder)?.index).toBe(2);
+  });
+
   it('fullyPaid is false for an empty schedule — legacy projects are not "paid off"', () => {
     expect(fullyPaid([])).toBe(false);
     expect(fullyPaid(rows(['paid', 'paid', 'paid']) as any)).toBe(true);

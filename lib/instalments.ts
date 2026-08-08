@@ -226,7 +226,22 @@ export async function ensureInstalments(projectId: string): Promise<Instalment[]
  * either is sendable, so the caller decides whether re-sending is polite.
  */
 export function nextUnpaid(instalments: Instalment[]): Instalment | null {
-  return instalments.find((i) => i.status === 'scheduled' || i.status === 'due') ?? null;
+  /*
+   * By index, for the reason spelled out under finalInstalment below: a
+   * findMany with no `orderBy` returns rows in physical order, and an UPDATE
+   * moves a row — so settling Payment 1 and then Payment 2 can leave [3, 1, 2]
+   * and "the first open row in the array" is Payment 3. That already cost this
+   * codebase a launch board saying "clear to go live" against an unpaid final
+   * payment.
+   *
+   * This one said "the lowest-index row that isn't settled" and took the first
+   * match in array order, which is the same thing only while the caller
+   * happens to have sorted. Nothing calls it yet; the next caller should not
+   * have to know that.
+   */
+  const open = instalments.filter((i) => i.status === 'scheduled' || i.status === 'due');
+  if (open.length === 0) return null;
+  return open.reduce((lowest, row) => (row.index < lowest.index ? row : lowest));
 }
 
 /**
