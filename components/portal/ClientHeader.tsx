@@ -106,9 +106,21 @@ export function ClientHeader() {
               </Link>
             );
           })}
+          {/*
+            `py-1` matches the nav links beside it, which have carried it all
+            along. Without it this button measured 42×20 — the one control in
+            the row under the 24px WCAG 2.5.8 asks for, and the odd one out in
+            its own header.
+
+            It is also the only way a client signs out, which is what makes 20
+            pixels worth caring about rather than tidying: the moment it
+            matters is somebody on a shared machine or a borrowed phone
+            wanting to be signed out now, and a target you have to aim at is a
+            poor thing to hand them.
+          */}
           <button
             onClick={handleLogout}
-            className="text-sm text-white/50 hover:text-white transition-colors"
+            className="text-sm text-white/50 hover:text-white transition-colors py-1"
           >
             Logout
           </button>

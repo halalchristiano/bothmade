@@ -155,7 +155,11 @@ export function AttachLink({
           type="button"
           onClick={() => setOpen(true)}
           disabled={full}
-          className="inline-flex items-center gap-1.5 text-xs text-white/40 transition-colors hover:text-white/80 disabled:opacity-40"
+          // `py-1` for the same reason as Logout in the portal header: 12px
+          // text with no vertical padding measured 18px tall, and this is a
+          // control a client presses on a phone to attach the brief they were
+          // asked for.
+          className="inline-flex items-center gap-1.5 py-1 text-xs text-white/40 transition-colors hover:text-white/80 disabled:opacity-40"
         >
           <Plus size={12} />
           {full ? `${MAX_ATTACHMENTS} is the limit` : 'Attach a link'}
