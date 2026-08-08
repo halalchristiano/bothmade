@@ -42,7 +42,22 @@ export default async function StopPage({
     .findUnique({ where: { shareToken: token }, select: { company: true, doNotContact: true } })
     .catch(() => null);
 
-  const stopped = !!lead && (lead.doNotContact || done === '1');
+  /*
+   * What the record says, not what the URL says.
+   *
+   * This was `lead.doNotContact || done === '1'`, and that `||` only ever
+   * changes the answer in one case: the column is false. Which is precisely
+   * the case where we have not stopped. So the parameter existed to assert
+   * the outcome exactly when the outcome had not happened — the page read the
+   * truth, had it in hand, and preferred the query string. Anyone could also
+   * open ?done=1 and be told we had stopped emailing them.
+   *
+   * `done=0` is the write failing, which the POST route now reports honestly
+   * rather than papering over. It is only believed when the column agrees it
+   * did not take.
+   */
+  const stopped = !!lead && lead.doNotContact;
+  const failed = !!lead && !lead.doNotContact && done === '0';
 
   return (
     <main className="min-h-screen flex items-center justify-center px-6 py-24">
@@ -64,6 +79,28 @@ export default async function StopPage({
               You will not get any more follow-up emails from us
               {lead.company ? ` about ${lead.company}` : ''}. Nothing else needed.
             </p>
+          </>
+        ) : failed ? (
+          <>
+            {/* Said plainly, with both ways out on the page. Somebody who is
+                told it did not work presses the button again or writes to us;
+                somebody who is told it worked does neither and keeps hearing
+                from us, which is the outcome this whole page exists to
+                prevent. */}
+            <h1 className="text-3xl font-bold mb-4">That didn&rsquo;t go through</h1>
+            <p className="text-white/55 leading-relaxed mb-7">
+              Something on our side failed to save it, so you are still on the list. Try once more —
+              or reply to any of our emails and we will take you off by hand.
+            </p>
+            <form action="/api/public/stop" method="post">
+              <input type="hidden" name="token" value={token} />
+              <button
+                type="submit"
+                className="rounded-xl border border-white/20 bg-white/[0.06] px-6 py-3 text-sm font-semibold hover:bg-white/[0.12] transition-colors"
+              >
+                Try again
+              </button>
+            </form>
           </>
         ) : (
           <>

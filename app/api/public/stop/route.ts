@@ -66,8 +66,26 @@ export async function POST(request: NextRequest) {
 
   // Shared with the mail client's one-click POST at ./[token]/route.ts, so an
   // unsubscribe means the same thing whichever control the recipient used.
-  await recordUnsubscribe(token);
+  const { recorded } = await recordUnsubscribe(token);
+
+  /*
+   * `done` now reports what happened rather than that we got here.
+   *
+   * It was pinned to 1 unconditionally, and the page treated it as proof —
+   * so a write that failed still produced "That's done — we'll stop." Saying
+   * it did not go through is worse to read and better than being wrong about
+   * it: somebody who is told plainly can press the button again or reply to
+   * the email, and somebody who is told it worked does neither and keeps
+   * hearing from us.
+   *
+   * It leaks nothing about whether the token was real. The page does its own
+   * lookup and answers an unknown token with "that link has expired" before
+   * it ever reads this, so `done` never has to carry that distinction — which
+   * keeps the sibling route's reasoning about not turning this into a place
+   * to test tokens intact.
+   */
+  const done = recorded ? '1' : '0';
 
   // 303 so the browser follows with a GET and a refresh cannot re-post.
-  return NextResponse.redirect(`${site}/stop/${encodeURIComponent(token)}?done=1`, 303);
+  return NextResponse.redirect(`${site}/stop/${encodeURIComponent(token)}?done=${done}`, 303);
 }

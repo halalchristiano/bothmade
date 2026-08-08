@@ -180,6 +180,29 @@ export default function TeamChatPage() {
           return;
         }
         setLoadFailed(false);
+
+        /*
+         * Somebody else resolving a flag is a change to a row we already
+         * have, not a new one — so it never arrives through `after`, which
+         * asks for newer rows by timestamp. The poll carries the current
+         * state of the flagged set and this applies it, outside the
+         * `messages.length > 0` branch below: a quiet ten seconds in which
+         * the only thing that happened was a teammate clearing a flag is
+         * exactly the case that was being missed.
+         */
+        if (Array.isArray(data.flags)) {
+          const state = new Map<string, boolean>(
+            (data.flags as Array<{ id: string; resolved: boolean }>).map((f) => [f.id, f.resolved])
+          );
+          setMessages((prev) =>
+            prev.some((m) => state.has(m.id) && state.get(m.id) !== m.resolved)
+              ? prev.map((m) =>
+                  state.has(m.id) ? { ...m, resolved: state.get(m.id) as boolean } : m
+                )
+              : prev
+          );
+        }
+
         if (data.messages.length > 0) {
           setMessages((prev) => {
             // The initial load replaces; a poll appends what it has not seen.

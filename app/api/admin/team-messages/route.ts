@@ -44,7 +44,35 @@ export async function GET(request: NextRequest) {
     });
     messages.reverse();
 
-    return NextResponse.json({ success: true, messages }, { status: 200 });
+    /*
+     * The state of the flags, alongside the new rows.
+     *
+     * A poll asks for `createdAt > after`, which is the right question for
+     * "what has been said since" and the wrong one for "what has changed".
+     * Resolving a flag edits a row without moving its timestamp, so it was
+     * invisible to every other tab: one person cleared an urgent question and
+     * everybody else's rail kept counting it, and their Flags view kept
+     * offering to resolve something already resolved, until they happened to
+     * reload. On the one board in the app whose whole promise is that a flag
+     * stays up until somebody deals with it, that is the promise breaking.
+     *
+     * There is no `updatedAt` on this table to poll against, and adding one
+     * is a migration against the production database for a column only this
+     * would read. The flagged set is small and bounded instead — ids and a
+     * boolean, scoped by the same visibility rule as the messages themselves
+     * — so a poll can reconcile what it already has rather than refetch the
+     * world. Sent on polls only; a first load has just read the truth.
+     */
+    const flags = validAfter
+      ? await prisma.teamMessage.findMany({
+          where: { AND: [visibility, { urgent: true }] },
+          select: { id: true, resolved: true },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        })
+      : undefined;
+
+    return NextResponse.json({ success: true, messages, ...(flags ? { flags } : {}) }, { status: 200 });
   } catch (error) {
     console.error('List team messages error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -21,20 +21,43 @@ import { prisma } from '@/lib/prisma';
  * somebody their second attempt failed would be the worst possible moment to
  * do it.
  */
-export async function recordUnsubscribe(token: string): Promise<{ found: boolean }> {
+export async function recordUnsubscribe(
+  token: string
+): Promise<{ found: boolean; recorded: boolean }> {
   const lead = await prisma.lead
     .findUnique({ where: { shareToken: token }, select: { id: true, doNotContact: true } })
     .catch(() => null);
 
-  if (!lead) return { found: false };
-  if (lead.doNotContact) return { found: true };
+  if (!lead) return { found: false, recorded: false };
+  if (lead.doNotContact) return { found: true, recorded: true };
 
-  await prisma.lead
+  /*
+   * The one write that has to have happened.
+   *
+   * This used to swallow a failure into a console line and carry on, and the
+   * two callers both ignored the answer, so a failed write produced a page
+   * reading "That's done — we'll stop." while the column still said we could
+   * email them. The sequence carried on, the recipient watched us ignore a
+   * request they had made and been thanked for, and the only record of it was
+   * a server log nobody reads. Of everything in this codebase that is allowed
+   * to be best-effort, an unsubscribe is not.
+   */
+  const recorded = await prisma.lead
     .update({
       where: { id: lead.id },
       data: { doNotContact: true, doNotContactReason: 'Unsubscribed from a follow-up email.' },
     })
-    .catch((e) => console.error('Unsubscribe not recorded:', e));
+    .then(() => true)
+    .catch((e) => {
+      console.error('Unsubscribe not recorded:', e);
+      return false;
+    });
+
+  // And the note only if it did. Writing it regardless left the timeline
+  // saying "Do not contact by email" beside a lead the sender was still free
+  // to email — a rep reading the one place this is meant to be explained
+  // would have been told the opposite of what was true.
+  if (!recorded) return { found: true, recorded: false };
 
   // On the timeline rather than only in a column, so a rep who wonders why
   // this lead went quiet sees the answer in the same place as everything else
@@ -49,5 +72,5 @@ export async function recordUnsubscribe(token: string): Promise<{ found: boolean
     })
     .catch((e) => console.error('Unsubscribe activity not written:', e));
 
-  return { found: true };
+  return { found: true, recorded: true };
 }
