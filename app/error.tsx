@@ -9,13 +9,24 @@ import { PillCTA } from '@/components/ui';
  * Branded failure state. Without this, a thrown error in any client
  * component hands visitors Next's unstyled default — the one screen a
  * studio selling polish can never afford to show.
+ *
+ * This covers the public site. The admin has its own boundary at
+ * app/admin/error.tsx, because staff who hit an error should land somewhere
+ * that still has the admin nav on it rather than on the marketing site's
+ * "Back home" and a pitch to start a project.
+ *
+ * `retry` rather than `reset`: the docs prefer it, and the difference is
+ * whether the button re-fetches or only re-renders the same children. A
+ * failure here is usually a fetch that came back wrong, so `reset()` would
+ * re-render straight back into the identical error — a "Try again" that
+ * visibly does nothing.
  */
 export default function Error({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
     console.error(error);
@@ -76,7 +87,7 @@ export default function Error({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45 }}
         >
-          <PillCTA onClick={reset}>Try again</PillCTA>
+          <PillCTA onClick={() => retry()}>Try again</PillCTA>
           <PillCTA href="/" muted>
             Back home
           </PillCTA>

@@ -99,7 +99,9 @@ function HealthBadges({ project }: { project: ProjectRow }) {
   if (project.status !== 'complete' && due > 0) {
     badges.push(
       <Badge key="balance" tone="amber" solid>
-        ${formatCents(due)} due
+        {/* formatCents already carries the currency symbol — a literal $ in
+            front of it read "$$9,667 due" on every project with a balance. */}
+        {formatCents(due)} due
       </Badge>
     );
   }

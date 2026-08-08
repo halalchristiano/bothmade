@@ -676,7 +676,22 @@ export function Today({
         return;
       }
       const body = res.ok ? await res.json() : null;
-      if (body?.success) {
+      /*
+       * `success` is a claim about the request, not about the payload.
+       *
+       * This trusted the flag alone and handed the whole body to a render
+       * that reads `deliver.unreadDesignFeedback`, `sell.overdueFollowUps`
+       * and `money.…` unguarded. A response that is shaped like a success and
+       * missing a lane — a half-deployed route, a shape change landing on one
+       * side before the other — therefore did not reach the failure state
+       * this card already has. It threw during render, and a render error
+       * takes the nearest boundary with it: the entire dashboard went, and
+       * everything else on it, to show that one card had bad data.
+       *
+       * Checking the three lanes are there is what makes the graceful state
+       * below actually reachable.
+       */
+      if (body?.success && body.sell && body.deliver && body.money) {
         hasData.current = true;
         setData(body);
         setFailed(false);
