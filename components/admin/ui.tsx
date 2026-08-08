@@ -51,11 +51,14 @@ export function Card({
   className = '',
   glow,
   hover = false,
+  id,
 }: {
   children: React.ReactNode;
   className?: string;
   glow?: 'sky' | 'purple' | 'emerald' | 'amber' | 'red';
   hover?: boolean;
+  /** An anchor, for anything on the page that needs to scroll back to it. */
+  id?: string;
 }) {
   const glowBorder: Record<string, string> = {
     sky: 'border-l-2 border-l-sky-400/50',
@@ -66,6 +69,7 @@ export function Card({
   };
   return (
     <div
+      id={id}
       className={`relative rounded-xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent ${
         glow ? glowBorder[glow] : ''
       } ${

@@ -282,6 +282,42 @@ function BillingWorkspace() {
     });
   };
 
+  /*
+   * "Charge the rest", from the row that is short.
+   *
+   * A part-paid invoice can no longer be resent — a resend rebuilds the
+   * original demand, so it would ask for the full $1,800 again and enclose a
+   * pay link for it. The right move is a new charge for what is actually
+   * left, which is a link for the right amount. That was true before this
+   * button and took eight steps: read the row, scroll up, search the client
+   * by name, pick the project, retype a description, work out the difference,
+   * type it in. Every one of those is a chance to charge the wrong number to
+   * the wrong project, on the screen where that costs the most.
+   *
+   * It fills the form rather than raising anything. The amount, the wording
+   * and the send decision are all still somebody's to make — the point is
+   * that the arithmetic and the target are not retyped from memory.
+   */
+  const chargeBalance = (invoice: InvoiceRow) => {
+    const left = invoice.amountCents - (invoice.receivedCents ?? 0);
+    changeTarget(() => {
+      setCustomer({
+        id: invoice.client.id,
+        company: invoice.client.company,
+        contactName: null,
+        email: invoice.client.email,
+        projects: [{ id: invoice.project.id, name: invoice.project.name, status: '', totalPrice: 0 }],
+      });
+      setProjectId(invoice.project.id);
+      setQuery('');
+      setResults([]);
+      setResult(null);
+      setDescription(`Balance of ${invoice.number} — ${invoice.description}`);
+      setLines([{ label: `Balance of ${invoice.number}`, amount: (left / 100).toFixed(2) }]);
+    });
+    document.getElementById('new-charge')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const clearCustomer = () => {
     setCustomer(null);
     setProjectId('');
@@ -391,7 +427,9 @@ function BillingWorkspace() {
         minmax(0,1fr) for exactly this reason; the mobile one never did.
       */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
-        <Card className="order-1 p-6">
+        {/* Named so a row further down can scroll back to it — see
+            chargeBalance(). */}
+        <Card className="order-1 p-6" id="new-charge">
           <CardHeader icon={Plus} title="New custom charge" tone="emerald" />
 
           {/*
@@ -996,6 +1034,21 @@ function BillingWorkspace() {
                       }}
                       onDone={loadInvoices}
                     />
+                    {/* The action that replaces Send on this row. Without it
+                        a part-paid invoice offers nothing that moves the
+                        remaining money, which reads as a dead end rather than
+                        as a different route. */}
+                    {invoice.status === 'open' &&
+                      (invoice.receivedCents ?? 0) > 0 &&
+                      invoice.amountCents - (invoice.receivedCents ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => chargeBalance(invoice)}
+                          className="-my-1 py-1 text-sky-300 transition-colors hover:text-sky-200"
+                        >
+                          Charge the {formatCentsExact(invoice.amountCents - (invoice.receivedCents ?? 0))} left
+                        </button>
+                      )}
                   </div>
                   {/* The reason is the whole value of the record. An invoice
                       that changed and doesn't say why is the hardest thing to

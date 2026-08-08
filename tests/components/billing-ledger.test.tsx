@@ -84,6 +84,18 @@ const NEVER_SENT = {
   lineItems: [{ label: 'Retainer', priceCents: 90_000 }],
 };
 
+const PART_PAID = {
+  ...CHASED,
+  id: 'inv_4',
+  number: 'BM-2026-0027',
+  description: 'Brand photography day',
+  amountCents: 180_000,
+  createdAt: day(22),
+  lineItems: [{ label: 'Photography day', priceCents: 180_000 }],
+  receivedCents: 90_000,
+  grossReceivedCents: 90_000,
+};
+
 const TOTALS = {
   outstandingCents: 475_000,
   outstandingCount: 3,
@@ -499,5 +511,74 @@ describe('after a charge is raised', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
 
     expect(screen.queryByRole('status', { name: 'Charge raised' })).toBeNull();
+  });
+});
+
+
+/**
+ * The row that can no longer be chased, and what replaces the chase.
+ *
+ * A resend rebuilds the ORIGINAL demand — the invoice total in the PDF and
+ * the email, and a fixed-amount pay link for it — so a part-paid invoice
+ * cannot be sent again without asking for the full $1,800 a second time. The
+ * right move is a new charge for what is actually left.
+ *
+ * Which was true before this button existed and took eight steps: read the
+ * row, scroll up, search the client by name, pick the project, retype a
+ * description, work out the difference, type it in. Every one of those is a
+ * chance to charge the wrong number to the wrong project.
+ */
+describe('charging the balance of a part-paid invoice', () => {
+  beforeEach(() => {
+    invoices = [PART_PAID];
+    stubFetch();
+  });
+
+  it('offers the remaining amount as the next move, not a dead end', async () => {
+    render(<BillingPage />);
+
+    expect(await screen.findByRole('button', { name: 'Charge the $900 left' })).toBeTruthy();
+    // Sending it again would re-demand the whole $1,800.
+    expect(screen.queryByRole('button', { name: /^Send/ })).toBeNull();
+  });
+
+  it('fills the form with the client, the project and the difference', async () => {
+    const user = userEvent.setup();
+    render(<BillingPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Charge the $900 left' }));
+
+    // The customer is chosen, so the row's own "clear this customer" control
+    // is on screen — the search box alone never has one.
+    expect(screen.getByRole('button', { name: 'Choose a different customer' })).toBeTruthy();
+    expect(screen.getByDisplayValue('Balance of BM-2026-0027 — Brand photography day')).toBeTruthy();
+    expect(screen.getByDisplayValue('900.00')).toBeTruthy();
+    // The arithmetic is done, so the button is armed with the right figure.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Charge \$900/ })).toBeTruthy()
+    );
+  });
+
+  /* It fills the form; it does not raise anything. The wording, the amount
+     and whether the client is emailed are all still somebody's to decide. */
+  it('raises nothing by itself', async () => {
+    const user = userEvent.setup();
+    render(<BillingPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Charge the $900 left' }));
+
+    const posts = vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST');
+    expect(posts).toHaveLength(0);
+  });
+
+  it('leaves an invoice nothing has come in against alone', async () => {
+    invoices = [CHASED];
+    stubFetch();
+    render(<BillingPage />);
+
+    await screen.findByText('open 31 days · sent 3×');
+    expect(screen.queryByRole('button', { name: /Charge the .* left/ })).toBeNull();
   });
 });
