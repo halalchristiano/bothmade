@@ -19,6 +19,7 @@ import { OnboardingBuilder } from '@/components/admin/OnboardingBuilder';
 import { DeleteProject } from '@/components/admin/DeleteProject';
 import { stageMessage } from '@/lib/stage-gates';
 import { deliverableHref } from '@/lib/deliverables';
+import { CopyButton } from '@/components/admin/CopyButton';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { DISPLAY_STATE_LABELS, displayState } from '@/lib/invoice-lifecycle';
 import { ageBand, chaseLine, daysOutstanding } from '@/lib/invoice-ledger';
@@ -648,12 +649,11 @@ export default function AdminProjectDetailPage() {
                   {balanceLinkUrl && (
                     <div className="mt-3 flex gap-2">
                       <input readOnly value={balanceLinkUrl} className="flex-1 min-w-0 px-2 py-1.5 rounded bg-white/5 border border-white/15 text-xs" />
-                      <button
-                        onClick={() => navigator.clipboard.writeText(balanceLinkUrl)}
+                      <CopyButton
+                        value={balanceLinkUrl}
+                        label="Copy"
                         className="px-3 py-1.5 rounded border border-white/20 text-xs hover:bg-white/5 transition-colors whitespace-nowrap"
-                      >
-                        Copy
-                      </button>
+                      />
                     </div>
                   )}
                 </>
@@ -726,12 +726,7 @@ export default function AdminProjectDetailPage() {
                           </a>
                         )}
                         {invoice.paymentUrl && (
-                          <button
-                            onClick={() => navigator.clipboard.writeText(invoice.paymentUrl as string)}
-                            className="text-white/50 hover:text-white transition-colors"
-                          >
-                            Copy pay link
-                          </button>
+                          <CopyButton value={invoice.paymentUrl} label="Copy pay link" />
                         )}
                         <InvoiceActions
                           invoice={{

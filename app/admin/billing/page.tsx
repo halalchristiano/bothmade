@@ -18,6 +18,7 @@ import {
   stateTone,
   type LedgerFilter,
 } from '@/lib/invoice-ledger';
+import { CopyButton } from '@/components/admin/CopyButton';
 import { InvoiceActions } from '@/components/admin/InvoiceActions';
 import { RefundEstimate } from '@/components/admin/RefundEstimate';
 
@@ -725,12 +726,7 @@ function BillingWorkspace() {
                       </a>
                     )}
                     {invoice.paymentUrl && (
-                      <button
-                        onClick={() => navigator.clipboard.writeText(invoice.paymentUrl as string)}
-                        className="text-white/50 hover:text-white transition-colors"
-                      >
-                        Copy pay link
-                      </button>
+                      <CopyButton value={invoice.paymentUrl} label="Copy pay link" />
                     )}
                     {/* "Not emailed" used to be the end of the sentence and
                         there was nothing to do about it. It is now a state
