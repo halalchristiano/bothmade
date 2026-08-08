@@ -58,7 +58,7 @@ describe('the phone field', () => {
   });
 
   it('sends the number with the enquiry', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -70,7 +70,7 @@ describe('the phone field', () => {
   });
 
   it('will not accept letters at all', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.type(phone(), '555-CALL-NOW');
@@ -81,7 +81,7 @@ describe('the phone field', () => {
   });
 
   it('refuses a + in the number box, since the dropdown supplies it', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.type(phone(), '+1 5550000000');
@@ -90,7 +90,7 @@ describe('the phone field', () => {
   });
 
   it('blocks submit on a number too short to dial, and says so', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -106,7 +106,7 @@ describe('the phone field', () => {
   });
 
   it('sends without one when left empty, and sends no bare dial code', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -122,7 +122,7 @@ describe('the phone field', () => {
   });
 
   it('clears the complaint once the number becomes dialable', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch();
     render(<ContactForm />);
 
@@ -179,7 +179,7 @@ describe('the country dial code', () => {
   });
 
   it('sends the chosen code in front of the number', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -194,7 +194,7 @@ describe('the country dial code', () => {
   });
 
   it('shows the new code as soon as it is picked', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.selectOptions(country(), 'IE');
@@ -206,7 +206,7 @@ describe('the country dial code', () => {
   it('re-judges the number against the new code', async () => {
     // A number that is too short under one code can be long enough under a
     // longer one, so the complaint has to be reconsidered, not left up.
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch();
     render(<ContactForm />);
 
@@ -224,7 +224,7 @@ describe('the country dial code', () => {
 
   it('keeps the chosen country after a successful send', async () => {
     // Someone writing in twice has not moved country in between.
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch();
     render(<ContactForm />);
 
@@ -243,7 +243,7 @@ describe('the country dial code', () => {
 
 describe('keeping wrong values out of the other fields', () => {
   it('refuses digits in the name box, where a phone number does not belong', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.type(name(), 'Kiana 07700900123');
@@ -252,7 +252,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('still accepts the punctuation real names have', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.type(name(), "Jean-Luc O'Neill");
@@ -261,7 +261,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('blocks submit on a malformed email rather than letting the server say no', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -276,7 +276,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('blocks submit on a message too short to be an enquiry', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -291,7 +291,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('flags an empty required field on submit rather than sending nothing', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -307,7 +307,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('leaves the cursor on the first field that needs fixing', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch();
     render(<ContactForm />);
 
@@ -320,7 +320,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('does not complain while a field is still being typed into', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.type(email(), 'kia');
@@ -330,7 +330,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('complains once a field is finished with and still wrong', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.type(email(), 'not-an-address');
@@ -340,7 +340,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('says nothing about a field merely tabbed through', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<ContactForm />);
 
     await user.click(email());
@@ -350,7 +350,7 @@ describe('keeping wrong values out of the other fields', () => {
   });
 
   it('leaves company alone, since real ones have digits and ampersands', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -364,7 +364,7 @@ describe('keeping wrong values out of the other fields', () => {
 
 describe('a valid submission', () => {
   it('posts every field, phone included', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -394,7 +394,7 @@ describe('a valid submission', () => {
   });
 
   it('empties the phone field along with the rest on success', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch();
     render(<ContactForm />);
 
@@ -406,7 +406,7 @@ describe('a valid submission', () => {
   });
 
   it('shows what the server said when it refuses', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch(false, { error: 'Too many messages. Please try again later.' });
     render(<ContactForm />);
 
@@ -423,7 +423,7 @@ describe('the conversion event', () => {
   // the traffic that fails, which is worse than counting nothing at all.
 
   it('fires once the enquiry is actually accepted', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch();
     render(<ContactForm />);
 
@@ -435,7 +435,7 @@ describe('the conversion event', () => {
   });
 
   it('does not fire when the form refuses to send', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
@@ -447,7 +447,7 @@ describe('the conversion event', () => {
   });
 
   it('does not fire when the server refuses the enquiry', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockFetch(false, { error: 'Too many messages. Please try again later.' });
     render(<ContactForm />);
 
