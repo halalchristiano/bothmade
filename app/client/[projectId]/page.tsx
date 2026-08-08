@@ -26,6 +26,7 @@ import { ClientHeader } from '@/components/portal/ClientHeader';
 import { GridBackdrop, CountUp } from '@/components/ui';
 import { addOnLabel, formatCentsExact } from '@/lib/pricing';
 import { deliverableHref, isOpenable } from '@/lib/deliverables';
+import { lastVisitKey, readSeenMessageCount, seenMessagesKey } from '@/lib/portal-unseen';
 import { DesignFeedbackForm } from '@/components/client/DesignFeedbackForm';
 import { OnboardingAnswers } from '@/components/client/OnboardingAnswers';
 import { DesignDirectionForm } from '@/components/client/DesignDirectionForm';
@@ -307,7 +308,7 @@ export default function ClientDashboard() {
   const [linkRevoked, setLinkRevoked] = useState(false);
 
   useEffect(() => {
-    const storageKey = `bothmade_last_visit_${projectId}`;
+    const storageKey = lastVisitKey(projectId);
     const stored = Number(localStorage.getItem(storageKey) || 0);
     setLastVisitAt(stored || null);
     localStorage.setItem(storageKey, String(Date.now()));
@@ -331,10 +332,22 @@ export default function ClientDashboard() {
   // page reload doesn't just forget what's already been seen).
   useEffect(() => {
     if (!project) return;
-    const storageKey = `bothmade_seen_messages_${projectId}`;
+    const storageKey = seenMessagesKey(projectId);
     if (seenMessageCountRef.current === null) {
-      const stored = Number(localStorage.getItem(storageKey) || 0);
-      seenMessageCountRef.current = stored;
+      const stored = readSeenMessageCount(localStorage.getItem(storageKey));
+      // No baseline on this device yet — establish one now, the same way the
+      // visit stamp above is written on arrival whether or not anything was
+      // read.
+      //
+      // Leaving it absent was the bug. The readers coerced a missing key to 0,
+      // so `messageCount > 0` lit the "new activity" dot for every project
+      // with any message history, and *this* effect was the only thing that
+      // ever cleared it — and only when `activeTab === 'messages'`. Opening
+      // the project did nothing. On a new phone, in a private window, or after
+      // clearing site data, every project stayed flagged until the client
+      // happened to click into one specific tab.
+      seenMessageCountRef.current = stored ?? project.messages.length;
+      if (stored === null) localStorage.setItem(storageKey, String(project.messages.length));
     }
     if (activeTab === 'messages') {
       seenMessageCountRef.current = project.messages.length;

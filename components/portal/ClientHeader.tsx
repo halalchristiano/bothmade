@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { projectHasUnseenActivity, type UnseenInput } from '@/lib/portal-unseen';
 
 const LINKS = [
   { label: 'Projects', href: '/client/projects' },
@@ -34,24 +35,9 @@ export function ClientHeader() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data?.success) return;
-        const unseen = (data.projects as Array<{
-          id: string;
-          updates: Array<{ createdAt: string }>;
-          _count: { messages: number };
-        }>).some((project) => {
-          const lastVisit = Number(localStorage.getItem(`bothmade_last_visit_${project.id}`) || 0);
-          const latestUpdateAt = project.updates[0]
-            ? new Date(project.updates[0].createdAt).getTime()
-            : 0;
-          const hasNewUpdate = lastVisit > 0 && latestUpdateAt > lastVisit;
-
-          const seenMessages = Number(
-            localStorage.getItem(`bothmade_seen_messages_${project.id}`) || 0
-          );
-          const hasNewMessage = project._count.messages > seenMessages;
-
-          return hasNewUpdate || hasNewMessage;
-        });
+        const unseen = (data.projects as UnseenInput[]).some((project) =>
+          projectHasUnseenActivity(project)
+        );
         setHasUnseenActivity(unseen);
       })
       .catch(() => {});

@@ -8,6 +8,7 @@ import { motion, type Variants } from 'framer-motion';
 import { ClientHeader } from '@/components/portal/ClientHeader';
 import { GridBackdrop, CountUp } from '@/components/ui';
 import { formatCents } from '@/lib/pricing';
+import { projectHasUnseenActivity } from '@/lib/portal-unseen';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -34,16 +35,8 @@ interface ProjectSummary {
   _count: { messages: number };
 }
 
-function hasUnseenActivity(project: ProjectSummary): boolean {
-  const lastVisit = Number(localStorage.getItem(`bothmade_last_visit_${project.id}`) || 0);
-  const latestUpdateAt = project.updates[0] ? new Date(project.updates[0].createdAt).getTime() : 0;
-  const hasNewUpdate = lastVisit > 0 && latestUpdateAt > lastVisit;
-
-  const seenMessages = Number(localStorage.getItem(`bothmade_seen_messages_${project.id}`) || 0);
-  const hasNewMessage = project._count.messages > seenMessages;
-
-  return hasNewUpdate || hasNewMessage;
-}
+const hasUnseenActivity = (project: ProjectSummary): boolean =>
+  projectHasUnseenActivity(project);
 
 const STATUS_STAGES = ['Discovery', 'Design', 'Build', 'Launch', 'Complete'];
 
