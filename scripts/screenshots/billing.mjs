@@ -68,6 +68,19 @@ const INVOICES = [
     lineItems: [{ label: 'Landing page', priceCents: 195000 }, { label: 'Copywriting', priceCents: 70000 }],
     client: { id: 'c2', company: 'Harbourline Marine', email: 'ops@harbourline.test' },
     project: { id: 'p2', name: 'Harbourline — Web app' }, issuedBy: { name: 'Kiana', email: 'k@b.studio' } },
+  /*
+   * Part paid by transfer. An invoice used to be all-or-nothing, so this is
+   * the state worth having in front of you: the row says what has arrived and
+   * what is left, and the outstanding figure above is net of it.
+   */
+  { id: 'inv_4', number: 'BM-2026-0027', description: 'Brand photography day',
+    amountCents: 180000, status: 'open', pdfUrl: 'https://blob.test/e.pdf', paymentUrl: 'https://pay.test/e',
+    sentToEmail: 'hi@vellum.test', sendCount: 2, lastSentAt: day(11), refundedCents: 0,
+    refundMethod: null, refundReason: null, voidReason: null, createdAt: day(22),
+    lineItems: [{ label: 'Photography day', priceCents: 140000 }, { label: 'Retouching', priceCents: 40000 }],
+    client: { id: 'c4', company: 'Vellum Studio', email: 'hi@vellum.test' },
+    project: { id: 'p4', name: 'Vellum — Website' }, issuedBy: { name: 'Kiana', email: 'k@b.studio' },
+    receivedCents: 90000 },
   { id: 'inv_3', number: 'BM-2026-0029', description: 'Retainer — March', amountCents: 90000,
     status: 'open', pdfUrl: null, paymentUrl: null, sentToEmail: null, sendCount: 0, lastSentAt: null,
     refundedCents: 0, refundMethod: null, refundReason: null, voidReason: null, createdAt: day(6),
@@ -101,7 +114,8 @@ const SETTLED = [
     description: 'SEO audit add-on', voidReason: 'Raised against the wrong project', createdAt: day(53) },
 ];
 
-const TOTALS = { outstandingCents: 475000, outstandingCount: 3, paidCents: 1284000, paidCount: 9,
+// Outstanding is net of the $900 already in against BM-2026-0027.
+const TOTALS = { outstandingCents: 565000, outstandingCount: 4, paidCents: 1284000, paidCount: 9,
   refundedCents: 19000, creditedCents: 60000, count: 13 };
 
 const CUSTOMERS = [
