@@ -150,3 +150,77 @@ them and a future change does not quietly undo one.
 | Rate limiting — per-IP and per-account, Postgres-backed | `lib/rate-limit.ts` |
 | HTML escaping for transactional email | `lib/html.ts` |
 | Secrets at rest (Gmail passwords, Google refresh tokens) | `lib/crypto.ts` |
+| JSON-LD escaping, so `'unsafe-inline'` stays justified | `lib/json-ld.ts` |
+
+---
+
+## 4. Open: four high-severity advisories, all under `next`
+
+**Status: not fixed. Deliberately left for a deploy of its own.**
+
+`npm audit` reports 4 high-severity advisories. Every one is transitive
+through `next@16.2.12` — none is a direct dependency, and there is nothing to
+fix in our own `package.json`:
+
+| Package | Issue |
+| --- | --- |
+| `postcss` (via `next`) | XSS via unescaped `</style>`; arbitrary `.map` file read via attacker-controlled `sourceMappingURL` |
+| `sharp` (via `next`) | inherited libvips CVEs — 2026-33327, -33328, -35590, -35591 |
+| `nanoid` (via `next`) | — |
+
+The only fix `npm` offers is `npm audit fix --force`, which installs
+`next@16.3.0` — outside the pinned range.
+
+**Why this was not done here.** A framework bump against a live site deserves
+its own deploy with its own verification, not a quiet ride-along at the end of
+a security pass. `npm run build` runs `prisma migrate deploy` against the
+**production database**, so the build cannot be rehearsed in this environment
+— the first real execution of a Next upgrade would be the one serving
+customers. `AGENTS.md` also notes this Next version already differs from what
+is widely documented, so the upgrade wants someone reading
+`node_modules/next/dist/docs/` rather than assuming.
+
+**Actual exposure, so this can be prioritised rather than panicked over:**
+
+- The `postcss` issues are build-time. They need attacker-controlled CSS or a
+  malicious `sourceMappingURL`, and all CSS here is ours. Effectively no
+  exposure.
+- `sharp` is the one worth attention: Next uses it for image optimization, so
+  it processes uploaded images. Reaching it requires an authenticated
+  upload — a staff or client session — so this is a
+  privilege-escalation-from-inside path, not an open door.
+
+Suggested: `npm i next@16.3.0`, run `npm run typecheck` and `npm test`, deploy
+alone, and check image optimization and an upload afterwards. Re-run
+`npm audit` on a schedule; nothing here does that automatically today.
+
+---
+
+## 5. Checked this pass, no change needed
+
+Recorded so the next person does not spend the afternoon re-deriving it.
+
+- **Rate-limit IP source.** `clientIp()` reads the leftmost value of
+  `x-forwarded-for`, which is the classic spoofable pattern — an attacker
+  rotating a fake header would get a fresh budget per request and walk
+  straight through the per-IP login limit. It is **not** exploitable here:
+  Vercel overwrites `x-forwarded-for` at the edge specifically to prevent
+  this, and does not pass a client-supplied value through. Worth knowing that
+  this safety comes from the platform, not from our code — moving off Vercel,
+  or putting a proxy in front of it, makes `lib/rate-limit.ts` wrong on the
+  day of the move. The per-account limiter (`loginAccount`) does not depend on
+  the caller's address at all, and would still hold.
+- **SQL injection.** No `$queryRawUnsafe` or `$executeRawUnsafe` anywhere.
+  The four raw-SQL sites all use tagged templates, which Prisma parameterises.
+- **Secret comparisons.** All three are now constant-time —
+  `bootstrapTokenMatches` (signup), `lib/share-links.ts`, and
+  `lib/cron-auth.ts`, which was the odd one out and is fixed.
+- **Cron perimeter.** `proxy.ts` treats `/api/cron/` as public by design
+  (Vercel Cron carries no session cookie), so `requireCronAuth` is the entire
+  perimeter for jobs that send mail and read mailboxes. It refuses to run at
+  all when `CRON_SECRET` is unset, which is the correct direction, and is now
+  covered by tests.
+- **CSRF.** The auth cookie is `httpOnly`, `sameSite: 'lax'`, `secure` in
+  production, so it is not attached to cross-site non-GET requests;
+  `form-action 'self'` blocks off-site form posts. No separate CSRF token is
+  needed for this cookie configuration.
