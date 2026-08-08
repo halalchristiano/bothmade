@@ -909,205 +909,201 @@ export default function AdminProjectDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
-        {/* LEFT: Project Info */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
-            <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
-            <Link
-              href={`/admin/clients/${project.client.id}`}
-              className="text-sm text-white/50 transition-colors hover:text-sky-300"
-            >
-              {project.client.company}
-            </Link>
+      {/*
+        Two wide columns, not three narrow rails.
 
-            {/*
-              The link the client actually watches, on the page where you are
-              already looking at their project.
+        Three rails at three tenths made every card narrow — a status update
+        written in a 180px box, a payment row reading "$…" — and left the page
+        a five-thousand-pixel scroll with dead space down both sides. Bands
+        across the full width were tried and were worse: rows sum where
+        columns take a maximum, so a row holding one short card still costs
+        its own height and the page grew by 1,600px.
 
-              The API has always sent shareToken here — the comment beside it
-              says it "travels no further than the dashboard that offers copy
-              share link", and that was exactly the problem. Sending a client
-              their tracking link is a routine thing to want from a project,
-              and it meant going back to the dashboard, finding the row, and
-              hoping the project was still on it: that list is filtered to
-              handoffs and at-risk work, so for a healthy mid-build project
-              the link was reachable from nowhere at all.
-            */}
-            {project.shareToken && (
-              /*
-               * Labelled once above, then short controls beneath.
-               *
-               * "Copy status link" as a button label wrapped onto two lines in
-               * this column and shoved Revoke out of line with it. Naming the
-               * thing in a caption and letting the buttons say only what they
-               * do fits, and reads better besides: three verbs in a row rather
-               * than one sentence and two orphans.
-               */
-              <div className="mt-4 border-t border-white/[0.06] pt-4">
-                <p className="text-xs font-medium text-white/40">Client status link</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                <CopyButton
-                  value={`${typeof window === 'undefined' ? '' : window.location.origin}/status/${project.id}?t=${project.shareToken}`}
-                  label="Copy"
-                  title="Copy the client's status link"
-                />
-                <a
-                  href={`/status/${project.id}?t=${encodeURIComponent(project.shareToken)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open the client's status page"
-                  className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-sky-300"
-                >
-                  <ExternalLink size={13} />
-                </a>
-                {/*
-                  The other half of handing out a link.
+        Two columns take the max of two halves while giving every card
+        570-odd pixels, which is enough to write in. The three things that
+        genuinely want the whole width keep it: the care plan, the money, and
+        the project's own facts.
+      */}
+      <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+        <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
+        <Link
+          href={`/admin/clients/${project.client.id}`}
+          className="text-sm text-white/50 transition-colors hover:text-sky-300"
+        >
+          {project.client.company}
+        </Link>
 
-                  /api/share-links/rotate has accepted { type: 'project' }
-                  from staff since it was written, and the lead page and the
-                  client's own dashboard both call it — but the admin project
-                  page never did. So the one screen where somebody copies a
-                  client's status link was the one screen with no way to take
-                  it back, and the person most likely to notice a link went
-                  somewhere it shouldn't is whoever sent it.
-                */}
-                <button
-                  type="button"
-                  onClick={handleRotateShareLink}
-                  disabled={rotatingLink}
-                  title="Replace this link — every copy already sent stops working"
-                  className="rounded-lg px-2 py-1 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-amber-300 disabled:opacity-50"
-                >
-                  {rotatingLink ? 'Replacing…' : 'Revoke'}
-                </button>
-                </div>
-              </div>
-            )}
-            {linkNotice && (
-              <p role="status" className="mt-2 text-xs text-amber-300/90">
-                {linkNotice}
-              </p>
-            )}
+        {/*
+          The link the client actually watches, on the page where you are
+          already looking at their project.
 
-            <div className="mt-6 space-y-4 text-sm">
-              <div>
-                <p className="text-white/40 mb-1">Base Service</p>
-                <p className="font-medium capitalize">{project.baseService.replace('-', ' ')}</p>
-              </div>
-              {project.addOns.length > 0 && (
-                <div>
-                  <p className="text-white/40 mb-1">Add-ons</p>
-                  {/* addOnLabel, not CSS capitalize: the raw key rendered as
-                      "Seo", which reads like a typo somebody meant. */}
-                  <p className="font-medium">{project.addOns.map(addOnLabel).join(', ')}</p>
-                </div>
-              )}
-              {project.customItems && project.customItems.length > 0 && (
-                <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-amber-300 mb-2">
-                    ⚠ Custom items — not in the standard catalogue
-                  </p>
-                  <div className="space-y-1">
-                    {project.customItems.map((item, i) => (
-                      <div key={i}>
-                        <p className="font-medium flex justify-between">
-                          <span>{item.label}</span>
-                          <span className="text-white/60">{formatCents(item.priceCents)}</span>
-                        </p>
-                        {/* What was actually agreed, verbatim from the
-                            contract — this is the page someone opens when
-                            they're about to build the thing. */}
-                        {item.description && (
-                          <p className="mt-0.5 text-xs leading-relaxed text-white/60">{item.description}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div>
-                <p className="text-white/40 mb-1">Timeline</p>
-                <p className="font-medium">{project.timeline || '—'}</p>
-              </div>
-              <div>
-                <p className="text-white/40 mb-1">Total Price</p>
-                <p className="font-medium">{formatCents(project.totalPrice)}</p>
-              </div>
-            </div>
-
-
-            <div className="mt-6 pt-6 border-t border-white/10">
-              <p className="text-sm font-semibold mb-3">Estimated Completion</p>
-              <p className="text-xs text-white/40 mb-3">
-                Shown to the client as a rough target for the current stage.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={estimatedDateDraft}
-                  onChange={(e) => setEstimatedDateDraft(e.target.value)}
-                  className={`${inputClass} flex-1`}
-                />
-                <button
-                  onClick={handleSaveEstimatedDate}
-                  disabled={estimatedDateSaving}
-                  className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
-                >
-                  {estimatedDateSaving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-white/10">
-              <p className="text-sm font-semibold mb-3">🚀 Live Site</p>
-              <p className="text-xs text-white/40 mb-3">
-                Set this once it's actually shipped — turns the client's dashboard into a
-                proper "your project is live" moment instead of just another status update.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  placeholder="https://theirclient.com"
-                  value={liveUrlDraft}
-                  onChange={(e) => setLiveUrlDraft(e.target.value)}
-                  className={`${inputClass} flex-1`}
-                />
-                <button
-                  onClick={handleSaveLiveUrl}
-                  disabled={liveUrlSaving}
-                  className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
-                >
-                  {liveUrlSaving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Beside the scope it changes, not in the conversation column.
-              "The price and scope agreed at signing still stand" is a
-              statement about the card directly above this one, and it was
-              two columns away from it. */}
-          <div id="change-orders">
-            <ChangeOrderPanel
-              projectId={projectId}
-              totalPrice={project.totalPrice}
-              // What the contract's answer turns on: which gate the project
-              // has passed, and how much of the revision allowance is left.
-              stage={{
-                status: project.status,
-                designPresentedAt: project.designReview?.presentedAt ?? null,
-                designApprovedAt: project.designReview?.approvedAt ?? null,
-                designRevisionsUsed: project.designReview?.revisions?.used ?? 0,
-              }}
-              onApplied={loadProject}
+          The API has always sent shareToken here — the comment beside it
+          says it "travels no further than the dashboard that offers copy
+          share link", and that was exactly the problem. Sending a client
+          their tracking link is a routine thing to want from a project,
+          and it meant going back to the dashboard, finding the row, and
+          hoping the project was still on it: that list is filtered to
+          handoffs and at-risk work, so for a healthy mid-build project
+          the link was reachable from nowhere at all.
+        */}
+        {project.shareToken && (
+          /*
+           * Labelled once above, then short controls beneath.
+           *
+           * "Copy status link" as a button label wrapped onto two lines in
+           * this column and shoved Revoke out of line with it. Naming the
+           * thing in a caption and letting the buttons say only what they
+           * do fits, and reads better besides: three verbs in a row rather
+           * than one sentence and two orphans.
+           */
+          <div className="mt-4 border-t border-white/[0.06] pt-4">
+            <p className="text-xs font-medium text-white/40">Client status link</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <CopyButton
+              value={`${typeof window === 'undefined' ? '' : window.location.origin}/status/${project.id}?t=${project.shareToken}`}
+              label="Copy"
+              title="Copy the client's status link"
             />
+            <a
+              href={`/status/${project.id}?t=${encodeURIComponent(project.shareToken)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open the client's status page"
+              className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-sky-300"
+            >
+              <ExternalLink size={13} />
+            </a>
+            {/*
+              The other half of handing out a link.
+
+              /api/share-links/rotate has accepted { type: 'project' }
+              from staff since it was written, and the lead page and the
+              client's own dashboard both call it — but the admin project
+              page never did. So the one screen where somebody copies a
+              client's status link was the one screen with no way to take
+              it back, and the person most likely to notice a link went
+              somewhere it shouldn't is whoever sent it.
+            */}
+            <button
+              type="button"
+              onClick={handleRotateShareLink}
+              disabled={rotatingLink}
+              title="Replace this link — every copy already sent stops working"
+              className="rounded-lg px-2 py-1 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-amber-300 disabled:opacity-50"
+            >
+              {rotatingLink ? 'Replacing…' : 'Revoke'}
+            </button>
+            </div>
+          </div>
+        )}
+        {linkNotice && (
+          <p role="status" className="mt-2 text-xs text-amber-300/90">
+            {linkNotice}
+          </p>
+        )}
+
+        {/* Across, not down — four short facts in a column were four rows. */}
+        <div className="mt-6 grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-white/40 mb-1">Base Service</p>
+            <p className="font-medium capitalize">{project.baseService.replace('-', ' ')}</p>
+          </div>
+          {project.addOns.length > 0 && (
+            <div>
+              <p className="text-white/40 mb-1">Add-ons</p>
+              {/* addOnLabel, not CSS capitalize: the raw key rendered as
+                  "Seo", which reads like a typo somebody meant. */}
+              <p className="font-medium">{project.addOns.map(addOnLabel).join(', ')}</p>
+            </div>
+          )}
+          {project.customItems && project.customItems.length > 0 && (
+            <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3 sm:col-span-2 lg:col-span-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-300 mb-2">
+                ⚠ Custom items — not in the standard catalogue
+              </p>
+              <div className="space-y-1">
+                {project.customItems.map((item, i) => (
+                  <div key={i}>
+                    <p className="font-medium flex justify-between">
+                      <span>{item.label}</span>
+                      <span className="text-white/60">{formatCents(item.priceCents)}</span>
+                    </p>
+                    {/* What was actually agreed, verbatim from the
+                        contract — this is the page someone opens when
+                        they're about to build the thing. */}
+                    {item.description && (
+                      <p className="mt-0.5 text-xs leading-relaxed text-white/60">{item.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="text-white/40 mb-1">Timeline</p>
+            <p className="font-medium">{project.timeline || '—'}</p>
+          </div>
+          <div>
+            <p className="text-white/40 mb-1">Total Price</p>
+            <p className="font-medium">{formatCents(project.totalPrice)}</p>
           </div>
         </div>
 
-        {/* CENTER: Messages & Updates */}
-        <div className="lg:col-span-4 space-y-6">
+
+        {/* Side by side. A date and a URL are two short fields, and
+            stacking them gave each a full-width row and a thousand-pixel
+            input to hold eight characters. */}
+        <div className="mt-6 grid gap-x-8 gap-y-6 border-t border-white/10 pt-6 lg:grid-cols-2">
+          <div>
+            <p className="text-sm font-semibold mb-3">Estimated Completion</p>
+            <p className="text-xs text-white/40 mb-3">
+              Shown to the client as a rough target for the current stage.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={estimatedDateDraft}
+                onChange={(e) => setEstimatedDateDraft(e.target.value)}
+                className={`${inputClass} flex-1`}
+              />
+              <button
+                onClick={handleSaveEstimatedDate}
+                disabled={estimatedDateSaving}
+                className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {estimatedDateSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold mb-3">🚀 Live Site</p>
+            <p className="text-xs text-white/40 mb-3">
+              Set this once it's actually shipped — turns the client's dashboard into a
+              proper "your project is live" moment instead of just another status update.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                placeholder="https://theirclient.com"
+                value={liveUrlDraft}
+                onChange={(e) => setLiveUrlDraft(e.target.value)}
+                className={`${inputClass} flex-1`}
+              />
+              <button
+                onClick={handleSaveLiveUrl}
+                disabled={liveUrlSaving}
+                className="rounded-lg border border-white/20 px-4 text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {liveUrlSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
           {/*
             Where the project actually gets moved on, in a column wide enough
             to write in.
@@ -1223,24 +1219,115 @@ export default function AdminProjectDetailPage() {
                   </div>
                 )}
           </div>
+          {/* Beside the scope it changes, not in the conversation column.
+              "The price and scope agreed at signing still stand" is a
+              statement about the card directly above this one, and it was
+              two columns away from it. */}
+          <div id="change-orders">
+            <ChangeOrderPanel
+              projectId={projectId}
+              totalPrice={project.totalPrice}
+              // What the contract's answer turns on: which gate the project
+              // has passed, and how much of the revision allowance is left.
+              stage={{
+                status: project.status,
+                designPresentedAt: project.designReview?.presentedAt ?? null,
+                designApprovedAt: project.designReview?.approvedAt ?? null,
+                designRevisionsUsed: project.designReview?.revisions?.used ?? 0,
+              }}
+              onApplied={loadProject}
+            />
+          </div>
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
+            <h2 className="text-lg font-semibold mb-4">Deliverables</h2>
 
-          {/* In the wide column, not beside the schedule it affects: the
-              summary IS the document the client signs, and in a sidebar it
-              truncated to three words — which is the one part of a change
-              order nobody can afford to have to guess at. */}
-          {/* Above the change order panel on purpose: the new-scope group in
-              here is the most common reason to raise one, and reading the
-              request immediately before the tool that prices it is the order
-              the work actually happens in. Renders nothing until a client has
-              sent something. */}
-          {/* The brief above the feedback, because that is the order you have
-              to read them in: their complaint only means something next to
-              what we told them we would do. */}
-          <DesignDirectionPanel projectId={projectId} />
+            <div className="space-y-3 mb-6">
+              {project.deliverables.length === 0 && (
+                <p className="text-white/40 text-sm">No files yet.</p>
+              )}
+              {project.deliverables.map((file) => (
+                <div key={file.id} className="p-3 rounded-lg border border-white/10">
+                  <div className="flex justify-between items-start gap-2">
+                    {/* Validation stops new ones; this is for the entries
+                        already stored. A link that silently does nothing is
+                        worse than one that says it is broken. */}
+                    {deliverableHref(file.url) ? (
+                      <a
+                        href={deliverableHref(file.url) as string}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium hover:underline truncate text-sky-300"
+                      >
+                        {file.name}
+                      </a>
+                    ) : (
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-white/50">{file.name}</p>
+                        <p className="text-[11px] text-amber-300/80">
+                          Broken link — this opens nothing. Delete it and add it again.
+                        </p>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleDeleteDeliverable(file.id)}
+                      className="text-xs text-red-400 hover:underline shrink-0"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  {file.size && <p className="text-xs text-white/30 mt-1">{file.size}</p>}
+                </div>
+              ))}
+            </div>
 
-          <DesignFeedbackPanel projectId={projectId} />
+            <div className="pt-4 border-t border-white/10 space-y-2">
+              <p className="text-sm font-semibold mb-1">Upload File</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileUpload}
+                disabled={uploadingFile}
+                className="w-full text-xs text-white/60 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white file:text-ink file:font-medium file:text-xs file:cursor-pointer hover:file:bg-white/90 disabled:opacity-50"
+              />
+              {uploadingFile && <p className="text-xs text-sky-300">Uploading...</p>}
+              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
 
+              <div className="flex items-center gap-2 py-2">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-xs text-white/30">or paste a link</span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
 
+              <p className="text-sm font-semibold mb-1">Add Link</p>
+              <input
+                value={deliverableName}
+                onChange={(e) => setDeliverableName(e.target.value)}
+                placeholder="File name"
+                className={`${inputClass} text-sm`}
+              />
+              <input
+                value={deliverableUrl}
+                onChange={(e) => setDeliverableUrl(e.target.value)}
+                placeholder="File URL"
+                className={`${inputClass} text-sm`}
+              />
+              <input
+                value={deliverableSize}
+                onChange={(e) => setDeliverableSize(e.target.value)}
+                placeholder="Size (optional, e.g. 2.4 MB)"
+                className={`${inputClass} text-sm`}
+              />
+              <button
+                onClick={handleAddDeliverable}
+                disabled={deliverableSaving || !deliverableName.trim() || !deliverableUrl.trim()}
+                className="w-full rounded-lg border border-white/20 py-2 text-sm font-semibold disabled:opacity-50 hover:bg-white/5 transition-colors"
+              >
+                {deliverableSaving ? 'Adding...' : 'Add Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-6">
           <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
             <h2 className="text-xl font-semibold mb-4">Activity</h2>
             <div className="space-y-4 max-h-[500px] overflow-y-auto mb-6">
@@ -1342,11 +1429,20 @@ export default function AdminProjectDetailPage() {
               </button>
             </div>
           </div>
-
-        </div>
-
-        {/* RIGHT: Deliverables */}
-        <div className="lg:col-span-3 space-y-6">
+          {/* In the wide column, not beside the schedule it affects: the
+              summary IS the document the client signs, and in a sidebar it
+              truncated to three words — which is the one part of a change
+              order nobody can afford to have to guess at. */}
+          {/* Above the change order panel on purpose: the new-scope group in
+              here is the most common reason to raise one, and reading the
+              request immediately before the tool that prices it is the order
+              the work actually happens in. Renders nothing until a client has
+              sent something. */}
+          {/* The brief above the feedback, because that is the order you have
+              to read them in: their complaint only means something next to
+              what we told them we would do. */}
+          <DesignDirectionPanel projectId={projectId} />
+          <DesignFeedbackPanel projectId={projectId} />
           {project.contractUrl && (
             <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
               <h2 className="text-lg font-semibold mb-4">Signed Agreement</h2>
@@ -1364,97 +1460,6 @@ export default function AdminProjectDetailPage() {
               </a>
             </div>
           )}
-
-          <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
-            <h2 className="text-lg font-semibold mb-4">Deliverables</h2>
-
-            <div className="space-y-3 mb-6">
-              {project.deliverables.length === 0 && (
-                <p className="text-white/40 text-sm">No files yet.</p>
-              )}
-              {project.deliverables.map((file) => (
-                <div key={file.id} className="p-3 rounded-lg border border-white/10">
-                  <div className="flex justify-between items-start gap-2">
-                    {/* Validation stops new ones; this is for the entries
-                        already stored. A link that silently does nothing is
-                        worse than one that says it is broken. */}
-                    {deliverableHref(file.url) ? (
-                      <a
-                        href={deliverableHref(file.url) as string}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium hover:underline truncate text-sky-300"
-                      >
-                        {file.name}
-                      </a>
-                    ) : (
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-white/50">{file.name}</p>
-                        <p className="text-[11px] text-amber-300/80">
-                          Broken link — this opens nothing. Delete it and add it again.
-                        </p>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => handleDeleteDeliverable(file.id)}
-                      className="text-xs text-red-400 hover:underline shrink-0"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  {file.size && <p className="text-xs text-white/30 mt-1">{file.size}</p>}
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-4 border-t border-white/10 space-y-2">
-              <p className="text-sm font-semibold mb-1">Upload File</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={handleFileUpload}
-                disabled={uploadingFile}
-                className="w-full text-xs text-white/60 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white file:text-ink file:font-medium file:text-xs file:cursor-pointer hover:file:bg-white/90 disabled:opacity-50"
-              />
-              {uploadingFile && <p className="text-xs text-sky-300">Uploading...</p>}
-              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
-
-              <div className="flex items-center gap-2 py-2">
-                <div className="h-px flex-1 bg-white/10" />
-                <span className="text-xs text-white/30">or paste a link</span>
-                <div className="h-px flex-1 bg-white/10" />
-              </div>
-
-              <p className="text-sm font-semibold mb-1">Add Link</p>
-              <input
-                value={deliverableName}
-                onChange={(e) => setDeliverableName(e.target.value)}
-                placeholder="File name"
-                className={`${inputClass} text-sm`}
-              />
-              <input
-                value={deliverableUrl}
-                onChange={(e) => setDeliverableUrl(e.target.value)}
-                placeholder="File URL"
-                className={`${inputClass} text-sm`}
-              />
-              <input
-                value={deliverableSize}
-                onChange={(e) => setDeliverableSize(e.target.value)}
-                placeholder="Size (optional, e.g. 2.4 MB)"
-                className={`${inputClass} text-sm`}
-              />
-              <button
-                onClick={handleAddDeliverable}
-                disabled={deliverableSaving || !deliverableName.trim() || !deliverableUrl.trim()}
-                className="w-full rounded-lg border border-white/20 py-2 text-sm font-semibold disabled:opacity-50 hover:bg-white/5 transition-colors"
-              >
-                {deliverableSaving ? 'Adding...' : 'Add Link'}
-              </button>
-            </div>
-          </div>
-
-
           {/* The two things on this page the client never sees, together and
               at the end — rather than interleaved with the messages that do
               go to them. */}
@@ -1495,7 +1500,6 @@ export default function AdminProjectDetailPage() {
               {noteSaving ? 'Saving...' : 'Add Internal Note'}
             </button>
           </div>
-
           {/* Flag a question for the rest of the team */}
           <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
             <h2 className="text-lg font-semibold mb-1">Flag For The Team</h2>

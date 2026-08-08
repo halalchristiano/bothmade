@@ -207,7 +207,11 @@ for (const device of DEVICES) {
   async function shot(name, note) {
     const file = path.join(OUT, `${device.key}-${String(++n).padStart(2, '0')}-${name}.png`);
     await page.screenshot({ path: file, fullPage: true });
-    console.log(`  ${path.relative(process.cwd(), file)}  — ${note}`);
+    // Height is the thing to watch on this page: it is a long scroll, and a
+    // layout change that looks tidier while adding a thousand pixels of it
+    // has not helped anybody.
+    const tall = await page.evaluate(() => document.documentElement.scrollHeight);
+    console.log(`  ${path.relative(process.cwd(), file)}  ${String(tall).padStart(5)}px  — ${note}`);
   }
 
   async function checkWidth(where) {
