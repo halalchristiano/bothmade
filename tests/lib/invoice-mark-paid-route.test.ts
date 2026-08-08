@@ -75,6 +75,18 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 
   requireStaff.mockResolvedValue({ userId: 'user_kiana', type: 'user', role: 'owner' });
+  /*
+   * Reset, not just cleared — this one carries a queue.
+   *
+   * The `$transaction` stub below queues a `mockResolvedValueOnce` so the
+   * read-back inside the transaction sees a settled row. `vi.clearAllMocks()`
+   * empties `mock.calls` and leaves that queue alone, so any test where the
+   * route short-circuits before consuming it handed the *next* test a first
+   * `findUnique` that answers "already paid" — and a route that returns early
+   * never touches Stripe, so an unrelated case failed asserting the payment
+   * link was taken down. Only visible under `--sequence.shuffle`.
+   */
+  prisma.invoice.findUnique.mockReset();
   prisma.invoice.findUnique.mockResolvedValue(OPEN_INVOICE);
   prisma.instalment.findUnique.mockResolvedValue(null);
   prisma.invoice.updateMany.mockResolvedValue({ count: 1 });

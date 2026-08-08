@@ -304,11 +304,29 @@ describe('POST /api/checkout — capturing the attempt', () => {
  * production actually uses.
  */
 describe('POST /api/checkout — the budget', () => {
+  /*
+   * One address per test, hammering — not one address for the whole block.
+   *
+   * These cases share a limiter whose counters outlive a test, and one of
+   * them deliberately spends its allowance to the last request. On a single
+   * hardcoded address that only works in the order they are written in: run
+   * the exhausting case first and the next one is refused on request one,
+   * asserting a budget somebody else already spent. `--sequence.shuffle`
+   * failed exactly that way.
+   *
+   * A fresh address each test keeps "the same caller, hammering" true inside
+   * a test and false across them, which is what these are actually about.
+   */
+  let caller = 0;
+  beforeEach(() => {
+    caller += 1;
+  });
+
   /** One address, hammering. `publicWrite` allows ten in ten minutes. */
   const sameCaller = (body: unknown) =>
     ({
       json: async () => body,
-      headers: new Headers({ 'x-forwarded-for': '203.0.113.77' }),
+      headers: new Headers({ 'x-forwarded-for': `203.0.113.${caller}` }),
     }) as Parameters<typeof POST>[0];
 
   it('opens checkout up to the limit, then refuses', async () => {

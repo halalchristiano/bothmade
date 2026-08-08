@@ -42,6 +42,29 @@ export function RevenueChart({ data }: { data: RevenueMonth[] }) {
    */
   const bar = (cents: number) => (cents > 0 ? `${Math.max((cents / max) * 100, 2)}%` : '0');
 
+  /**
+   * The figure above a bar, short enough to fit above a bar.
+   *
+   * Six months across a phone gives each column about 55px, and the label is
+   * centred on it — so a full "$15,300" overflowed into its neighbour and the
+   * outermost one was clipped by the edge of the scroll box, rendering the
+   * most recent month as "$15,30". Padding the box only moved the problem:
+   * the row has a min width, so the gutter pushed the last bar off-screen
+   * instead.
+   *
+   * Rounded to one decimal above a thousand, which is the resolution a bar
+   * chart carries anyway. The exact figures are a tap away underneath, which
+   * is the whole point of the panel below.
+   */
+  const compact = (cents: number) => {
+    const dollars = cents / 100;
+    if (dollars >= 1000) {
+      const k = dollars / 1000;
+      return `$${k >= 100 ? Math.round(k) : Number(k.toFixed(1))}k`;
+    }
+    return formatCents(cents);
+  };
+
   const describe = (month: RevenueMonth) =>
     `${month.label}: ${formatCents(month.oneOff)} project work, ${formatCents(month.recurring)} care plans`;
 
@@ -49,8 +72,25 @@ export function RevenueChart({ data }: { data: RevenueMonth[] }) {
 
   return (
     <div>
+      {/*
+        Scrolls only when it has to.
+        A flat `min-w-[20rem]` was 320px against the 308px this card actually
+        gets on a phone, so six bars — which fit comfortably — were put behind
+        a horizontal scroll anyway, with the last one hard against the edge.
+        A per-bar floor keeps the twelve-month view legible (it scrolls, as it
+        should) and lets the shorter ranges simply fit.
+
+        The padding is what stops the outermost figure being clipped: each one
+        is centred on its bar and is a little wider, so the last overhung the
+        scroll box by about 3px and lost its final character. Inside the
+        scrolled row rather than on the box, or it would eat the width it is
+        trying to protect.
+      */}
       <div className="overflow-x-auto pb-1">
-        <div className="flex min-w-[20rem] items-end gap-1.5">
+        <div
+          className="flex items-end gap-1.5 px-1.5"
+          style={{ minWidth: `${data.length * 46}px` }}
+        >
           {data.map((month, i) => {
             const total = month.oneOff + month.recurring;
             const selected = openIndex === i;
@@ -68,7 +108,7 @@ export function RevenueChart({ data }: { data: RevenueMonth[] }) {
                     selected ? 'text-white' : 'text-white/25 group-hover:text-white/60'
                   }`}
                 >
-                  {total > 0 ? formatCents(total) : ''}
+                  {total > 0 ? compact(total) : ''}
                 </span>
                 {/* Fixed height, because the percentages above are of *this*.
                     A flex-grown box inside an items-end row collapses to zero

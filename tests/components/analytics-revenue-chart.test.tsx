@@ -64,6 +64,25 @@ describe('the revenue chart', () => {
     expect(screen.getByText(/Tap a month/)).toBeTruthy();
   });
 
+  /**
+   * Caught by a screenshot, not by a unit test: six full figures across a
+   * phone overflowed their columns and the outermost one was clipped by the
+   * edge of the scroll box, so the most recent month rendered as "$15,30".
+   */
+  it('shortens the figure above a bar so six of them fit a phone', () => {
+    render(<RevenueChart data={[{ label: 'Aug', oneOff: 1_200_000, recurring: 330_000 }]} />);
+
+    expect(screen.getByText('$15.3k')).toBeTruthy();
+    // The exact figure is still one tap away, and still exact.
+    expect(screen.getByRole('button', { name: /Aug: .*12,000.*3,300/ })).toBeTruthy();
+  });
+
+  it('leaves small months in whole dollars, where the precision fits', () => {
+    render(<RevenueChart data={[{ label: 'Sep', oneOff: 40_000, recurring: 0 }]} />);
+
+    expect(screen.getByText('$400')).toBeTruthy();
+  });
+
   it('survives a range with no revenue in it at all', () => {
     render(<RevenueChart data={[{ label: 'Aug', oneOff: 0, recurring: 0 }]} />);
 

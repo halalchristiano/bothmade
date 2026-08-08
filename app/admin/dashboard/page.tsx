@@ -212,7 +212,7 @@ interface OpsStats {
     daysSinceWeAsked: number | null;
     shareToken: string | null;
   }>;
-  /** Invoiced and unpaid only, biggest first — see OverdueBalancesCard. */
+  /** Invoiced and unpaid only, biggest first — see UnpaidBalancesCard. */
   overdueBalances: Array<{
     id: string;
     name: string;
@@ -986,73 +986,6 @@ function AtRiskProjectsCard({ projects }: { projects: OpsStats['atRiskProjects']
 }
 
 /**
- * Money that is out the door and hasn't come back.
- *
- * The API has computed this on every load for as long as it has existed — it
- * pulls every payment and every instalment for every live project and runs
- * projectBalance() over each one — and then nothing rendered it. A dashboard
- * about "delivery, clients and money" had no answer to who owes us money,
- * while paying the full cost of working it out.
- *
- * Only invoiced-and-unpaid appears here. Money still behind a gate isn't late,
- * and money past its gate that was never invoiced is our job rather than
- * theirs — the Today panel's "Earned, unbilled" covers that one, and mixing
- * the two is how a chase list turns into a list nobody chases.
- */
-function OverdueBalancesCard({ balances }: { balances: OpsStats['overdueBalances'] }) {
-  const [visible, setVisible] = useState(PAGE_SIZE);
-  const shown = balances.slice(0, visible);
-  const total = balances.reduce((sum, b) => sum + b.balanceDue, 0);
-
-  return (
-    <Card className="p-6" glow={balances.length > 0 ? 'amber' : undefined}>
-      <CardHeader
-        icon={Wallet}
-        tone="amber"
-        title="Invoiced and unpaid"
-        subtitle="Out the door and not back yet — biggest first"
-        action={
-          balances.length > 0 ? (
-            <span className="text-sm font-semibold text-amber-300">{formatCents(total)}</span>
-          ) : undefined
-        }
-      />
-      {balances.length === 0 ? (
-        <EmptyState icon={Wallet} text="Nothing invoiced is outstanding." tone="clear" />
-      ) : (
-        <>
-          <div className="space-y-0.5">
-            {shown.map((b) => (
-              <ListRow
-                key={b.id}
-                href={`/admin/projects/${b.id}`}
-                title={b.company}
-                // When we last chased, because that — not the amount — is what
-                // decides whether to chase again today.
-                subtitle={
-                  b.lastPaymentReminderSentAt
-                    ? `Last reminded ${formatRelativeTime(new Date(b.lastPaymentReminderSentAt))}`
-                    : 'Never reminded'
-                }
-                trailing={
-                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    <span className="text-sm font-semibold tabular-nums text-amber-300">
-                      {formatCents(b.balanceDue)}
-                    </span>
-                    <OpenStatusButton projectId={b.id} shareToken={b.shareToken} />
-                  </div>
-                }
-              />
-            ))}
-          </div>
-          <ShowMoreButton remaining={balances.length - visible} onClick={() => setVisible((v) => v + PAGE_SIZE)} />
-        </>
-      )}
-    </Card>
-  );
-}
-
-/**
  * Projects stalled because the client hasn't come back, kept apart from the
  * ones stalled on us. Same symptom, opposite action: these need chasing, not
  * working on, and a rep-style guilt list buries that distinction.
@@ -1315,9 +1248,6 @@ function OpsDashboard({
 
       </div>
 
-      <div className="mb-5">
-        <OverdueBalancesCard balances={stats.overdueBalances ?? []} />
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <ActivityFeedCard activity={stats.activityFeed} />
