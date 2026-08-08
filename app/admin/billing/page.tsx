@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Receipt, Plus, X } from 'lucide-react';
@@ -189,7 +189,27 @@ function BillingWorkspace() {
   // invoice.
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  /*
+   * Which question the answers on screen belong to.
+   *
+   * "Show more" appends and every other load replaces, and nothing told the
+   * two apart in flight: pressing Show more and then switching bucket —
+   * exactly what somebody does when the extra rows were not what they
+   * wanted — appended page two of Needs chasing onto the Paid list.
+   * Cancelled invoices under a Paid heading, on the screen used to reconcile
+   * against a bank statement.
+   *
+   * The plain loads race each other the same way. Two filter presses settle
+   * in whatever order the network returns them, so the chips show one bucket
+   * and the rows are another, with nothing to suggest they disagree.
+   *
+   * A ref rather than state, because it has to be readable by a request that
+   * started before the render that changed it.
+   */
+  const askedAt = useRef(0);
+
   const loadInvoices = useCallback(async (after?: string | null) => {
+    const mine = ++askedAt.current;
     try {
       // The filter goes to the server: an invoice unpaid since March is
       // exactly the one worth finding and exactly the one a recency cap on a
@@ -208,6 +228,9 @@ function BillingWorkspace() {
       const query = params.toString();
       const response = await fetch(`/api/admin/billing/charges${query ? `?${query}` : ''}`);
       const data = await response.json();
+      // Somebody asked something else while this was in the air. Its answer is
+      // about a list that is no longer on screen.
+      if (mine !== askedAt.current) return;
       if (response.ok) {
         setInvoices((current) => (after ? [...current, ...(data.invoices || [])] : data.invoices || []));
         setTotals(data.totals ?? null);
@@ -220,7 +243,9 @@ function BillingWorkspace() {
       // The list is context, not the job — a failed load must not look like
       // a failed charge.
     } finally {
-      setLoadingMore(false);
+      // Only the live request owns the button's state — an overtaken one
+      // re-enabling it would offer a page that belongs to the old list.
+      if (mine === askedAt.current) setLoadingMore(false);
     }
   }, [filter, ledgerSearch]);
 

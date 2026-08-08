@@ -749,3 +749,108 @@ describe('what the truncation sentence says about the chase list', () => {
     expect(await screen.findByText(/longest outstanding of 140 matching/)).toBeTruthy();
   });
 });
+
+
+/**
+ * A response that arrives after the question changed.
+ *
+ * "Show more" appends. Every other load replaces. Nothing told the two
+ * apart in flight, so pressing Show more and then switching bucket — which
+ * is exactly what somebody does when the extra rows are not what they
+ * wanted — appended page two of Needs chasing onto the Paid list. Cancelled
+ * invoices under a Paid heading, on the screen used to reconcile against a
+ * bank statement.
+ *
+ * The plain loads race each other the same way: two filter presses in quick
+ * succession settle in whatever order the network returns them, and the
+ * slower one wins. The chips show the second bucket; the rows are the first.
+ */
+describe('a load that comes back after the question changed', () => {
+  /** Holds each charges request open until the test lets it answer. */
+  function stubDeferred() {
+    const pending: Array<{ url: string; send: (body: unknown) => void }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (!url.includes('/api/admin/billing/charges')) {
+          return new Response(JSON.stringify({ success: true, customers: [] }), { status: 200 });
+        }
+        return new Promise((resolve) => {
+          pending.push({
+            url,
+            send: (body) =>
+              resolve(
+                new Response(JSON.stringify(body), {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' },
+                })
+              ),
+          });
+        });
+      })
+    );
+    return pending;
+  }
+
+  const page = (rows: unknown[], over: Record<string, unknown> = {}) => ({
+    success: true,
+    invoices: rows,
+    totals: TOTALS,
+    matching: 140,
+    truncated: true,
+    nextCursor: 'cursor_1',
+    oldestFirst: true,
+    ...over,
+  });
+
+  it('does not append the previous bucket onto the new one', async () => {
+    const user = userEvent.setup();
+    const pending = stubDeferred();
+    render(<BillingPage />);
+
+    // First bucket lands.
+    await waitFor(() => expect(pending.length).toBe(1));
+    pending[0].send(page([CHASED]));
+    await screen.findByText('Second round of homepage design');
+
+    // Show more goes out...
+    await user.click(await screen.findByRole('button', { name: /Show .* more/ }));
+    await waitFor(() => expect(pending.length).toBe(2));
+
+    // ...and the bucket changes before it comes back.
+    await user.click(screen.getByRole('button', { name: 'Paid' }));
+    await waitFor(() => expect(pending.length).toBe(3));
+
+    // The new bucket answers first, then the stale page-two arrives.
+    pending[2].send(page([{ ...CHASED, id: 'inv_p', description: 'Settled work' }], { oldestFirst: false }));
+    await screen.findByText('Settled work');
+    pending[1].send(page([{ ...CHASED, id: 'inv_old', description: 'From the chase list' }]));
+
+    await waitFor(() => expect(screen.getByText('Settled work')).toBeTruthy());
+    expect(screen.queryByText('From the chase list')).toBeNull();
+  });
+
+  it('lets the newest question win when two plain loads race', async () => {
+    const user = userEvent.setup();
+    const pending = stubDeferred();
+    render(<BillingPage />);
+
+    await waitFor(() => expect(pending.length).toBe(1));
+    pending[0].send(page([CHASED]));
+    await screen.findByText('Second round of homepage design');
+
+    await user.click(screen.getByRole('button', { name: 'Paid' }));
+    await waitFor(() => expect(pending.length).toBe(2));
+    await user.click(screen.getByRole('button', { name: 'Cancelled' }));
+    await waitFor(() => expect(pending.length).toBe(3));
+
+    // Cancelled answers, then the slower Paid response turns up behind it.
+    pending[2].send(page([{ ...CHASED, id: 'inv_v', description: 'Cancelled work' }]));
+    await screen.findByText('Cancelled work');
+    pending[1].send(page([{ ...CHASED, id: 'inv_p', description: 'Settled work' }]));
+
+    await waitFor(() => expect(screen.getByText('Cancelled work')).toBeTruthy());
+    expect(screen.queryByText('Settled work')).toBeNull();
+  });
+});
