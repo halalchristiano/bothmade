@@ -596,7 +596,15 @@ export default function ClientDashboard() {
                 </p>
               </div>
             </div>
-            <div className="shrink-0 flex gap-2">
+            {/*
+              Wraps, and is allowed to shrink.
+              `shrink-0` on a row of three buttons means it keeps its content
+              width whatever the viewport: at 320px it reached 475px, and the
+              page does not scroll horizontally, so "Copy status summary" was
+              simply cut off the right edge of the client's own portal on a
+              small phone. The header around it already wraps; this did not.
+            */}
+            <div className="flex flex-wrap gap-2">
               <motion.button
                 onClick={handleCopyShareLink}
                 whileHover={{ scale: 1.03, y: -1 }}
@@ -655,7 +663,18 @@ export default function ClientDashboard() {
             role="tablist"
             aria-label="Project sections"
             onKeyDown={onTabKeyDown}
-            className="flex gap-1 mb-8 p-1 rounded-full border border-white/10 bg-white/5 w-fit"
+            /*
+              Scrolls rather than overflows.
+              Four pills plus their badges need ~418px, and `w-fit` on a
+              non-wrapping row meant that width was taken whatever the
+              viewport. At 320px the page does not scroll horizontally, so
+              Onboarding — the tab with "3 still to answer" on it — was cut off
+              the edge of the client's own portal and could not be reached at
+              all. A pill bar cannot wrap without looking broken, so it scrolls
+              on its own axis instead; `max-w-full` is what lets it be narrower
+              than its content, which `w-fit` alone forbids.
+            */
+            className="flex gap-1 mb-8 max-w-full w-fit overflow-x-auto p-1 rounded-full border border-white/10 bg-white/5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {(['overview', 'timeline', 'messages', 'onboarding'] as const).map((tab, i) => {
               const unanswered = questions.filter((q) => !q.response).length;
