@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { FAQ_ITEMS } from '@/lib/start-faq';
+import { jsonLdScript } from '@/lib/json-ld';
 
 const SITE_URL = resolveSiteUrl();
 
@@ -37,7 +38,7 @@ export default function StartLayout({ children }: { children: React.ReactNode })
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'FAQPage',
             url: `${SITE_URL}/start`,

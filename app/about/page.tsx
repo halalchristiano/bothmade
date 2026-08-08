@@ -7,6 +7,7 @@ import { Footer } from '@/components/Footer';
 import { PillCTA } from '@/components/ui';
 import { COMPANY_LOCATION, COMPANY_EMAIL, COMPANY_ADDRESS_INLINE } from '@/lib/company';
 import { TEAM } from '@/lib/team';
+import { jsonLdScript } from '@/lib/json-ld';
 import { BLOG_POSTS } from '@/lib/blog';
 
 const SITE_URL = resolveSiteUrl();
@@ -74,7 +75,7 @@ export default function AboutPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'AboutPage',
             url: `${SITE_URL}/about`,

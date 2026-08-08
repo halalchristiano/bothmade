@@ -66,12 +66,21 @@ if (process.env.NODE_ENV === "production" && !process.env.CI_SKIP_SECRET_CHECK) 
  *
  * That price buys very little *here*. A nonce's advantage over
  * `'unsafe-inline'` is that it stops an injected inline `<script>` — but
- * injecting one requires an HTML injection sink, and this app has exactly
- * one `dangerouslySetInnerHTML` (the JSON-LD block in the root layout,
- * built from constants) and renders no user-supplied HTML anywhere else.
- * React escapes the rest. The XSS that *was* real in this codebase lived in
- * transactional email, which no CSP governs — that's fixed at the source in
- * lib/html.ts.
+ * injecting one requires an HTML injection sink, and this app renders no
+ * user-supplied HTML anywhere. React escapes the rest. The XSS that *was*
+ * real in this codebase lived in transactional email, which no CSP governs
+ * — that's fixed at the source in lib/html.ts.
+ *
+ * The sinks it *does* have are three `dangerouslySetInnerHTML` blocks, all
+ * of them JSON-LD built from module constants: the root layout, the /start
+ * FAQ, and /about. This comment used to say "exactly one", which was true
+ * when it was written and quietly stopped being true as pages were added —
+ * a premise that decays is a bad thing to rest a security decision on.
+ * So the argument no longer rests on counting them. All three serialise
+ * through `jsonLdScript()` (lib/json-ld.ts), which escapes `<`, `>` and `&`
+ * so a value containing `</script>` cannot close the tag, and tests assert
+ * it. That holds however many of these blocks exist and whatever ends up in
+ * `TEAM`, `FAQ_ITEMS` or a team member's `bio`.
  *
  * So this policy takes everything a static-friendly CSP can give and skips
  * the one directive that would cost the whole rendering model. It still

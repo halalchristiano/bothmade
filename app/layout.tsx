@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { resolveSiteUrl } from '@/lib/site-url';
+import { jsonLdScript } from '@/lib/json-ld';
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import Script from "next/script";
@@ -72,7 +73,7 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: jsonLdScript({
               '@context': 'https://schema.org',
               '@type': 'ProfessionalService',
               name: 'Bothmade',
