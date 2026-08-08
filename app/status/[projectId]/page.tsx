@@ -209,6 +209,29 @@ export default function PublicStatusPage() {
                 </>
               )}
             </p>
+            {/*
+              Somewhere to go.
+
+              This panel names the client as the holdup and gives them a date
+              their silence turns into a yes — and offered no way to say the
+              yes. Approving lives on their dashboard, which needs a login,
+              and the whole premise of this page is that it does not: the link
+              came out of an email, on a phone, and asking someone to go and
+              find a password is how a review window runs out for no reason
+              other than friction.
+
+              A link rather than an approve button on purpose. The token in
+              this URL is a read capability, and turning it into one that can
+              accept work on a client's behalf is a different decision from
+              the one that was made when it was minted.
+            */}
+            <a
+              href={`/client/${projectId}`}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-amber-400/40 px-3.5 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-400/10"
+            >
+              Review it in your dashboard
+              <span aria-hidden="true">→</span>
+            </a>
           </section>
         )}
 
