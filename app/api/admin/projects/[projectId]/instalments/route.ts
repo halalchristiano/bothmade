@@ -363,14 +363,35 @@ export async function POST(
       },
     });
 
+    /*
+     * What the client reads, which has to match what actually happened.
+     *
+     * This said the invoice was in their inbox whichever way the send went.
+     * The studio was told the truth — the panel says the email failed and to
+     * copy the link across by hand — while the client had already been shown
+     * an update on their own dashboard telling them to go and find it in an
+     * inbox nothing was ever delivered to. They search, they check spam, and
+     * the most likely next thing they do is ask why the invoice they were
+     * told about has not arrived.
+     *
+     * The invoice is real either way — the row exists, the number is claimed
+     * and the payment link is live on this page — so the update still goes.
+     * It just points at the thing that is actually there.
+     */
+    const amount = formatCentsExact(inst.amountCents);
+    const emailed = sent.sent;
     await prisma.projectUpdate.create({
       data: {
         projectId: project.id,
         title: `${inst.label} invoiced`,
         description:
           inst.trigger === 'ready-for-launch'
-            ? `Your project is ready to launch — the final invoice (${invoiceNumber}, ${formatCentsExact(inst.amountCents)}) is in your inbox. We go live as soon as it clears.`
-            : `${inst.label} (${invoiceNumber}, ${formatCentsExact(inst.amountCents)}) has been sent to your email with a secure payment link.`,
+            ? emailed
+              ? `Your project is ready to launch — the final invoice (${invoiceNumber}, ${amount}) is in your inbox. We go live as soon as it clears.`
+              : `Your project is ready to launch — the final invoice (${invoiceNumber}, ${amount}) is ready to pay from this page. We go live as soon as it clears.`
+            : emailed
+              ? `${inst.label} (${invoiceNumber}, ${amount}) has been sent to your email with a secure payment link.`
+              : `${inst.label} (${invoiceNumber}, ${amount}) is ready to pay from this page.`,
         statusStage: project.status,
         userId: session.userId,
       },

@@ -11,6 +11,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * dropped connection, a column that would not take the value, all came back
  * as "Could not allocate an invoice number — try again", with nothing in the
  * log and a person retrying a thing that will never work.
+ *
+ * And the client-facing update said the invoice was in their inbox whether or
+ * not the email actually went — see "what the client is told" below.
  */
 
 const projectFindUnique = vi.fn();
@@ -149,6 +152,42 @@ describe('allocating the invoice number', () => {
     await expect(res.json()).resolves.toMatchObject({
       error: expect.stringContaining('invoice number'),
     });
+  });
+});
+
+describe('what the client is told', () => {
+  it('says it is in their inbox when it went to their inbox', async () => {
+    await POST(request({ index: 1 }), ctx);
+
+    const [{ data }] = projectUpdateCreate.mock.calls[0] as [{ data: { description: string } }];
+    expect(data.description).toMatch(/email/i);
+  });
+
+  /*
+   * The studio is told the send failed and to copy the link by hand. The
+   * client used to be told, on their own dashboard, that it was in their
+   * inbox — so they went looking through their spam for something that was
+   * never sent.
+   */
+  it('does not send them to an inbox nothing was delivered to', async () => {
+    sendInstalmentEmail.mockResolvedValue({ sent: false, reason: 'domain not verified' });
+
+    const res = await POST(request({ index: 1 }), ctx);
+
+    expect(res.status).toBe(200);
+    const [{ data }] = projectUpdateCreate.mock.calls[0] as [{ data: { description: string } }];
+    expect(data.description).not.toMatch(/your inbox|to your email|in your inbox/i);
+    // Still tells them the money is due and where to pay it.
+    expect(data.description).toMatch(/BM-2026-0031/);
+  });
+
+  it('reports the failed send back to the panel either way', async () => {
+    sendInstalmentEmail.mockResolvedValue({ sent: false, reason: 'domain not verified' });
+
+    const body = await (await POST(request({ index: 1 }), ctx)).json();
+
+    expect(body.emailSent).toBe(false);
+    expect(body.emailReason).toBe('domain not verified');
   });
 });
 
