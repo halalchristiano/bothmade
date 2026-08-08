@@ -178,6 +178,102 @@ export async function sendViaGmailOAuth(
   }
 }
 
+/**
+ * Does this failure mean the connection has to be re-authorised, or is it
+ * just a bad minute?
+ *
+ * The answer drives `gmailNeedsReconnect`, which is what tells a rep to go
+ * and redo the Google sign-in — so it is worth getting right in both
+ * directions. It used to be `/insufficient|scope|forbidden|403/i` against the
+ * message text, and that was wrong at both ends.
+ *
+ *  - It missed every revocation. `invalid_grant` is what Google returns when
+ *    somebody removes the app from their account, or the refresh token has
+ *    gone stale, and it is the single most likely reason reading stops
+ *    working. It matched nothing, so the flag stayed clear, the UI stayed
+ *    quiet, and the raw string "invalid_grant" was shown to a human as the
+ *    explanation.
+ *  - And a bare `403` is genuinely ambiguous on this API: Gmail answers 403
+ *    for `insufficientPermissions` AND for `userRateLimitExceeded`,
+ *    `rateLimitExceeded`, `quotaExceeded` and `dailyLimitExceeded`. A nightly
+ *    batch that trips a quota would have told the studio their Google
+ *    connection was broken and sent them to re-authorise something that was
+ *    working perfectly.
+ *
+ * So: quota and rate limits are never a reconnect, whatever status they
+ * arrive under, and that is checked first. Everything else that is an
+ * authentication or authorisation failure is.
+ */
+const RATE_LIMIT_REASONS =
+  /rate.?limit|quota.?exceeded|daily.?limit|too.?many.?requests|\b429\b|backend.?error/i;
+
+const REAUTH_REASONS =
+  /invalid_grant|invalid_token|invalid_client|unauthorized_client|token.has.been.(expired|revoked)|unauthenticated|insufficient.(permission|scope|authentication)|forbidden|access.denied|missing.required.authentication/i;
+
+/** The bits of a thrown googleapis error worth reading, whatever its shape. */
+function errorText(error: unknown): string {
+  if (!error) return '';
+  const parts: string[] = [];
+  if (error instanceof Error) parts.push(error.message);
+  else parts.push(String(error));
+  const bag = error as { code?: unknown; status?: unknown; errors?: Array<{ reason?: string; message?: string }> };
+  if (typeof bag.code === 'number' || typeof bag.code === 'string') parts.push(`status ${bag.code}`);
+  if (typeof bag.status === 'number' || typeof bag.status === 'string') parts.push(`status ${bag.status}`);
+  for (const e of bag.errors ?? []) {
+    if (e?.reason) parts.push(e.reason);
+    if (e?.message) parts.push(e.message);
+  }
+  return parts.join(' | ');
+}
+
+export function needsGoogleReconnect(error: unknown): boolean {
+  const text = errorText(error);
+  if (!text) return false;
+  // A quota is not a permission. Checked first, because these arrive under
+  // 403 as often as under 429 and the status alone cannot tell them apart.
+  if (RATE_LIMIT_REASONS.test(text)) return false;
+  if (REAUTH_REASONS.test(text)) return true;
+  // A bare 401/403 with no reason attached is an auth failure by status.
+  return /status\s*(401|403)\b|\b(401|403)\b/.test(text);
+}
+
+export interface ReadCheckResult {
+  /** True when this connection can actually list mail right now. */
+  canRead: boolean;
+  needsReconnect: boolean;
+  error?: string;
+}
+
+/**
+ * Can this connection read, right now?
+ *
+ * The cheapest question the API will answer — one profile lookup and a
+ * single-message list, no message bodies, no side effects on any lead. It
+ * exists because the failure this whole area is built around is a silent one:
+ * a token minted before the read scope existed, or since revoked, still sends
+ * perfectly, so nothing looks broken while replies and bounce notices sit
+ * unread. Reading is the only thing that proves reading works, and until this
+ * the only code that ever tried was the nightly batch.
+ */
+export async function checkGmailRead(client: GmailOAuthClient): Promise<ReadCheckResult> {
+  const gmail = google.gmail({ version: 'v1', auth: client });
+  try {
+    await gmail.users.getProfile({ userId: 'me' });
+    await gmail.users.messages.list({ userId: 'me', maxResults: 1 });
+    return { canRead: true, needsReconnect: false };
+  } catch (error) {
+    const needsReconnect = needsGoogleReconnect(error);
+    console.error('Gmail read check failed:', error);
+    return {
+      canRead: false,
+      needsReconnect,
+      error: needsReconnect
+        ? 'Google needs reconnecting — this connection can send but not read.'
+        : 'Google did not answer just now. That is usually temporary; try again in a moment.',
+    };
+  }
+}
+
 export interface BounceScanResult {
   ok: boolean;
   /** Lowercased addresses that bounced. */
@@ -278,8 +374,7 @@ export async function scanBouncedAddresses(
     return { ok: true, addresses: Array.from(addresses), scanned: messages.length };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // A token minted before gmail.readonly was added can't list messages.
-    const needsReconnect = /insufficient|scope|forbidden|403/i.test(message);
+    const needsReconnect = needsGoogleReconnect(error);
     console.error('Bounce scan failed:', error);
     return {
       ok: false,
@@ -350,7 +445,7 @@ export async function scanReplyAddresses(
     return { ok: true, addresses: Array.from(addresses), scanned: messages.length };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const needsReconnect = /insufficient|scope|forbidden|403/i.test(message);
+    const needsReconnect = needsGoogleReconnect(error);
     console.error('Reply scan failed:', error);
     return {
       ok: false,

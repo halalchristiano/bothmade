@@ -44,6 +44,11 @@ export async function GET() {
         // an account can be perfectly set up to send while still being unable
         // to see replies or bounce notices. Reading is per-user OAuth only.
         canReadInbox: !!user?.googleRefreshToken && !user.gmailNeedsReconnect,
+        // Stated rather than left to be inferred from the two above. This is
+        // the one state where a green "Connected as…" was actively wrong: the
+        // OAuth connection exists, so it sends, and reading has lapsed — the
+        // failure that announces itself nowhere.
+        needsReconnect: !!user?.googleRefreshToken && !!user.gmailNeedsReconnect,
         sendingCoveredOrgWide: connectedVia === null && isDomainDelegationConfigured(),
       },
       { status: 200 }

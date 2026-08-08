@@ -26,6 +26,8 @@ interface GmailStatus {
   googleOAuthAvailable: boolean;
   willLandInGmailSent: boolean;
   canReadInbox: boolean;
+  /** An OAuth connection that can still send but has stopped being able to read. */
+  needsReconnect: boolean;
   sendingCoveredOrgWide: boolean;
 }
 
@@ -131,6 +133,8 @@ export default function AdminSettingsPage() {
   const [oauthResult, setOauthResult] = useState<{ ok: boolean; reason?: string; bounceFolderFailed?: boolean } | null>(null);
   const [settingUpBounceFolder, setSettingUpBounceFolder] = useState(false);
   const [bounceFolderResult, setBounceFolderResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<{ canRead: boolean; message: string } | null>(null);
   const [oauthStartError, setOauthStartError] = useState(false);
 
   useEffect(() => {
@@ -289,6 +293,36 @@ export default function AdminSettingsPage() {
       load();
     } finally {
       setConnecting(false);
+    }
+  };
+
+  /**
+   * Ask Google, rather than reporting what we last thought.
+   *
+   * The answer comes back on `status` too, so a check that finds reading has
+   * lapsed turns the panel above amber in the same click — and a check that
+   * finds it working clears an amber panel left over from a stale flag.
+   */
+  const handleCheckConnection = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      const res = await fetch('/api/admin/settings/gmail/check', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCheckResult({ canRead: false, message: 'Could not check just now. Try again in a moment.' });
+        return;
+      }
+      setCheckResult({ canRead: !!data.canRead, message: data.message });
+      setStatus((prev) =>
+        prev
+          ? { ...prev, canReadInbox: !!data.canRead, needsReconnect: !data.canRead && !!data.needsReconnect }
+          : prev
+      );
+    } catch {
+      setCheckResult({ canRead: false, message: 'Could not check just now. Try again in a moment.' });
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -501,12 +535,31 @@ export default function AdminSettingsPage() {
 
         {status.connected ? (
           <div className="mt-4 space-y-3">
-            <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
-              <div className="flex items-center gap-2 text-sm text-emerald-200">
-                <CheckCircle2 size={16} />
+            {/* Green only when it is green.
+                This panel keyed off `connected`, which is true the moment a
+                refresh token exists — so a connection that could send and had
+                stopped being able to read showed a tick and the word
+                "Connected", under a small amber chip saying "Send only". The
+                page you would come to in order to fix it was the page telling
+                you nothing was wrong, while replies and bounce notices sat
+                unread. */}
+            <div
+              className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
+                status.needsReconnect
+                  ? 'border-amber-400/25 bg-amber-400/[0.06]'
+                  : 'border-emerald-400/20 bg-emerald-400/5'
+              }`}
+            >
+              <div
+                className={`flex items-center gap-2 text-sm ${
+                  status.needsReconnect ? 'text-amber-200' : 'text-emerald-200'
+                }`}
+              >
+                {status.needsReconnect ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
                 <span>
-                  Connected as {status.gmailAddress}
-                  <span className="text-emerald-200/50">
+                  {status.needsReconnect ? 'Reading has stopped for ' : 'Connected as '}
+                  {status.gmailAddress}
+                  <span className={status.needsReconnect ? 'text-amber-200/50' : 'text-emerald-200/50'}>
                     {' '}
                     — via {status.connectedVia === 'oauth' ? 'Google sign-in' : 'App Password'}
                   </span>
@@ -520,6 +573,47 @@ export default function AdminSettingsPage() {
                 {disconnecting ? 'Disconnecting...' : 'Disconnect'}
               </button>
             </div>
+
+            {status.needsReconnect && (
+              <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3.5">
+                <p className="text-xs text-amber-200/80">
+                  Your emails still go out as you. What has stopped is reading: replies are no longer
+                  matched to their lead, and bounce notices are no longer turning dead addresses into
+                  &ldquo;call instead&rdquo;. Reconnecting your Google account restores both.
+                </p>
+                <a
+                  href="/api/admin/settings/gmail-oauth/start"
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl border border-white/15 px-3.5 py-2 text-xs font-semibold hover:bg-white/5 transition-colors"
+                >
+                  Reconnect Google
+                </a>
+              </div>
+            )}
+
+            {/* Reading is the only thing that proves reading works, and until
+                this the only code that ever tried was the nightly bounce job
+                — so this panel could sit on an answer a day old, or on one
+                from before the token was revoked. */}
+            {status.connectedVia === 'oauth' && (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleCheckConnection}
+                  disabled={checking}
+                  className="rounded-xl border border-white/15 px-3.5 py-2 text-xs font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors"
+                >
+                  {checking ? 'Checking…' : 'Check this connection'}
+                </button>
+                {checkResult && (
+                  <p
+                    className={`text-xs ${
+                      checkResult.canRead ? 'text-emerald-300/80' : 'text-amber-200/80'
+                    }`}
+                  >
+                    {checkResult.message}
+                  </p>
+                )}
+              </div>
+            )}
 
             {status.connectedVia === 'oauth' && bounceFolderResult && !bounceFolderResult.ok && (
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3.5">
