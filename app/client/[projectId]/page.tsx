@@ -224,6 +224,22 @@ export default function ClientDashboard() {
    */
   const [failure, setFailure] = useState<'missing' | 'unavailable' | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages' | 'onboarding'>('overview');
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  /*
+   * Whether the pill bar is actually cut off right now.
+   *
+   * It scrolls on its own axis with the scrollbar deliberately hidden, which
+   * fixed a tab being unreachable and left a quieter version of the same
+   * problem: at 393px the last pill renders as "Onboar…" with nothing to say
+   * it can be reached. A clipped word reads as a rendering fault, not as an
+   * invitation to swipe — and that tab is where a client answers the
+   * questions the build is waiting on.
+   *
+   * Measured rather than assumed, because the bar only overflows on narrow
+   * screens and a fade applied unconditionally would dim the last tab on a
+   * desktop where nothing is hidden.
+   */
+  const [tabsClipped, setTabsClipped] = useState(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   /*
@@ -367,6 +383,31 @@ export default function ClientDashboard() {
     if (el) el.scrollTop = el.scrollHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, project?.messages?.length]);
+
+  // Keyed on `project`, not on mount. The bar does not exist until the
+  // project has loaded, so an effect that ran once at mount found no element,
+  // returned early and never looked again — the measurement never happened
+  // and the fade never appeared on the phones that need it.
+  useEffect(() => {
+    const strip = tabStripRef.current;
+    if (!strip) return;
+    const measure = () => setTabsClipped(strip.scrollWidth > strip.clientWidth + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [project]);
+
+  /*
+   * Keyboard arrows move focus between the pills. With the bar scrolled, the
+   * pill they land on can be off-screen — focus somewhere the eye cannot
+   * follow, which is the failure a roving tabindex is supposed to avoid.
+   */
+  useEffect(() => {
+    const strip = tabStripRef.current;
+    if (!strip) return;
+    strip.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTab]);
 
   const loadOnboarding = async () => {
     try {
@@ -716,6 +757,7 @@ export default function ClientDashboard() {
             of the product.
           */}
           <div
+            ref={tabStripRef}
             role="tablist"
             aria-label="Project sections"
             onKeyDown={onTabKeyDown}
@@ -730,7 +772,17 @@ export default function ClientDashboard() {
               on its own axis instead; `max-w-full` is what lets it be narrower
               than its content, which `w-fit` alone forbids.
             */
-            className="flex gap-1 mb-8 max-w-full w-fit overflow-x-auto p-1 rounded-full border border-white/10 bg-white/5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className={`flex gap-1 mb-8 max-w-full w-fit overflow-x-auto p-1 rounded-full border border-white/10 bg-white/5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+              /*
+                Says "there is more this way", which the hidden scrollbar
+                stopped saying. Only while something is actually hidden — a
+                permanent fade would dim the last pill on a desktop where
+                nothing is cut off.
+              */
+              tabsClipped
+                ? '[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)] [-webkit-mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]'
+                : ''
+            }`}
           >
             {(['overview', 'timeline', 'messages', 'onboarding'] as const).map((tab, i) => {
               const unanswered = questions.filter((q) => !q.response).length;

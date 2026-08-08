@@ -39,10 +39,27 @@ const source = async () => readFile(PAGE, 'utf8');
 const classOf = (src: string, marker: string, dir: 'before' | 'after'): string => {
   const at = dir === 'before' ? src.lastIndexOf(marker) : src.indexOf(marker);
   expect(at, `could not find ${marker} in ${PAGE}`).toBeGreaterThan(-1);
-  const key = 'className="';
-  const open = dir === 'before' ? src.lastIndexOf(key, at) : src.indexOf(key, at);
+
+  /*
+   * Both spellings. A className that grows a conditional becomes
+   * className={`…`} — the classes are unchanged and the element is the same
+   * one, but a scraper looking only for a double quote walks straight past it
+   * and reports on whatever element comes next. That is a false failure with
+   * a confusing message, which is worse than no test.
+   */
+  const literal = 'className="';
+  const template = 'className={`';
+  const find = (key: string) => (dir === 'before' ? src.lastIndexOf(key, at) : src.indexOf(key, at));
+  const [litAt, tplAt] = [find(literal), find(template)];
+
+  const useTemplate =
+    tplAt > -1 && (litAt === -1 || (dir === 'before' ? tplAt > litAt : tplAt < litAt));
+  const key = useTemplate ? template : literal;
+  const open = useTemplate ? tplAt : litAt;
   expect(open, `no className near ${marker}`).toBeGreaterThan(-1);
-  return src.slice(open + key.length, src.indexOf('"', open + key.length));
+
+  const from = open + key.length;
+  return src.slice(from, src.indexOf(useTemplate ? '`' : '"', from));
 };
 
 describe('the client portal at 320px', () => {

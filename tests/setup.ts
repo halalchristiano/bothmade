@@ -30,6 +30,25 @@ if (!window.HTMLElement.prototype.scrollIntoView) {
   window.HTMLElement.prototype.scrollIntoView = () => {};
 }
 
+/*
+ * jsdom has no ResizeObserver either, and the client portal's tab bar reaches
+ * for one: the pill row scrolls with its scrollbar hidden, so it measures
+ * itself to decide whether to fade its trailing edge and say there is more.
+ *
+ * Without this, every test that renders that page throws on mount — which is
+ * how a change to one component broke four unrelated suites. A no-op is the
+ * right stub: jsdom has no layout, so an observer here could never report a
+ * size change honestly. Tests that care about the measurement supply their
+ * own stub that fires on demand.
+ */
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // Same gap again: jsdom has no IntersectionObserver, and framer-motion's
 // `whileInView` reaches for one the moment such a component mounts.
 //
