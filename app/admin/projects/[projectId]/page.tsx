@@ -15,6 +15,7 @@ import { DesignDirectionPanel } from '@/components/admin/DesignDirectionPanel';
 import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
 import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
+import { Card, LoadError, PageIn } from '@/components/admin/ui';
 import { OnboardingBuilder } from '@/components/admin/OnboardingBuilder';
 import { DeleteProject } from '@/components/admin/DeleteProject';
 import { stageMessage } from '@/lib/stage-gates';
@@ -151,6 +152,19 @@ export default function AdminProjectDetailPage() {
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  /** A load that failed, kept apart from a project that does not exist. */
+  const [loadFailed, setLoadFailed] = useState(false);
+  /*
+   * The outcome of any write on this page, which until now had none.
+   *
+   * Every mutation here read `if (response.ok)` with no else: the status
+   * change that emails the client and can open a payment gate, the message to
+   * the client, the deliverable, the live URL. A failure left the button
+   * un-spinning and the screen unchanged, which reads as "done". The
+   * deliverables route even answers with a usable reason — "that is not a
+   * URL" — and it was being dropped on the floor.
+   */
+  const [actionError, setActionError] = useState('');
   const [composingEmail, setComposingEmail] = useState(false);
 
   const [statusDraft, setStatusDraft] = useState('');
@@ -285,6 +299,11 @@ export default function AdminProjectDetailPage() {
         return;
       }
       const data = await response.json();
+      if (!response.ok || !data?.success) {
+        setLoadFailed(true);
+        return;
+      }
+      setLoadFailed(false);
       if (data.success) {
         setProject(data.project);
         setStatusDraft(data.project.status);
@@ -295,9 +314,17 @@ export default function AdminProjectDetailPage() {
         );
         setLiveUrlDraft(data.project.liveUrl || '');
       }
+    } catch {
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  /** Whatever the server said, or a sentence that at least admits failure. */
+  const reasonFrom = async (response: Response, fallback: string) => {
+    const data = await response.json().catch(() => null);
+    return (data?.error as string) || fallback;
   };
 
   const [acknowledgingHandoff, setAcknowledgingHandoff] = useState(false);
@@ -354,6 +381,7 @@ export default function AdminProjectDetailPage() {
 
   const handleStatusUpdate = async () => {
     setStatusSaving(true);
+    setActionError('');
     try {
       const response = await fetch(`/api/admin/projects/${projectId}/status`, {
         method: 'PATCH',
@@ -367,7 +395,16 @@ export default function AdminProjectDetailPage() {
         // route, never acted on by it — see GatePrompt.
         setOpenedGate(data?.gateOpened ?? null);
         loadProject();
+      } else {
+        // The stage did not move. Believing it did is how a client goes
+        // untold that their project reached Build, and how somebody waits
+        // for a payment gate that never opened.
+        setActionError(
+          (data?.error as string) || 'The stage did not change, and the client has not been told.'
+        );
       }
+    } catch {
+      setActionError('Could not reach the server — the stage did not change.');
     } finally {
       setStatusSaving(false);
     }
@@ -398,11 +435,17 @@ export default function AdminProjectDetailPage() {
           attachments: messageFiles,
         }),
       });
-      if (response.ok) {
-        setMessageContent('');
-        setMessageFiles([]);
-        loadProject();
+      if (!response.ok) {
+        // The text is deliberately left in the box: it is the thing that
+        // would be lost, and retyping it is the cost of a silent failure.
+        setActionError(await reasonFrom(response, 'That message was not sent to the client.'));
+        return;
       }
+      setMessageContent('');
+      setMessageFiles([]);
+      loadProject();
+    } catch {
+      setActionError('Could not reach the server — that message was not sent.');
     } finally {
       setMessageSending(false);
     }
@@ -421,12 +464,18 @@ export default function AdminProjectDetailPage() {
           size: deliverableSize || undefined,
         }),
       });
-      if (response.ok) {
-        setDeliverableName('');
-        setDeliverableUrl('');
-        setDeliverableSize('');
-        loadProject();
+      if (!response.ok) {
+        // This route answers with the actual complaint — a name typed into
+        // the URL box, for instance — and it was being discarded.
+        setActionError(await reasonFrom(response, 'That file was not added.'));
+        return;
       }
+      setDeliverableName('');
+      setDeliverableUrl('');
+      setDeliverableSize('');
+      loadProject();
+    } catch {
+      setActionError('Could not reach the server — that file was not added.');
     } finally {
       setDeliverableSaving(false);
     }
@@ -469,11 +518,35 @@ export default function AdminProjectDetailPage() {
     loadProject();
   };
 
-  if (loading || !project) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-64px)]">
         <div className="inline-block animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-sky-400"></div>
       </div>
+    );
+  }
+
+  /*
+   * A failed load used to fall through `loading || !project` and spin
+   * forever — the same never-resolving spinner Priorities and the client page
+   * had, on the page somebody opens most.
+   */
+  if (!project) {
+    return (
+      <PageIn className="mx-auto max-w-3xl px-4 py-10 md:px-8">
+        <Link href="/admin/projects" className="text-sm text-white/45 hover:text-white">
+          ← Projects
+        </Link>
+        <Card className="mt-4 p-4">
+          <LoadError
+            what={loadFailed ? 'this project' : 'this project — it may have been deleted'}
+            onRetry={() => {
+              setLoading(true);
+              loadProject();
+            }}
+          />
+        </Card>
+      </PageIn>
     );
   }
 
@@ -515,6 +588,21 @@ export default function AdminProjectDetailPage() {
           <Mail size={13} /> Compose email
         </button>
       </div>
+
+      {/*
+        One place for the outcome of any write on this page, pinned above the
+        fold. role="alert" so it is announced rather than only drawn — after
+        pressing Send, somebody is looking at the button, not the header.
+      */}
+      {actionError && (
+        <div
+          role="alert"
+          className="mb-5 flex items-start gap-2 rounded-xl border border-red-400/30 bg-red-400/[0.07] px-4 py-3 text-sm text-red-100/90"
+        >
+          <span aria-hidden="true" className="mt-px text-red-300/80">⚠</span>
+          <span>{actionError}</span>
+        </div>
+      )}
 
       {composingEmail && (
         <EmailComposer

@@ -381,8 +381,27 @@ export async function PUT(
       data: {
         name: body.name,
         description: body.description,
-        status: body.status,
-        statusStage: body.statusStage,
+        /*
+         * `status` and `statusStage` are gone from here too, for the reason
+         * the paragraph below already gives about price.
+         *
+         * A project's stage is not a column. Moving it is an event:
+         * /api/admin/projects/[projectId]/status writes a ProjectUpdate the
+         * client can read, emails them if they want status mail, and works
+         * out whether the move opened a payment gate — that route is where
+         * "Design Approval happened" is decided. Setting the column through
+         * here did the one part that changes money and none of the parts that
+         * tell anybody, so a project could arrive at Launch with its client
+         * never told and Payment 3 quietly payable.
+         *
+         * `statusStage` is the sharper of the two: gateReached() in
+         * lib/billing.ts reads it directly to decide which instalments are
+         * owed. A raw write moves the gates.
+         *
+         * Nothing has ever sent either field here — every caller in the app
+         * sends acknowledgeHandoff, estimatedCompletionDate or liveUrl — which
+         * is the same reason the price fields were safe to remove.
+         */
         // baseService, addOns, basePrice and totalPrice are deliberately NOT
         // settable here any more.
         //
