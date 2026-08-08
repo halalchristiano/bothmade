@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { requireClient, requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { buildSignUrl } from '@/lib/share-links';
+import { notifyAdminsShareLinkRevoked } from '@/lib/notify';
 
 /**
  * Revoke a public share link by replacing its capability token.
@@ -68,7 +69,36 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
       }
 
-      const fresh = await prisma.project.findUnique({ where: { id }, select: { shareToken: true } });
+      const fresh = await prisma.project.findUnique({
+        where: { id },
+        select: { shareToken: true, name: true, client: { select: { company: true } } },
+      });
+
+      /*
+       * Tell the studio, because this is the one rotation nobody here asked
+       * for and it does not only affect the client's own copies.
+       *
+       * The staff path below already leaves a timeline note on a lead for
+       * exactly this reason — "the client says the link is dead" wanting an
+       * answer other than guessing. The same reasoning is stronger here: the
+       * new token kills every copy in existence, including ones we sent or
+       * pasted into a proposal months ago, so without this the first sign is
+       * a link of our own that has quietly started 404ing with nothing to
+       * explain it. That gets debugged as a bug in our software rather than
+       * read as a deliberate act by the client.
+       *
+       * Best-effort and after the write: the revocation is the thing the
+       * client asked for and a mail failure must not undo it, or report it as
+       * not having happened.
+       */
+      if (fresh) {
+        await notifyAdminsShareLinkRevoked({
+          projectId: id,
+          projectName: fresh.name,
+          company: fresh.client.company,
+        }).catch((error) => console.error(`Share link revoked (${id}): notify failed:`, error));
+      }
+
       return NextResponse.json({ success: true, shareToken: fresh?.shareToken }, { status: 200 });
     }
 

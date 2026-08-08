@@ -763,3 +763,42 @@ export async function notifyAdminsOnboardingComplete(params: {
   );
   await notifyAdmins(`Onboarding complete: ${params.company}`, html);
 }
+
+/**
+ * The client turned off their own status link.
+ *
+ * Revoking is the client's to do — they are the ones who forward that link, to
+ * a colleague, an investor, a contractor, so they are the ones who find out it
+ * reached somebody it shouldn't. What makes it worth announcing is that it is
+ * not only *their* copies that stop working: rotating the token kills every
+ * copy in existence, including the ones the studio sent, pasted into a
+ * proposal, or pinned in a thread months ago.
+ *
+ * Without this, the studio's first sign is a link of its own that has quietly
+ * started 404ing, with nothing to say why — which reads as a bug in our
+ * software rather than a deliberate act by the client, and gets debugged as
+ * one. The fresh link is in the admin already; this is the sentence that sends
+ * somebody to look for it.
+ *
+ * Deliberately not urgent and deliberately not alarming. A client revoking a
+ * link is the system working, and the copy says so — the thing to avoid is a
+ * studio ringing a client to ask why they revoked something, when the honest
+ * answer is that it is none of our business.
+ */
+export async function notifyAdminsShareLinkRevoked(params: {
+  projectId: string;
+  projectName: string;
+  company: string;
+}): Promise<void> {
+  const html = wrap(
+    'Status link turned off',
+    `<p><strong>${escapeHtml(params.company)}</strong> turned off the public status link for
+      <strong>${escapeHtml(params.projectName)}</strong>.</p>
+     <p style="color:#555;">Every copy of the old link has stopped working, including any we sent
+      or pasted into a proposal. A fresh one is on the project if you need to share it again —
+      no action needed otherwise.</p>`,
+    `${siteUrl()}/admin/projects/${params.projectId}`,
+    'Get the new link'
+  );
+  await notifyAdmins(`Status link turned off: ${params.company}`, html);
+}
