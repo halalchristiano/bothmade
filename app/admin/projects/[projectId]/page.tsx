@@ -15,7 +15,7 @@ import { DesignDirectionPanel } from '@/components/admin/DesignDirectionPanel';
 import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
 import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
-import { Badge, Card, LoadError, PageIn } from '@/components/admin/ui';
+import { Badge, Card, Kicker, LoadError, PageIn } from '@/components/admin/ui';
 import { OnboardingBuilder } from '@/components/admin/OnboardingBuilder';
 import { DeleteProject } from '@/components/admin/DeleteProject';
 import { stageMessage } from '@/lib/stage-gates';
@@ -688,6 +688,31 @@ export default function AdminProjectDetailPage() {
         </div>
       )}
 
+      {/*
+        What you are looking at, before what it is worth.
+
+        The project's name was an h1 inside a card a third of the way down
+        the page, under the care-plan banner and under the money. You landed
+        on a project and were shown its balance before you were told whose it
+        was. Every other detail page in the admin opens with a kicker and the
+        record's name; this one opened with an upsell.
+      */}
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <Kicker className="mb-2">Delivery</Kicker>
+          <h1 className="truncate text-3xl font-bold tracking-tight">{project.name}</h1>
+          <Link
+            href={`/admin/clients/${project.client.id}`}
+            className="text-sm text-white/50 transition-colors hover:text-sky-300"
+          >
+            {project.client.company}
+          </Link>
+        </div>
+        <Badge tone={project.status === 'complete' ? 'emerald' : 'sky'} solid>
+          {project.status}
+        </Badge>
+      </div>
+
       {/* Full width, above everything. The monthly plan is the one thing on
           this page that has a window — it lands while the build is still in
           front of the client and gets much harder a month after handover — so
@@ -925,14 +950,6 @@ export default function AdminProjectDetailPage() {
         the project's own facts.
       */}
       <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
-        <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
-        <Link
-          href={`/admin/clients/${project.client.id}`}
-          className="text-sm text-white/50 transition-colors hover:text-sky-300"
-        >
-          {project.client.company}
-        </Link>
-
         {/*
           The link the client actually watches, on the page where you are
           already looking at their project.
@@ -1329,7 +1346,7 @@ export default function AdminProjectDetailPage() {
         </div>
         <div className="space-y-6">
           <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
-            <h2 className="text-xl font-semibold mb-4">Activity</h2>
+            <h2 className="text-lg font-semibold mb-4">Activity</h2>
             <div className="space-y-4 max-h-[500px] overflow-y-auto mb-6">
               {thread.length === 0 && <p className="text-white/40 text-sm">No activity yet.</p>}
               {thread.map((item) => {
@@ -1469,7 +1486,7 @@ export default function AdminProjectDetailPage() {
                 do not fit on one line, and holding them there put a two-line
                 pill through the middle of the title. */}
             <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
-              <h2 className="text-xl font-semibold">Internal Notes</h2>
+              <h2 className="text-lg font-semibold">Internal Notes</h2>
               <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-xs text-amber-300">
                 Team only — never shown to client
               </span>
