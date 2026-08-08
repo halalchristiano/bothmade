@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { ArrowUpRight } from 'lucide-react';
 import { GridBackdrop } from '@/components/ui';
 
 interface PublicProject {
@@ -9,6 +10,8 @@ interface PublicProject {
   company: string;
   statusStage: number;
   estimatedCompletionDate: string | null;
+  /** The finished site. Null until there is something to point at. */
+  liveUrl: string | null;
   updates: Array<{ id: string; title: string; description: string; createdAt: string }>;
 }
 
@@ -165,17 +168,41 @@ export default function PublicStatusPage() {
             </ol>
           </div>
 
-          {project.estimatedCompletionDate && (
-            <p className="mt-8 border-t border-white/[0.06] pt-5 text-sm text-white/40">
-              Estimated target{' '}
-              <span data-numeric className="font-medium text-white/75">
-                {new Date(project.estimatedCompletionDate).toLocaleDateString(undefined, {
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </span>
-            </p>
+          {/*
+            The delivery moment, on the page they have actually been watching.
+            Once there is a site to look at, it outranks a target date that
+            has by then been met — so it takes that slot rather than queueing
+            below it.
+          */}
+          {project.liveUrl ? (
+            <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.06] pt-6">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">Your site is live.</p>
+                <p className="mt-0.5 truncate text-sm text-white/40">{project.liveUrl}</p>
+              </div>
+              <a
+                href={project.liveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-ink shadow-e2 transition-[background-color,transform] duration-150 ease-ui hover:bg-white/90 active:translate-y-px"
+              >
+                Visit it
+                <ArrowUpRight size={15} />
+              </a>
+            </div>
+          ) : (
+            project.estimatedCompletionDate && (
+              <p className="mt-8 border-t border-white/[0.06] pt-5 text-sm text-white/40">
+                Estimated target{' '}
+                <span data-numeric className="font-medium text-white/75">
+                  {new Date(project.estimatedCompletionDate).toLocaleDateString(undefined, {
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </span>
+              </p>
+            )
           )}
         </section>
 

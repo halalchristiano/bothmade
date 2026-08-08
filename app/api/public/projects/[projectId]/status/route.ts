@@ -52,6 +52,21 @@ export async function GET(
           company: project.client.company,
           statusStage: project.statusStage,
           estimatedCompletionDate: project.estimatedCompletionDate,
+          /*
+           * The finished thing, which this page has never shown them.
+           *
+           * `liveUrl` is described in the schema as what "powers the 'your
+           * project is live' delivery moment", and it does — on the logged-in
+           * client dashboard. This page is the one a client actually watches:
+           * it needs no password, it is the link that got emailed, and it is
+           * where they have been checking progress for six weeks. It carried
+           * them from Discovery to Complete and then, at the moment the work
+           * was done, said "Complete" and pointed at nothing.
+           *
+           * Only sent once there is something to point at, so the page cannot
+           * promise a link it does not have.
+           */
+          liveUrl: project.liveUrl || null,
           updates: project.updates,
         },
       },
