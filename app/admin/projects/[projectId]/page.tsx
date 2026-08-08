@@ -169,6 +169,10 @@ export default function AdminProjectDetailPage() {
   const [actionError, setActionError] = useState('');
   const [composingEmail, setComposingEmail] = useState(false);
 
+  /** Replacing the client's status token, and what to say about it after. */
+  const [rotatingLink, setRotatingLink] = useState(false);
+  const [linkNotice, setLinkNotice] = useState('');
+
   const [statusDraft, setStatusDraft] = useState('');
   const [statusDescription, setStatusDescription] = useState('');
   /**
@@ -219,6 +223,44 @@ export default function AdminProjectDetailPage() {
   const [flagUrgent, setFlagUrgent] = useState(false);
   const [flagSending, setFlagSending] = useState(false);
   const [flagStatus, setFlagStatus] = useState('');
+
+  const handleRotateShareLink = async () => {
+    /*
+     * Confirmed first, because this is not undoable and it breaks something
+     * already in somebody else's hands: every copy of the old link — in the
+     * client's inbox, forwarded to their accountant — stops working the
+     * moment this returns.
+     */
+    if (
+      !window.confirm(
+        'Replace this status link?\n\nEvery copy already sent stops working immediately, including the one in the client\u2019s inbox. You will need to send them the new one.'
+      )
+    ) {
+      return;
+    }
+    setRotatingLink(true);
+    setLinkNotice('');
+    try {
+      const res = await fetch('/api/share-links/rotate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'project', id: projectId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && data.shareToken) {
+        // Swapped in place rather than reloaded: the copy button beside this
+        // must never hand out the token that was just revoked.
+        setProject((prev) => (prev ? { ...prev, shareToken: data.shareToken } : prev));
+        setLinkNotice('Link replaced. Copy the new one and send it over \u2014 the old one is dead.');
+      } else {
+        setLinkNotice(data?.error || "Couldn't replace the link \u2014 the old one is still live.");
+      }
+    } catch {
+      setLinkNotice('Could not reach the server \u2014 the old link is still live.');
+    } finally {
+      setRotatingLink(false);
+    }
+  };
 
   const handleFlagForTeam = async () => {
     if (!flagMessage.trim()) return;
@@ -686,7 +728,32 @@ export default function AdminProjectDetailPage() {
                 >
                   <ExternalLink size={13} />
                 </a>
+                {/*
+                  The other half of handing out a link.
+
+                  /api/share-links/rotate has accepted { type: 'project' }
+                  from staff since it was written, and the lead page and the
+                  client's own dashboard both call it — but the admin project
+                  page never did. So the one screen where somebody copies a
+                  client's status link was the one screen with no way to take
+                  it back, and the person most likely to notice a link went
+                  somewhere it shouldn't is whoever sent it.
+                */}
+                <button
+                  type="button"
+                  onClick={handleRotateShareLink}
+                  disabled={rotatingLink}
+                  title="Replace this link — every copy already sent stops working"
+                  className="ml-auto rounded-lg px-2 py-1 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-amber-300 disabled:opacity-50"
+                >
+                  {rotatingLink ? 'Replacing…' : 'Revoke'}
+                </button>
               </div>
+            )}
+            {linkNotice && (
+              <p role="status" className="mt-2 text-xs text-amber-300/90">
+                {linkNotice}
+              </p>
             )}
 
             <div className="mt-6 space-y-4 text-sm">
