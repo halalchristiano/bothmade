@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
+import { accountingHold } from '@/lib/deletion-guards';
 
 export async function GET(
   request: NextRequest,
@@ -154,13 +155,54 @@ export async function DELETE(
 
 
     const { clientId } = await params;
-    const client = await prisma.client.findUnique({ where: { id: clientId } });
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { id: true, company: true, _count: { select: { invoices: true, projects: true } } },
+    });
     if (!client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
-    // Permanently removes the client and, via cascade, every project, payment,
-    // message, and onboarding record tied to it. Decommissioning (PATCH
+    /*
+     * The confirmation, on the server, where it is worth something.
+     *
+     * The client page asks for the company name typed out and disables its
+     * own button until it matches — and that was the entire guard. The route
+     * itself accepted a bare `DELETE /api/admin/clients/<id>`, no body, no
+     * question asked, and cascaded away every project, message, onboarding
+     * answer, payment and invoice the client had. A mistyped fetch in a
+     * console, a stale tab, a script written against the API, anything that
+     * was not that one disabled button, deleted the lot.
+     *
+     * Which also made this the way around the guard on projects: the project
+     * that refuses to delete because money is recorded against it deletes
+     * fine, with the money, if you delete its client instead.
+     */
+    const body = await request.json().catch(() => null);
+    const typed = typeof body?.confirm === 'string' ? body.confirm.trim() : '';
+
+    // Case-insensitive, because the point is proving you know which client
+    // this is, not proving you can match capitalisation.
+    if (typed.toLowerCase() !== client.company.trim().toLowerCase()) {
+      return NextResponse.json(
+        { error: `Type "${client.company}" exactly to confirm.` },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * The same accounting rule the project delete enforces, applied to the
+     * cascade that would otherwise swallow it whole. Payments hang off
+     * projects rather than off the client, so they are counted across them.
+     */
+    const payments = await prisma.payment.count({ where: { project: { clientId } } });
+    const hold = accountingHold(client.company, { payments, invoices: client._count.invoices });
+    if (hold) {
+      return NextResponse.json({ error: hold }, { status: 409 });
+    }
+
+    // Permanently removes the client and, via cascade, every project, message,
+    // and onboarding record tied to it. Decommissioning (PATCH
     // {archived:true}) is the reversible option — this is not.
     await prisma.client.delete({ where: { id: clientId } });
 

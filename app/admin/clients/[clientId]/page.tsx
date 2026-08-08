@@ -161,10 +161,17 @@ export default function AdminClientDetailPage() {
     setDeleting(true);
     setActionError('');
     try {
-      const response = await fetch(`/api/admin/clients/${clientId}`, { method: 'DELETE' });
+      // The typed company name goes to the server, which is the only place
+      // it means anything — a disabled button is not a guard.
+      const response = await fetch(`/api/admin/clients/${clientId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: confirmDeleteText }),
+      });
       if (!response.ok) {
         // The refusal usually has a reason worth reading — a client with
-        // projects cannot be deleted — and it was being thrown away.
+        // payments or invoices against them cannot be deleted — and it was
+        // being thrown away.
         setActionError(await reasonFrom(response, 'This client was not deleted.'));
         return;
       }
@@ -402,7 +409,8 @@ export default function AdminClientDetailPage() {
         <CardHeader icon={AlertTriangle} tone="red" title="Danger Zone" subtitle="Permanently deletes this client and every project, payment, and message tied to it" />
         <p className="text-xs text-white/40 mb-3">
           This cannot be undone. If you just want to offboard a client while keeping their records, use{' '}
-          <span className="text-white/60">Decommission</span> above instead.
+          <span className="text-white/60">Decommission</span> above instead. A client with payments or
+          invoices against them cannot be deleted at all — those are accounting records.
         </p>
         <p className="text-xs text-white/50 mb-2">
           Type <span className="font-mono text-white/80">{client.company}</span> to confirm:
