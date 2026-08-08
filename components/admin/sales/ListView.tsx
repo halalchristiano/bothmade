@@ -901,7 +901,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                 <button
                   onClick={() => handleSendColdDrafts(coldReadyLeads)}
                   disabled={sendingColdDrafts}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 px-5 py-2.5 text-sm font-semibold text-black hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-ink shadow-e2 active:translate-y-px hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
                 >
                   <Send size={15} />
                   {sendingColdDrafts ? 'Sending...' : `Send all ${coldReadyLeads.length} now`}
@@ -990,7 +990,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                 <button
                   onClick={() => handleSendColdDrafts(selectedReadyToSend)}
                   disabled={sendingColdDrafts}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 px-4 py-2 text-sm font-semibold text-black hover:opacity-90 transition-opacity disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-ink shadow-e2 active:translate-y-px hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   <Send size={14} />
                   {sendingColdDrafts ? 'Sending...' : `Send prepared cold emails (${selectedReadyToSend.length})`}

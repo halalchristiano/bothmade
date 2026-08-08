@@ -167,7 +167,7 @@ export function ColdEmailPreviewModal({
             <button
               onClick={() => onConfirm(included.map((l) => l.id))}
               disabled={sending || included.length === 0}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 px-5 py-2.5 text-sm font-semibold text-black disabled:opacity-40 hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-ink shadow-e2 active:translate-y-px disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
               {sending ? (
                 <Loader2 size={15} className="animate-spin" aria-hidden="true" />

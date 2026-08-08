@@ -1147,7 +1147,7 @@ export default function CallCockpit() {
           {dialled ? (
             <button
               onClick={goToActions}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-3 text-sm font-bold text-black"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-ink shadow-e2 transition-[background-color,transform] duration-150 ease-ui hover:bg-white/90 active:translate-y-px"
             >
               How did it go? Log it
               <ChevronRight size={16} />

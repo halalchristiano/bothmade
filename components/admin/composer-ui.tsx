@@ -349,7 +349,7 @@ export function PrimaryButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`flex items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-sky-300 to-sky-500 px-5 py-2.5 text-[13.5px] font-semibold text-[#04121c] shadow-[0_6px_18px_-6px_rgba(56,189,248,0.7)] transition-all duration-150 hover:brightness-[1.07] active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none ${className}`}
+      className={`flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-ink shadow-[0_6px_18px_-6px_rgba(56,189,248,0.7)] transition-all duration-150 hover:brightness-[1.07] active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none ${className}`}
     >
       {children}
     </button>
