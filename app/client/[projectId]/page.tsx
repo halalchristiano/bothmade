@@ -1577,8 +1577,15 @@ export default function ClientDashboard() {
                               already says what is left and how it gets
                               settled, and "we'll send a payment link shortly"
                               beside it is a second, different promise about
-                              the same money. */}
-                          {!paid && !voided && !partPaid && !invoice.paymentUrl && (
+                              the same money.
+
+                              Not on a refunded one either. An invoice stays
+                              open through a refund, so this promised a payment
+                              link to somebody we had just given their money
+                              back — under a badge on the same row reading
+                              "Refunded". If it becomes payable again it will
+                              be a new invoice. */}
+                          {!paid && !voided && !partPaid && refunded <= 0 && !invoice.paymentUrl && (
                             <span className="text-[11px] text-white/40">
                               We&apos;ll send a payment link for this shortly.
                             </span>

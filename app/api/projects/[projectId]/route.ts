@@ -279,10 +279,27 @@ export async function GET(
               // dead link gets copied out of the admin and sent to a client.
               invoice.status !== 'open'
                 ? null
-                : // Part paid: see above — the link is for the whole invoice.
-                  received > 0
+                : /*
+                   * Money has gone back off it.
+                   *
+                   * A refund leaves an open invoice open — it moves
+                   * `refundedCents`, not `status` — and writes a negative row
+                   * into the same ledger the payments live in, so `received`
+                   * nets back to zero once everything that came in has gone
+                   * out. Which walks straight back through the gate below,
+                   * built for the opposite case: "nothing has arrived" and
+                   * "everything that arrived has been sent back" are the same
+                   * number and opposite situations. The second is a client
+                   * being invited to pay in full for work we just refunded
+                   * them for. If it is genuinely payable again, it is a new
+                   * invoice, not this one.
+                   */
+                  (invoice.refundedCents ?? 0) > 0
                   ? null
-                  : inst
+                  : // Part paid: see above — the link is for the whole invoice.
+                    received > 0
+                    ? null
+                    : inst
                     ? inst.status !== 'paid' && inst.status !== 'void'
                       ? `${siteUrl}/pay/${inst.id}`
                       : null

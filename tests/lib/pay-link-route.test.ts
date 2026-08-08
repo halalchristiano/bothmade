@@ -329,4 +329,45 @@ describe('an instalment with money already against its invoice', () => {
 
     expect(res.headers.get('location')).toContain('stripe.test');
   });
+
+  /**
+   * And once the money has gone back out again.
+   *
+   * A refund leaves an open invoice open — it moves `refundedCents`, not
+   * `status` — and writes a negative row into the same ledger, so the sum
+   * above nets back to exactly the figure that means "nothing ever arrived".
+   * Same number, opposite situation: this is a client who was refunded and
+   * still has the button in an old email, and it would have taken the
+   * instalment in full.
+   */
+  it('mints nothing once the money has been refunded back out', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'invoice_1',
+      status: 'open',
+      refundedCents: 150_000,
+      // What a refund leaves behind: the payment, and the row that took it back.
+      payments: [{ amount: 150_000 }, { amount: -150_000 }],
+    });
+
+    const res = await go();
+
+    expect(sessionsCreate).not.toHaveBeenCalled();
+    expect(res.headers.get('location')).toBe('https://bothmade.test/client/proj_1');
+  });
+
+  /* A credit moves no money and so writes no ledger row — the payment is
+     still there and the first guard already catches it. Held so the two
+     cannot be collapsed into one on the grounds that they look alike. */
+  it('mints nothing when the money was credited rather than sent back', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'invoice_1',
+      status: 'open',
+      refundedCents: 150_000,
+      payments: [{ amount: 150_000 }],
+    });
+
+    const res = await go();
+
+    expect(sessionsCreate).not.toHaveBeenCalled();
+  });
 });

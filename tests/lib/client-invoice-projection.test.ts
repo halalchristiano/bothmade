@@ -250,6 +250,56 @@ describe('an invoice with part of the money already in', () => {
     expect(row.paymentUrl).toBeNull();
   });
 
+  /**
+   * The invoice we just gave the money back on.
+   *
+   * A refund leaves an open invoice open — it changes `refundedCents`, not
+   * `status` — and it writes a negative row into the same ledger the payments
+   * live in. So after refunding the whole $600 a client had sent against a
+   * $1,200 invoice, the netted `receivedCents` is back to zero.
+   *
+   * Which walked straight back through the gate built for the opposite case.
+   * "Nothing has arrived, so the link is safe to offer" and "everything that
+   * arrived has been sent back" are the same number and opposite situations,
+   * and the second one is a client being invited to pay $1,200 for work we
+   * have just refunded them for and, usually, stopped doing.
+   */
+  it('does not offer a pay link on an invoice the money went back off', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      ...PROJECT,
+      invoices: [
+        {
+          ...PART_PAID,
+          refundedCents: 60_000,
+          refundReason: 'Project ended early',
+          // What the refund route leaves behind: the payment, and the
+          // negative row that took it back out.
+          payments: [{ amount: 60_000 }, { amount: -60_000 }],
+        },
+      ],
+    });
+
+    const row = await readInvoice();
+
+    expect(row.receivedCents).toBe(0);
+    expect(row.paymentUrl).toBeNull();
+  });
+
+  /* A partial one leaves money here, and was already covered by the
+     part-paid gate — held so the two cases cannot drift apart. */
+  it('does not offer one when only some of it went back either', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      ...PROJECT,
+      invoices: [
+        { ...PART_PAID, refundedCents: 20_000, payments: [{ amount: 60_000 }, { amount: -20_000 }] },
+      ],
+    });
+
+    const row = await readInvoice();
+
+    expect(row.paymentUrl).toBeNull();
+  });
+
   /* The studio sees it too — it decides which figure to chase, which badge
      the project page draws, and whether Cancel is offered on the row. */
   it('tells the studio the same number', async () => {

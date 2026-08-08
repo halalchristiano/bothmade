@@ -100,6 +100,11 @@ export async function GET(
                 select: {
                   id: true,
                   status: true,
+                  // Money that has gone back. A refund leaves an open invoice
+                  // open and nets the sum below back to zero, so without this
+                  // the guard reads "nothing has arrived" on an invoice whose
+                  // money we have just returned.
+                  refundedCents: true,
                   // Money already against it. An invoice can be part paid by
                   // transfer, and that deliberately leaves the instalment
                   // `due` — half of Payment 2 of 3 is not Payment 2 of 3.
@@ -123,8 +128,18 @@ export async function GET(
          * dashboard, which says what has arrived and what is left.
          */
         const alreadyIn = receivedCents(invoice?.payments);
+        /*
+         * And nothing is minted once money has gone back off it either.
+         *
+         * A refund writes a negative row into the same ledger, so `alreadyIn`
+         * nets to zero the moment everything that came in has been returned —
+         * the same number as "nothing ever arrived", and the opposite
+         * situation. A client who was refunded and then pressed the button in
+         * an old email would have paid the instalment in full.
+         */
+        const wentBack = (invoice?.refundedCents ?? 0) > 0;
 
-        if (invoice?.status !== 'void' && alreadyIn === 0) {
+        if (invoice?.status !== 'void' && alreadyIn === 0 && !wentBack) {
           const live = await liveCheckoutUrl(
             stripe,
             inst,
