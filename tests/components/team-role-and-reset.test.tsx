@@ -20,6 +20,20 @@ import { USER_ROLE_DESCRIPTIONS } from '@/lib/roles';
  * side of the team chat with it — and is refused outright for the last owner.
  */
 
+/*
+ * The page redirects to the login on a 401 now, so it holds a router — and
+ * this object has to be stable, exactly as Next's own is.
+ *
+ * `load` is a useCallback keyed on the router and the mount effect is keyed
+ * on `load`, so handing back a fresh object each render re-runs the effect on
+ * every render. `load` opens with `setError('')`, which then races the error
+ * the test just triggered and wins about six times in ten. That is a mock
+ * inventing a re-render loop the real app does not have.
+ */
+const router = { push: vi.fn() };
+const push = router.push;
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
+
 const OWNER = { id: 'u_me', name: 'Kiana', email: 'kiana@bothmade.studio', role: 'owner', title: null, createdAt: '2026-01-01T00:00:00.000Z' };
 const REP = { id: 'u_evan', name: 'Evan', email: 'evan@bothmade.studio', role: 'sales', title: null, createdAt: '2026-01-01T00:00:00.000Z' };
 
@@ -39,6 +53,7 @@ const route = (url: string): Response => {
 };
 
 beforeEach(() => {
+  push.mockClear();
   members = [OWNER, REP];
   fetchMock = vi.fn(async (url: string) => route(url));
   vi.stubGlobal('fetch', fetchMock);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AlertTriangle, Check, Copy, KeyRound, Trash2, UserCog, UserPlus, X } from 'lucide-react';
 import { Badge, BrandButton, Card, CardHeader, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
 import {
@@ -10,6 +11,7 @@ import {
   canManageTeam,
   type UserRole,
 } from '@/lib/roles';
+import { redirectIfSessionExpired } from '@/lib/admin-session-expiry';
 
 interface TeamMember {
   id: string;
@@ -90,6 +92,7 @@ function InitialPassword({
 }
 
 export default function TeamPage() {
+  const router = useRouter();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [myRole, setMyRole] = useState<string | null>(null);
   const [myId, setMyId] = useState<string | null>(null);
@@ -122,6 +125,11 @@ export default function TeamPage() {
         fetch('/api/auth/me'),
       ]);
 
+      // Signed out, not broken. This said "Could not load the team." on the
+      // one screen that can put an account back, with no hint that the fix
+      // was to log in again.
+      if (redirectIfSessionExpired(teamRes, router.push)) return;
+
       if (!teamRes.ok) {
         setError('Could not load the team.');
         return;
@@ -140,7 +148,7 @@ export default function TeamPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     load();

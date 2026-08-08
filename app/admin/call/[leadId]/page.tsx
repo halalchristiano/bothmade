@@ -114,6 +114,9 @@ export default function CallCockpit() {
   // Tidying the note. `noteBeforeTidy` exists so the rep can put their own
   // words back with one tap — a rewrite you can't undo is one you have to
   // read carefully every time, which costs more than it saves.
+  /** What the rep just heard, typed in while it is still in the air. */
+  const [objectionFilter, setObjectionFilter] = useState('');
+
   const [tidying, setTidying] = useState(false);
   const [tidyError, setTidyError] = useState<string | null>(null);
   const [noteBeforeTidy, setNoteBeforeTidy] = useState<string | null>(null);
@@ -215,6 +218,24 @@ export default function CallCockpit() {
       })
       .catch(() => {});
   }, [load]);
+
+  /**
+   * Matched on every field, not just the trigger.
+   *
+   * A rep types what they heard, and what they heard is rarely our wording of
+   * it — "they said they're happy with their guy" has to reach the entry
+   * whose trigger is "We already have someone who does our website." Searching
+   * the meaning and the response as well is what makes that land.
+   */
+  const matchingObjections = useMemo(() => {
+    const needle = objectionFilter.trim().toLowerCase();
+    if (!needle) return OBJECTIONS;
+    const words = needle.split(/\s+/);
+    return OBJECTIONS.filter((o) => {
+      const hay = `${o.trigger} ${o.meaning} ${o.response} ${o.thenWhat}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [objectionFilter]);
 
   // Local-time chip stays honest across a long session.
   useEffect(() => {
@@ -767,12 +788,39 @@ export default function CallCockpit() {
               </div>
             ))}
 
-            {/* Objections, in reach without leaving the screen */}
+            {/*
+              * Objections, in reach without leaving the screen.
+              *
+              * Eleven closed accordions, each showing only our phrasing of
+              * the trigger, is a list to read — and this is the one screen
+              * where the rep is being talked at while they read it. They do
+              * not remember our wording; they remember the two words they
+              * just heard. So there is a box to type them into, and it
+              * searches the meaning and the response as well as the trigger:
+              * "email", "budget", "busy", "someone" all land, whatever
+              * sentence they arrived in. What matches opens itself, because
+              * one more click is one more thing to do with a phone against
+              * your ear.
+              */}
             <div className="pt-2">
-              <Kicker className="mb-3">When they push back</Kicker>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <Kicker>When they push back</Kicker>
+                <input
+                  type="search"
+                  value={objectionFilter}
+                  onChange={(e) => setObjectionFilter(e.target.value)}
+                  placeholder="What did they say?"
+                  aria-label="Filter objections by what they said"
+                  className="w-40 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[13px] text-white placeholder:text-white/25 focus:outline-none focus:border-white/30"
+                />
+              </div>
               <div className="space-y-2">
-                {OBJECTIONS.map((o) => (
-                  <details key={o.slug} className="group rounded-lg border border-white/[0.07] bg-white/[0.02]">
+                {matchingObjections.map((o) => (
+                  <details
+                    key={o.slug}
+                    open={objectionFilter.trim().length > 0}
+                    className="group rounded-lg border border-white/[0.07] bg-white/[0.02]"
+                  >
                     <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-sm text-white/70 hover:text-white list-none">
                       <span>&ldquo;{o.trigger}&rdquo;</span>
                       <ChevronRight size={14} className="transition-transform group-open:rotate-90 text-white/30" />
@@ -784,6 +832,13 @@ export default function CallCockpit() {
                     </div>
                   </details>
                 ))}
+                {matchingObjections.length === 0 && (
+                  <p className="px-3 py-2.5 text-[13px] text-white/35">
+                    Nothing matches &ldquo;{objectionFilter.trim()}&rdquo;. Clear the box for all
+                    {' '}
+                    {OBJECTIONS.length}.
+                  </p>
+                )}
               </div>
             </div>
           </div>

@@ -44,14 +44,62 @@ export interface CallScriptInput {
  * Anything cleverer (re-conjugating verbs, reordering clauses) produces
  * broken English often enough that it isn't worth the risk on a live call.
  */
+/** Legal and trading suffixes, which a research note rarely bothers with. */
+const COMPANY_SUFFIXES =
+  /[\s,]+(inc|inc\.|llc|llc\.|l\.l\.c\.|ltd|ltd\.|limited|co|co\.|corp|corp\.|corporation|company|plc|llp|gmbh|pty|pte|sa|nv|bv|ag|srl|s\.a\.|group|holdings|international)\.?$/i;
+
+/**
+ * The forms of a company's name worth looking for in a sentence.
+ *
+ * The CRM holds the registered name — "Rigidized Metals Inc." — and a
+ * research note almost never uses it. It says "Rigidized", or "Rigidized
+ * Metals". Matching only the stored string leaves the third person standing
+ * in the one sentence that must not have it.
+ *
+ * Longest first, so "Rigidized Metals Inc." is consumed before "Rigidized"
+ * can eat half of it.
+ */
+function companyForms(company: string): string[] {
+  const full = company.trim();
+  if (!full) return [];
+
+  const forms = new Set<string>([full]);
+  const withoutSuffix = full.replace(COMPANY_SUFFIXES, '').trim();
+  if (withoutSuffix) forms.add(withoutSuffix);
+  // The first word, but only when it is distinctive enough to be the name —
+  // "The" or "A1" on its own would match half the sentence.
+  const firstWord = withoutSuffix.split(/\s+/)[0];
+  if (firstWord && firstWord.length >= 5) forms.add(firstWord);
+
+  return [...forms].sort((a, b) => b.length - a.length);
+}
+
+/** `\b` needs a word character beside it, which "Inc." does not end in. */
+function boundedPattern(name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const lead = /^\w/.test(name) ? '\\b' : '';
+  const tail = /\w$/.test(name) ? '\\b' : '(?![\\w.])';
+  return `${lead}${escaped}${tail}`;
+}
+
 export function toSpokenLine(explanation: string, company: string): string {
   let out = explanation.trim();
 
-  // "CONTECH's" -> "your", "CONTECH" -> "you". Longest form first so the
-  // possessive isn't half-replaced.
-  const escaped = company.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  out = out.replace(new RegExp(`${escaped}['’]s\\b`, 'gi'), 'your');
-  out = out.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), 'you');
+  /*
+   * "CONTECH's" -> "your", "CONTECH" -> "you". Longest form first so the
+   * possessive isn't half-replaced.
+   *
+   * The pattern used to be `\b<name>\b` against the stored name alone, and
+   * `\b` only asserts a boundary next to a word character — so a name ending
+   * in a full stop never matched anything. "Rigidized Metals Inc. must
+   * interpret a spec sheet" came out of here unchanged, and a rep read the
+   * research note about a company aloud, in the third person, to its owner.
+   * Inc., Ltd., Co. and LLC. cover a large share of the book.
+   */
+  for (const name of companyForms(company)) {
+    out = out.replace(new RegExp(`${boundedPattern(name)}['’]s\\b`, 'gi'), 'your');
+    out = out.replace(new RegExp(boundedPattern(name), 'gi'), 'you');
+  }
 
   // Third-person framings that read oddly when spoken to the owner.
   const swaps: Array<[RegExp, string]> = [

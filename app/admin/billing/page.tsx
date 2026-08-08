@@ -2,7 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { redirectIfSessionExpired } from '@/lib/admin-session-expiry';
 import { Receipt, Plus, X } from 'lucide-react';
 import { Badge, BrandButton, Card, CardHeader, EmptyState, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
 import { MAX_CHARGE_CENTS, MIN_CHARGE_CENTS, describeChargeBlocker, dollarsToCents } from '@/lib/billing';
@@ -118,6 +119,7 @@ export default function BillingPage() {
 }
 
 function BillingWorkspace() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkedProjectId = searchParams.get('projectId');
 
@@ -227,6 +229,10 @@ function BillingWorkspace() {
       if (after) params.set('before', after);
       const query = params.toString();
       const response = await fetch(`/api/admin/billing/charges${query ? `?${query}` : ''}`);
+      // An empty ledger and a signed-out session look identical here — and
+      // an empty ledger is also what a quiet month looks like, so nothing on
+      // the page would ever have said which of the three it was.
+      if (redirectIfSessionExpired(response, router.push)) return;
       const data = await response.json();
       // Somebody asked something else while this was in the air. Its answer is
       // about a list that is no longer on screen.
@@ -247,7 +253,7 @@ function BillingWorkspace() {
       // re-enabling it would offer a page that belongs to the old list.
       if (mine === askedAt.current) setLoadingMore(false);
     }
-  }, [filter, ledgerSearch]);
+  }, [filter, ledgerSearch, router]);
 
   useEffect(() => {
     loadInvoices();

@@ -16,7 +16,9 @@ import {
   ChevronDown,
   AlertTriangle,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Card, CardHeader, PageIn, PageTitle, Badge, Kicker, BrandButton, inputClass } from '@/components/admin/ui';
+import { redirectIfSessionExpired } from '@/lib/admin-session-expiry';
 
 interface GmailStatus {
   connected: boolean;
@@ -122,6 +124,7 @@ function PasswordField({
 }
 
 export default function AdminSettingsPage() {
+  const router = useRouter();
   const [status, setStatus] = useState<GmailStatus | null>(null);
   const [gmailAddress, setGmailAddress] = useState('');
   const [appPassword, setAppPassword] = useState('');
@@ -177,19 +180,31 @@ export default function AdminSettingsPage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordChanged, setPasswordChanged] = useState(false);
 
+  /*
+   * An expired session is not a disconnected mailbox.
+   *
+   * A 401 comes back with a JSON body, so `res.json()` resolved perfectly
+   * happily with `{ error: 'Unauthorized' }` and this page read it as state:
+   * `connected` was undefined, so the panel went on to tell whoever was
+   * looking that the studio's Gmail is not set up, with a button offering to
+   * connect it. Nothing is disconnected. They are signed out — which the rest
+   * of the admin already handles by going to the login page.
+   */
   const load = () => {
     fetch('/api/admin/settings/gmail')
-      .then((r) => r.json())
-      .then(setStatus);
+      .then((r) => (redirectIfSessionExpired(r, router.push) ? null : r.json()))
+      .then((data) => data && setStatus(data));
     fetch('/api/admin/settings/preferences')
-      .then((r) => r.json())
+      .then((r) => (redirectIfSessionExpired(r, router.push) ? null : r.json()))
       .then((data) => {
+        if (!data) return;
         setPreviewBeforeBulkSend(data.previewBeforeBulkSend);
         setWeeklyDigestOptOut(data.weeklyDigestOptOut);
       });
     fetch('/api/admin/settings/profile')
-      .then((r) => r.json())
+      .then((r) => (redirectIfSessionExpired(r, router.push) ? null : r.json()))
       .then((data) => {
+        if (!data) return;
         setName(data.name || '');
         setTitle(data.title || '');
         setEmail(data.email || '');

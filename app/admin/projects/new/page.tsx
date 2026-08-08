@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { redirectIfSessionExpired } from '@/lib/admin-session-expiry';
 import Link from 'next/link';
 import {
   ADD_ON_REQUIRES,
@@ -136,6 +137,11 @@ function NewProjectForm() {
           convertedFromLeadId,
         }),
       });
+
+      // Signed out rather than refused. Without this the form reported
+      // "Unauthorized" as though the project were the problem, on a screen
+      // holding a scope somebody has just typed out.
+      if (redirectIfSessionExpired(response, router.push)) return;
 
       const data = await response.json();
       if (data.success) {

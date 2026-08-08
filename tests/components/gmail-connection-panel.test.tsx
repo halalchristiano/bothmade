@@ -22,7 +22,8 @@ import SettingsPage from '@/app/admin/settings/page';
  * before the token was revoked.
  */
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), useSearchParams: () => new URLSearchParams() }));
 
 const CONNECTED = {
   connected: true,
@@ -36,13 +37,15 @@ const CONNECTED = {
   sendingCoveredOrgWide: false,
 };
 
-const json = (body: unknown, ok = true) => ({ ok, status: ok ? 200 : 500, json: async () => body }) as unknown as Response;
+const json = (body: unknown, ok = true, status = ok ? 200 : 500) =>
+  ({ ok, status, json: async () => body }) as unknown as Response;
 
 let gmailStatus: typeof CONNECTED;
 let checkResponse: unknown;
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  push.mockClear();
   gmailStatus = { ...CONNECTED };
   checkResponse = { success: true, canRead: true, needsReconnect: false, message: 'Checked — this connection can read your inbox, so replies and bounce notices are being seen.' };
   fetchMock = vi.fn(async (url: string) => {
@@ -160,5 +163,23 @@ describe('checking the connection instead of reporting what we last thought', ()
 
     await waitFor(() => expect(screen.getByText(/connected as/i)).toBeTruthy());
     expect(screen.queryByRole('button', { name: /check this connection/i })).toBeNull();
+  });
+});
+
+describe('a session that has run out', () => {
+  it('sends them to log in rather than telling them Gmail is disconnected', async () => {
+    // A 401 carries a JSON body, so `res.json()` resolved happily with
+    // `{ error: 'Unauthorized' }` and this page set it as the Gmail status.
+    // `connected` came out undefined, and the panel stated the studio's
+    // mailbox was not set up — with a button offering to connect it.
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).startsWith('/api/admin/settings')
+        ? json({ error: 'Unauthorized' }, false, 401)
+        : json({ success: true })
+    );
+    render(<SettingsPage />);
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/admin/login'));
+    expect(screen.queryByText(/not connected/i)).toBeNull();
   });
 });
