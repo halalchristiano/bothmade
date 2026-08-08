@@ -41,6 +41,43 @@ const actionButtons = () =>
     /send|mark paid|cancel|refund/i.test(b.textContent || '')
   );
 
+/**
+ * Send, on an invoice money has already moved against.
+ *
+ * A resend rebuilds the original demand — the invoice total in the PDF and
+ * the email, and a freshly minted fixed-amount pay link if one is missing.
+ * The route refuses it now; this is the row not offering it in the first
+ * place, which is the same lesson Send-on-an-instalment and Cancel-on-a-
+ * part-paid-invoice each taught this file once already.
+ */
+describe('chasing an invoice that has been part paid', () => {
+  const names = () => screen.getAllByRole('button').map((b) => b.textContent?.trim());
+
+  it('offers no Send on one with the client\'s money in it', () => {
+    render(
+      <InvoiceActions invoice={invoice({ grossReceivedCents: 60_000, receivedCents: 60_000 })} onDone={vi.fn()} />
+    );
+
+    expect(names()).not.toContain('Send');
+    expect(names()).not.toContain('Send again');
+  });
+
+  it('offers no Send on one we have refunded either', () => {
+    render(<InvoiceActions invoice={invoice({ refundedCents: 60_000, grossReceivedCents: 60_000 })} onDone={vi.fn()} />);
+
+    expect(names()).not.toContain('Send');
+    expect(names()).not.toContain('Send again');
+  });
+
+  /* The ordinary open invoice still gets chased — a rule that hides
+     everything is not the rule. */
+  it('still offers it on one nothing has come in against', () => {
+    render(<InvoiceActions invoice={invoice()} onDone={vi.fn()} />);
+
+    expect(names().join(' ')).toMatch(/Send/);
+  });
+});
+
 describe('an invoice row on a phone', () => {
   it('pads every action into a real touch target', () => {
     render(<InvoiceActions invoice={invoice()} onDone={vi.fn()} />);

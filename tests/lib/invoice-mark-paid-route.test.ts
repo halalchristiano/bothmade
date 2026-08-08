@@ -330,13 +330,33 @@ describe('money that only covers part of it', () => {
   });
 
   /*
-   * Killing the link would take away the client's way of sending the rest,
-   * which is the opposite of what anybody wants after a part payment.
+   * The link comes down on a part payment too.
+   *
+   * This test used to assert the opposite, on the reasoning that killing the
+   * link takes away the client's way of sending the rest. That reasoning was
+   * wrong, and everything else in the app has since been taught so: the link
+   * is a FIXED-AMOUNT Payment Link for the whole invoice. It is not a way to
+   * send the remaining $600 — it is a way to pay $1,200 a second time.
+   *
+   * The project route withholds it, /pay/[instalmentId] mints nothing, and
+   * the client's dashboard draws no button. All three hide a link that was
+   * still live at Stripe and still sitting in the email the client was
+   * originally sent, which is where they would click it from.
    */
-  it('leaves the payment link working so they can send the rest', async () => {
+  it('takes the full-amount payment link down', async () => {
     await call({ method: 'Transfer', amountCents: 60000 });
 
-    expect(paymentLinksUpdate).not.toHaveBeenCalled();
+    expect(paymentLinksUpdate).toHaveBeenCalledWith('plink_1', { active: false });
+  });
+
+  /* And stops handing the dead URL out: both dashboards read `paymentUrl`,
+     and Copy pay link puts it on a clipboard. */
+  it('clears the stored link so nothing serves it again', async () => {
+    await call({ method: 'Transfer', amountCents: 60000 });
+
+    const written = prisma.invoice.updateMany.mock.calls[0][0];
+    expect(written.data.paymentUrl).toBeNull();
+    expect(written.data.stripePaymentLinkId).toBeNull();
   });
 
   it('does not settle an instalment on half of it', async () => {
@@ -345,7 +365,17 @@ describe('money that only covers part of it', () => {
     await call({ method: 'Transfer', amountCents: 60000 });
 
     expect(prisma.instalment.updateMany).not.toHaveBeenCalled();
-    expect(sessionsExpire).not.toHaveBeenCalled();
+  });
+
+  /* Same argument as the link, one level down: a Checkout Session is minted
+     for the instalment's FULL amount. /pay refuses to mint a new one once
+     money has arrived; this is the one already minted and emailed. */
+  it('expires the checkout session that would take the whole instalment again', async () => {
+    prisma.instalment.findUnique.mockResolvedValue({ id: 'inst_2', index: 2, stripeSessionId: 'cs_1' });
+
+    await call({ method: 'Transfer', amountCents: 60000 });
+
+    expect(sessionsExpire).toHaveBeenCalledWith('cs_1');
   });
 
   /*

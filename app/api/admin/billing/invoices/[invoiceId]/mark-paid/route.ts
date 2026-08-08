@@ -127,14 +127,28 @@ export async function POST(
     });
 
     /*
-     * The way to pay it comes down before it is recorded as paid, so nobody
-     * can pay it twice — but only when this payment actually closes it.
+     * The way to pay it comes down before any of it is recorded, so nobody
+     * can pay it twice.
      *
-     * A part payment leaves money owed, and killing the link would take away
-     * the client's way of sending the rest. That is the whole reason the two
-     * halves are separated here rather than sharing one branch.
+     * This used to fire only on a payment that closed the invoice, on the
+     * reasoning that a part payment leaves money owed and killing the link
+     * takes away the client's way of sending the rest. That reasoning was
+     * wrong, and every other reader of this link has since been taught so: it
+     * is a FIXED-AMOUNT Payment Link for the whole invoice, and there is no
+     * partial version of one. It is not a way to send the rest — it is a way
+     * to pay $1,800 a second time.
+     *
+     * The project route withholds it, /pay/[instalmentId] mints nothing, and
+     * the client's dashboard draws no button. All three of those hide a link
+     * that was still live in Stripe and still sitting in the email the client
+     * was originally sent, which is where they would click it from. Hiding
+     * the door is not closing it.
+     *
+     * The balance is chased with a new charge for what is left — which is a
+     * link for the right amount, rather than one for an amount that is no
+     * longer true.
      */
-    if (settles && invoice.stripePaymentLinkId) {
+    if (invoice.stripePaymentLinkId) {
       try {
         await stripe.paymentLinks.update(invoice.stripePaymentLinkId, { active: false });
       } catch (error) {
@@ -149,7 +163,11 @@ export async function POST(
       }
     }
 
-    if (settles && instalment?.stripeSessionId) {
+    // Same for an instalment's Checkout Session, and for the same reason: it
+    // is minted for the instalment's full amount. /pay/[instalmentId] already
+    // refuses to mint a new one once money has arrived; this is the one that
+    // was already minted and emailed.
+    if (instalment?.stripeSessionId) {
       try {
         await stripe.checkout.sessions.expire(instalment.stripeSessionId);
       } catch (error) {
@@ -171,6 +189,18 @@ export async function POST(
 
     const paidAt = new Date();
 
+    /*
+     * The link is down at Stripe; this stops us handing the dead URL out.
+     *
+     * Both dashboards read `paymentUrl` and the admin's Copy pay link puts it
+     * on a clipboard, so leaving it stored is how a deactivated link gets
+     * pasted into an email. Cleared on a part payment as much as on a settling
+     * one — the difference between the two was the bug.
+     */
+    const deadLink = invoice.stripePaymentLinkId || invoice.paymentUrl
+      ? { paymentUrl: null, stripePaymentLinkId: null }
+      : {};
+
     const settled = await prisma.$transaction(async (tx) => {
       /*
        * Scoped to a still-open row, so two people pressing this at once
@@ -187,8 +217,14 @@ export async function POST(
       const moved = await tx.invoice.updateMany({
         where: { id: invoice.id, status: 'open' },
         data: settles
-          ? { status: 'paid', paidAt, paidMethod: method, paidById: session.userId }
-          : { paidMethod: method, paidById: session.userId },
+          ? {
+              status: 'paid',
+              paidAt,
+              paidMethod: method,
+              paidById: session.userId,
+              ...deadLink,
+            }
+          : { paidMethod: method, paidById: session.userId, ...deadLink },
       });
       if (moved.count === 0) return null;
 

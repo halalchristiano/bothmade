@@ -5,6 +5,7 @@ import { resolveSiteUrl } from '@/lib/site-url';
 import { sendCustomChargeEmail } from '@/lib/email';
 import { invoiceFilename } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
+import { grossReceivedCents } from '@/lib/invoice-settlement';
 import {
   buildAndStoreInvoicePdf,
   createInvoicePaymentLink,
@@ -63,6 +64,8 @@ export async function POST(
       include: {
         client: { select: { company: true, email: true, contactName: true, archivedAt: true } },
         project: { select: { id: true, name: true } },
+        // What has arrived, so this cannot re-demand money already sent.
+        payments: { select: { amount: true } },
       },
     });
     if (!invoice) {
@@ -81,6 +84,35 @@ export async function POST(
         { status: 409 }
       );
     }
+    /*
+     * Money has already come in against it, or gone back off it.
+     *
+     * Everything below rebuilds the original demand: the PDF says the invoice
+     * total, the email says the invoice total, and a missing pay link is
+     * MINTED — a fresh fixed-amount Payment Link for the whole thing. Sending
+     * that to somebody who has transferred $900 of $1,800 asks them for the
+     * full amount again and hands them a working way to send it. Sending it
+     * to somebody we have just refunded is worse.
+     *
+     * There is no partial version of a Payment Link, so the balance is chased
+     * with a new charge for what is actually left — a link for the right
+     * amount, rather than one for an amount that stopped being true.
+     */
+    const gross = grossReceivedCents(invoice.payments);
+    if (gross > 0 || invoice.refundedCents > 0) {
+      const settled = gross - invoice.refundedCents;
+      return NextResponse.json(
+        {
+          error:
+            invoice.refundedCents > 0 && settled <= 0
+              ? `${formatCentsExact(invoice.refundedCents)} has already gone back on ${invoice.number}, so resending it would ask them to pay for work we have refunded. Raise a new charge if it is owed again.`
+              : `${formatCentsExact(settled)} has already come in against ${invoice.number}, and this would email them the full ${formatCentsExact(invoice.amountCents)} again with a pay link for it. Raise a new charge for the ${formatCentsExact(invoice.amountCents - settled)} that is left.`,
+          projectId: invoice.project.id,
+        },
+        { status: 409 }
+      );
+    }
+
     if (invoice.client.archivedAt) {
       return NextResponse.json(
         { error: `${invoice.client.company} has been decommissioned — reactivate them before chasing this.` },

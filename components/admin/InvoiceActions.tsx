@@ -117,7 +117,15 @@ export function InvoiceActions({
   // Not an instalment: those are sent from the project's schedule, which owns
   // the checkout session that pays them. Marking one paid by hand is fine and
   // stays — that route settles the instalment row alongside the invoice.
-  const canSend = invoice.status === 'open' && !invoice.isInstalment;
+  //
+  // And not once money has moved either way. A resend rebuilds the ORIGINAL
+  // demand — the invoice total in the PDF, the invoice total in the email,
+  // and a freshly minted fixed-amount pay link if one is missing — so sending
+  // it to somebody who has transferred $900 of $1,800 asks for the whole
+  // thing again and hands them a working way to send it. The balance is
+  // chased with a new charge for what is actually left.
+  const moneyHasMoved = (invoice.grossReceivedCents ?? 0) > 0 || invoice.refundedCents > 0;
+  const canSend = invoice.status === 'open' && !invoice.isInstalment && !moneyHasMoved;
   const canMarkPaid = invoice.status === 'open';
   const sendFromSchedule = invoice.status === 'open' && invoice.isInstalment && invoice.projectId;
 

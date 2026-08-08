@@ -65,6 +65,8 @@ const OPEN_INVOICE = {
   createdAt: new Date('2026-02-01T10:00:00Z'),
   client: { company: 'Acme Dental', email: 'owner@acme.test', contactName: 'Dana', archivedAt: null },
   project: { id: 'proj_1', name: 'Acme — Website' },
+  refundedCents: 0,
+  payments: [],
 };
 
 beforeEach(() => {
@@ -227,6 +229,59 @@ describe('what it refuses', () => {
     expect(body.error).toContain('payment schedule');
     expect(paymentLinksCreate).not.toHaveBeenCalled();
     expect(sendCustomChargeEmail).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The one pointed at a client who has already paid some of it.
+   *
+   * A resend rebuilds the ORIGINAL demand — the invoice total in the PDF, the
+   * invoice total in the email body, and a freshly minted fixed-amount
+   * Payment Link if one is missing. Sent to somebody who transferred $600 of
+   * $1,200 it asks for the whole $1,200 again and encloses a working way to
+   * send it, on the one screen where "we have your money" is the thing the
+   * client is checking.
+   */
+  it('will not re-demand an invoice money has already come in against', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      ...OPEN_INVOICE,
+      payments: [{ amount: 60000 }],
+    });
+
+    const res = await call();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toContain('$600');
+    // Both halves matter: no email, and no new link minted on the way to not
+    // sending one.
+    expect(sendCustomChargeEmail).not.toHaveBeenCalled();
+    expect(paymentLinksCreate).not.toHaveBeenCalled();
+  });
+
+  it('will not chase one we have refunded', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      ...OPEN_INVOICE,
+      refundedCents: 60000,
+      // What a refund leaves behind: the payment, and the row that took it back.
+      payments: [{ amount: 60000 }, { amount: -60000 }],
+    });
+
+    const res = await call();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toContain('refunded');
+    expect(sendCustomChargeEmail).not.toHaveBeenCalled();
+  });
+
+  /* The ordinary case, held so the guard above cannot quietly widen. */
+  it('still chases one nothing has come in against', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...OPEN_INVOICE, payments: [] });
+
+    const res = await call();
+
+    expect(res.status).toBe(200);
+    expect(sendCustomChargeEmail).toHaveBeenCalled();
   });
 
   it('will not chase a decommissioned client', async () => {
