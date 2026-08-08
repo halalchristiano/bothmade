@@ -9,6 +9,7 @@ import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
 import { Wordmark } from '@/components/Wordmark';
 import { useAdminPoll } from '@/lib/use-admin-poll';
 import { SendGuard } from '@/components/admin/SendGuard';
+import { SidebarScroll } from '@/components/admin/SidebarScroll';
 import { useBodyScrollLock } from '@/components/admin/Modal';
 
 /*
@@ -739,9 +740,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </button>
           </div>
 
-          <nav className="flex-1 px-3 pb-4 overflow-y-auto">
+          {/*
+            Scrolls on any window shorter than about 830px, which is most
+            laptops once a toolbar and a dock are accounted for — and used to
+            do it with no cue at all, hiding Settings behind a row sliced
+            through its middle. See components/admin/SidebarScroll.tsx.
+          */}
+          <SidebarScroll className="px-3 pb-4">
             <NavLinks items={navItems} pathname={pathname} unreadCount={unreadCount} compact />
-          </nav>
+          </SidebarScroll>
 
           <div className="p-3 border-t border-white/[0.08]">
             <div className="flex items-center gap-3 px-2 py-2">
