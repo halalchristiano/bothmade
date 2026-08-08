@@ -1322,7 +1322,7 @@ export default function AdminProjectDetailPage() {
                 type="file"
                 onChange={handleFileUpload}
                 disabled={uploadingFile}
-                className="w-full text-xs text-white/60 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-gradient-to-r file:from-sky-400 file:to-purple-500 file:text-black file:font-semibold file:text-xs disabled:opacity-50"
+                className="w-full text-xs text-white/60 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white file:text-ink file:font-medium file:text-xs file:cursor-pointer hover:file:bg-white/90 disabled:opacity-50"
               />
               {uploadingFile && <p className="text-xs text-sky-300">Uploading...</p>}
               {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
