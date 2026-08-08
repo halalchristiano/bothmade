@@ -569,7 +569,10 @@ function BillingWorkspace() {
               type="checkbox"
               checked={sendToClient}
               onChange={(e) => setSendToClient(e.target.checked)}
-              className="mt-1 accent-sky-400"
+              // 18px and shrink-0: as a flex child with the default
+              // flex-shrink, the native 13px checkbox was being squeezed
+              // narrower still. Measured 13×13 on a phone.
+              className="mt-1 h-[18px] w-[18px] shrink-0 accent-sky-400"
             />
             <span>
               Email the invoice and a pay link to the client

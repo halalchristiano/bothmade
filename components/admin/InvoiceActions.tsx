@@ -117,10 +117,16 @@ export function InvoiceActions({
           <Check size={11} /> Mark paid
         </button>
       )}
+      {/*
+        `ml-2` on Cancel is the destructive separation, not spacing. It sat
+        twelve pixels from Mark paid on a phone. One settles an invoice, the
+        other voids it, and twelve pixels between them on a touch screen is a
+        money mistake made with a fingertip. Measured at 20px after this.
+      */}
       {canVoid && (
         <button
           onClick={() => setOpen('void')}
-          className="-my-1 inline-flex items-center gap-1 py-1 text-white/45 transition-colors hover:text-red-300"
+          className="-my-1 ml-2 inline-flex items-center gap-1 py-1 text-white/45 transition-colors hover:text-red-300"
         >
           <Ban size={11} /> Cancel
         </button>

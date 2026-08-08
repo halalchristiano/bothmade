@@ -253,6 +253,28 @@ describe('the click itself', () => {
     expect(res.headers.get('location')).toBe('https://stripe.test/cs_old');
   });
 
+  /**
+   * Stripe answering without a URL, which is not the same as throwing.
+   *
+   * A session can come back with `url: null` — an embedded ui_mode, or one
+   * Stripe considers already finished. The guard for it existed and nothing
+   * held it: returning an empty string instead of null passed all 2473 tests,
+   * and an empty string is a redirect to nowhere on the one page whose only
+   * job is to get somebody to a checkout.
+   */
+  it('treats a session with no URL as no session at all', async () => {
+    sessionsRetrieve.mockResolvedValue({ status: 'expired' });
+    sessionsCreate.mockResolvedValue({ id: 'cs_new', url: null });
+
+    const res = await go();
+
+    expect(res.headers.get('location')).toBe('https://bothmade.test/client/proj_1');
+    // And it must not remember a session it never got a link for.
+    expect(prisma.instalment.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ stripeSessionId: 'cs_new' }) })
+    );
+  });
+
   /** Stripe refusing must land them somewhere real, not on a broken button. */
   it('falls back to the dashboard when Stripe will not mint', async () => {
     sessionsRetrieve.mockResolvedValue({ status: 'expired' });

@@ -285,6 +285,19 @@ export interface CustomChargeInvoiceInput {
    * never learned how, because nothing regenerated it after the payment.
    */
   paidAt?: Date | null;
+
+  /**
+   * When it was cancelled, if it was.
+   *
+   * Same failure as `paidAt` above, running the other way. Voiding an invoice
+   * puts a "Void" badge on both dashboards and leaves the stored PDF exactly
+   * as it was — "Amount due: $2,500", on the document a client forwards to
+   * their bookkeeper. The app knows the bill is cancelled; the piece of paper
+   * that leaves the app does not.
+   */
+  voidedAt?: Date | null;
+  /** Why, in the words the client was already given in the email. */
+  voidReason?: string | null;
 }
 
 /**
@@ -317,8 +330,15 @@ export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInpu
     // "Amount due" on a settled invoice is a document that contradicts the
     // client's own bank statement, and theirs is the one their accountant
     // believes.
-    amountDueLabel: input.paidAt ? 'Paid' : undefined,
-    footerNote: input.paidAt
+    // Cancelled first: an invoice that was voided is not owed whether or not
+    // anything was ever paid against it, and "Amount due" on it is the worst
+    // of the three things this line can say.
+    amountDueLabel: input.voidedAt ? 'Cancelled' : input.paidAt ? 'Paid' : undefined,
+    footerNote: input.voidedAt
+      ? `Cancelled on ${invoiceDate(input.voidedAt)} — there is nothing to pay.${
+          input.voidReason ? ` ${input.voidReason}` : ''
+        } This invoice has been withdrawn and replaces no other.`
+      : input.paidAt
       ? `Paid in full on ${invoiceDate(input.paidAt)}. Thank you. This invoice covered work agreed with Bothmade outside the original project scope.`
       : 'This invoice covers work agreed with Bothmade outside the original project scope. Payment is processed securely by Stripe.',
   });

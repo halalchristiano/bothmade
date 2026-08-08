@@ -31,6 +31,7 @@ const prisma = {
 const sessionsExpire = vi.fn(async (_id: string) => ({}) as unknown);
 const paymentLinksUpdate = vi.fn(async (_id: string, _a: unknown) => ({}) as unknown);
 const sendInvoiceVoidedEmail = vi.fn(async (_a: unknown) => ({ sent: true }));
+const restoreInvoicePdfAsCancelled = vi.fn(async (..._a: unknown[]) => 'https://blob.test/cancelled.pdf');
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/middleware', () => ({
@@ -38,6 +39,7 @@ vi.mock('@/lib/middleware', () => ({
   unauthorizedResponse: () => new Response('{}', { status: 401 }),
 }));
 vi.mock('@/lib/email', () => ({ sendInvoiceVoidedEmail }));
+vi.mock('@/lib/invoice-dispatch', () => ({ restoreInvoicePdfAsCancelled }));
 vi.mock('stripe', () => ({
   default: class {
     checkout = { sessions: { expire: sessionsExpire } };
@@ -50,6 +52,8 @@ const { POST } = await import('@/app/api/admin/billing/invoices/[invoiceId]/void
 const INVOICE = {
   id: 'invoice_1',
   number: 'BM-2026-0007',
+  lineItems: [{ label: 'Payment 2 of 3', priceCents: 300_000 }],
+  createdAt: new Date('2026-08-04T00:00:00Z'),
   status: 'open',
   amountCents: 300_000,
   description: 'Payment 2 of 3 — Acme Site',
@@ -82,6 +86,7 @@ beforeEach(() => {
   prisma.projectUpdate.create.mockResolvedValue({});
   sessionsExpire.mockResolvedValue({});
   sendInvoiceVoidedEmail.mockResolvedValue({ sent: true });
+  restoreInvoicePdfAsCancelled.mockResolvedValue('https://blob.test/cancelled.pdf');
 });
 
 describe('voiding an instalment invoice', () => {
@@ -195,5 +200,41 @@ describe('what it refuses', () => {
 
     expect(res.status).toBe(400);
     expect(sessionsExpire).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The document, which is the part that leaves the app.
+ *
+ * A void puts a badge on two dashboards and a sentence in an email. The stored
+ * PDF said "Amount due: $3,000" and went on saying it — and that file is what
+ * a client forwards to their bookkeeper, who has neither dashboard nor email.
+ */
+describe('the PDF a cancelled invoice leaves behind', () => {
+  it('is rebuilt as cancelled, with the reason the client was given', async () => {
+    await voidIt({ reason: 'Billed the wrong stage.' });
+
+    expect(restoreInvoicePdfAsCancelled).toHaveBeenCalledOnce();
+    const [, inv, , reason] = restoreInvoicePdfAsCancelled.mock.calls[0] as unknown[];
+    expect((inv as { number: string }).number).toBe('BM-2026-0007');
+    expect(reason).toBe('Billed the wrong stage.');
+  });
+
+  /** After the write, and never able to undo it. */
+  it('still voids when the PDF cannot be rebuilt', async () => {
+    restoreInvoicePdfAsCancelled.mockRejectedValueOnce(new Error('blob down'));
+
+    const res = await voidIt();
+
+    expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+  });
+
+  it('does not touch the PDF when the void was refused', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...INVOICE, status: 'paid' });
+
+    await voidIt();
+
+    expect(restoreInvoicePdfAsCancelled).not.toHaveBeenCalled();
   });
 });

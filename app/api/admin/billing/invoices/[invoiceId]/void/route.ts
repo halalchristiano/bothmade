@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { canVoid, readReason } from '@/lib/invoice-lifecycle';
+import { restoreInvoicePdfAsCancelled } from '@/lib/invoice-dispatch';
 import { sendInvoiceVoidedEmail } from '@/lib/email';
 import { formatCentsExact } from '@/lib/pricing';
 
@@ -165,6 +166,30 @@ export async function POST(
           ]
         : []),
     ]);
+
+    /*
+     * And the document itself, which is the part that leaves the app.
+     *
+     * The badge on two dashboards and the sentence in the email both say
+     * cancelled. The stored PDF said "Amount due" — and that is the file a
+     * client forwards to their bookkeeper, who has no dashboard and no email.
+     *
+     * After the write and best-effort: a void that has committed must not be
+     * undone because a PDF would not render.
+     */
+    await restoreInvoicePdfAsCancelled(
+      prisma,
+      {
+        id: invoice.id,
+        number: invoice.number,
+        description: invoice.description,
+        lineItems: invoice.lineItems,
+        createdAt: invoice.createdAt,
+        client: { company: invoice.client.company, contactName: invoice.client.contactName },
+      },
+      voided.voidedAt ?? new Date(),
+      reason
+    ).catch((error) => console.error(`Void ${invoice.number}: cancelled PDF not rebuilt:`, error));
 
     // Only worth telling them if they were told about it in the first place.
     const notifyClient = body?.notifyClient !== false && Boolean(invoice.sentToEmail);

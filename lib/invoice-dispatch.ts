@@ -65,6 +65,9 @@ export async function buildAndStoreInvoicePdf(input: {
   issuedAt: Date;
   /** Set once the money has arrived — the document then says Paid rather than Amount due. */
   paidAt?: Date | null;
+  /** Set when the invoice has been voided — see restoreInvoicePdfAsCancelled. */
+  voidedAt?: Date | null;
+  voidReason?: string | null;
 }): Promise<StoredPdf> {
   let buffer: Buffer | null = null;
   try {
@@ -76,6 +79,8 @@ export async function buildAndStoreInvoicePdf(input: {
       lineItems: input.lineItems,
       issuedAt: input.issuedAt,
       paidAt: input.paidAt,
+      voidedAt: input.voidedAt,
+      voidReason: input.voidReason,
     });
     buffer = Buffer.from(bytes);
   } catch (error) {
@@ -171,6 +176,62 @@ export async function createInvoicePaymentLink(input: {
  * resolving to the document they were sent rather than 404 or silently
  * change under them.
  */
+/**
+ * Re-render an invoice's PDF as a cancelled one, now that it has been voided.
+ *
+ * The mirror of restoreInvoicePdfAsPaid, and it matters for the same reason:
+ * the stored PDF is the document that leaves the app. Voiding put a badge on
+ * two dashboards and a sentence in an email, and left a file still reading
+ * "Amount due: $2,500" for a client to forward to their bookkeeper.
+ *
+ * Best-effort and after the void has committed. A void that succeeded must not
+ * be undone because a PDF would not render — the ledger is the fact, the
+ * document is the courtesy, and the button that regenerates it is still there.
+ *
+ * Filed at a fresh URL for the same reason as the paid version: a client
+ * holding the old link should keep resolving to the document they were sent
+ * rather than watch it change under them.
+ */
+export async function restoreInvoicePdfAsCancelled(
+  db: {
+    invoice: {
+      update(args: unknown): Promise<unknown>;
+    };
+  },
+  invoice: {
+    id: string;
+    number: string;
+    description: string;
+    lineItems: unknown;
+    createdAt: Date;
+    client: { company: string; contactName: string | null };
+  },
+  voidedAt: Date,
+  voidReason: string | null
+): Promise<string | null> {
+  const lineItems = readInvoiceLines(invoice.lineItems);
+  if (lineItems.length === 0) return null;
+
+  const { url } = await buildAndStoreInvoicePdf({
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.number,
+    company: invoice.client.company,
+    contactName: invoice.client.contactName,
+    description: invoice.description,
+    lineItems,
+    issuedAt: invoice.createdAt,
+    voidedAt,
+    voidReason,
+  });
+  if (!url) return null;
+
+  await db.invoice
+    .update({ where: { id: invoice.id }, data: { pdfUrl: url } })
+    .catch((error) => console.error(`Invoice ${invoice.number}: cancelled PDF not linked:`, error));
+
+  return url;
+}
+
 export async function restoreInvoicePdfAsPaid(
   db: {
     invoice: {
