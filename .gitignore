@@ -49,3 +49,22 @@ next-env.d.ts
 
 # Screenshots from scripts/screenshots — look at them, don't commit them.
 .screenshots/
+
+# The same hazard, except it had already happened. /output held 45 committed
+# files — 18 CSVs and 11 TSVs of prospect data, ~33,000 rows carrying 1,025
+# distinct email addresses, direct phone numbers, contact names and roles,
+# hand-written sales notes and per-lead estimated deal values — on a public
+# repository. The scrape scripts beside them (.mjs) name the sources and the
+# method, and output/pdf held a generated document.
+#
+# Nothing in app/, lib/ or components/ reads this directory: it is where the
+# lead-harvesting scripts write, and that output belongs on a laptop, not in
+# version control. Ignored as a directory rather than by extension, so the
+# next export lands here and stays put whatever it is called.
+#
+# NOTE: untracking these removed them from the current tree, not from the
+# repository's history. Every commit that added them still contains them and
+# is still fetchable by anyone. See SECURITY-NOTES.md — the history rewrite
+# and the disclosure decision are the owner's calls to make, not something a
+# .gitignore line closes out.
+/output
