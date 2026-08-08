@@ -233,16 +233,28 @@ export function InstalmentPanel({
                 </p>
               </div>
               {inst.status !== 'paid' && isNext && (
+                /*
+                 * "Send", not "Send Payment 2 of 3".
+                 *
+                 * This panel lives in the project page's left column, which is
+                 * about a third the width of the one it was designed against.
+                 * The button is shrink-0 and the row beside it truncates, so a
+                 * button carrying the payment's full name ate the row and left
+                 * "Pay…" above "On d…" — the label and the trigger, the two
+                 * things you check before billing somebody, both crushed out
+                 * of existence by a button repeating one of them.
+                 *
+                 * The name stays on the accessible label, where it costs no
+                 * width and is the more useful of the two: a screen reader
+                 * moving through three rows of "Send" needs to know which.
+                 */
                 <button
                   onClick={() => send(inst.index)}
                   disabled={sending !== null}
+                  aria-label={inst.status === 'due' ? `Re-send ${inst.label}` : `Send ${inst.label}`}
                   className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:opacity-90 disabled:opacity-50"
                 >
-                  {sending === inst.index
-                    ? 'Sending…'
-                    : inst.status === 'due'
-                    ? 'Re-send'
-                    : `Send ${inst.label}`}
+                  {sending === inst.index ? 'Sending…' : inst.status === 'due' ? 'Re-send' : 'Send'}
                 </button>
               )}
               {/*

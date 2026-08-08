@@ -136,10 +136,18 @@ export function SendGuard() {
                 : 'Nothing here could be rendered in advance — read the warning below.'}
             </p>
           </div>
+          {/*
+            "Close", not "Cancel". The footer already has a button called
+            Cancel, so this one announced a second identically-named control
+            in the same dialog — two "Cancel, button"s to anyone listening
+            rather than looking, with nothing to tell them apart. They do the
+            same thing, which is exactly why the names have to differ: the
+            name is the only handle on which one you are about to press.
+          */}
           <button
             type="button"
             onClick={() => answer(false)}
-            aria-label="Cancel"
+            aria-label="Close"
             className="shrink-0 rounded-lg p-1.5 text-white/40 hover:bg-white/5 hover:text-white transition-colors"
           >
             <X size={18} />

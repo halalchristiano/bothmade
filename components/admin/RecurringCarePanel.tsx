@@ -97,6 +97,7 @@ export function RecurringCarePanel({ projectId }: { projectId: string }) {
   const [expanded, setExpanded] = useState(false);
   const [data, setData] = useState<PanelData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -109,15 +110,36 @@ export function RecurringCarePanel({ projectId }: { projectId: string }) {
   const [freeMonths, setFreeMonths] = useState(0);
   const [note, setNote] = useState('');
 
+  /*
+   * `success` is a claim about the request, not about the payload.
+   *
+   * This trusted the flag and then read `payload.defaults.addOns` and, in the
+   * render, `data?.offers.find(...)`. That `?.` guards `data` being null and
+   * nothing else, so a response shaped like a success and missing a key threw
+   * twice: once inside this function, where nothing catches it, and again
+   * during render — and a render error goes to the nearest boundary, so one
+   * panel with a bad payload took the whole project page with it. That is the
+   * busiest screen in the admin, and the care plan is the least important
+   * thing on it.
+   *
+   * Checking the two arrays it actually reads is what keeps the failure the
+   * size of the panel. Same fix as the Today card on the dashboard, which had
+   * the identical shape.
+   */
   const load = async () => {
     try {
       const res = await fetch(`/api/admin/projects/${projectId}/recurring`);
-      const payload = await res.json();
-      if (payload.success) {
+      const payload = res.ok ? await res.json().catch(() => null) : null;
+      if (payload?.success && Array.isArray(payload.offers) && payload.defaults) {
         setData(payload);
-        setSelected(payload.defaults.addOns);
-        setFreeMonths(payload.defaults.freeMonths);
+        setSelected(payload.defaults.addOns ?? []);
+        setFreeMonths(payload.defaults.freeMonths ?? 0);
+        setFailed(false);
+      } else {
+        setFailed(true);
       }
+    } catch {
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -231,6 +253,20 @@ export function RecurringCarePanel({ projectId }: { projectId: string }) {
     return (
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
         <p className="text-sm text-white/40">Loading care plan…</p>
+      </div>
+    );
+  }
+
+  /*
+   * Said out loud rather than left blank. A panel that vanishes on a failed
+   * load looks exactly like a project that has no care plan, so the one
+   * moment it matters — a plan that exists and is not showing — is the moment
+   * it would say nothing at all.
+   */
+  if (failed) {
+    return (
+      <div className="mb-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] px-5 py-4 text-sm text-amber-200/80">
+        Couldn&apos;t load the care plan — the rest of this page still works.
       </div>
     );
   }
