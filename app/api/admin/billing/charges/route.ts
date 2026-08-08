@@ -273,6 +273,23 @@ export async function POST(request: NextRequest) {
 const LIST_LIMIT = 100;
 
 /**
+ * Reads "resume after this row" off the query string, or ignores it.
+ *
+ * Ignoring rather than rejecting: a stale or mangled cursor should show the
+ * first page, which is what somebody who followed an old link wants. A 400
+ * on a screen about money reads as something being broken with the money.
+ */
+function readCursor(raw: string | null): { createdAt: Date; id: string } | null {
+  if (!raw) return null;
+  const at = raw.indexOf('_');
+  if (at <= 0) return null;
+  const createdAt = new Date(raw.slice(0, at));
+  const id = raw.slice(at + 1);
+  if (Number.isNaN(createdAt.getTime()) || !id) return null;
+  return { createdAt, id };
+}
+
+/**
  * Every invoice raised, newest first — the studio's own copy of the record,
  * and what the billing page lists.
  *
@@ -337,15 +354,44 @@ export async function GET(request: NextRequest) {
         }
       : null;
 
+    /*
+     * Where the last page stopped.
+     *
+     * A cursor rather than an offset, because this is the screen invoices are
+     * RAISED on. An offset counts from the top of a list whose top moves: one
+     * charge raised between "show more" presses shifts every row down by one,
+     * so page two re-shows the last row of page one and silently skips
+     * nothing — or, on a deletion, skips a real invoice with no sign it did.
+     * A cursor asks "what comes after this exact row", which is stable
+     * whatever happens above it.
+     *
+     * Two fields, because createdAt is not unique — two charges raised in the
+     * same millisecond are ordinary on a screen where somebody raises three
+     * in a row — and a cursor on a non-unique key loses or repeats the ties.
+     */
+    const cursor = readCursor(request.nextUrl.searchParams.get('before'));
+
     const listWhere = {
       ...(where ?? {}),
       ...(status === 'open' || status === 'paid' || status === 'void' ? { status } : {}),
       ...(search ?? {}),
     };
+    const pageWhere = cursor
+      ? {
+          ...listWhere,
+          OR: [
+            { createdAt: { lt: cursor.createdAt } },
+            { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+          ],
+          // `search` also uses OR, and two OR keys in one object is the
+          // second one winning silently. Nested under AND, both apply.
+          ...(search ? { AND: [search] } : {}),
+        }
+      : listWhere;
 
     const [invoices, byStatus, refundsByMethod, total, listTotal, partPaid] = await Promise.all([
       prisma.invoice.findMany({
-        where: listWhere,
+        where: pageWhere,
         include: {
           client: { select: { id: true, company: true, email: true } },
           project: { select: { id: true, name: true } },
@@ -355,7 +401,10 @@ export async function GET(request: NextRequest) {
           // story the moment it is.
           payments: { select: { amount: true, stripeSessionId: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        // Tie-broken by id so the cursor above can pick up exactly where this
+        // left off. Without it, invoices sharing a millisecond order
+        // differently between two queries and the boundary row is lost.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: LIST_LIMIT,
       }),
       prisma.invoice.groupBy({
@@ -481,6 +530,17 @@ export async function GET(request: NextRequest) {
         // all of them".
         matching: listTotal,
         truncated: listTotal > invoices.length,
+        /*
+         * Where to resume, or null when this is the end of the list.
+         *
+         * Sent rather than derived on the page: the page would have to know
+         * that the ordering is createdAt-then-id to build it, and an ordering
+         * duplicated in two places is an ordering that drifts.
+         */
+        nextCursor:
+          invoices.length === LIST_LIMIT && invoices.length > 0
+            ? `${invoices[invoices.length - 1].createdAt.toISOString()}_${invoices[invoices.length - 1].id}`
+            : null,
       },
       { status: 200 }
     );

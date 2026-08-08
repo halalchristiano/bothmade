@@ -574,3 +574,122 @@ describe('telling the two kinds of invoice apart', () => {
     expect(prisma.instalment.findMany).not.toHaveBeenCalled();
   });
 });
+
+
+/**
+ * Reaching past the hundredth invoice.
+ *
+ * The ledger showed the hundred most recent and said so, which was honest and
+ * still left invoice 101 unreachable from this screen — findable only by
+ * remembering something to search for, which is exactly what somebody hunting
+ * an old unpaid invoice does not have.
+ *
+ * A cursor rather than an offset, because this is the screen invoices are
+ * RAISED on: one charge raised between two presses shifts every row down by
+ * one, so an offset re-shows the last row of the previous page and skips a
+ * real invoice with nothing on screen to say it did.
+ */
+describe('paging past the first hundred', () => {
+  const listRequest = (url: string) => ({ nextUrl: new URL(url) }) as unknown as Parameters<typeof GET>[0];
+  const BASE = 'https://bothmade.test/api/admin/billing/charges';
+
+  const row = (n: number) => ({
+    id: `inv_${n}`,
+    number: `BM-2026-${String(n).padStart(4, '0')}`,
+    description: 'Extra work',
+    amountCents: 100000,
+    status: 'open',
+    refundedCents: 0,
+    createdAt: new Date(`2026-03-${String((n % 28) + 1).padStart(2, '0')}T10:00:00.000Z`),
+    client: { id: 'c1', company: 'Acme', email: 'a@acme.test' },
+    project: { id: 'p1', name: 'Acme site' },
+    issuedBy: null,
+    payments: [],
+  });
+
+  beforeEach(() => {
+    prisma.invoice.groupBy.mockReset().mockResolvedValue([]);
+    prisma.invoice.count.mockResolvedValue(340);
+  });
+
+  it('hands back where to resume when the page is full', async () => {
+    prisma.invoice.findMany.mockResolvedValue(Array.from({ length: 100 }, (_, i) => row(i)));
+
+    const body = await (await GET(listRequest(BASE))).json();
+
+    expect(body.truncated).toBe(true);
+    expect(body.nextCursor).toBe('2026-03-16T10:00:00.000Z_inv_99');
+  });
+
+  it('hands back nothing to resume from on the last page', async () => {
+    prisma.invoice.findMany.mockResolvedValue([row(1), row(2)]);
+
+    const body = await (await GET(listRequest(BASE))).json();
+
+    expect(body.nextCursor).toBeNull();
+  });
+
+  /*
+   * Both halves of the cursor. createdAt alone is not unique — three charges
+   * raised in a row share a millisecond often enough — and a cursor on a
+   * non-unique key either repeats the ties or drops them.
+   */
+  it('asks for rows strictly after the row it was given', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+
+    await GET(listRequest(`${BASE}?before=2026-03-08T10:00:00.000Z_inv_99`));
+
+    const where = prisma.invoice.findMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { createdAt: { lt: new Date('2026-03-08T10:00:00.000Z') } },
+      { createdAt: new Date('2026-03-08T10:00:00.000Z'), id: { lt: 'inv_99' } },
+    ]);
+  });
+
+  /*
+   * The search also builds an OR. Two OR keys in one object is the second one
+   * winning silently, which would page through every invoice in the book
+   * while the box still said "Northgate".
+   */
+  it('keeps the search applied while paging', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+
+    await GET(listRequest(`${BASE}?q=northgate&before=2026-03-08T10:00:00.000Z_inv_99`));
+
+    const where = prisma.invoice.findMany.mock.calls[0][0].where;
+    expect(where.OR[0]).toEqual({ createdAt: { lt: new Date('2026-03-08T10:00:00.000Z') } });
+    expect(JSON.stringify(where.AND)).toContain('northgate');
+  });
+
+  it('keeps the status filter applied while paging', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+
+    await GET(listRequest(`${BASE}?status=open&before=2026-03-08T10:00:00.000Z_inv_99`));
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].where.status).toBe('open');
+  });
+
+  /* A stale or mangled cursor shows the first page. A 400 on a screen about
+     money reads as something being broken with the money. */
+  it('ignores a cursor it cannot read rather than failing the page', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+
+    const res = await GET(listRequest(`${BASE}?before=nonsense`));
+
+    expect(res.status).toBe(200);
+    expect(prisma.invoice.findMany.mock.calls[0][0].where.OR).toBeUndefined();
+  });
+
+  /* Ties have to break the same way in both queries or the boundary row is
+     lost between pages. */
+  it('orders by the same two fields the cursor is built from', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+
+    await GET(listRequest(BASE));
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].orderBy).toEqual([
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ]);
+  });
+});

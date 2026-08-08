@@ -157,6 +157,16 @@ function BillingWorkspace() {
   const [totals, setTotals] = useState<LedgerTotals | null>(null);
   const [matching, setMatching] = useState(0);
   const [truncated, setTruncated] = useState(false);
+  /*
+   * Where the list stops, and whether more is on its way.
+   *
+   * The ledger showed the hundred most recent and said so, which was honest
+   * and still left invoice 101 unreachable from this screen — findable only
+   * by remembering something to search for, which is precisely what somebody
+   * hunting an old unpaid invoice does not have.
+   */
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   // Opens on what needs doing rather than on what happened most recently.
   const [filter, setFilter] = useState<LedgerFilter>('chase');
   const [ledgerQuery, setLedgerQuery] = useState('');
@@ -172,7 +182,7 @@ function BillingWorkspace() {
   // invoice.
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const loadInvoices = useCallback(async () => {
+  const loadInvoices = useCallback(async (after?: string | null) => {
     try {
       // The filter goes to the server: an invoice unpaid since March is
       // exactly the one worth finding and exactly the one a recency cap on a
@@ -184,18 +194,25 @@ function BillingWorkspace() {
       // about the hundred most recent rows and said "nothing matches" about
       // the invoice from March — which is the one anybody is actually hunting.
       if (ledgerSearch) params.set('q', ledgerSearch);
+      // Resuming after a row rather than skipping N of them: this is the
+      // screen invoices are raised on, so the top of the list moves between
+      // presses and an offset would re-show one row and skip another.
+      if (after) params.set('before', after);
       const query = params.toString();
       const response = await fetch(`/api/admin/billing/charges${query ? `?${query}` : ''}`);
       const data = await response.json();
       if (response.ok) {
-        setInvoices(data.invoices || []);
+        setInvoices((current) => (after ? [...current, ...(data.invoices || [])] : data.invoices || []));
         setTotals(data.totals ?? null);
         setMatching(data.matching ?? (data.invoices?.length || 0));
         setTruncated(Boolean(data.truncated));
+        setNextCursor(data.nextCursor ?? null);
       }
     } catch {
       // The list is context, not the job — a failed load must not look like
       // a failed charge.
+    } finally {
+      setLoadingMore(false);
     }
   }, [filter, ledgerSearch]);
 
@@ -1136,10 +1153,25 @@ function BillingWorkspace() {
                   quietly stops at a hundred reads as "that is all of them",
                   and the totals above are the reason it does not have to. */}
               {truncated && (
-                <p className="pt-3 text-[11px] text-white/30">
-                  Showing the {invoices.length} most recent of {matching} matching. The figures
-                  above cover every invoice.
-                </p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-3">
+                  <p className="text-[11px] text-white/30">
+                    Showing the {invoices.length} most recent of {matching} matching. The figures
+                    above cover every invoice.
+                  </p>
+                  {nextCursor && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoadingMore(true);
+                        loadInvoices(nextCursor);
+                      }}
+                      disabled={loadingMore}
+                      className="-my-1 py-1 text-[11px] text-sky-300 transition-colors hover:text-sky-200 disabled:text-white/30"
+                    >
+                      {loadingMore ? 'Loading…' : `Show ${Math.min(100, matching - invoices.length)} more`}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}

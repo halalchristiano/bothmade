@@ -627,3 +627,95 @@ describe('an invoice with more money on it than it asked for', () => {
     expect(screen.queryByText(/overpaid/)).toBeNull();
   });
 });
+
+
+/**
+ * The hundred-and-first invoice.
+ *
+ * The list stopped at a hundred and said so, which was honest and still left
+ * the older rows unreachable from this screen: findable only by remembering
+ * something to type in the box, which is precisely what somebody hunting an
+ * old unpaid invoice does not have.
+ */
+describe('reaching past the first hundred', () => {
+  const page2 = { ...CHASED, id: 'inv_9', number: 'BM-2025-0004', description: 'Last winter' };
+
+  function stubPaged() {
+    let call = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (!url.includes('/api/admin/billing/charges')) {
+          return new Response(JSON.stringify({ success: true, customers: [] }), { status: 200 });
+        }
+        const second = url.includes('before=');
+        call += 1;
+        return new Response(
+          JSON.stringify({
+            success: true,
+            invoices: second ? [page2] : [CHASED],
+            totals: TOTALS,
+            matching: 140,
+            truncated: !second,
+            nextCursor: second ? null : '2026-03-16T10:00:00.000Z_inv_1',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      })
+    );
+    return () => call;
+  }
+
+  it('offers to show the rest, and says how many', async () => {
+    stubPaged();
+    render(<BillingPage />);
+
+    expect(await screen.findByRole('button', { name: 'Show 100 more' })).toBeTruthy();
+  });
+
+  it('adds the next page rather than replacing what is on screen', async () => {
+    const user = userEvent.setup();
+    stubPaged();
+    render(<BillingPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Show 100 more' }));
+
+    await waitFor(() => expect(screen.getByText('Last winter')).toBeTruthy());
+    // The first page is still there — this is "more", not "instead".
+    expect(screen.getByText('Second round of homepage design')).toBeTruthy();
+  });
+
+  it('asks the server to resume after the last row, not to skip a count', async () => {
+    const user = userEvent.setup();
+    stubPaged();
+    render(<BillingPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Show 100 more' }));
+
+    await waitFor(() => {
+      const asked = vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+      expect(asked.some((u) => u.includes('before=2026-03-16T10%3A00%3A00.000Z_inv_1'))).toBe(true);
+      expect(asked.some((u) => u.includes('offset=') || u.includes('skip='))).toBe(false);
+    });
+  });
+
+  it('stops offering it once the list is complete', async () => {
+    const user = userEvent.setup();
+    stubPaged();
+    render(<BillingPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Show 100 more' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Show .* more/ })).toBeNull());
+  });
+
+  it('offers nothing when everything already fits', async () => {
+    invoices = [CHASED];
+    stubFetch();
+    render(<BillingPage />);
+
+    await screen.findByText('open 31 days · sent 3×');
+    expect(screen.queryByRole('button', { name: /Show .* more/ })).toBeNull();
+  });
+});
