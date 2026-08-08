@@ -791,8 +791,8 @@ export default function CallCockpit() {
             {/*
               * Objections, in reach without leaving the screen.
               *
-              * Eleven closed accordions, each showing only our phrasing of
-              * the trigger, is a list to read — and this is the one screen
+              * Ten closed accordions, each showing only our phrasing of the
+              * trigger, is a list to read — and this is the one screen
               * where the rep is being talked at while they read it. They do
               * not remember our wording; they remember the two words they
               * just heard. So there is a box to type them into, and it
@@ -822,7 +822,11 @@ export default function CallCockpit() {
                     className="group rounded-lg border border-white/[0.07] bg-white/[0.02]"
                   >
                     <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-sm text-white/70 hover:text-white list-none">
-                      <span>&ldquo;{o.trigger}&rdquo;</span>
+                      {/* No quotes added here. The trigger carries its own —
+                          and some carry two, like "Now's not a good time" /
+                          "Maybe next year." — so wrapping produced ""like
+                          this"" on screen, and mangled the compound ones. */}
+                      <span>{o.trigger}</span>
                       <ChevronRight size={14} className="transition-transform group-open:rotate-90 text-white/30" />
                     </summary>
                     <div className="px-3 pb-3 space-y-2 text-[13px]">
