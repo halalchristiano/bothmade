@@ -49,7 +49,18 @@ export function QuickAddLeadModal({
   onCreated,
 }: {
   onClose: () => void;
-  onCreated: (leadId?: string) => void;
+  /**
+   * Something was created — refresh whatever is behind this.
+   *
+   * `keepOpen` exists because a bulk paste can half-succeed. The caller's
+   * ordinary response to this callback is to close the modal, which is right
+   * for a single lead and wrong for a paste that hit the cap: the lines the
+   * cap turned away are handed back into the textarea, and a textarea that
+   * unmounts in the same tick has handed them nowhere. That is exactly what
+   * used to happen — the box cleared itself, the modal closed, and the
+   * "Added 200 companies" line was never on screen long enough to read.
+   */
+  onCreated: (leadId?: string, options?: { keepOpen?: boolean }) => void;
 }) {
   // Namespaced so two of these on one page can't collide on `htmlFor`.
   const formId = useId();
@@ -139,7 +150,17 @@ export function QuickAddLeadModal({
           setBulkResult({ tone: 'ok', message: `Added ${data.count} companies.` });
           setBulkText('');
         }
-        onCreated();
+        /*
+         * Refresh the board behind, and stay.
+         *
+         * A bulk add used to close the modal, which meant the line it had
+         * just written — the only statement of how many companies landed —
+         * was on screen for one tick. Nobody has ever read it. Closing is
+         * right for a single lead, because that navigates to the lead it
+         * made; here there is nowhere to go and something to say, and when
+         * the cap has handed lines back there is something still to do.
+         */
+        onCreated(undefined, { keepOpen: true });
       } else {
         // Green for a refusal, which is what this was, because the one line
         // under the box was hard-coded emerald whatever it said.

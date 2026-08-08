@@ -36,8 +36,11 @@ const capped = (limit: number) =>
     } as unknown as Response;
   });
 
+let onCreated: ReturnType<typeof vi.fn>;
+
 const openBulk = async (user: ReturnType<typeof userEvent.setup>) => {
-  render(<QuickAddLeadModal onClose={vi.fn()} onCreated={vi.fn()} />);
+  onCreated = vi.fn();
+  render(<QuickAddLeadModal onClose={vi.fn()} onCreated={onCreated} />);
   await user.click(screen.getByRole('button', { name: 'Bulk Add' }));
   return screen.getByLabelText('Companies to add, one per line') as HTMLTextAreaElement;
 };
@@ -72,6 +75,14 @@ describe('a paste that fits', () => {
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Added 2 companies.'));
     expect(box).toHaveValue('');
+    /*
+     * And it stays open. A bulk add used to close the modal, so this line —
+     * the only statement of how many companies actually landed — was on
+     * screen for one tick and read by nobody. There is nowhere to navigate
+     * to after a paste, unlike the single-lead form which goes to the lead
+     * it made.
+     */
+    expect(onCreated).toHaveBeenCalledWith(undefined, { keepOpen: true });
   });
 });
 
@@ -90,6 +101,22 @@ describe('a paste bigger than the cap', () => {
      * worse than an empty one: it looks like the work is safe.
      */
     expect(box.value.split('\n')).toEqual(companies(50, 201));
+  });
+
+  /*
+   * Found by driving a browser rather than by reasoning: the sales page
+   * closes this modal whenever `onCreated` fires, so handing the leftovers
+   * back into the textarea handed them into a component that unmounted in
+   * the same tick. The box was "kept" and gone. It has to ask to stay.
+   */
+  it('asks to stay open, because the leftovers live in a textarea it owns', async () => {
+    const user = userEvent.setup();
+    const box = await openBulk(user);
+
+    await paste(user, box, companies(250));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(onCreated).toHaveBeenCalledWith(undefined, { keepOpen: true });
   });
 
   it('says the rest are still there, and does not call it a plain success', async () => {

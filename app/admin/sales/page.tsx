@@ -221,10 +221,18 @@ export default function SalesPage() {
       {showAdd && (
         <QuickAddLeadModal
           onClose={() => setShowAdd(false)}
-          onCreated={(leadId) => {
-            setShowAdd(false);
-            if (leadId) router.push(`/admin/leads/${leadId}`);
-            else setRefreshToken((n) => n + 1);
+          onCreated={(leadId, options) => {
+            if (leadId) {
+              setShowAdd(false);
+              router.push(`/admin/leads/${leadId}`);
+              return;
+            }
+            setRefreshToken((n) => n + 1);
+            // A paste that hit the per-paste cap hands the leftover lines
+            // back into its own textarea and asks to stay open, so they can
+            // go in on a second press. Closing regardless is what threw them
+            // away — along with the message saying they existed.
+            if (!options?.keepOpen) setShowAdd(false);
           }}
         />
       )}
