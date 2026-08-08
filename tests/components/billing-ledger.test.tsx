@@ -747,6 +747,17 @@ describe('what the truncation sentence says about the chase list', () => {
     render(<BillingPage />);
 
     expect(await screen.findByText(/longest outstanding of 140 matching/)).toBeTruthy();
+    // And the card's own caption, which is the thing read first and was
+    // still promising the opposite order.
+    expect(screen.getByText(/longest outstanding first/)).toBeTruthy();
+  });
+
+  it('says newest first on a history', async () => {
+    invoices = [CHASED];
+    stubFetch();
+    render(<BillingPage />);
+
+    expect(await screen.findByText(/newest first/)).toBeTruthy();
   });
 });
 

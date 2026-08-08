@@ -146,6 +146,22 @@ const SETTLED = [
     description: 'SEO audit add-on', voidReason: 'Raised against the wrong project', createdAt: day(53) },
 ];
 
+/*
+ * What the second page holds — the rows a list capped at a hundred used to
+ * put out of reach entirely. The oldest one is the whole reason the chase
+ * bucket changed direction.
+ */
+const OLDER = [
+  { ...INVOICES[0], id: 'inv_o1', number: 'BM-2025-0184', description: 'Christmas campaign landing page',
+    amountCents: 240000, createdAt: day(213), sendCount: 6, lastSentAt: day(30),
+    client: { id: 'c6', company: 'Harlow & Fen', email: 'ops@harlowfen.test' },
+    project: { id: 'p6', name: 'Harlow & Fen — Website' } },
+  { ...INVOICES[0], id: 'inv_o2', number: 'BM-2025-0191', description: 'Additional product photography',
+    amountCents: 96000, createdAt: day(168), sendCount: 4, lastSentAt: day(52),
+    client: { id: 'c7', company: 'Brightwater Clinic', email: 'admin@brightwater.test' },
+    project: { id: 'p7', name: 'Brightwater — Website' } },
+];
+
 // Outstanding is net of the $900 already in against BM-2026-0027.
 const TOTALS = { outstandingCents: 565000, outstandingCount: 4, paidCents: 1284000, paidCount: 9,
   refundedCents: 19000, creditedCents: 60000, count: 13 };
@@ -230,9 +246,37 @@ await page.route('**/api/**', (route) => {
         }),
       });
     }
+    /*
+     * Paging, emulated, because the two things worth looking at only exist
+     * on a list too long to fit: the "Show N more" control, and the sentence
+     * beside it, which has to say "longest outstanding" on the chase bucket
+     * and "most recent" everywhere else.
+     */
+    const chase = url.includes('status=open');
     const open = [...INVOICES, INSTALMENT];
-    const rows = url.includes('status=open') ? open : [...open, ...SETTLED];
-    return json({ success: true, invoices: rows, totals: TOTALS, matching: rows.length, truncated: false });
+    const rows = chase ? open : [...open, ...SETTLED];
+    if (url.includes('before=')) {
+      return json({
+        success: true,
+        invoices: OLDER,
+        totals: TOTALS,
+        matching: 140,
+        truncated: false,
+        nextCursor: null,
+        oldestFirst: chase,
+      });
+    }
+    return json({
+      success: true,
+      invoices: rows,
+      totals: TOTALS,
+      matching: 140,
+      truncated: true,
+      nextCursor: '2026-03-16T10:00:00.000Z_inv_1',
+      // The chase bucket is a to-do list and runs oldest first; the
+      // histories are records and run newest first.
+      oldestFirst: chase,
+    });
   }
   return json({ success: true });
 });
@@ -293,6 +337,21 @@ await shot('raised', 'the pay link and the invoice, right where it was raised');
 await page.getByRole('button', { name: 'All' }).click();
 await page.waitForTimeout(800);
 await shot('all-states', 'paid, cancelled, a scheduled payment, and open together');
+
+/*
+ * The end of the list, which used to be the end of what this screen could
+ * reach at all. The sentence beside the control has to match the order the
+ * list is actually in — on the chase bucket, longest outstanding first.
+ */
+await page.getByRole('button', { name: 'Needs chasing' }).click();
+await page.waitForTimeout(700);
+await page.getByRole('button', { name: /^Show \d+ more$/ }).scrollIntoViewIfNeeded();
+await page.waitForTimeout(200);
+await shot('more-to-come', 'the list says which end it is showing, and offers the rest');
+
+await page.getByRole('button', { name: /^Show \d+ more$/ }).click();
+await page.waitForTimeout(900);
+await shot('older-page', 'the invoice open 213 days, previously unreachable from this screen');
 
 /*
  * The two refund boxes, which differ in the two ways that matter.

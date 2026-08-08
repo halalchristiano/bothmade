@@ -813,7 +813,14 @@ function BillingWorkspace() {
           <CardHeader
             icon={Receipt}
             title="Invoices raised"
-            subtitle="Every invoice raised — instalments and one-off charges, newest first"
+            /* The order is no longer one order. Saying "newest first" over a
+               chase list that runs oldest first is a caption arguing with the
+               rows under it, and the caption is the one people believe. */
+            subtitle={
+              oldestFirst
+                ? 'Every invoice raised — instalments and one-off charges, longest outstanding first'
+                : 'Every invoice raised — instalments and one-off charges, newest first'
+            }
             tone="sky"
           />
 
