@@ -143,9 +143,94 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=()",
   },
+
+  /**
+   * HSTS. The one header that protects the request the CSP cannot reach:
+   * the *first* one.
+   *
+   * `upgrade-insecure-requests` in the CSP above rewrites sub-resource URLs
+   * once a page is already loaded, which is a different job. It does nothing
+   * about somebody typing `bothmade.studio`, or following an old `http://`
+   * link, or tapping a link from an email client that strips the scheme.
+   * That request leaves the browser in plaintext, and on a shared network it
+   * can be answered by whoever is nearest before Vercel's 308 to HTTPS ever
+   * arrives — the attacker proxies the real site over HTTPS to themselves
+   * and serves it to the victim over HTTP, reading the session cookie on the
+   * way through. This header is what makes the browser refuse to send that
+   * first plaintext request at all, for the next two years.
+   *
+   * `includeSubDomains` is deliberate and load-bearing here, not boilerplate.
+   * A stolen `auth_token` is the prize, the cookie is scoped to the
+   * registrable domain, and the studio serves client mockups on subdomains
+   * (`<company>.bothmade.studio`) plus the enquiry form on its own — so
+   * covering the apex alone would leave the exact hosts a client is emailed
+   * a link to as the soft way in. Everything is on Vercel, which is
+   * HTTPS-only and issues a certificate per domain, so nothing we run is
+   * capable of being downgraded by this.
+   *
+   * `preload` is included, but the token alone changes nothing: it is the
+   * prerequisite for submitting the domain at hstspreload.org, which is a
+   * separate, deliberate step. Do that only when the two-year commitment is
+   * acceptable — removal from the preload list is slow, and until then no
+   * host under bothmade.studio can ever be served over plain HTTP. Given
+   * everything sits behind Vercel, that is a promise this project can keep.
+   *
+   * Omitted in development, where the app is served over plain http on
+   * localhost. Browsers ignore HSTS on an insecure origin anyway, but a
+   * stray max-age pinned against `localhost` is a genuinely annoying thing
+   * to have to clear out of a browser profile later.
+   */
+  ...(isDev
+    ? []
+    : [
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=63072000; includeSubDomains; preload",
+        },
+      ]),
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * Stop announcing the framework on every response.
+   *
+   * Next sends `X-Powered-By: Next.js` by default. It is not a vulnerability
+   * on its own — but it is free reconnaissance: it tells someone deciding
+   * which set of exploits to spend time on that this is a Next app, so they
+   * can go straight to the framework's CVEs instead of probing blind. There
+   * is no reason to answer a question nobody asked.
+   *
+   * This is one string, not a disguise. A rendered page is recognisably Next
+   * from its RSC payload and its `/_next/` asset paths, and nothing here
+   * pretends otherwise. Removing the header costs nothing and removes the
+   * easiest, most automated form of that fingerprinting — the kind done by
+   * a scanner sweeping a range for a version to match, not by a person
+   * looking at the site.
+   */
+  poweredByHeader: false,
+
+  /**
+   * No source maps for the browser bundle in production.
+   *
+   * This is Next's default, and it is pinned here on purpose: it is the one
+   * setting that decides whether the shipped JavaScript is minified output
+   * or reconstructs into our original TypeScript — original identifiers,
+   * original file structure, and every explanatory comment in this codebase
+   * along with them. Turning it on is a one-line change somebody makes while
+   * chasing a production bug, and it is not obvious from the outside that it
+   * has been left on. Stated explicitly so that flipping it is a decision
+   * with a comment attached rather than an accident.
+   *
+   * Be clear about the limit of this, though. It is a speed bump, not a
+   * lock. Client-side code is delivered to the client — that is what makes
+   * it client-side code — and minified JavaScript is readable to anyone
+   * willing to spend an afternoon on it. What actually protects the parts of
+   * this business that are ours (the pricing engine, lead scoring, the email
+   * sequences) is that they run on the server and are never sent to a
+   * browser at all. See SECURITY-NOTES.md.
+   */
+  productionBrowserSourceMaps: false,
+
   async headers() {
     return [
       {
