@@ -495,8 +495,9 @@ describe('telling the two kinds of invoice apart', () => {
   }
 
   beforeEach(() => {
+    // groupBy answers twice here — once for the status buckets, once for the
+    // refund split — so both are queued rather than sharing one value.
     prisma.invoice.groupBy.mockResolvedValue([]);
-    prisma.invoice.aggregate?.mockResolvedValue?.({ _sum: { refundedCents: 0 } });
     prisma.invoice.count.mockResolvedValue(2);
     prisma.invoice.findMany.mockResolvedValue([
       { id: 'inv_1', number: 'BM-2026-0031', status: 'open' },
