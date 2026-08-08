@@ -154,45 +154,36 @@ them and a future change does not quietly undo one.
 
 ---
 
-## 4. Open: four high-severity advisories, all under `next`
+## 4. Dependency advisories: clear
 
-**Status: not fixed. Deliberately left for a deploy of its own.**
+**Status: fixed.** `npm audit` reports 0 vulnerabilities.
 
-`npm audit` reports 4 high-severity advisories. Every one is transitive
-through `next@16.2.12` — none is a direct dependency, and there is nothing to
-fix in our own `package.json`:
+This section previously logged four high-severity advisories — `postcss`
+(XSS via unescaped `</style>`, arbitrary `.map` file read via
+attacker-controlled `sourceMappingURL`), `sharp` (libvips CVE-2026-33327,
+-33328, -35590, -35591) and `nanoid` — every one of them transitive through
+`next@16.2.12`, with nothing to fix in our own direct dependencies.
 
-| Package | Issue |
-| --- | --- |
-| `postcss` (via `next`) | XSS via unescaped `</style>`; arbitrary `.map` file read via attacker-controlled `sourceMappingURL` |
-| `sharp` (via `next`) | inherited libvips CVEs — 2026-33327, -33328, -35590, -35591 |
-| `nanoid` (via `next`) | — |
+Resolved by `next@16.2.12 -> 16.3.0` plus a non-breaking `npm audit fix` for
+`nanoid`. Next is pinned exactly, matching how `react` and `react-dom` are
+pinned here: a framework is not something to let a caret move underneath a
+production deploy.
 
-The only fix `npm` offers is `npm audit fix --force`, which installs
-`next@16.3.0` — outside the pinned range.
+The earlier note said this deserved a deploy of its own because
+`npm run build` runs `prisma migrate deploy` against the production database
+and so could not be rehearsed. That turned out to be avoidable — running
+`next build` directly, with `prisma generate` but *without* the migrate step,
+exercises the whole compile and prerender path against dummy environment
+values and needs no database. It completed clean: all 120 marketing pages
+prerendered, SSG routes generated, proxy compiled. Worth remembering as the
+way to verify a framework bump here.
 
-**Why this was not done here.** A framework bump against a live site deserves
-its own deploy with its own verification, not a quiet ride-along at the end of
-a security pass. `npm run build` runs `prisma migrate deploy` against the
-**production database**, so the build cannot be rehearsed in this environment
-— the first real execution of a Next upgrade would be the one serving
-customers. `AGENTS.md` also notes this Next version already differs from what
-is widely documented, so the upgrade wants someone reading
-`node_modules/next/dist/docs/` rather than assuming.
+Verified: `npm audit` clean, `tsc --noEmit` clean, 2,463 tests passing, and a
+full production build. There is no version-16 upgrade guide in
+`node_modules/next/dist/docs/`, which is consistent with 16.2 -> 16.3
+carrying no documented breaking changes.
 
-**Actual exposure, so this can be prioritised rather than panicked over:**
-
-- The `postcss` issues are build-time. They need attacker-controlled CSS or a
-  malicious `sourceMappingURL`, and all CSS here is ours. Effectively no
-  exposure.
-- `sharp` is the one worth attention: Next uses it for image optimization, so
-  it processes uploaded images. Reaching it requires an authenticated
-  upload — a staff or client session — so this is a
-  privilege-escalation-from-inside path, not an open door.
-
-Suggested: `npm i next@16.3.0`, run `npm run typecheck` and `npm test`, deploy
-alone, and check image optimization and an upload afterwards. Re-run
-`npm audit` on a schedule; nothing here does that automatically today.
+Nothing re-runs `npm audit` on a schedule. Worth adding.
 
 ---
 
