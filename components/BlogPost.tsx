@@ -20,7 +20,7 @@ import { CtaBand } from '@/components/CtaBand';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { ScrollProgress } from '@/components/ScrollProgress';
 import { CountUp, FocusRow, ScrubText, GridBackdrop } from '@/components/ui';
-import { formatBlogDate, type BlogPost, type Block } from '@/lib/blog';
+import { formatBlogDate, headingSlug, type BlogPost, type Block } from '@/lib/blog';
 import {
   BASE_SERVICES,
   formatCents,
@@ -208,14 +208,39 @@ function BlockRenderer({
         />
       );
 
-    case 'heading':
+    case 'heading': {
+      /*
+       * A section somebody can link to.
+       *
+       * These are twelve-minute technical posts with four or five sections
+       * each, and none of the headings carried an id — so the only way to
+       * point a colleague at one was to send the whole article and describe
+       * where to scroll. The heading is its own anchor now, with the `#`
+       * appearing on hover or keyboard focus rather than sitting in the
+       * typography all the time.
+       *
+       * `scroll-mt-28` matters as much as the id does: the nav is fixed over
+       * the top of the page, so without it every deep link lands with the
+       * heading underneath the bar it was supposed to arrive at.
+       */
+      const id = headingSlug(block.text);
       return (
         <FocusRow className="pt-8 border-t border-white/10">
-          <h2 className="font-mono text-xs uppercase tracking-[0.4em] text-white/40">
-            {block.text}
+          <h2 id={id} className="group/anchor scroll-mt-28 font-mono text-xs uppercase tracking-[0.4em] text-white/40">
+            <a href={`#${id}`} className="hover:text-white/70 transition-colors">
+              {block.text}
+              <span
+                aria-hidden="true"
+                className="ml-2 opacity-0 group-hover/anchor:opacity-100 focus-within:opacity-100 transition-opacity"
+              >
+                #
+              </span>
+              <span className="sr-only"> — link to this section</span>
+            </a>
           </h2>
         </FocusRow>
       );
+    }
 
     case 'quote':
       return (

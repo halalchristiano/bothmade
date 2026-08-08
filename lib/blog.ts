@@ -1678,11 +1678,50 @@ export function getBlogPost(slug: string): BlogPost | undefined {
   return BLOG_POSTS.find((p) => p.slug === slug);
 }
 
+/**
+ * Newest first, and the same answer everywhere.
+ *
+ * This ordering was written out twice — here and in components/BlogIndex —
+ * as `(a, b) => (a.date < b.date ? 1 : -1)`, which never returns 0. A
+ * comparator that reports two equal items as ordered in both directions is
+ * not a total order at all, so `sort` is free to arrange them however it
+ * likes, and two hand-copied calls are free to arrange them differently.
+ *
+ * The day two posts carry the same date — which is the day somebody publishes
+ * twice, not an exotic case — the index and the prev/next chain would stop
+ * agreeing: "Next" leading to a post sitting above you in the list, or a post
+ * reachable from the index and from nothing else. One function, and a
+ * comparator that admits when two dates are equal; `sort` is stable, so equal
+ * dates keep the order they are written in, in both places.
+ */
+export function sortedBlogPosts(): BlogPost[] {
+  return [...BLOG_POSTS].sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1));
+}
+
 export function getAdjacentBlogPosts(slug: string): { prev?: BlogPost; next?: BlogPost } {
-  const sorted = [...BLOG_POSTS].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const sorted = sortedBlogPosts();
   const idx = sorted.findIndex((p) => p.slug === slug);
   if (idx === -1) return {};
+  // Newest first, so the older post is further down the list. "Previous" is
+  // the one published before this, which is what the arrows on the page say.
   return { prev: sorted[idx + 1], next: sorted[idx - 1] };
+}
+
+/**
+ * A stable id for a section heading, so a paragraph of a twelve-minute
+ * article can be linked to rather than described.
+ */
+export function headingSlug(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60)
+      .replace(/-+$/, '') || 'section'
+  );
 }
 
 export function formatBlogDate(iso: string): string {

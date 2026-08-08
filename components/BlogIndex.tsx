@@ -6,7 +6,7 @@ import { Nav } from '@/components/Nav';
 import { Footer } from '@/components/Footer';
 import { LuxuryCursor } from '@/components/LuxuryCursor';
 import { FocusRow } from '@/components/ui';
-import { BLOG_POSTS, formatBlogDate } from '@/lib/blog';
+import { formatBlogDate, sortedBlogPosts } from '@/lib/blog';
 
 const ACCENT_HEX: Record<string, { from: string; to: string }> = {
   sky: { from: '#0ea5e9', to: '#0c2f52' },
@@ -15,7 +15,8 @@ const ACCENT_HEX: Record<string, { from: string; to: string }> = {
 };
 
 export function BlogIndex() {
-  const sorted = [...BLOG_POSTS].sort((a, b) => (a.date < b.date ? 1 : -1));
+  // The same ordering the prev/next chain uses, from the same function.
+  const sorted = sortedBlogPosts();
 
   return (
     <main className="relative bg-[#05030a] text-white">
