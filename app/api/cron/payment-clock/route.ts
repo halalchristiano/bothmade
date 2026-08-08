@@ -7,6 +7,7 @@ import { formatCentsExact } from '@/lib/pricing';
 import { invoiceDayMonth } from '@/lib/money-dates';
 import { hasLapsed } from '@/lib/design-approval';
 import { chaseState } from '@/lib/payment-chase';
+import { receivedCents } from '@/lib/invoice-settlement';
 import { sendDesignApprovedEmail, sendPaymentChaseEmail } from '@/lib/email';
 import { clientWantsEmail } from '@/lib/email-preferences';
 import { designStage } from '@/lib/design-stages';
@@ -156,8 +157,53 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    /*
+     * What has actually come in against each of these.
+     *
+     * The instalment row carries what was BILLED and nothing about what has
+     * arrived, and until an invoice is settled in full it stays `due` — which
+     * is exactly right, and is why this loop has to look. Money can reach a
+     * bill without closing it: a client who transfers half of Payment 2 of 3
+     * leaves an open invoice, a `due` instalment, and half the amount still
+     * owed. Chasing that row for its face value emails them that the whole
+     * $12,000 is overdue and mints a Stripe checkout for $12,000 — so a client
+     * who has already paid $6,000 and is trying to do the right thing pays
+     * $18,000 for an $12,000 bill, and we took it.
+     *
+     * One query for the batch rather than one per instalment: this runs over
+     * every unpaid invoice in the system on a serverless function with a
+     * 60-second ceiling, and the Stripe calls below already own that budget.
+     */
+    const invoiceNumbers = outstanding
+      .map((inst) => inst.invoiceNumber)
+      .filter((number): number is string => Boolean(number));
+    const ledger = invoiceNumbers.length
+      ? await prisma.invoice.findMany({
+          where: { number: { in: invoiceNumbers } },
+          select: { number: true, status: true, payments: { select: { amount: true } } },
+        })
+      : [];
+    const byNumber = new Map(ledger.map((invoice) => [invoice.number, invoice]));
+
     for (const inst of outstanding) {
       if (!inst.invoicedAt) continue;
+
+      /*
+       * No ledger row means an instalment invoiced before the invoice ledger
+       * existed. Nothing is known about part payments on it, so it is chased
+       * for its face value exactly as before — the old behaviour, kept for
+       * the rows the new one cannot speak about.
+       */
+      const invoice = inst.invoiceNumber ? byNumber.get(inst.invoiceNumber) ?? null : null;
+
+      // Belt and braces. A settled or cancelled invoice should already have
+      // moved its instalment off `due`, and if the two ever disagree the
+      // chase is the wrong side to resolve it on.
+      if (invoice && invoice.status !== 'open') continue;
+
+      const receivedAlreadyCents = receivedCents(invoice?.payments);
+      const dueCents = inst.amountCents - receivedAlreadyCents;
+      if (dueCents <= 0) continue;
 
       const state = chaseState({
         invoicedAt: inst.invoicedAt,
@@ -166,7 +212,7 @@ export async function GET(request: NextRequest) {
         chaseCount: inst.chaseCount,
         now,
         label: inst.label,
-        amountLabel: formatCentsExact(inst.amountCents),
+        amountLabel: formatCentsExact(dueCents),
       });
 
       if (!state.shouldChase) continue;
@@ -191,8 +237,12 @@ export async function GET(request: NextRequest) {
               quantity: 1,
               price_data: {
                 currency: 'usd',
-                unit_amount: inst.amountCents,
-                product_data: { name: `${inst.label} — ${inst.project.name}` },
+                unit_amount: dueCents,
+                product_data: {
+                  name: receivedAlreadyCents > 0
+                    ? `${inst.label} (balance) — ${inst.project.name}`
+                    : `${inst.label} — ${inst.project.name}`,
+                },
               },
             },
           ],
@@ -233,9 +283,18 @@ export async function GET(request: NextRequest) {
         projectName: inst.project.name,
         label: inst.label,
         invoiceNumber: inst.invoiceNumber,
-        amountLabel: formatCentsExact(inst.amountCents),
+        amountLabel: formatCentsExact(dueCents),
         subject: state.subject,
-        line: state.line,
+        /*
+         * Said out loud rather than left to be inferred from a smaller
+         * number. A client who transferred half and then reads "Payment 2 of
+         * 3 is overdue" beside an amount that is not what Payment 2 of 3
+         * costs concludes we have lost their money, and the reply that
+         * follows takes longer than the payment would have.
+         */
+        line: receivedAlreadyCents > 0
+          ? `We've received ${formatCentsExact(receivedAlreadyCents)} of ${formatCentsExact(inst.amountCents)} for ${inst.label} — thank you. What's below is the balance. ${state.line}`
+          : state.line,
         // `daysPastDue` above is computed from the raw instant, so a label
         // rendered in the cron's own timezone can name one day while the
         // arithmetic calling it overdue means another — and the client is the
@@ -281,7 +340,7 @@ export async function GET(request: NextRequest) {
           contactName: inst.project.client.contactName,
           phone: inst.project.client.phone,
           label: inst.label,
-          amountLabel: formatCentsExact(inst.amountCents),
+          amountLabel: formatCentsExact(dueCents),
           daysPastDue: state.daysPastDue,
           chaseCount: inst.chaseCount + 1,
         }).catch((error) => console.error(`Call notice failed for ${inst.id}:`, error));
