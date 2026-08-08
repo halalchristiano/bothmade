@@ -127,6 +127,8 @@ export default function AdminSettingsPage() {
   const [appPassword, setAppPassword] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showGmailGuide, setShowGmailGuide] = useState(false);
   const [showAppPasswordFallback, setShowAppPasswordFallback] = useState(false);
@@ -355,11 +357,44 @@ export default function AdminSettingsPage() {
     }
   };
 
+  /**
+   * Severing the account every client email goes out as.
+   *
+   * This was one unlabelled text link, one click, no confirmation and no
+   * reporting: `await fetch(DELETE)` with the response thrown away. Two
+   * different bad afternoons came out of that.
+   *
+   * A mis-click disconnected it silently. There is no undo — the app
+   * password is encrypted at rest and cleared, the refresh token with it —
+   * so getting back to where you were means Google's consent screen again,
+   * or generating a fresh 16-character App Password. Meanwhile replies stop
+   * being matched to their lead and bounce notices stop turning dead
+   * addresses into "call instead", and neither of those announces itself.
+   *
+   * And a failed disconnect looked exactly like a successful one. A 500
+   * fell straight through to `load()`, which redrew the panel still
+   * connected, so the honest reading of the screen was "the button did
+   * nothing" — and the next move is to press it again. A network error was
+   * worse: no catch at all, so the click handler rejected into nowhere while
+   * `finally` tidied the spinner away.
+   */
   const handleDisconnect = async () => {
     setDisconnecting(true);
+    setDisconnectError(null);
     try {
-      await fetch('/api/admin/settings/gmail', { method: 'DELETE' });
+      const res = await fetch('/api/admin/settings/gmail', { method: 'DELETE' });
+      if (!res.ok) {
+        setDisconnectError(
+          'Could not disconnect — your account is still connected and emails still go out as you. Try again in a moment.'
+        );
+        return;
+      }
+      setConfirmingDisconnect(false);
       load();
+    } catch {
+      setDisconnectError(
+        'Could not reach the server — nothing was disconnected. Check your connection and try again.'
+      );
     } finally {
       setDisconnecting(false);
     }
@@ -572,13 +607,63 @@ export default function AdminSettingsPage() {
                 </span>
               </div>
               <button
-                onClick={handleDisconnect}
-                disabled={disconnecting}
-                className="text-xs text-white/40 hover:text-red-300 transition-colors"
+                onClick={() => {
+                  setDisconnectError(null);
+                  setConfirmingDisconnect(true);
+                }}
+                disabled={disconnecting || confirmingDisconnect}
+                className="shrink-0 rounded-md px-1 text-xs text-white/40 transition-colors hover:text-red-300 disabled:opacity-40"
               >
-                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                Disconnect
               </button>
             </div>
+
+            {/*
+              The step that was missing. Not a modal — the thing being
+              disconnected is right above it and should stay on screen — but
+              it does have to say what stops, because "Disconnect" on its own
+              reads like a toggle and this one has no undo.
+            */}
+            {confirmingDisconnect && (
+              <div
+                role="group"
+                aria-label="Confirm disconnecting your email account"
+                className="rounded-xl border border-red-400/25 bg-red-400/[0.06] px-4 py-3.5"
+              >
+                <p className="text-sm font-medium text-red-200">
+                  Disconnect {status.gmailAddress}?
+                </p>
+                <p className="mt-1.5 text-xs leading-relaxed text-white/55">
+                  Client emails stop going out through this account, replies stop being matched to
+                  their lead, and bounce notices stop turning dead addresses into &ldquo;call
+                  instead&rdquo;. There is no undo: reconnecting means signing in with Google
+                  again, or generating a fresh App Password.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDisconnect}
+                    disabled={disconnecting}
+                    className="inline-flex min-h-9 items-center rounded-lg border border-red-400/30 bg-red-400/10 px-3.5 py-1.5 text-xs font-semibold text-red-200 transition-colors hover:bg-red-400/15 disabled:opacity-50"
+                  >
+                    {disconnecting ? 'Disconnecting…' : 'Yes, disconnect'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmingDisconnect(false)}
+                    disabled={disconnecting}
+                    className="inline-flex min-h-9 items-center rounded-lg px-3 py-1.5 text-xs font-medium text-white/50 transition-colors hover:text-white/80 disabled:opacity-50"
+                  >
+                    Keep it connected
+                  </button>
+                </div>
+                {/* A disconnect that failed used to be indistinguishable from
+                    one that worked, because the panel simply redrew. */}
+                {disconnectError && (
+                  <p role="alert" className="mt-3 text-xs leading-relaxed text-red-300">
+                    {disconnectError}
+                  </p>
+                )}
+              </div>
+            )}
 
             {status.needsReconnect && (
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3.5">
