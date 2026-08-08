@@ -57,6 +57,16 @@ export default function AdminClientDetailPage() {
    * not.
    */
   const [actionError, setActionError] = useState('');
+  /*
+   * The refusal that has a second answer.
+   *
+   * Decommissioning a client with work still in flight is a real thing —
+   * somebody walks away mid-build — but it is not the thing the single click
+   * next to "Edit" should do. The route now refuses it and says what is live;
+   * this turns that refusal into a decision rather than a dead end, because a
+   * 409 you cannot act on just becomes a message people learn to click past.
+   */
+  const [liveWorkAsk, setLiveWorkAsk] = useState<{ message: string } | null>(null);
   /** A failed initial load, which used to sit on the spinner forever. */
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -119,17 +129,25 @@ export default function AdminClientDetailPage() {
     }
   };
 
-  const handleToggleArchive = async () => {
+  const handleToggleArchive = async (force = false) => {
     if (!client) return;
     const goingDown = !client.archivedAt;
     setArchiving(true);
     setActionError('');
+    setLiveWorkAsk(null);
     try {
       const response = await fetch(`/api/admin/clients/${clientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archived: goingDown }),
+        body: JSON.stringify({ archived: goingDown, ...(force ? { acknowledgeLiveWork: true } : {}) }),
       });
+      if (response.status === 409) {
+        const said = await response.json().catch(() => null);
+        if (said?.liveWork) {
+          setLiveWorkAsk({ message: said.error });
+          return;
+        }
+      }
       if (!response.ok) {
         // Said plainly, because the belief this leaves behind is the
         // expensive one: decommissioning blocks the client's login, and
@@ -144,6 +162,7 @@ export default function AdminClientDetailPage() {
         );
         return;
       }
+      setLiveWorkAsk(null);
       loadClient();
     } catch {
       setActionError(
@@ -247,6 +266,37 @@ export default function AdminClientDetailPage() {
         </div>
       )}
 
+      {/* Not an error — a decision. The route named what is still live; this
+          is where somebody says whether that changes their mind. */}
+      {liveWorkAsk && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-400/30 bg-amber-400/[0.07] px-4 py-3"
+        >
+          <p className="flex items-start gap-2 text-sm text-amber-100">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-300/80" />
+            <span>{liveWorkAsk.message}</span>
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 pl-[23px]">
+            <button
+              type="button"
+              onClick={() => handleToggleArchive(true)}
+              disabled={archiving}
+              className="rounded-lg border border-amber-400/30 px-3 py-1.5 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/10 disabled:opacity-40"
+            >
+              {archiving ? 'Decommissioning…' : 'Decommission anyway'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLiveWorkAsk(null)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-amber-100/60 transition-colors hover:text-amber-100"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+
       {composingEmail && (
         <EmailComposer
           recipientEmail={client.email}
@@ -265,7 +315,7 @@ export default function AdminClientDetailPage() {
           </p>
           <BrandButton
             variant="quiet"
-            onClick={handleToggleArchive}
+            onClick={() => handleToggleArchive()}
             disabled={archiving}
             className="inline-flex items-center gap-1.5 whitespace-nowrap"
           >
@@ -283,7 +333,7 @@ export default function AdminClientDetailPage() {
             {!client.archivedAt && (
               <BrandButton
                 variant="quiet"
-                onClick={handleToggleArchive}
+                onClick={() => handleToggleArchive()}
                 disabled={archiving}
                 className="inline-flex items-center gap-1.5"
               >

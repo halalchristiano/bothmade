@@ -106,12 +106,61 @@ export async function PATCH(
     if (denied) return denied;
 
 
-    const { company, phone, contactName, archived } = await request.json();
+    const body = await request.json();
+    const { company, phone, contactName, archived } = body;
 
-    const existing = archived !== undefined ? await prisma.client.findUnique({ where: { id: (await params).clientId } }) : null;
+    const { clientId } = await params;
+    const existing = archived !== undefined ? await prisma.client.findUnique({ where: { id: clientId } }) : null;
+
+    /*
+     * Decommissioning is not filing something away, and this route treated it
+     * as if it were.
+     *
+     * `archivedAt` is read as a hard stop in six places. lib/middleware
+     * re-checks it on every request, so the client is thrown out of their
+     * dashboard mid-session; the login route answers "This account has been
+     * decommissioned"; the invoice send route refuses outright — its own
+     * message is "reactivate them before chasing this", which is the codebase
+     * already knowing this is a problem and only saying so once the money is
+     * already stuck behind it.
+     *
+     * So archiving a client who still has work in flight quietly does three
+     * things nobody asked for: locks them out of the dashboard they are being
+     * kept updated on, makes their unpaid invoices unsendable, and drops their
+     * project off the priorities list. None of it is announced, and the client
+     * finds out by trying to log in.
+     *
+     * Its far more destructive sibling — DELETE, on the same route — takes a
+     * typed company name and re-checks that on the server. This took a bare
+     * `{ archived: true }`. Named rather than forbidden, as everywhere else:
+     * an offboarding mid-project is a real thing that happens, it just should
+     * not happen on the same single click that tidies up a finished one.
+     */
+    if (archived === true && existing && !existing.archivedAt && body?.acknowledgeLiveWork !== true) {
+      const [liveProjects, unpaidInvoices] = await Promise.all([
+        prisma.project.count({ where: { clientId, status: { not: 'complete' } } }),
+        prisma.invoice.count({ where: { clientId, status: 'open' } }),
+      ]);
+      if (liveProjects > 0 || unpaidInvoices > 0) {
+        const parts: string[] = [];
+        if (liveProjects > 0) {
+          parts.push(`${liveProjects} project${liveProjects === 1 ? '' : 's'} still open`);
+        }
+        if (unpaidInvoices > 0) {
+          parts.push(`${unpaidInvoices} unpaid invoice${unpaidInvoices === 1 ? '' : 's'}`);
+        }
+        return NextResponse.json(
+          {
+            error: `${existing.company} has ${parts.join(' and ')}. Decommissioning locks them out of their dashboard straight away and makes those invoices unsendable — they would find out by trying to log in.`,
+            liveWork: { projects: liveProjects, unpaidInvoices },
+          },
+          { status: 409 }
+        );
+      }
+    }
 
     const client = await prisma.client.update({
-      where: { id: (await params).clientId },
+      where: { id: clientId },
       data: {
         company: company || undefined,
         phone: phone !== undefined ? phone : undefined,
