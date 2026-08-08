@@ -1463,12 +1463,26 @@ export default function ClientDashboard() {
                         ? 'Redirecting to checkout…'
                         : (() => {
                             const due = project.instalments?.find((i) => i.status === 'due');
-                            return due
-                              ? `Pay ${due.label} — $${(due.amountCents / 100).toLocaleString('en-US', {
-                                  minimumFractionDigits: due.amountCents % 100 ? 2 : 0,
-                                  maximumFractionDigits: due.amountCents % 100 ? 2 : 0,
-                                })}`
-                              : `Pay Balance — ${formatCentsExact(project.balanceDue)}`;
+                            if (!due) return `Pay Balance — ${formatCentsExact(project.balanceDue)}`;
+                            /*
+                             * What is actually still owed, which is what the
+                             * button will charge.
+                             *
+                             * The schedule row a few lines above already says
+                             * "$6,000 received, thank you — $6,000 left", and
+                             * the route mints the checkout for the outstanding
+                             * amount. Only this button was still promising the
+                             * face value, so a client who had transferred half
+                             * was looking at two different figures for one
+                             * payment and being asked, in the loud one, for the
+                             * whole thing again. The likeliest response to that
+                             * is not clicking it.
+                             */
+                            const received = Math.min(due.receivedCents ?? 0, due.amountCents);
+                            const outstanding = due.amountCents - received;
+                            return received > 0
+                              ? `Pay the rest of ${due.label} — ${formatCentsExact(outstanding)}`
+                              : `Pay ${due.label} — ${formatCentsExact(outstanding)}`;
                           })()}
                     </span>
                     {!payingBalance && !reduceMotion && (
