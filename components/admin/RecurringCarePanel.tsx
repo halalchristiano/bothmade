@@ -80,6 +80,14 @@ const STATUS_LABELS: Record<string, string> = {
  * when the project ends, so a panel that only speaks when clicked is a panel
  * that gets missed until it's too late to matter.
  *
+ * That still holds, and it is why the unsold state kept its sentence rather
+ * than being collapsed to a title. What changed is the volume, not the
+ * speaking: the brand gradient and the uppercase sky heading are the loudest
+ * treatment in the admin, and on most projects — nothing sold, no offer out —
+ * they were spending it to say that nothing had happened, above the project's
+ * own name and the money owed. Loud is for a live plan or an offer awaiting
+ * an answer. A prompt is drawn as a prompt.
+ *
  * The body is collapsed by default: it's a composer, not a status readout, and
  * it shouldn't push the whole project under a fold on every visit.
  *
@@ -291,29 +299,75 @@ export function RecurringCarePanel({ projectId }: { projectId: string }) {
       ? { text: 'Offer out', className: STATUS_STYLES.sent }
       : { text: 'Not sold', className: 'border-amber-400/40 bg-amber-400/10 text-amber-200' };
 
+  /*
+   * Loud only when it is carrying something.
+   *
+   * This is the first full-width element on the project page, drawn in the
+   * one gradient the admin reserves for things it wants looked at — and on
+   * every project with no plan sold and no offer out, which is most of them,
+   * what it was drawing attention to was "Nothing offered yet." It outranked
+   * the project's own name and the money underneath it in order to say that
+   * nothing had happened.
+   *
+   * A live plan or an offer awaiting an answer is real news and keeps the
+   * full treatment. An unsold one is a prompt, so it is drawn as one: a quiet
+   * single line that still opens the whole panel when pressed.
+   */
+  const prompting = !live && !pending;
+
   return (
-    <section className="mb-6 overflow-hidden rounded-2xl border border-sky-400/25 bg-gradient-to-r from-sky-400/[0.09] via-purple-500/[0.06] to-transparent">
+    <section
+      className={
+        prompting
+          ? 'mb-6 overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02]'
+          : 'mb-6 overflow-hidden rounded-2xl border border-sky-400/25 bg-gradient-to-r from-sky-400/[0.09] via-purple-500/[0.06] to-transparent'
+      }
+    >
       <button
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="w-full text-left px-5 py-4 hover:bg-white/[0.03] transition-colors"
+        className={`w-full text-left transition-colors hover:bg-white/[0.03] ${
+          prompting ? 'px-5 py-3' : 'px-5 py-4'
+        }`}
       >
         <div className="flex flex-wrap items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-400/15 text-sky-300 shrink-0">
-            <Repeat size={17} />
+          <span
+            className={`flex items-center justify-center rounded-lg shrink-0 ${
+              prompting ? 'h-7 w-7 bg-white/[0.05] text-white/40' : 'h-9 w-9 bg-sky-400/15 text-sky-300'
+            }`}
+          >
+            <Repeat size={prompting ? 14 : 17} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold uppercase tracking-[0.12em] text-sky-200">
-                Monthly Care Plan
+            <span className="flex flex-wrap items-baseline gap-x-1 gap-y-1">
+              <span
+                className={
+                  prompting
+                    ? 'text-sm font-medium text-white/60'
+                    : 'text-sm font-bold uppercase tracking-[0.12em] text-sky-200'
+                }
+              >
+                {prompting ? 'Monthly care plan' : 'Monthly Care Plan'}
               </span>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${badge.className}`}>
-                {badge.text}
-              </span>
+              {!prompting && (
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${badge.className}`}>
+                  {badge.text}
+                </span>
+              )}
             </span>
-            <span className="block text-sm text-white/55 mt-1">{headline}</span>
+            {/* Still speaks unprompted — that is the point of the panel and
+                the reason it sits at the top of the page. It just says it on
+                the same line rather than in a second one under a heading in
+                the brand gradient. */}
+            <span className={prompting ? 'text-sm text-white/35' : 'mt-1 block text-sm text-white/55'}>
+              {prompting ? ` · ${headline}` : headline}
+            </span>
           </span>
-          <span className="flex items-center gap-2 text-xs font-semibold text-sky-200 shrink-0">
+          <span
+            className={`flex items-center gap-2 text-xs font-semibold shrink-0 ${
+              prompting ? 'text-white/45' : 'text-sky-200'
+            }`}
+          >
             {expanded ? 'Close' : live || pending ? 'Manage' : 'Set up the offer'}
             <ChevronDown size={15} className={expanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
           </span>
