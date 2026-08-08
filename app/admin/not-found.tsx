@@ -33,10 +33,17 @@ export default function AdminNotFound() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 md:px-8">
       <div className="rounded-2xl border border-white/12 bg-white/[0.03] p-6 md:p-8">
-        <p className="flex items-center gap-2 text-sm font-semibold text-white/80">
+        {/*
+          An h1, not a <p>. This was written as a paragraph and the a11y sweep
+          caught it: the page had no heading at all, so its outline was empty
+          and there was nothing for a screen reader user to jump to — on the
+          one screen whose entire job is to say where you are and offer a way
+          out. Styled exactly as before; only the element changed.
+        */}
+        <h1 className="flex items-center gap-2 text-sm font-semibold text-white/80">
           <SearchX size={16} />
           There&apos;s no page here
-        </p>
+        </h1>
         <p className="mt-2 text-sm leading-relaxed text-white/60">
           This address doesn&apos;t match anything in the admin. It may have been renamed, or the
           link may be older than the page. Nothing is wrong and nothing has been lost — the nav

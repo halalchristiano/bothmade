@@ -71,6 +71,26 @@ export function IOSHero() {
       ref={sectionRef}
       className="relative min-h-[100svh] overflow-hidden bg-[#05030a]"
     >
+      {/*
+        The page's h1, and the only one that exists before somebody clicks.
+
+        The visible headline — "Apps people keep on their home screen." — lives
+        inside `{open && launching && ...}`, the launched-app state. That is a
+        deliberate piece of theatre and it should stay, but it meant /ios had no
+        h1 at all on load: the heading outline started at the "Capabilities" h2,
+        and a crawler saw a service page with no title. /web and /visionpro both
+        had one, which is exactly the gap WebHero's own comment describes and
+        then assumes /ios does not have.
+
+        Same fix as WebHero, for the same reason: sr-only, so nothing on screen
+        changes, and always mounted so it does not depend on an interaction
+        nobody is required to perform.
+      */}
+      <h1 className="sr-only">
+        iOS, iPad and Mac app development — native Apple software in Swift and SwiftUI,
+        built for apps people keep on their home screen.
+      </h1>
+
       {/* wallpaper */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_20%,#221a4d_0%,#07050f_60%)]" />
       <div
@@ -226,7 +246,14 @@ export function IOSHero() {
                   ios · ipados · macos
                 </p>
 
-                <h1
+                {/*
+                  A <p>, not an <h1>. It says the same thing as the sr-only h1
+                  above and is set at the same size it always was, so nothing
+                  looks different — but two h1s on one page, appearing only
+                  after a click, is a worse outline than one that is always
+                  right.
+                */}
+                <p
                   className="font-bold leading-[0.95] tracking-[-0.03em]"
                   style={{ fontSize: 'clamp(2.5rem, 8vw, 6.5rem)' }}
                 >
@@ -237,7 +264,7 @@ export function IOSHero() {
                   <span className="bg-gradient-to-r from-indigo-200 via-indigo-300 to-indigo-500 bg-clip-text text-transparent">
                     home screen.
                   </span>
-                </h1>
+                </p>
 
                 <p className="mt-8 max-w-xl text-base md:text-lg leading-relaxed text-white/50">
                   That transition you just watched is the one users see every time they

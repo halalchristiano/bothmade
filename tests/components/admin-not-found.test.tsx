@@ -29,6 +29,13 @@ describe('the admin 404', () => {
     expect(screen.getByText(/no page here/i)).toBeInTheDocument();
   });
 
+  it('says it in a heading, so the page has an outline to land on', () => {
+    // It was a <p>, which left the page with no heading at all — caught by the
+    // sweep, not by these tests, which is why the assertion is here now.
+    render(<AdminNotFound />);
+    expect(screen.getByRole('heading', { name: /no page here/i })).toBeInTheDocument();
+  });
+
   it('offers a way back into the admin', () => {
     render(<AdminNotFound />);
     const dashboard = screen.getByRole('link', { name: /back to dashboard/i });
