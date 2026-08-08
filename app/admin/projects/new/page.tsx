@@ -172,16 +172,17 @@ function NewProjectForm() {
           <h2 className="text-lg font-semibold mb-4">Client</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
-              <input value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputClass} />
+              <label htmlFor="new-contact-name" className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
+              <input id="new-contact-name" value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Company</label>
-              <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputClass} />
+              <label htmlFor="new-company" className="block text-sm font-medium mb-2 text-white/70">Company</label>
+              <input id="new-company" value={company} onChange={(e) => setCompany(e.target.value)} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Email</label>
+              <label htmlFor="new-email" className="block text-sm font-medium mb-2 text-white/70">Email</label>
               <input
+                id="new-email"
                 type="email"
                 value={clientEmail}
                 onChange={(e) => setClientEmail(e.target.value)}
@@ -192,8 +193,8 @@ function NewProjectForm() {
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Phone (optional)</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+              <label htmlFor="new-phone" className="block text-sm font-medium mb-2 text-white/70">Phone (optional)</label>
+              <input id="new-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
             </div>
           </div>
         </div>
@@ -213,8 +214,9 @@ function NewProjectForm() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Client Type</label>
+              <label htmlFor="new-client-type" className="block text-sm font-medium mb-2 text-white/70">Client Type</label>
               <select
+                id="new-client-type"
                 value={clientType}
                 onChange={(e) => setClientType(e.target.value as ClientType)}
                 className={inputClass}
@@ -229,8 +231,9 @@ function NewProjectForm() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-white/70">Timeline</label>
+              <label htmlFor="new-timeline" className="block text-sm font-medium mb-2 text-white/70">Timeline</label>
               <select
+                id="new-timeline"
                 value={timeline}
                 onChange={(e) => setTimeline(e.target.value as TimelineKey)}
                 className={inputClass}
@@ -268,10 +271,11 @@ function NewProjectForm() {
           )}
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-white/70">
+            <label htmlFor="new-price-override" className="block text-sm font-medium mb-2 text-white/70">
               Override price (optional, USD) — suggested: {formatCents(grandTotal)}
             </label>
             <input
+              id="new-price-override"
               type="number"
               value={priceOverride}
               onChange={(e) => setPriceOverride(e.target.value)}
