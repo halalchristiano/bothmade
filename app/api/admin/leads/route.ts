@@ -144,6 +144,24 @@ export async function GET(request: NextRequest) {
      * So: what the client is actually being billed, if that is known; then
      * what was quoted; and only then the guess.
      */
+    /*
+     * When somebody last actually worked this lead.
+     *
+     * Not `updatedAt`: that is bumped by any write at all — a bulk tag edit,
+     * an importer enrichment pass, correcting a phone number — so ordering by
+     * it lifts leads nobody has spoken to. The activity timeline IS the record
+     * of work: a note, a logged call, an email, a dial, a proposal. One
+     * grouped query rather than a column, for the same reason the sales
+     * dashboard does it that way — a column is only as good as the last of
+     * thirteen writers who remembered it, and this cannot drift.
+     */
+    const lastActivity = await prisma.leadActivity.groupBy({
+      by: ['leadId'],
+      where: { leadId: { in: leads.map((l) => l.id) } },
+      _max: { createdAt: true },
+    });
+    const workedAt = new Map(lastActivity.map((r) => [r.leadId, r._max.createdAt]));
+
     const converted = await prisma.project.findMany({
       where: { convertedFromLeadId: { in: leads.map((l) => l.id) } },
       select: { convertedFromLeadId: true, totalPrice: true },
@@ -184,6 +202,8 @@ export async function GET(request: NextRequest) {
       emailDeliveryFailedAt: lead.emailDeliveryFailedAt,
       emailDeliveryFailedReason: lead.emailDeliveryFailedReason,
       updatedAt: lead.updatedAt,
+      /** Last real touch — null for a lead nobody has worked yet. */
+      lastActivityAt: workedAt.get(lead.id) ?? null,
       assignedTo: lead.assignedTo,
       activities: lead.activities,
 

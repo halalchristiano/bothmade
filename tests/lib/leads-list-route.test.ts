@@ -28,6 +28,7 @@ import { LEAD_CSV_HEADERS, LEAD_EXPORT_SELECT, leadCsv } from '@/lib/lead-export
 const prisma = {
   lead: { findMany: vi.fn() },
   project: { findMany: vi.fn() },
+  leadActivity: { groupBy: vi.fn() },
 };
 
 const requireStaff = vi.fn();
@@ -90,6 +91,7 @@ beforeEach(() => {
   requireStaff.mockResolvedValue({ userId: 'user_1', role: 'owner' });
   prisma.lead.findMany.mockResolvedValue([lead]);
   prisma.project.findMany.mockResolvedValue([]);
+  prisma.leadActivity.groupBy.mockResolvedValue([]);
 });
 
 const selectOf = () => prisma.lead.findMany.mock.calls[0][0].select as Record<string, unknown>;
@@ -199,6 +201,52 @@ describe('what comes back', () => {
 
     expect(body.leads[0].dealValue).toBe(500_000);
     expect(body.leads[0].dealValueIsFirm).toBe(false);
+  });
+});
+
+/**
+ * When each lead was last actually worked.
+ *
+ * The board orders its columns by this, so that logging a note, a call or an
+ * email lifts the business to the top of the column it is already in. The
+ * obvious column to sort on was `updatedAt`, and it is the wrong one: any
+ * write touches it, so a bulk tag edit or an importer pass would reorder the
+ * board for work nobody had done. The activity timeline is the record of
+ * somebody making contact, and it is the only thing here that is.
+ */
+describe('when each lead was last worked', () => {
+  const worked = new Date('2026-08-07T18:30:00Z');
+
+  it('reads the activity timeline rather than the row', async () => {
+    prisma.leadActivity.groupBy.mockResolvedValue([{ leadId: 'lead_1', _max: { createdAt: worked } }]);
+
+    const body = await (await GET(request())).json();
+
+    expect(new Date(body.leads[0].lastActivityAt).toISOString()).toBe(worked.toISOString());
+    // Not the row's own timestamp, which every write bumps.
+    expect(body.leads[0].lastActivityAt).not.toBe(body.leads[0].updatedAt);
+  });
+
+  it('asks only for the leads it is about to send', async () => {
+    await GET(request());
+
+    const args = prisma.leadActivity.groupBy.mock.calls[0][0];
+    expect(args.by).toEqual(['leadId']);
+    expect(args.where.leadId.in).toEqual(['lead_1']);
+    expect(args._max).toEqual({ createdAt: true });
+  });
+
+  /**
+   * Never worked has to arrive as null, not as an absent field or a zero
+   * date — the board sorts those cards to the bottom and labels them, and
+   * both readings depend on telling "nobody has called them" apart from
+   * "somebody called them a long time ago".
+   */
+  it('says null for a lead nobody has worked', async () => {
+    const body = await (await GET(request())).json();
+
+    expect(body.leads[0]).toHaveProperty('lastActivityAt');
+    expect(body.leads[0].lastActivityAt).toBeNull();
   });
 });
 

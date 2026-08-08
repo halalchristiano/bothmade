@@ -16,6 +16,7 @@ import { formatCents } from '@/lib/pricing';
 import { SearchFilter, matchesSearch } from '@/components/admin/ui';
 import { LostReasonModal } from '@/components/admin/LostReasonModal';
 import { LogTouchPopover } from '@/components/admin/LogTouchPopover';
+import { formatRelativeTime } from '@/components/admin/dashboard/RefreshIndicator';
 import { useLeadStatusChange } from '@/components/admin/useLeadStatusChange';
 
 interface LeadCard {
@@ -32,7 +33,25 @@ interface LeadCard {
   hotLead: boolean;
   qualifiedAt: string | null;
   updatedAt: string;
+  /** Last note, call, email or dial. Null for a lead nobody has worked yet. */
+  lastActivityAt: string | null;
   assignedTo: { name: string | null } | null;
+}
+
+/**
+ * How loudly a card admits it has gone quiet.
+ *
+ * Thresholds match the ones the rest of the app already uses to decide a lead
+ * is going stale — five days on the dashboard's "Do This Next", and the
+ * late-funnel checks at three. A card here is quieter than that by design:
+ * this is a board somebody browses, not a list telling them what to do.
+ */
+function staleTone(lastActivityAt: string | null): string {
+  if (!lastActivityAt) return 'text-white/30';
+  const days = (Date.now() - new Date(lastActivityAt).getTime()) / 86_400_000;
+  if (days >= 14) return 'text-red-300/70';
+  if (days >= 5) return 'text-amber-300/70';
+  return 'text-white/30';
 }
 
 /** The full status order, which is still what a move steps through. */
@@ -59,6 +78,30 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
   const [search, setSearch] = useState('');
   const [movingId, setMovingId] = useState<string | null>(null);
   const [hideClosedColumns, setHideClosedColumns] = useState(false);
+  /*
+   * Remembered, because it is a preference about how you read the board
+   * rather than a filter you set for one look. Defaults to "worked": the
+   * question it answers — what have I just done, and what has gone quiet — is
+   * the one somebody has while the board is open.
+   */
+  const [order, setOrder] = useState<'worked' | 'pipeline'>('worked');
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('bothmade_board_order') === 'pipeline') setOrder('pipeline');
+    } catch {
+      /* private browsing — the default is fine */
+    }
+  }, []);
+
+  const chooseOrder = (next: 'worked' | 'pipeline') => {
+    setOrder(next);
+    try {
+      localStorage.setItem('bothmade_board_order', next);
+    } catch {
+      /* ignore */
+    }
+  };
   const reduceMotion = useReducedMotion();
 
   const load = async () => {
@@ -82,8 +125,28 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken]);
 
-  // Grouped by stage, and within a stage still ordered by exact status, so a
-  // column reads front-to-back like the pipeline it represents.
+  /*
+   * Two ways to read a column, and they genuinely disagree.
+   *
+   * "Pipeline order" is how this board was built: within a stage, ordered by
+   * exact status, so a column reads front-to-back like the pipeline it
+   * represents. That is right for "where is everything".
+   *
+   * "Recently worked" is right for the other question — I just logged a call
+   * on this one, where did it go. Under pipeline order it went nowhere
+   * visible, because a stage holds several statuses and status wins: a
+   * qualified lead can never rise above a contacted one in Talking, however
+   * recently you touched it. Ties then fell through to whatever order the API
+   * returned, which was `updatedAt` — bumped by any write at all, so a bulk
+   * tag edit lifted leads nobody had spoken to.
+   *
+   * Sorted on the activity timeline instead, which is the actual record of
+   * work. A lead with no activity sorts last rather than first: never touched
+   * is not the same as touched longest ago, and it must not read as the most
+   * recent thing you did.
+   */
+  const workedAt = (l: LeadCard) => (l.lastActivityAt ? new Date(l.lastActivityAt).getTime() : -Infinity);
+
   const columns = useMemo(() => {
     const grouped = Object.fromEntries(LEAD_STAGES.map((s) => [s.key, [] as LeadCard[]])) as Record<
       string,
@@ -96,12 +159,24 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
       grouped[stageForStatus(lead.status).key]?.push(lead);
     }
     for (const key of Object.keys(grouped)) {
-      grouped[key].sort(
-        (a, b) => COLUMN_STATUSES.indexOf(a.status) - COLUMN_STATUSES.indexOf(b.status)
-      );
+      grouped[key].sort((a, b) => {
+        if (order === 'worked') return workedAt(b) - workedAt(a);
+        /*
+         * Status first, then last worked.
+         *
+         * The tie-break used to be nothing at all: leads sharing a status kept
+         * whatever order the API returned, which was `updatedAt desc` — bumped
+         * by any write, so a bulk tag edit or an importer pass reshuffled the
+         * column for reasons nobody did. Stating it fixes that, and makes the
+         * two orders agree about what "recent" means.
+         */
+        const byStatus = COLUMN_STATUSES.indexOf(a.status) - COLUMN_STATUSES.indexOf(b.status);
+        return byStatus !== 0 ? byStatus : workedAt(b) - workedAt(a);
+      });
     }
     return grouped;
-  }, [leads, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, search, order]);
 
   const shownCount = useMemo(
     () => Object.values(columns).reduce((n, col) => n + col.length, 0),
@@ -161,6 +236,34 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
           />
           Hide Won/Lost
         </label>
+
+        {/*
+          Which question the columns are answering. Named as questions rather
+          than as sort keys, because "Recently worked" and "Pipeline order"
+          are two different things to want from the same board and neither is
+          more correct.
+        */}
+        <div
+          role="group"
+          aria-label="Order within each column"
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-white/[0.06] bg-black/20 p-1"
+        >
+          {([
+            ['worked', 'Recently worked'],
+            ['pipeline', 'Pipeline order'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => chooseOrder(key)}
+              aria-pressed={order === key}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                order === key ? 'bg-white/[0.09] text-white' : 'text-white/45 hover:text-white/80'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {moveError && (
@@ -224,6 +327,25 @@ export function BoardView({ refreshToken = 0 }: { refreshToken?: number }) {
                         {lead.dealValue ? formatCents(lead.dealValue) : '—'}
                         {lead.assignedTo?.name ? ` · ${lead.assignedTo.name}` : ''}
                       </p>
+                      {/*
+                        Says why the card is where it is — a row that moves for
+                        a reason nobody can see reads as the board shuffling
+                        itself — and, past a week, says the opposite thing.
+
+                        Ordering by recency puts the leads nobody has touched
+                        at the BOTTOM of the column, which is the one real cost
+                        of reading the board this way. It does not have to also
+                        make them invisible: a card that has gone quiet says so
+                        in amber wherever it has sunk to, so scrolling a column
+                        still turns up the ones being forgotten.
+                      */}
+                      {order === 'worked' && (
+                        <p className={`text-[11px] mb-2 ${staleTone(lead.lastActivityAt)}`}>
+                          {lead.lastActivityAt
+                            ? `Worked ${formatRelativeTime(new Date(lead.lastActivityAt))}`
+                            : 'Not worked yet'}
+                        </p>
+                      )}
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-0.5">
                           {/* Bounded by the card's own status, not the
