@@ -6,6 +6,7 @@ import { resolveSiteUrl } from '@/lib/site-url';
 import { reviewNoticeLine, startReview } from '@/lib/design-approval';
 import { sendDesignPresentedEmail } from '@/lib/email';
 import { designStage } from '@/lib/design-stages';
+import { gateOpenedByDesignApproval } from '@/lib/stage-gates';
 import { normalizeUrl } from '@/lib/html';
 
 /**
@@ -181,7 +182,12 @@ export async function PATCH(
     const { projectId } = await params;
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, status: true, designApprovedAt: true },
+      select: {
+        id: true,
+        status: true,
+        designApprovedAt: true,
+        client: { select: { company: true } },
+      },
     });
     if (!project) {
       return NextResponse.json({ error: 'That project no longer exists.' }, { status: 404 });
@@ -208,7 +214,28 @@ export async function PATCH(
       })
       .catch(() => {});
 
-    return NextResponse.json({ success: true, approvedAt: now }, { status: 200 });
+    /*
+     * And the money this just made due.
+     *
+     * Section 7 puts Payment 2 on Design Approval — this exact event. The
+     * stage route has reported its gate since the day it was written, from an
+     * INFERENCE: somebody moved a dropdown to Build and we treat that as
+     * approval. This route records the approval itself and reported nothing,
+     * so the studio got a prompt for the guess and silence for the fact.
+     *
+     * Reported, never acted on, same as the other one: it comes back for a
+     * person to press or dismiss.
+     */
+    const instalments = await prisma.instalment
+      .findMany({
+        where: { projectId },
+        orderBy: { index: 'asc' },
+        select: { id: true, index: true, label: true, amountCents: true, trigger: true, status: true },
+      })
+      .catch(() => []);
+    const gateOpened = gateOpenedByDesignApproval(instalments, project.client.company);
+
+    return NextResponse.json({ success: true, approvedAt: now, gateOpened }, { status: 200 });
   } catch (error) {
     console.error('Record design approval error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

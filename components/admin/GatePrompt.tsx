@@ -26,16 +26,17 @@ import { formatCentsExact } from '@/lib/pricing';
  * the clause underneath it, and "Not yet" is a first-class answer.
  */
 
-export interface OpenedGate {
-  instalmentId: string;
-  index: number;
-  label: string;
-  amountCents: number;
-  claim: string;
-  stage: string;
-  clause: string;
-  clauseText: string;
-}
+/*
+ * The server's shape, not a copy of it.
+ *
+ * This was declared again here, field for field, and the two promptly
+ * disagreed: lib/stage-gates grew a field and this file could not see it, so
+ * the component that renders the prompt was type-checked against a gate that
+ * no longer existed. A duplicated type is a type that drifts, and it drifts
+ * silently because both halves compile.
+ */
+export type { OpenedGate } from '@/lib/stage-gates';
+import type { OpenedGate } from '@/lib/stage-gates';
 
 export function GatePrompt({
   gate,
@@ -113,14 +114,27 @@ export function GatePrompt({
 
       {/* The assumption, stated. An inference you can see is a very different
           thing from one buried in a condition. */}
-      <p className="text-sm text-white/70">
-        You moved {company} to <span className="capitalize text-white">{gate.stage}</span>. The
-        contract treats that as <span className="text-white">{gate.claim}</span>, which makes{' '}
-        {gate.label} — <span className="font-semibold text-emerald-300">
-          {formatCentsExact(gate.amountCents)}
-        </span>{' '}
-        — payable now.
-      </p>
+      {gate.lead ? (
+        /* Not an inference. Recording that the client approved is the event
+           the contract names, so it does not get the sentence written for a
+           guess — "you moved them to Build" is not what happened. */
+        <p className="text-sm text-white/70">
+          {gate.lead.replace(/ payable now\.$/, '')}{' '}
+          <span className="font-semibold text-emerald-300">
+            {formatCentsExact(gate.amountCents)}
+          </span>{' '}
+          — payable now.
+        </p>
+      ) : (
+        <p className="text-sm text-white/70">
+          You moved {company} to <span className="capitalize text-white">{gate.stage}</span>. The
+          contract treats that as <span className="text-white">{gate.claim}</span>, which makes{' '}
+          {gate.label} — <span className="font-semibold text-emerald-300">
+            {formatCentsExact(gate.amountCents)}
+          </span>{' '}
+          — payable now.
+        </p>
+      )}
 
       {gate.clauseText && (
         <p className="mt-2.5 border-l-2 border-white/15 pl-3 text-[11px] leading-relaxed text-white/40">

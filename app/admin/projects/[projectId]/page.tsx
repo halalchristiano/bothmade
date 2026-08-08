@@ -1173,6 +1173,10 @@ export default function AdminProjectDetailPage() {
                       }
                     }
                     onChanged={loadProject}
+                    // Section 7 puts Payment 2 on Design Approval. Recording
+                    // it here opens the same prompt the stage dropdown does —
+                    // the fact should not be quieter than the inference.
+                    onGateOpened={setOpenedGate}
                   />
                 </div>
 

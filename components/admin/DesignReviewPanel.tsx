@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { CheckCircle2, Clock, ExternalLink, Eye, Link2, MessageSquare } from 'lucide-react';
 import { BrandButton, inputClass } from '@/components/admin/ui';
 import { designStage, nextDesignStage } from '@/lib/design-stages';
+import type { OpenedGate } from '@/lib/stage-gates';
 
 /**
  * The whole design conversation on one panel: send it, wait, read what came
@@ -44,10 +45,13 @@ export function DesignReviewPanel({
   projectId,
   review,
   onChanged,
+  onGateOpened,
 }: {
   projectId: string;
   review: DesignReview;
   onChanged: () => void;
+  /** Payment 2, the moment the approval makes it due. */
+  onGateOpened?: (gate: OpenedGate) => void;
 }) {
   const [note, setNote] = useState('');
   const [designUrl, setDesignUrl] = useState('');
@@ -76,19 +80,34 @@ export function DesignReviewPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note, designUrl }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(data.error || 'Something went wrong.');
+        setError(data?.error || 'Something went wrong.');
         return;
       }
       setNotice(
-        data.emailSent
+        data?.emailSent
           ? `${data.stage?.label ?? 'Sent'} is with them. They have until ${data.reviewEndsLabel} to respond.`
           : `The clock has started — they have until ${data.reviewEndsLabel} — but the email didn't go out. Tell them yourself.`
       );
       setNote('');
       setDesignUrl('');
       onChanged();
+    } catch {
+      /*
+       * A request that never landed. All three actions here had a `try` with
+       * a `finally` and no `catch`, so this threw straight out: the spinner
+       * stopped, nothing was said, and the screen looked exactly as it did
+       * before the press.
+       *
+       * That silence is worst on this one. Presenting is what starts the
+       * Section 4 clock, and the clock is the thing that later turns a
+       * client's silence into approval and Payment 2 into money owed. "Did
+       * that send?" is not a question this screen should leave anybody with.
+       */
+      setError(
+        'Could not reach the server — nothing was sent and the review clock has not started.'
+      );
     } finally {
       setBusy(false);
     }
@@ -114,6 +133,8 @@ export function DesignReviewPanel({
           : 'Recorded, but the email did not go out. Tell them yourself.'
       );
       onChanged();
+    } catch {
+      setError('Could not reach the server — they have not been asked for their brief.');
     } finally {
       setBusy(false);
     }
@@ -124,12 +145,17 @@ export function DesignReviewPanel({
     setError('');
     try {
       const res = await fetch(`/api/admin/projects/${projectId}/design-review`, { method: 'PATCH' });
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
         setError(data?.error || 'Something went wrong.');
         return;
       }
+      // Section 7 puts Payment 2 on this exact moment, and the route now says
+      // so. Handed up rather than swallowed: the page owns the prompt.
+      if (data?.gateOpened) onGateOpened?.(data.gateOpened);
       onChanged();
+    } catch {
+      setError('Could not reach the server — the approval was not recorded.');
     } finally {
       setBusy(false);
     }

@@ -64,6 +64,11 @@ export interface OpenedGate {
   /** Which clause makes this payable, for the prompt to quote. */
   clause: string;
   clauseText: string;
+  /**
+   * The opening sentence, when "you moved them to X" is not what happened.
+   * Left unset by the stage path, which has its own wording.
+   */
+  lead?: string;
 }
 
 export const CLAUSE_TEXT: Record<string, string> = {
@@ -103,6 +108,41 @@ export function gateOpenedBy(
     stage,
     clause: 'Section 7',
     clauseText: CLAUSE_TEXT[trigger] ?? '',
+  };
+}
+
+/**
+ * The same question, asked of the approval itself rather than of a dropdown.
+ *
+ * gateOpenedBy() infers Design Approval from somebody moving a project into
+ * Build, and says so out loud because the inference can be wrong. Recording
+ * that the client actually approved is not an inference — it is the event the
+ * contract names, and it is the one that was reporting nothing.
+ *
+ * So the studio got a prompt for the guess and silence for the fact: press
+ * "they approved it" and the money it just made due appeared nowhere until
+ * somebody happened to look at the Today panel.
+ *
+ * `lead` carries the sentence, because "You moved them to Build" is not what
+ * happened here and a prompt that says it would be the same lie in reverse.
+ */
+export function gateOpenedByDesignApproval(
+  instalments: GateInstalment[],
+  company: string
+): OpenedGate | null {
+  const row = instalments.find((i) => i.trigger === 'design-approval');
+  if (!row || row.status !== 'scheduled') return null;
+
+  return {
+    instalmentId: row.id,
+    index: row.index,
+    label: row.label,
+    amountCents: row.amountCents,
+    claim: 'Design Approval',
+    stage: 'build',
+    lead: `${company} approved the design. That is Design Approval under the agreement, which makes ${row.label} payable now.`,
+    clause: 'Section 7',
+    clauseText: CLAUSE_TEXT['design-approval'] ?? '',
   };
 }
 
