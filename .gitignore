@@ -46,3 +46,6 @@ next-env.d.ts
 # names, emails and phone numbers, and it was one `git add -A` away from
 # being public on a repository that anyone can read.
 /scratchpad
+
+# Screenshots from scripts/screenshots — look at them, don't commit them.
+.screenshots/
