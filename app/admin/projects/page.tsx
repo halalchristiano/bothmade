@@ -252,6 +252,7 @@ export default function AdminProjectsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Filter projects by status"
             className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent capitalize transition-all"
           >
             {STATUSES.map((s) => (
@@ -292,6 +293,7 @@ export default function AdminProjectsPage() {
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          aria-label="Sort projects"
           className="text-sm px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/70 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
         >
           <option value="attention" className="bg-raised text-white">Sort: Needs attention first</option>

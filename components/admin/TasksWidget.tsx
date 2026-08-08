@@ -135,6 +135,7 @@ export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = 
           onChange={(e) => setNewTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           placeholder="Add a task…"
+          aria-label="Add a task"
           // The shared field style, rather than a fourth local copy of it.
           className={`${inputClass} flex-1`}
         />

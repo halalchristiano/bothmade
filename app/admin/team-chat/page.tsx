@@ -675,6 +675,16 @@ export default function TeamChatPage() {
                 }
               }}
               rows={1}
+              // The composer changes what it is depending on where you are —
+              // a DM, a flagged question, or the room — so the name follows it
+              // rather than saying "message" three different times.
+              aria-label={
+                view.type === 'dm'
+                  ? `Message ${viewTitle} privately`
+                  : view.type === 'flags'
+                    ? 'Ask a question that stays flagged until resolved'
+                    : 'Message the team'
+              }
               placeholder={
                 view.type === 'dm'
                   ? `Message ${viewTitle} privately… (Shift+Enter for a new line)`

@@ -431,6 +431,7 @@ function BillingWorkspace() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search by company, contact or email"
+                  aria-label="Search by company, contact or email"
                   className={inputClass}
                 />
                 {/* Say what this field can find before someone types into it
@@ -472,10 +473,20 @@ function BillingWorkspace() {
 
           {/* What it's for */}
           <div className="mb-5">
-            <label className="block text-xs font-semibold text-white/50 mb-2 uppercase tracking-wide">
+            {/*
+              `htmlFor`, not just a heading above the box. These read as labels
+              and were not attached to anything, so every field in this form
+              announced itself as an unnamed text box — on the one screen that
+              charges a client money.
+            */}
+            <label
+              htmlFor="charge-description"
+              className="block text-xs font-semibold text-white/50 mb-2 uppercase tracking-wide"
+            >
               What it&apos;s for
             </label>
             <input
+              id="charge-description"
               value={description}
               onChange={(e) => {
                 setDescription(e.target.value);
@@ -496,10 +507,16 @@ function BillingWorkspace() {
             <div className="space-y-2">
               {lines.map((line, index) => (
                 <div key={index} className="flex gap-2">
+                  {/*
+                    Numbered, because the rows repeat: "Description" on its own
+                    names four identical boxes the same thing, and the one that
+                    matters is which line the amount beside it belongs to.
+                  */}
                   <input
                     value={line.label}
                     onChange={(e) => updateLine(index, { label: e.target.value })}
                     placeholder="Description"
+                    aria-label={`Line ${index + 1} description`}
                     maxLength={200}
                     className={`${inputClass} flex-1`}
                   />
@@ -510,6 +527,7 @@ function BillingWorkspace() {
                       onChange={(e) => updateLine(index, { amount: e.target.value })}
                       inputMode="decimal"
                       placeholder="0.00"
+                      aria-label={`Line ${index + 1} amount in dollars`}
                       className={`${inputClass} pl-7`}
                     />
                   </div>

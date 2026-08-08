@@ -402,22 +402,41 @@ export default function AdminSettingsPage() {
             ref={avatarInputRef}
             type="file"
             accept="image/png,image/jpeg,image/webp"
+            aria-label="Upload a headshot"
             className="hidden"
             onChange={(e) => e.target.files?.[0] && handleAvatarSelected(e.target.files[0])}
           />
           <div className="flex-1 space-y-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your full name"
-              className={inputClass}
-            />
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Your title (e.g. Director of Sales)"
-              className={inputClass}
-            />
+            {/* Both go out on client email — the name in the sign-off and the
+                title under it — so which box is which is worth saying. */}
+            <div>
+              <label htmlFor="profile-name" className="mb-1.5 block text-xs text-white/40">
+                Your name
+              </label>
+              <input
+                id="profile-name"
+                name="name"
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Kiana Arabpour"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label htmlFor="profile-title" className="mb-1.5 block text-xs text-white/40">
+                Your title
+              </label>
+              <input
+                id="profile-title"
+                name="organization-title"
+                autoComplete="organization-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Director of Sales"
+                className={inputClass}
+              />
+            </div>
           </div>
         </div>
         <div className="flex items-center justify-between mt-3">
