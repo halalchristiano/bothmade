@@ -11,6 +11,7 @@ import { sendProjectLiveEmail } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { clientWantsEmail } from '@/lib/email-preferences';
 import { warrantyEndFrom } from '@/lib/launch';
+import { receivedCents } from '@/lib/invoice-settlement';
 
 /**
  * `Project.deliverables` is a JSON string column, and this is the client's
@@ -84,7 +85,13 @@ export async function GET(
         // allowed to see is decided in the mapping below, not here.
         invoices: {
           orderBy: { createdAt: 'desc' },
-          include: { issuedBy: { select: { name: true, email: true } } },
+          include: {
+            issuedBy: { select: { name: true, email: true } },
+            // An invoice can be part paid by transfer, and both sides need to
+            // know: the studio so it chases the right figure, the client so
+            // their own dashboard stops asking for money they have sent.
+            payments: { select: { amount: true } },
+          },
         },
       },
     });
@@ -254,12 +261,32 @@ export async function GET(
              * into an email. It also has to survive being sent from any host
              * the admin happens to be on, which is what resolveSiteUrl is for.
              */
+            const received = receivedCents(invoice.payments);
+
+            /*
+             * No pay link on a part-paid invoice, for either audience.
+             *
+             * The link is a fixed-amount Stripe Payment Link for the whole
+             * invoice; there is no partial version of it. Offering it to
+             * somebody who has already sent half is offering to take the other
+             * half plus the half they sent. The row says what is left instead,
+             * and the remainder is arranged the way the first part was.
+             */
             const inst = instalmentByInvoiceNumber.get(invoice.number);
-            const payableUrl = inst
-              ? invoice.status === 'open' && inst.status !== 'paid' && inst.status !== 'void'
-                ? `${siteUrl}/pay/${inst.id}`
-                : null
-              : invoice.paymentUrl;
+            const payableUrl =
+              // Settled or cancelled: there is nothing to pay, and the stored
+              // link is spent or deactivated. Handing it over anyway is how a
+              // dead link gets copied out of the admin and sent to a client.
+              invoice.status !== 'open'
+                ? null
+                : // Part paid: see above — the link is for the whole invoice.
+                  received > 0
+                  ? null
+                  : inst
+                    ? inst.status !== 'paid' && inst.status !== 'void'
+                      ? `${siteUrl}/pay/${inst.id}`
+                      : null
+                    : invoice.paymentUrl;
 
             return {
             id: invoice.id,
@@ -305,6 +332,17 @@ export async function GET(
             // How it was settled when it did not come through Stripe — a
             // reconciliation note typed for our own books, in our own words.
             paidMethod: session.type === 'user' ? invoice.paidMethod : undefined,
+            /*
+             * How much has arrived — and this one DOES go to the client.
+             *
+             * Everything else in this staff-only block is about how we have
+             * been handling the invoice. This is about their own money. Their
+             * dashboard read `status` alone, so an invoice they had part paid
+             * showed as "Due" with a Pay button beside it — and that button is
+             * a Stripe link for the FULL amount, which would have taken the
+             * whole invoice again on top of what they had already sent.
+             */
+            receivedCents: received,
             };
           }),
           deliverables: readDeliverables(project.deliverables, project.id),

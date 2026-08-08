@@ -59,6 +59,7 @@ const CHASED_INVOICE = {
   sendCount: 3,
   lastSentAt: new Date('2026-02-20T10:00:00Z'),
   paidMethod: 'Bank transfer, ref ACME0312',
+  payments: [],
 };
 
 const PROJECT = {
@@ -187,5 +188,74 @@ describe('what the studio is shown', () => {
     const row = await readInvoice();
 
     expect(row.issuedBy).toBe('Evan');
+  });
+});
+
+/**
+ * An invoice the client has already sent half of.
+ *
+ * Their own dashboard read `status` alone, which was the whole truth while an
+ * invoice was all-or-nothing. Since one can be part paid by transfer it is
+ * also the state of a row showing "Due — $1,200" with a Pay button beside it
+ * — and that button is a fixed-amount Stripe link for the WHOLE invoice, so
+ * pressing it would have taken the full amount again on top of what they had
+ * already sent. Of everything this pair of changes broke, this is the one
+ * pointed at the person paying.
+ */
+describe('an invoice with part of the money already in', () => {
+  const PART_PAID = { ...CHASED_INVOICE, payments: [{ amount: 60_000 }] };
+
+  beforeEach(() => {
+    prisma.project.findUnique.mockResolvedValue({ ...PROJECT, invoices: [PART_PAID] });
+  });
+
+  it('tells the client how much of their own money has arrived', async () => {
+    const row = await readInvoice();
+
+    expect(row.receivedCents).toBe(60_000);
+  });
+
+  /*
+   * There is no partial version of a Payment Link. Offering it to somebody
+   * who has sent half is offering to take the other half plus the half they
+   * sent.
+   */
+  it('does not offer a link that would charge the whole invoice again', async () => {
+    const row = await readInvoice();
+
+    expect(row.paymentUrl).toBeNull();
+  });
+
+  it('still offers it once nothing has come in', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      ...PROJECT,
+      invoices: [{ ...PART_PAID, payments: [] }],
+    });
+
+    const row = await readInvoice();
+
+    expect(row.paymentUrl).toBe('https://pay.test/abc');
+  });
+
+  it('leaves a settled invoice alone', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      ...PROJECT,
+      invoices: [{ ...PART_PAID, status: 'paid', payments: [{ amount: 120_000 }] }],
+    });
+
+    const row = await readInvoice();
+
+    expect(row.receivedCents).toBe(120_000);
+    // Paid invoices never carry a pay link anyway, and must not start.
+    expect(row.paymentUrl).toBeNull();
+  });
+
+  /* The studio sees it too — it decides which figure to chase. */
+  it('tells the studio the same number', async () => {
+    principal.type = 'user';
+
+    const row = await readInvoice();
+
+    expect(row.receivedCents).toBe(60_000);
   });
 });

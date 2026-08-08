@@ -86,6 +86,8 @@ interface Project {
     paidAt: string | null;
     refundedCents?: number;
     refundMethod?: string | null;
+    /** How much has actually arrived against it — an invoice can be part paid. */
+    receivedCents?: number;
     refundReason?: string | null;
     voidReason?: string | null;
   }>;
@@ -1445,12 +1447,24 @@ export default function ClientDashboard() {
                     // statement, and asks us instead.
                     const refunded = invoice.refundedCents ?? 0;
                     const credited = invoice.refundMethod === 'credit';
+                    /*
+                     * How much of it has actually arrived.
+                     *
+                     * An invoice can be part paid by transfer, and this page
+                     * read `status` alone — so one a client had sent half of
+                     * showed as "Due" for the whole amount, with a Pay button
+                     * beside it that would have taken the whole amount again.
+                     */
+                    const received = invoice.receivedCents ?? 0;
+                    const partPaid = !paid && !voided && received > 0;
                     const label = voided
                       ? 'Cancelled'
                       : refunded <= 0
                         ? paid
                           ? 'Paid'
-                          : 'Due'
+                          : partPaid
+                            ? 'Part paid'
+                            : 'Due'
                         : credited
                           ? 'Credited'
                           : refunded >= invoice.amountCents
@@ -1491,6 +1505,17 @@ export default function ClientDashboard() {
                         {(invoice.voidReason || invoice.refundReason) && (
                           <p className="mt-2 text-xs text-white/45">
                             {invoice.voidReason || invoice.refundReason}
+                          </p>
+                        )}
+
+                        {/* Their own money, said back to them. Without this
+                            the row asks for the full amount from somebody who
+                            has already sent part of it. */}
+                        {partPaid && (
+                          <p className="mt-2 text-xs text-sky-300/80">
+                            {formatCentsExact(received)} received —{' '}
+                            {formatCentsExact(invoice.amountCents - received)} left. We&apos;ll be in
+                            touch about the rest, or reply to any of our emails to settle it.
                           </p>
                         )}
 
