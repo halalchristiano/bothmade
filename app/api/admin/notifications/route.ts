@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { projectBalance } from '@/lib/billing';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ACTIVE_LEAD_STATUSES } from '@/lib/leads';
+import { unreadWhere } from '@/lib/team-chat';
 
 export interface NotificationItem {
   id: string;
@@ -35,17 +36,21 @@ export async function GET() {
       select: { teamChatReadAt: true },
     });
 
+    const unread = unreadWhere(session.userId, reader?.teamChatReadAt ?? null);
+
     const [unreadMessages, unresolvedFlags] = await Promise.all([
       prisma.teamMessage.findMany({
-        where: {
-          urgent: false,
-          fromUserId: { not: session.userId },
-          OR: [{ toUserId: session.userId }, { toUserId: null }],
-          ...(reader?.teamChatReadAt ? { createdAt: { gt: reader.teamChatReadAt } } : {}),
-        },
+        // The shared predicate, at last. lib/team-chat says it exists because
+        // this clause was "hand-copied (with the same explanatory comment)
+        // across the list route, the unread-count route, and the
+        // notifications bell" — and then two of the three were changed over
+        // and this one was left holding its own copy. A badge counted by one
+        // predicate over a list built by another is a badge that can be
+        // right about a number nobody can find.
+        where: { ...unread, urgent: false },
         orderBy: { createdAt: 'desc' },
         take: 10,
-        include: { fromUser: { select: { name: true, email: true } } },
+        select: { id: true, content: true, kind: true, fromUser: { select: { name: true, email: true } } },
       }),
       prisma.teamMessage.findMany({
         where: {
@@ -56,22 +61,48 @@ export async function GET() {
         },
         orderBy: { createdAt: 'desc' },
         take: 10,
-        include: { fromUser: { select: { name: true, email: true } } },
+        select: { id: true, content: true, kind: true, fromUser: { select: { name: true, email: true } } },
       }),
     ]);
+
+    /*
+     * Who, if anybody, actually said this.
+     *
+     * A `kind: 'system'` row is the app narrating — a client approved their
+     * mockup, a cold email was opened, a payment landed. It still carries a
+     * fromUserId because the schema wants an author and a cascade anchor,
+     * and postSystemMessage fills that in with the related lead's owner or,
+     * failing that, whichever staff account findFirst returned. The chat
+     * itself knows this and draws those rows as a centred timeline entry
+     * rather than a speech bubble; the bell did not, and read the same
+     * column as though it were a sender.
+     *
+     * So the bell announced "🚩 Kiana needs a response" over a client
+     * approving a mockup — naming somebody who did nothing, about a message
+     * they never wrote, and asking for a reply nobody is waiting on. The
+     * thing actually waiting is a proposal.
+     */
+    const said = (m: { kind: string; fromUser: { name: string | null; email: string } }) =>
+      m.kind === 'system' ? null : m.fromUser.name || m.fromUser.email;
+
     for (const m of unreadMessages) {
+      const who = said(m);
       items.push({
         id: `msg-${m.id}`,
-        label: `${m.fromUser.name || m.fromUser.email} messaged you`,
+        label: who ? `${who} messaged you` : 'New in team chat',
         detail: m.content.slice(0, 80),
         href: '/admin/team-chat',
         severity: 'info',
       });
     }
     for (const m of unresolvedFlags) {
+      const who = said(m);
       items.push({
         id: `flag-${m.id}`,
-        label: `🚩 ${m.fromUser.name || m.fromUser.email} needs a response`,
+        // "Needs a response" is about a person waiting on you. Nobody is
+        // waiting on a reply to an automated row — what it is flagging is
+        // work, and it says what the work is in the line underneath.
+        label: who ? `🚩 ${who} needs a response` : '🚩 Flagged in team chat',
         detail: m.content.slice(0, 80),
         href: '/admin/team-chat',
         severity: 'urgent',
