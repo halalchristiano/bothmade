@@ -74,6 +74,51 @@ function ToggleRow({
   );
 }
 
+/**
+ * A labelled password field.
+ *
+ * Three of these sat in a row with their names in `placeholder` alone, which
+ * is the worst place for it here of anywhere in the app: a password field
+ * renders dots, so the moment all three are filled they are three identical
+ * rows with nothing to tell current from new from confirm. A screen reader
+ * had it worse still — three unnamed password boxes.
+ */
+function PasswordField({
+  id,
+  label,
+  hint,
+  autoComplete,
+  value,
+  onChange,
+  className,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  autoComplete: 'current-password' | 'new-password';
+  value: string;
+  onChange: (next: string) => void;
+  className: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-xs text-white/40">
+        {label}
+      </label>
+      {hint && <p className="mb-1.5 text-xs text-white/25">{hint}</p>}
+      <input
+        id={id}
+        name={id}
+        type="password"
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={className}
+      />
+    </div>
+  );
+}
+
 export default function AdminSettingsPage() {
   const [status, setStatus] = useState<GmailStatus | null>(null);
   const [gmailAddress, setGmailAddress] = useState('');
@@ -111,6 +156,8 @@ export default function AdminSettingsPage() {
 
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
+  /** Only to fill the change-password form's hidden username field. */
+  const [email, setEmail] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -139,6 +186,7 @@ export default function AdminSettingsPage() {
       .then((data) => {
         setName(data.name || '');
         setTitle(data.title || '');
+        setEmail(data.email || '');
         setAvatarUrl(data.avatarUrl || null);
       });
   };
@@ -701,26 +749,62 @@ export default function AdminSettingsPage() {
 
       <Card className="p-6">
         <CardHeader title="Password" subtitle="Change the password you use to log in here." />
-        <div className="mt-4 space-y-2.5">
+        {/*
+          A real <form>, and every field says what it is to a password manager.
+
+          It was three loose inputs in a div behind an onClick, with no
+          `autocomplete` anywhere in this file or on the login page. Browsers
+          decide whether to offer a saved password, whether to generate one,
+          and — the part that bites — whether to prompt to UPDATE the stored
+          credential, by reading exactly these attributes and by watching a
+          form submit. Without them a change here succeeds, the manager keeps
+          the old password, and the next login fails from the vault with
+          nothing on screen having looked wrong.
+
+          The hidden username field is the documented companion: a
+          change-password form with no username gives the manager no way to
+          know which saved entry this is, so it updates nothing.
+        */}
+        <form
+          className="mt-4 space-y-2.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleChangePassword();
+          }}
+        >
           <input
-            type="password"
+            type="text"
+            name="username"
+            autoComplete="username"
+            value={email}
+            readOnly
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+          <PasswordField
+            id="current-password"
+            label="Current password"
+            autoComplete="current-password"
             value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            placeholder="Current password"
+            onChange={setCurrentPassword}
             className={inputClass}
           />
-          <input
-            type="password"
+          <PasswordField
+            id="new-password"
+            label="New password"
+            hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+            autoComplete="new-password"
             value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder={`New password (min. ${MIN_PASSWORD_LENGTH} characters)`}
+            onChange={setNewPassword}
             className={inputClass}
           />
-          <input
-            type="password"
+          <PasswordField
+            id="confirm-password"
+            label="Confirm new password"
+            autoComplete="new-password"
             value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm new password"
+            onChange={setConfirmPassword}
             className={inputClass}
           />
           {passwordError && <p className="text-xs text-red-400">{passwordError}</p>}
@@ -730,15 +814,15 @@ export default function AdminSettingsPage() {
             </p>
           )}
           <BrandButton
+            type="submit"
             variant="quiet"
-            onClick={handleChangePassword}
             disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
             className="w-full flex items-center justify-center gap-2"
           >
             {changingPassword ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />}
             {changingPassword ? 'Updating...' : 'Change password'}
           </BrandButton>
-        </div>
+        </form>
       </Card>
     </PageIn>
   );

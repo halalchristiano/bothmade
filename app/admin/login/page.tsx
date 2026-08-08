@@ -126,6 +126,8 @@ export default function AdminLoginPage() {
                       <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="admin-reset-email">Email</label>
                       <input
                         id="admin-reset-email"
+                        name="email"
+                        autoComplete="email"
                         type="email"
                         value={resetEmail}
                         onChange={(e) => setResetEmail(e.target.value)}
@@ -167,9 +169,19 @@ export default function AdminLoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="admin-email">Email</label>
+              {/*
+                `name` and `autocomplete` are how a browser decides whether to
+                offer a saved credential and whether to ask to save one. The
+                form was labelled and had neither, so filling it was left to
+                heuristics — which mostly work on a two-field login and stop
+                working the moment a form has more than one password box, as
+                the change-password form on Settings does.
+              */}
               <input
                 id="admin-email"
+                name="email"
                 type="email"
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={inputClass}
@@ -181,7 +193,9 @@ export default function AdminLoginPage() {
               <label className="block text-sm font-medium mb-2 text-white/70" htmlFor="admin-password">Password</label>
               <input
                 id="admin-password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className={inputClass}

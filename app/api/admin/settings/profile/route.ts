@@ -10,11 +10,20 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { name: true, avatarUrl: true, title: true },
+      // The email is here for the change-password form, which needs a
+      // username field for a password manager to know which saved entry it is
+      // updating. It is the signed-in user's own address and nobody else's —
+      // this route is scoped to `session.userId`.
+      select: { name: true, avatarUrl: true, title: true, email: true },
     });
 
     return NextResponse.json(
-      { name: user?.name || '', avatarUrl: user?.avatarUrl || null, title: user?.title || '' },
+      {
+        name: user?.name || '',
+        avatarUrl: user?.avatarUrl || null,
+        title: user?.title || '',
+        email: user?.email || '',
+      },
       { status: 200 }
     );
   } catch (error) {
