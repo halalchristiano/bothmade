@@ -499,7 +499,16 @@ export default function StartPage() {
               >
                 {interestLoading ? 'Sending...' : 'Send my selections'}
               </button>
-              {interestError && <div className="text-red-400 text-sm mt-2 text-center">{interestError}</div>}
+              {/* Always mounted, so assistive tech is already watching when the
+                      message arrives — a live region created at the same moment as
+                      its content is announced unreliably or not at all. role="alert"
+                      because a refused sign-in is not an aside: without it the
+                      button simply stops spinning and nothing is said. */}
+              <div role="alert" aria-live="assertive" aria-atomic="true">
+                {interestError && (
+                  <div className="text-red-400 text-sm mt-2 text-center">{interestError}</div>
+                )}
+              </div>
               <p className="text-center text-sm text-white/40 mt-3">
                 No payment now. We&apos;ll go through the scope with you and confirm the
                 number before anything is charged.

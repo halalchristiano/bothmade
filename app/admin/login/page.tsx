@@ -137,7 +137,14 @@ export default function AdminLoginPage() {
                       />
                     </div>
 
-                    {error && <div className="text-red-400 text-sm">{error}</div>}
+                    {/* Always mounted, so assistive tech is already watching when the message
+                        arrives — a live region created at the same moment as its content is
+                        announced unreliably or not at all. role="alert" because a refused
+                        sign-in is not an aside: without it the button stops spinning and
+                        nothing is said. */}
+                    <div role="alert" aria-live="assertive" aria-atomic="true">
+                      {error && <div className="text-red-400 text-sm">{error}</div>}
+                    </div>
 
                     <button
                       type="submit"
@@ -203,7 +210,14 @@ export default function AdminLoginPage() {
               />
             </div>
 
-            {error && <div className="text-red-400 text-sm">{error}</div>}
+            {/* Always mounted, so assistive tech is already watching when the message
+                arrives — a live region created at the same moment as its content is
+                announced unreliably or not at all. role="alert" because a refused
+                sign-in is not an aside: without it the button stops spinning and
+                nothing is said. */}
+            <div role="alert" aria-live="assertive" aria-atomic="true">
+              {error && <div className="text-red-400 text-sm">{error}</div>}
+            </div>
 
             <button
               type="submit"
