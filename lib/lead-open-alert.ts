@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { postSystemMessage } from '@/lib/team-chat';
-import { renderShell, sendEmail } from '@/lib/email';
+import { renderShell, sendEmailDetailed, studioInbox } from '@/lib/email';
 import { esc } from '@/lib/html';
 import { readOpens } from '@/lib/lead-opens';
 
@@ -184,9 +184,18 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
    * fallback, which is also what every lead that predates the column gets,
    * and is what this used to do for all of them.
    */
-  const to = lead.importedBy?.email ?? lead.assignedTo?.email;
-  if (to) {
-    await sendEmail({
+  /*
+   * Somebody always gets it.
+   *
+   * Importer first — they ran the batch and are waiting to hear back. Then
+   * the assignee, which is what every lead predating `importedById` has. Then
+   * the studio inbox, because a lead with neither is not a reason for the
+   * alert to evaporate: the fetch happened, the count is on the row, and an
+   * alert nobody receives is the same as not having built the feature.
+   */
+  const to = lead.importedBy?.email ?? lead.assignedTo?.email ?? studioInbox();
+  if (to.length > 0) {
+    const mail = {
       to,
       // Not the shared client inbox: nobody replies to an alert, and a reply
       // that did arrive would land where the studio answers clients.
@@ -231,7 +240,33 @@ export async function alertOnFirstRealOpen(leadId: string): Promise<OpenAlertRes
         ctaUrl: leadUrl,
         footerNote: 'Bothmade — sent because a lead opened your email.',
       }),
-    }).catch((err) => console.error('Open alert email failed:', err));
+    };
+
+    /*
+     * The custom sender, with the studio's own address behind it.
+     *
+     * ALERT_FROM_EMAIL is on whichever domain the studio wants these to come
+     * from, and a domain has to be verified with the provider before anything
+     * sent from it arrives. If it is not, every one of these disappears with
+     * no bounce and no error anybody sees — and the failure looks exactly
+     * like the tracking pixel having stopped working, which is the thing this
+     * alert exists to disprove.
+     *
+     * So a failed send is retried from the address the rest of the app
+     * already sends from, and says loudly in the log which one worked. The
+     * alert arriving from the wrong mailbox is a small problem; the alert not
+     * arriving is the whole problem.
+     */
+    const first = await sendEmailDetailed(mail).catch(() => ({ sent: false, reason: 'threw' }));
+    if (!first.sent) {
+      console.error(
+        `Open alert from ${ALERT_FROM_EMAIL} failed (${first.reason ?? 'no reason given'}) — ` +
+          'retrying from the default sender. If this repeats, that domain is probably not verified.'
+      );
+      await sendEmailDetailed({ ...mail, from: undefined }).catch((err: unknown) =>
+        console.error('Open alert email failed from both senders:', err)
+      );
+    }
   }
 
   await prisma.leadActivity

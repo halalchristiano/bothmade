@@ -1,23 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * "They just opened it" — three opens, once per send, honest about what it saw.
+ * "They just opened it" — one open, once per send, honest about what it saw.
  *
- * The bar has moved twice. It required repetition, then it fired on any open
- * because an open is real information and silence throws the fact away. What
- * settled it was volume: at a thousand leads a day, every-first-open is a
- * notification every few minutes, and an alert stream nobody can keep up with
- * is one nobody reads. The fact is still kept — the count sits on the lead
- * and the lead is on the call sheet from the very first open. Three is only
- * the bar for interrupting a person.
+ * The bar has moved three times: repetition, then any open, then three, and
+ * now one. The last move was the studio owner's, after a batch of 350 emails
+ * produced a single notification — which is indistinguishable from the
+ * tracking pixel having stopped working, and that doubt costs more than the
+ * noise does.
  *
- * Three rather than two because a privacy proxy fetching on delivery plus one
- * genuine open is already two.
+ * What it costs is real and is not hidden: Apple Mail Privacy Protection and
+ * Gmail's image proxy fetch on delivery whether or not a human looks, so some
+ * of these are a machine. The wording is what keeps it honest — a single
+ * fetch is reported as an open, and only a return visit is called reading.
+ * Both are pinned below, because a mail server's fetch announced as a person
+ * reading would send a rep in expecting a live prospect.
  *
- * Two failure modes still matter more than the feature working, and both are
- * pinned below: one alert per pixel fetch would train everybody to ignore
- * them inside a day, and a mail server's fetch announced as a person reading
- * would send a rep in expecting a live prospect.
+ * The other two things pinned here are about the alert reaching somebody at
+ * all: who it is addressed to when a lead has no owner, and what happens when
+ * the sending domain is not one the provider will accept.
  */
 
 const prisma = {
@@ -26,13 +27,18 @@ const prisma = {
   user: { findFirst: vi.fn(async () => ({ id: 'user_1' })) },
 };
 const postSystemMessage = vi.fn(async (_input: unknown) => {});
-const sendEmail = vi.fn(async (_input: unknown) => true);
+// Stands in for sendEmailDetailed, so it answers with a result rather than
+// a boolean — the alert reads `sent` to decide whether to retry.
+const sendEmail = vi.fn(async (_input: unknown): Promise<{ sent: boolean; reason?: string }> => ({
+  sent: true,
+}));
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/team-chat', () => ({ postSystemMessage: (input: unknown) => postSystemMessage(input) }));
 vi.mock('@/lib/email', () => ({
-  sendEmail: (input: unknown) => sendEmail(input),
+  sendEmailDetailed: (input: unknown) => sendEmail(input),
   renderShell: (opts: { bodyHtml: string }) => `<html>${opts.bodyHtml}</html>`,
+  studioInbox: () => ['info@bothmade.studio'],
 }));
 vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.studio' }));
 
@@ -60,6 +66,10 @@ const lead = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.lead.updateMany.mockResolvedValue({ count: 1 });
+  // The alert reads the result now: a failed send from the custom sender is
+  // retried from the default one, so the mock has to answer like the real
+  // thing rather than with undefined.
+  sendEmail.mockResolvedValue({ sent: true });
 });
 
 describe('the alert', () => {
@@ -216,14 +226,43 @@ describe('the alert', () => {
      * The team-chat message still posts either way, so an unassigned,
      * un-imported lead is not silent — it just has no inbox to reach.
      */
-    it('still posts to the team thread when there is nobody to email', async () => {
+    it('reaches the studio inbox when neither an importer nor an assignee exists', async () => {
       prisma.lead.findUnique.mockResolvedValue(lead({ importedBy: null, assignedTo: null }));
 
       const result = await alertOnFirstRealOpen('lead_1');
 
       expect(result.sent).toBe(true);
       expect(postSystemMessage).toHaveBeenCalled();
-      expect(sendEmail).not.toHaveBeenCalled();
+      const mail = sendEmail.mock.calls[0][0] as unknown as { to: string[] };
+      expect(mail.to).toEqual(['info@bothmade.studio']);
+    });
+
+    /*
+     * The sending domain has to be verified with the provider or nothing
+     * arrives — silently, with no bounce. That failure is indistinguishable
+     * from the tracking pixel having stopped working, which is the exact
+     * thing this alert exists to disprove.
+     */
+    it('retries from the default sender when the custom one fails', async () => {
+      prisma.lead.findUnique.mockResolvedValue(lead());
+      sendEmail
+        .mockResolvedValueOnce({ sent: false, reason: 'domain not verified' })
+        .mockResolvedValueOnce({ sent: true });
+
+      await alertOnFirstRealOpen('lead_1');
+
+      expect(sendEmail).toHaveBeenCalledTimes(2);
+      const [first, second] = sendEmail.mock.calls.map((c) => c[0] as unknown as { from?: string });
+      expect(first.from).toBe('no-reply@bothmadestudio.com');
+      expect(second.from).toBeUndefined();
+    });
+
+    it('does not send twice when the first attempt worked', async () => {
+      prisma.lead.findUnique.mockResolvedValue(lead());
+
+      await alertOnFirstRealOpen('lead_1');
+
+      expect(sendEmail).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -300,14 +339,20 @@ describe('the alert', () => {
     );
   });
 
-  it('still posts to the thread when the lead has no owner to email', async () => {
+  /*
+   * This used to assert that an ownerless lead was emailed to nobody. It now
+   * falls back to the studio inbox: the fetch happened and the count is on
+   * the row, and an alert nobody receives is the same as not having built it.
+   */
+  it('falls back to the studio inbox when the lead has no owner', async () => {
     prisma.lead.findUnique.mockResolvedValue(lead({ assignedTo: null }));
 
     const result = await alertOnFirstRealOpen('lead_1');
 
     expect(result.sent).toBe(true);
-    expect(sendEmail).not.toHaveBeenCalled();
     expect(postSystemMessage).toHaveBeenCalled();
+    const mail = sendEmail.mock.calls[0][0] as unknown as { to: string[] };
+    expect(mail.to).toEqual(['info@bothmade.studio']);
   });
 
   it('says nothing about a lead that was never emailed', async () => {
