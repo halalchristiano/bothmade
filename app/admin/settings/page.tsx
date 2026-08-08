@@ -314,11 +314,17 @@ export default function AdminSettingsPage() {
         return;
       }
       setCheckResult({ canRead: !!data.canRead, message: data.message });
-      setStatus((prev) =>
-        prev
-          ? { ...prev, canReadInbox: !!data.canRead, needsReconnect: !data.canRead && !!data.needsReconnect }
-          : prev
-      );
+      // Only a definite answer moves the panel, matching what the route
+      // writes to the column. A check that failed because Google was busy
+      // proves nothing either way, and downgrading the badge over it would
+      // report an outage as a broken connection.
+      if (data.canRead || data.needsReconnect) {
+        setStatus((prev) =>
+          prev
+            ? { ...prev, canReadInbox: !!data.canRead, needsReconnect: !data.canRead }
+            : prev
+        );
+      }
     } catch {
       setCheckResult({ canRead: false, message: 'Could not check just now. Try again in a moment.' });
     } finally {

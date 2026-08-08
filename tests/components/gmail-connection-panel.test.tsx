@@ -148,6 +148,10 @@ describe('checking the connection instead of reporting what we last thought', ()
     // Still no reconnect prompt — a quota or a bad minute is not a reason to
     // tear down a working connection and rebuild it.
     expect(screen.queryByRole('link', { name: /reconnect google/i })).toBeNull();
+    // And nothing about the connection is downgraded either: an inconclusive
+    // check must not report an outage as a broken connection.
+    expect(screen.getByText(/connected as/i)).toBeTruthy();
+    expect(screen.getByText('Connected')).toBeTruthy();
   });
 
   it('is not offered for an App Password, which can never read', async () => {
