@@ -187,7 +187,55 @@ Nothing re-runs `npm audit` on a schedule. Worth adding.
 
 ---
 
-## 5. Checked this pass, no change needed
+## 5. Inline-HTML sinks: two controls that existed but were applied unevenly
+
+**Status: fixed, and now swept by a test.**
+
+The CSP ships `script-src 'self' 'unsafe-inline'`, deliberately — Next streams
+its RSC payload through inline `<script>` tags, so a nonce would make every
+page dynamic. The argument that makes that trade acceptable is that the app has
+**no HTML injection sink**. That argument is worth exactly as much as the two
+controls below, and both were three-quarters applied.
+
+- **JSON-LD.** Three of four `dangerouslySetInnerHTML` sites went through
+  `jsonLdScript()`; `app/blog/[slug]/page.tsx` still used raw `JSON.stringify`.
+  It was the one whose input is longest and most often edited — `BLOG_POSTS` is
+  prose, not a handful of constants like the other three. The HTML parser finds
+  `</script` before any JSON parser sees a character, so a post body containing
+  it closes the tag early and the rest is parsed as markup. Demonstrated:
+  raw `JSON.stringify` put an `<img>` element into the DOM; `jsonLdScript` put
+  in zero, and the escaped JSON still decodes byte-identically for crawlers.
+
+- **Email-preview iframes.** One of three carried `sandbox=""`. `SendGuard` had
+  it with a comment explaining why; `EmailComposer` and `BulkEmailComposer` did
+  not. `<iframe srcDoc>` **inherits the embedding origin** — it is not a neutral
+  viewport. What these frames render is transactional email HTML assembled by
+  string concatenation across several dozen templates, interpolating contact
+  names, company names, client messages and cold-email drafts: values that
+  arrive from the public enquiry form and from CSV import of harvested leads.
+  Demonstrated in Chromium: a script in an unsandboxed `srcDoc` executed and
+  reached across into the parent document; under `sandbox=""` it did neither.
+
+`lib/html.ts` escapes every one of those interpolations, and *that* is the
+control that stops this being a live vulnerability — this was defence in depth,
+not a bug being exploited. The sandbox decides what one missed `esc()` in one
+of several dozen templates costs: a preview that renders oddly, or an admin
+session. With `'unsafe-inline'` in force there is no middle option.
+
+Both are now swept by `tests/lib/inline-html-sinks.test.ts`, which fails on the
+next call site that forgets — which is how both of these came to exist in the
+first place. `scripts/screenshots/inline-html-sinks.mjs` runs the payloads
+through a real browser rather than asserting the attributes are present.
+
+One note for whoever writes the next sweep of this kind: strip comments before
+matching. Both the test and the evidence script were caught by their own
+subject matter — the test fired on the comment written above an iframe it was
+checking, and the CSP panel printed a bare `script-src` because `next.config.ts`
+explains the policy in prose above the policy, and the prose quotes it.
+
+---
+
+## 6. Checked this pass, no change needed
 
 Recorded so the next person does not spend the afternoon re-deriving it.
 
@@ -215,3 +263,40 @@ Recorded so the next person does not spend the afternoon re-deriving it.
   production, so it is not attached to cross-site non-GET requests;
   `form-action 'self'` blocks off-site form posts. No separate CSRF token is
   needed for this cookie configuration.
+
+Swept again on the pass that produced section 5, all clear:
+
+- **Capability tokens on the public routes.** `/api/public/leads/[leadId]/…`
+  and `/api/public/projects/[projectId]/status` both require the row's
+  `shareToken`, compare it in constant time, and return the *same* 404 for
+  "no such record" and "wrong token" — so neither can be used to confirm which
+  IDs exist. The cuid in the URL grants nothing on its own.
+- **Open redirect.** `safeReturnTo()` refuses anything that is not a path
+  inside `/client/`, including `//host`, backslash variants and the login page
+  itself. `/l/drive/[kind]/[id]` validates the Drive ID against a pattern and
+  can only ever emit a `drive.google.com` URL.
+- **Password reset.** Only a SHA-256 of the token is stored, single-use with
+  the burn done as a conditional update so two racing requests cannot both
+  win, expiry enforced, and the reset stamps `sessionsValidFrom` so an
+  already-issued token cannot resurrect a session.
+- **Stripe webhook.** Signature-verified via `constructEvent`, and an unset
+  `STRIPE_WEBHOOK_SECRET` is rejected rather than treated as "skip the check".
+  It is the one unauthenticated route with no rate limit, correctly — dropping
+  legitimate Stripe retries would be worse than the load.
+- **Secrets at rest.** AES-256-GCM, random 12-byte IV per encryption, auth tag
+  verified on decrypt, key in its own env var with a legacy-key fallback for
+  rotation.
+- **Field selection.** The routes that read `user` rows use explicit `select`;
+  no handler returns a password hash, an encrypted app password or a refresh
+  token to a caller.
+- **Client portal.** Both `/api/client/*` handlers scope their queries to the
+  session's own `clientId`.
+- **`/api/version`.** Commit SHA, branch and commit message are staff-only;
+  unauthenticated callers get the environment name and nothing else.
+
+One thing looked at and left alone deliberately: `/pay/[instalmentId]` and
+`/e/[instalmentId]` are addressed by cuid with no capability token, unlike the
+routes above. The route documents the reasoning — it grants only a redirect to
+a Stripe page the client was emailed anyway, and every authorisation that
+matters is on Stripe's side. Worth re-reading if that page ever starts showing
+more than it does now.

@@ -495,7 +495,10 @@ function BulkPreviewPane({
               <p className="truncate text-[13px] font-semibold text-white">{subject || '—'}</p>
               <p className="truncate text-[11.5px] text-white/30">to {recipient.contactName || recipient.email}</p>
             </div>
-            <iframe title="Email preview" srcDoc={html} className="min-h-[24rem] w-full flex-1 bg-transparent" />
+            {/* sandbox="" for the reason spelled out in EmailComposer: srcDoc
+                inherits our origin, and this preview is fed cold-email drafts
+                built around harvested lead fields. */}
+            <iframe title="Email preview" sandbox="" srcDoc={html} className="min-h-[24rem] w-full flex-1 bg-transparent" />
           </div>
         ) : (
           <div className="flex h-full items-center justify-center text-[12.5px] text-white/25">

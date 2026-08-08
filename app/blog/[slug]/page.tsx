@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { BlogPostPage } from '@/components/BlogPost';
 import { BLOG_POSTS, getBlogPost, getAdjacentBlogPosts, type BlogPost } from '@/lib/blog';
 import { COMPANY_NAME } from '@/lib/company';
+import { jsonLdScript } from '@/lib/json-ld';
 import { resolveSiteUrl } from '@/lib/site-url';
 
 const SITE_URL = resolveSiteUrl();
@@ -99,7 +100,15 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         // Same shape as the ProfessionalService block in the root layout: a
         // server-rendered script tag, so it is in the HTML a crawler is
         // handed rather than something it has to run JavaScript to find.
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd(post)) }}
+        //
+        // Through jsonLdScript rather than JSON.stringify, like the other
+        // three. This was the one that was not, and of the four it is the one
+        // whose input is longest and most often edited: BLOG_POSTS is prose,
+        // and a post body containing the literal `</script` would close this
+        // tag early and have the rest of the article parsed as markup. The
+        // CSP allows 'unsafe-inline' for scripts on the argument that the app
+        // has no HTML injection sink; this is what keeps that true.
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(articleJsonLd(post)) }}
       />
       <BlogPostPage post={post} prev={prev} next={next} />
     </>

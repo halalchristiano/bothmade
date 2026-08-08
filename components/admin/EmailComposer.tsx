@@ -531,8 +531,18 @@ export function EmailComposer({
                         to {toName || to}
                       </p>
                     </div>
+                    {/* Sandboxed, like the one in SendGuard. An <iframe
+                        srcDoc> inherits this document's origin, so email HTML
+                        rendered here runs as us — and script-src carries
+                        'unsafe-inline'. Every template escapes its
+                        interpolations (lib/html.ts), which is what actually
+                        stops that; this is so a single missed esc() in one of
+                        several dozen concatenated templates costs a broken
+                        preview rather than an admin session. The preview is
+                        static markup and needs none of what sandbox removes. */}
                     <iframe
                       title="Email preview"
+                      sandbox=""
                       srcDoc={previewHtml}
                       className="min-h-[24rem] w-full flex-1 bg-transparent"
                     />
