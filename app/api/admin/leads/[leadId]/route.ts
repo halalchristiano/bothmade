@@ -256,6 +256,17 @@ export async function PATCH(
       autoStatus = 'qualified';
     }
 
+    /*
+     * Whether the address actually changed, rather than merely being sent.
+     *
+     * Compared case-insensitively and trimmed, because neither changes where
+     * an email lands: re-saving "Ben@Acme.test" over "ben@acme.test" is not a
+     * correction and must not clear a real bounce.
+     */
+    const emailCorrected =
+      email !== undefined &&
+      (email ?? '').trim().toLowerCase() !== (existing.email ?? '').trim().toLowerCase();
+
     const lead = await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -304,8 +315,21 @@ export async function PATCH(
         qualTiming: qualTiming !== undefined ? qualTiming : undefined,
         qualMotivation: qualMotivation !== undefined ? qualMotivation : undefined,
         qualifiedAt,
-        emailDeliveryFailedAt: clearEmailFailure ? null : undefined,
-        emailDeliveryFailedReason: clearEmailFailure ? null : undefined,
+        // A new address clears the bounce flag, for the same reason a new
+        // phone number clears the dead-number flag above — and it was the
+        // half of that rule nobody had written.
+        //
+        // What the flag means is "this address doesn't work". Correcting the
+        // address is the one act that makes that untrue, and it was leaving
+        // the flag standing: the lead stayed pinned in the call queue's
+        // "bounced" band ahead of its real reason, and the automatic
+        // follow-up sequence skips a flagged lead outright, so a rep who
+        // fixed the address had quietly switched the emails off for them.
+        //
+        // The "Mark resolved" link on the lead page stays for the other case,
+        // where the address was right all along and their mailbox was full.
+        emailDeliveryFailedAt: clearEmailFailure || emailCorrected ? null : undefined,
+        emailDeliveryFailedReason: clearEmailFailure || emailCorrected ? null : undefined,
         assignedToId: assignedToId !== undefined ? (assignedToId || null) : undefined,
         originalWebsite: originalWebsite !== undefined ? originalWebsite : undefined,
         salesNote: salesNote !== undefined ? salesNote : undefined,
