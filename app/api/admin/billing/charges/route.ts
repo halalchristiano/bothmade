@@ -371,6 +371,25 @@ export async function GET(request: NextRequest) {
      */
     const cursor = readCursor(request.nextUrl.searchParams.get('before'));
 
+    /*
+     * The chase list runs oldest first. Every other bucket is history.
+     *
+     * "Needs chasing" is a to-do list, and it was sorted newest-first like the
+     * rest — so the invoice open two hundred days, the single most expensive
+     * row on the page, sat at the bottom of it, under nine raised this week
+     * that nobody is worried about. The row already says "open 213 days" in
+     * red; you had to scroll past everything that did not matter to find it.
+     *
+     * Paging made it worse rather than revealing it: past a hundred open
+     * invoices the oldest debt is not merely last, it is on a page nobody
+     * presses through to.
+     *
+     * Paid and Cancelled and All are records of what happened, and the most
+     * recent thing that happened is the one being looked up. They stay
+     * newest-first.
+     */
+    const oldestFirst = status === 'open';
+
     const listWhere = {
       ...(where ?? {}),
       ...(status === 'open' || status === 'paid' || status === 'void' ? { status } : {}),
@@ -379,10 +398,18 @@ export async function GET(request: NextRequest) {
     const pageWhere = cursor
       ? {
           ...listWhere,
-          OR: [
-            { createdAt: { lt: cursor.createdAt } },
-            { createdAt: cursor.createdAt, id: { lt: cursor.id } },
-          ],
+          // Strictly after the last row IN THE DIRECTION BEING READ — the
+          // comparison has to turn round with the ordering or the second page
+          // of the chase list is the first page again.
+          OR: oldestFirst
+            ? [
+                { createdAt: { gt: cursor.createdAt } },
+                { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+              ]
+            : [
+                { createdAt: { lt: cursor.createdAt } },
+                { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+              ],
           // `search` also uses OR, and two OR keys in one object is the
           // second one winning silently. Nested under AND, both apply.
           ...(search ? { AND: [search] } : {}),
@@ -404,7 +431,9 @@ export async function GET(request: NextRequest) {
         // Tie-broken by id so the cursor above can pick up exactly where this
         // left off. Without it, invoices sharing a millisecond order
         // differently between two queries and the boundary row is lost.
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: oldestFirst
+          ? [{ createdAt: 'asc' as const }, { id: 'asc' as const }]
+          : [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
         take: LIST_LIMIT,
       }),
       prisma.invoice.groupBy({
@@ -530,6 +559,10 @@ export async function GET(request: NextRequest) {
         // all of them".
         matching: listTotal,
         truncated: listTotal > invoices.length,
+        // Which way the list is being read, so the page can say "longest
+        // outstanding" rather than "most recent" and not have to know the
+        // rule itself.
+        oldestFirst,
         /*
          * Where to resume, or null when this is the end of the list.
          *

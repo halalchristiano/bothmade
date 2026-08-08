@@ -167,6 +167,13 @@ function BillingWorkspace() {
    */
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  /*
+   * Which way the list is being read. The chase bucket runs oldest first —
+   * it is a to-do list, and the invoice open two hundred days is the row it
+   * exists for. Read off the response rather than re-derived here, so the
+   * rule lives in one place.
+   */
+  const [oldestFirst, setOldestFirst] = useState(false);
   // Opens on what needs doing rather than on what happened most recently.
   const [filter, setFilter] = useState<LedgerFilter>('chase');
   const [ledgerQuery, setLedgerQuery] = useState('');
@@ -207,6 +214,7 @@ function BillingWorkspace() {
         setMatching(data.matching ?? (data.invoices?.length || 0));
         setTruncated(Boolean(data.truncated));
         setNextCursor(data.nextCursor ?? null);
+        setOldestFirst(Boolean(data.oldestFirst));
       }
     } catch {
       // The list is context, not the job — a failed load must not look like
@@ -1155,8 +1163,9 @@ function BillingWorkspace() {
               {truncated && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-3">
                   <p className="text-[11px] text-white/30">
-                    Showing the {invoices.length} most recent of {matching} matching. The figures
-                    above cover every invoice.
+                    Showing the {invoices.length}{' '}
+                    {oldestFirst ? 'longest outstanding' : 'most recent'} of {matching} matching. The
+                    figures above cover every invoice.
                   </p>
                   {nextCursor && (
                     <button

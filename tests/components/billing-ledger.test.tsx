@@ -719,3 +719,33 @@ describe('reaching past the first hundred', () => {
     expect(screen.queryByRole('button', { name: /Show .* more/ })).toBeNull();
   });
 });
+
+
+/* The sentence under a truncated list has to match the order it is in, or
+   it describes a different hundred rows than the ones on screen. */
+describe('what the truncation sentence says about the chase list', () => {
+  it('calls them the longest outstanding, not the most recent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/api/admin/billing/charges')
+          ? new Response(
+              JSON.stringify({
+                success: true,
+                invoices: [CHASED],
+                totals: TOTALS,
+                matching: 140,
+                truncated: true,
+                nextCursor: 'c',
+                oldestFirst: true,
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            )
+          : new Response(JSON.stringify({ success: true, customers: [] }), { status: 200 })
+      )
+    );
+    render(<BillingPage />);
+
+    expect(await screen.findByText(/longest outstanding of 140 matching/)).toBeTruthy();
+  });
+});

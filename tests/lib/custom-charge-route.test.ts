@@ -693,3 +693,80 @@ describe('paging past the first hundred', () => {
     ]);
   });
 });
+
+
+/**
+ * The order the chase list is read in.
+ *
+ * "Needs chasing" is a to-do list and was sorted newest-first like every
+ * other bucket, so the invoice open two hundred days — the single most
+ * expensive row on the page, already printed in red — sat at the bottom of
+ * it, under nine raised this week that nobody is worried about.
+ *
+ * Paging did not cause that but made it unfixable by scrolling: past a
+ * hundred open invoices the oldest debt is on a page nobody presses through
+ * to.
+ */
+describe('which end of the chase list comes first', () => {
+  const listRequest = (url: string) => ({ nextUrl: new URL(url) }) as unknown as Parameters<typeof GET>[0];
+  const BASE = 'https://bothmade.test/api/admin/billing/charges';
+
+  beforeEach(() => {
+    prisma.invoice.groupBy.mockReset().mockResolvedValue([]);
+    prisma.invoice.count.mockResolvedValue(4);
+    prisma.invoice.findMany.mockResolvedValue([]);
+  });
+
+  it('puts the oldest unpaid invoice at the top', async () => {
+    const body = await (await GET(listRequest(`${BASE}?status=open`))).json();
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].orderBy).toEqual([
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ]);
+    expect(body.oldestFirst).toBe(true);
+  });
+
+  /* Paid and Cancelled are records of what happened, and the most recent
+     thing that happened is the one being looked up. */
+  it('leaves the settled and cancelled histories newest first', async () => {
+    await GET(listRequest(`${BASE}?status=paid`));
+    expect(prisma.invoice.findMany.mock.calls[0][0].orderBy).toEqual([
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ]);
+
+    prisma.invoice.findMany.mockClear();
+    const body = await (await GET(listRequest(`${BASE}?status=void`))).json();
+    expect(prisma.invoice.findMany.mock.calls[0][0].orderBy[0]).toEqual({ createdAt: 'desc' });
+    expect(body.oldestFirst).toBe(false);
+  });
+
+  it('leaves the unfiltered list newest first too', async () => {
+    const body = await (await GET(listRequest(BASE))).json();
+
+    expect(body.oldestFirst).toBe(false);
+  });
+
+  /*
+   * The comparison has to turn round with the ordering. Reading forwards
+   * while asking for rows BEFORE the cursor returns the page that was just
+   * shown, forever.
+   */
+  it('resumes forwards when the list runs forwards', async () => {
+    await GET(listRequest(`${BASE}?status=open&before=2026-03-16T10:00:00.000Z_inv_9`));
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].where.OR).toEqual([
+      { createdAt: { gt: new Date('2026-03-16T10:00:00.000Z') } },
+      { createdAt: new Date('2026-03-16T10:00:00.000Z'), id: { gt: 'inv_9' } },
+    ]);
+  });
+
+  it('still resumes backwards on a history', async () => {
+    await GET(listRequest(`${BASE}?status=paid&before=2026-03-16T10:00:00.000Z_inv_9`));
+
+    expect(prisma.invoice.findMany.mock.calls[0][0].where.OR[0]).toEqual({
+      createdAt: { lt: new Date('2026-03-16T10:00:00.000Z') },
+    });
+  });
+});
