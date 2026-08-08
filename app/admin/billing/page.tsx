@@ -462,10 +462,15 @@ function BillingWorkspace() {
                     />
                   </div>
                   {lines.length > 1 && (
+                    /* A target you can hit, around an icon that stays the same
+                       size. `px-1` around a 16px glyph is about 24x16 — a third
+                       of the width a finger needs — and it sits immediately
+                       beside the amount field, so the easiest thing to hit by
+                       accident on this form was the one that deletes a line. */
                     <button
                       onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
-                      className="text-white/30 hover:text-white transition-colors px-1"
-                      aria-label="Remove line"
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white"
+                      aria-label={`Remove line ${index + 1}`}
                     >
                       <X size={16} />
                     </button>
@@ -473,9 +478,12 @@ function BillingWorkspace() {
                 </div>
               ))}
             </div>
+            {/* 56x18 before this — a text link pretending to be a button, on
+                the form that builds a client's invoice, and the only way to
+                add a second line. Same words, a real control around them. */}
             <button
               onClick={() => setLines((current) => [...current, { label: '', amount: '' }])}
-              className="text-xs text-sky-300 hover:text-sky-200 mt-2 transition-colors"
+              className="mt-2 inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-400/10 hover:text-sky-200"
             >
               + Add line
             </button>

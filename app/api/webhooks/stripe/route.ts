@@ -16,7 +16,7 @@ import {
   sendWelcomeEmail,
 } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
-import { billingPeriod, invoiceDate } from '@/lib/money-dates';
+import { addMonthsClamped, billingPeriod, invoiceDate } from '@/lib/money-dates';
 import {
   notifyAdminsCarePlanEnded,
   notifyAdminsCarePlanPaymentFailed,
@@ -477,8 +477,9 @@ async function handleCarePlanStarted(
     },
   });
 
-  const firstCharge = new Date();
-  firstCharge.setMonth(firstCharge.getMonth() + schedule.freeMonths);
+  // Clamped, not overflowed — see addMonthsClamped. A plan accepted on the
+  // 31st with a free month was being told its first payment falls on 3 March.
+  const firstCharge = addMonthsClamped(new Date(), schedule.freeMonths);
   const firstChargeLabel =
     schedule.freeMonths > 0
       ? `Your first payment of ${formatCents(schedule.discountedCents)} is due on ${invoiceDate(firstCharge)}.`

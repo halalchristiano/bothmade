@@ -52,6 +52,22 @@ function request(body: unknown) {
   return { json: async () => body } as unknown as Parameters<typeof POST>[0];
 }
 
+/*
+ * The year in an invoice number is the year the invoice is raised.
+ *
+ * These read `BM-2026-0007` as a literal, which is only true while it is
+ * 2026: `formatInvoiceNumber` stamps `new Date().getFullYear()`, so this file
+ * goes red at midnight on 1 January and stays red. Not flaky — dated. It has
+ * a fuse rather than a race, which is worse, because the day it fires is the
+ * day nobody has context for it.
+ *
+ * Derived from the same clock the route reads, so the assertion says what it
+ * means: the seventh invoice of whatever year it currently is.
+ */
+const YEAR = new Date().getFullYear();
+const seventh = `BM-${YEAR}-0007`;
+const eighth = `BM-${YEAR}-0008`;
+
 const CHARGE = {
   projectId: 'proj_1',
   description: 'Second round of homepage design',
@@ -85,7 +101,7 @@ beforeEach(() => {
   }));
   prisma.invoice.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: 'inv_1',
-    number: 'BM-2026-0007',
+    number: seventh,
     amountCents: 120000,
     ...data,
   }));
@@ -143,7 +159,7 @@ describe('raising the charge', () => {
     expect(body.warnings).toEqual([]);
 
     expect(prisma.invoice.create.mock.calls[0][0].data).toMatchObject({
-      number: 'BM-2026-0007', // six already this year, so this is the seventh
+      number: seventh, // six already this year, so this is the seventh
       clientId: 'client_1',
       projectId: 'proj_1',
       amountCents: 120000,
@@ -182,7 +198,7 @@ describe('raising the charge', () => {
     expect(clientCall.paymentUrl).toBe('https://pay.stripe.test/plink_1');
 
     const recordCall = vi.mocked(sendInvoiceRecordEmail).mock.calls[0][0];
-    expect(recordCall.invoiceNumber).toBe('BM-2026-0007');
+    expect(recordCall.invoiceNumber).toBe(seventh);
     expect(recordCall.invoicePdf).toBeInstanceOf(Buffer);
     expect(recordCall.clientDelivered).toBe(true);
   });
@@ -255,7 +271,7 @@ describe('when half of it fails', () => {
   it('retries a taken number instead of failing the charge', async () => {
     prisma.invoice.create
       .mockRejectedValueOnce(Object.assign(new Error('taken'), { code: 'P2002' }))
-      .mockResolvedValueOnce({ id: 'inv_1', number: 'BM-2026-0008', createdAt: new Date() });
+      .mockResolvedValueOnce({ id: 'inv_1', number: eighth, createdAt: new Date() });
 
     const res = await POST(request(CHARGE));
 
@@ -266,7 +282,7 @@ describe('when half of it fails', () => {
 
 describe('guards', () => {
   it('refuses a second identical charge inside the double-click window', async () => {
-    prisma.invoice.findFirst.mockResolvedValue({ number: 'BM-2026-0007' });
+    prisma.invoice.findFirst.mockResolvedValue({ number: seventh });
 
     const res = await POST(request(CHARGE));
     const body = await res.json();
@@ -277,7 +293,7 @@ describe('guards', () => {
   });
 
   it('bills twice when that is genuinely what was meant', async () => {
-    prisma.invoice.findFirst.mockResolvedValue({ number: 'BM-2026-0007' });
+    prisma.invoice.findFirst.mockResolvedValue({ number: seventh });
 
     const res = await POST(request({ ...CHARGE, confirmDuplicate: true }));
 
