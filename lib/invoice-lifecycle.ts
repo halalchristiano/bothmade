@@ -217,7 +217,14 @@ export function settlement(input: {
  * fourth. Refund state is derived from the amounts, so a partly refunded
  * invoice is still a paid invoice, which is exactly what it is.
  */
-export type InvoiceDisplayState = 'open' | 'paid' | 'void' | 'refunded' | 'part-refunded' | 'credited';
+export type InvoiceDisplayState =
+  | 'open'
+  | 'part-paid'
+  | 'paid'
+  | 'void'
+  | 'refunded'
+  | 'part-refunded'
+  | 'credited';
 
 /**
  * Known limitation, written down rather than discovered: only the most recent
@@ -232,10 +239,22 @@ export function displayState(invoice: {
   amountCents: number;
   refundedCents: number;
   refundMethod?: string | null;
+  /** Summed from the payment rows against it. Absent means none have been read. */
+  receivedCents?: number;
 }): InvoiceDisplayState {
   if (invoice.status === 'void') return 'void';
   if (invoice.status !== 'paid' || invoice.refundedCents <= 0) {
-    return invoice.status === 'paid' ? 'paid' : 'open';
+    if (invoice.status === 'paid') return 'paid';
+    /*
+     * Open, with some of it already in.
+     *
+     * "Open" was the whole truth while an invoice was all-or-nothing. It is
+     * now the badge on a row that might have nine hundred of a client's
+     * twelve hundred sitting against it, which is a different thing to chase
+     * and a different thing to say on the phone. The figures were already on
+     * the row; the badge was still calling it untouched.
+     */
+    return (invoice.receivedCents ?? 0) > 0 ? 'part-paid' : 'open';
   }
   if (invoice.refundMethod === 'credit') return 'credited';
   return invoice.refundedCents >= invoice.amountCents ? 'refunded' : 'part-refunded';
@@ -243,6 +262,7 @@ export function displayState(invoice: {
 
 export const DISPLAY_STATE_LABELS: Record<InvoiceDisplayState, string> = {
   open: 'Open',
+  'part-paid': 'Part paid',
   paid: 'Paid',
   void: 'Void',
   refunded: 'Refunded',

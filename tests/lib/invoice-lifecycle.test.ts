@@ -231,3 +231,28 @@ describe('cancelling an invoice money has arrived against', () => {
     expect(canVoid({ status: 'void' }, 0).ok).toBe(false);
   });
 });
+
+describe('what the badge says about an invoice with some of the money in', () => {
+  const OPEN = { status: 'open', amountCents: 120_000, refundedCents: 0 };
+
+  /*
+   * "Open" was the whole truth while an invoice was all-or-nothing. It is now
+   * the badge on a row that might have nine hundred of a client's twelve
+   * hundred against it — a different thing to chase, and a different thing to
+   * say on the phone.
+   */
+  it('reads part paid once anything has arrived', () => {
+    expect(displayState({ ...OPEN, receivedCents: 60_000 })).toBe('part-paid');
+  });
+
+  it('still reads open when nothing has', () => {
+    expect(displayState({ ...OPEN, receivedCents: 0 })).toBe('open');
+    expect(displayState(OPEN)).toBe('open');
+  });
+
+  /* Settled and cancelled are unchanged — money in does not move either. */
+  it('leaves the settled states alone', () => {
+    expect(displayState({ ...OPEN, status: 'paid', receivedCents: 120_000 })).toBe('paid');
+    expect(displayState({ ...OPEN, status: 'void', receivedCents: 60_000 })).toBe('void');
+  });
+});

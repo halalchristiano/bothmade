@@ -306,13 +306,26 @@ describe('an invoice with money already against it', () => {
     expect(screen.getByRole('button', { name: /Mark paid/ })).toBeTruthy();
   });
 
-  it('says what has arrived and what is left', async () => {
+  it('says part paid on the badge, not just open', async () => {
     invoices = [PART_PAID];
     stubFetch();
 
     render(<BillingPage />);
 
-    expect(await screen.findByText(/\$600 in · \$600 left/)).toBeTruthy();
+    // "Open" is what the badge said while an invoice was all-or-nothing. On a
+    // row with half a client's money against it, that is a different thing to
+    // chase and a different thing to say on the phone.
+    expect(await screen.findByText('Part paid')).toBeTruthy();
+    expect(screen.queryByText('Open')).toBeNull();
+  });
+
+  it('says how much is left, which is the figure that decides what to do next', async () => {
+    invoices = [PART_PAID];
+    stubFetch();
+
+    render(<BillingPage />);
+
+    expect(await screen.findByText(/\$600 left of \$1,200/)).toBeTruthy();
   });
 });
 

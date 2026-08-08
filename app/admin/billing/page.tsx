@@ -904,7 +904,12 @@ function BillingWorkspace() {
                         {formatCentsExact(invoice.amountCents)}
                       </p>
                       {(() => {
-                        const state = displayState(invoice);
+                        // receivedCents is what turns "Open" into "Part paid"
+                        // — see displayState.
+                        const state = displayState({
+                          ...invoice,
+                          receivedCents: invoice.receivedCents ?? 0,
+                        });
                         return (
                           <Badge tone={stateTone(state)} solid>
                             {DISPLAY_STATE_LABELS[state]}
@@ -916,13 +921,13 @@ function BillingWorkspace() {
                           {formatCentsExact(invoice.refundedCents)} back
                         </p>
                       )}
-                      {/* Part paid. Without this the row says "Open, $1,200"
-                          about an invoice with six hundred already against it,
-                          and the next person chases the whole amount. */}
+                      {/* The badge says part paid; this says by how much.
+                          The figure that decides the next action is what is
+                          LEFT, so it leads. */}
                       {invoice.status === 'open' && (invoice.receivedCents ?? 0) > 0 && (
-                        <p className="mt-0.5 text-[10px] tabular-nums text-emerald-300/80">
-                          {formatCentsExact(invoice.receivedCents ?? 0)} in ·{' '}
+                        <p className="mt-0.5 text-[10px] tabular-nums text-sky-300/80">
                           {formatCentsExact(invoice.amountCents - (invoice.receivedCents ?? 0))} left
+                          of {formatCentsExact(invoice.amountCents)}
                         </p>
                       )}
                     </div>

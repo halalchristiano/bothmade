@@ -135,10 +135,16 @@ export function chaseLine(
 }
 
 /** The badge tone for a display state, shared so the two invoice lists agree. */
-export function stateTone(state: InvoiceDisplayState): 'emerald' | 'neutral' | 'purple' | 'amber' {
+export function stateTone(
+  state: InvoiceDisplayState
+): 'emerald' | 'neutral' | 'purple' | 'amber' | 'sky' {
   if (state === 'paid') return 'emerald';
   if (state === 'void') return 'neutral';
   if (state === 'refunded' || state === 'part-refunded' || state === 'credited') return 'purple';
+  // Its own colour rather than amber. Part paid is neither "they owe us all of
+  // it" nor "settled", and reading as the first is what gets a client chased
+  // for money they have already sent.
+  if (state === 'part-paid') return 'sky';
   return 'amber';
 }
 
