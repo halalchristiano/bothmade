@@ -9,7 +9,7 @@
  *
  *   BOTHMADE_SHOT_DIR=... node scripts/screenshots/delivery-gates.mjs
  */
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
 
