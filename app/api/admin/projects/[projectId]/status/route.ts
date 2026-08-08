@@ -23,7 +23,11 @@ export async function PATCH(
     if (denied) return denied;
 
 
-    const { status, description, title } = await request.json();
+    // A body that is not JSON is a bad request, not a server fault. Unguarded,
+    // `.json()` threw into the catch below and answered 500 — which reads as
+    // "we broke" for what is really "you sent nothing". Every other route here
+    // already does this; this one was the exception.
+    const { status, description, title } = await request.json().catch(() => ({}) as Record<string, unknown>);
 
     if (typeof status !== 'string' || !STAGES.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });

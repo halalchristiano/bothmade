@@ -103,6 +103,17 @@ describe('who may use it, and what it will accept', () => {
     expect(prisma.project.update).not.toHaveBeenCalled();
   });
 
+  it('answers 400 for a body that is not JSON, rather than 500', async () => {
+    const res = await PATCH(
+      { json: async () => { throw new SyntaxError('Unexpected end of JSON input'); } } as unknown as NextRequest,
+      { params }
+    );
+
+    // "We broke" and "you sent nothing" are different sentences.
+    expect(res.status).toBe(400);
+    expect(prisma.project.update).not.toHaveBeenCalled();
+  });
+
   it('answers 404 for a project that is gone', async () => {
     prisma.project.findUnique.mockResolvedValue(null);
 

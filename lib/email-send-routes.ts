@@ -97,7 +97,26 @@ export const SEND_ROUTES: SendRouteSpec[] = [
   { match: /^\/api\/admin\/broadcast$/, action: 'Send this to every client' },
   { match: /^\/api\/admin\/clients\/[^/]+\/broadcast$/, action: 'Send this to the client' },
   { match: /^\/api\/admin\/projects\/[^/]+\/message$/, action: 'Send this message to the client' },
-  { match: /^\/api\/admin\/projects\/[^/]+\/status$/, action: 'Post the update, and email the client' },
+  {
+    /*
+     * Deliberately NOT body-conditional, and deliberately not promising an
+     * email either.
+     *
+     * A stage move backwards with nothing written is a correction: the route
+     * sends no email and writes nothing to the client's timeline. The obvious
+     * move is a `when` that lets those through — but a spec whose `when` says
+     * no passes through *unguarded*, and this browser cannot tell a backwards
+     * move from a forward one (it has the body, not the project's stage). A
+     * stale page would then post a real update with no confirmation, which is
+     * the single outcome this guard exists to prevent.
+     *
+     * So the confirmation always appears, and says something true whichever
+     * of the two this turns out to be: the client gets what is written, and
+     * a correction leaves it empty on purpose.
+     */
+    match: /^\/api\/admin\/projects\/[^/]+\/status$/,
+    action: 'Move the stage, and send the client whatever is written below',
+  },
   { match: /^\/api\/admin\/projects\/[^/]+\/instalments$/, action: 'Email the instalment to pay' },
   { match: /^\/api\/admin\/projects\/[^/]+\/payment-reminder$/, action: 'Send the payment reminder' },
   {

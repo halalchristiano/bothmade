@@ -319,3 +319,35 @@ describe('what the browser is allowed to import', () => {
     expect(offenders, 'these would drag Resend and node:async_hooks into the browser').toEqual([]);
   });
 });
+
+describe('a stage move, which sometimes sends and sometimes does not', () => {
+  const path = '/api/admin/projects/p_1/status';
+
+  /**
+   * Moving a project BACK a stage with nothing written is a correction: the
+   * route emails nobody and writes nothing to the client's timeline.
+   *
+   * The tempting fix is a `when` that lets those through. It must not be
+   * done. A spec whose `when` says no passes through UNGUARDED, and the
+   * browser cannot tell a backwards move from a forward one — it has the
+   * request body, not the project's stage. A page a few seconds out of date
+   * would then post a real update, to a real client, with no confirmation.
+   * That is the one outcome this guard exists to prevent.
+   */
+  it('is guarded whether or not a message was written', () => {
+    expect(sendRouteFor(path, 'PATCH', { status: 'launch', description: 'Nearly there.' })).not.toBeNull();
+    expect(sendRouteFor(path, 'PATCH', { status: 'design', description: '' })).not.toBeNull();
+    expect(sendRouteFor(path, 'PATCH', { status: 'design' })).not.toBeNull();
+  });
+
+  /**
+   * And because it is always shown, the wording has to be true of both. It
+   * used to promise an email outright — on the one press whose whole point
+   * can be that nobody is told.
+   */
+  it('does not promise an email it may not send', () => {
+    const spec = sendRouteFor(path, 'PATCH', { status: 'design', description: '' });
+    expect(spec?.action).not.toMatch(/email the client/i);
+    expect(spec?.action).toMatch(/whatever is written/i);
+  });
+});
