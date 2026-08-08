@@ -208,7 +208,12 @@ export default function ClientDashboard() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  /**
+   * Why the project isn't on screen, in the two flavours that matter to a
+   * client: one where the link is never going to work, and one where this
+   * minute went badly. Only the second is worth a button.
+   */
+  const [failure, setFailure] = useState<'missing' | 'unavailable' | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages' | 'onboarding'>('overview');
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -396,11 +401,16 @@ export default function ClientDashboard() {
       }
       if (data.success) {
         setProject(data.project);
+        setFailure(null);
       } else {
-        setError(data.error || 'Failed to load project');
+        // `data.error` is written for us, not for them — "Internal server
+        // error" in front of somebody who is paying us says nothing they can
+        // act on. The status code is the part that carries meaning: a project
+        // that isn't theirs or isn't there won't become theirs on a retry.
+        setFailure(response.status === 404 || response.status === 403 ? 'missing' : 'unavailable');
       }
     } catch (err) {
-      setError('Failed to load project');
+      setFailure('unavailable');
     } finally {
       setLoading(false);
     }
@@ -478,15 +488,35 @@ export default function ClientDashboard() {
     );
   }
 
-  if (error || !project) {
+  if (failure || !project) {
+    const unavailable = failure === 'unavailable';
     return (
       <main className="min-h-screen bg-[#05030a] text-white flex items-center justify-center px-4">
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 max-w-md">
-          <h1 className="text-2xl font-bold mb-4">Error</h1>
-          <p className="text-white/50 mb-6">{error || 'Project not found'}</p>
-          <Link href="/client/login" className="text-sky-300 font-semibold hover:underline">
-            Back to Login
-          </Link>
+          <h1 className="text-2xl font-bold mb-4">
+            {unavailable ? "We couldn't load this just now" : 'We can’t find this project'}
+          </h1>
+          <p className="text-white/50 mb-6">
+            {unavailable
+              ? 'Something on our side went wrong. Try again in a moment — if it keeps happening, reply to any of our emails and we’ll sort it out.'
+              : 'It may have moved, or this link may belong to a different account. Reply to any of our emails and we’ll send you the right one.'}
+          </p>
+          {unavailable ? (
+            <button
+              onClick={() => {
+                setLoading(true);
+                setFailure(null);
+                loadProject();
+              }}
+              className="rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 px-5 py-2.5 font-semibold text-black hover:opacity-90 transition-opacity"
+            >
+              Try again
+            </button>
+          ) : (
+            <Link href="/client/projects" className="text-sky-300 font-semibold hover:underline">
+              Back to your projects
+            </Link>
+          )}
         </div>
       </main>
     );

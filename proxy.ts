@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifyToken } from '@/lib/auth';
+import { loginWithReturn } from '@/lib/client-return-to';
 
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'auth_token';
 
@@ -74,8 +75,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // An expired cookie is the ordinary way a client arrives here — they
+  // followed a link from an email to a specific project, a week after we sent
+  // it. Redirecting to a bare login page loses the thing they clicked, so the
+  // destination rides along and the login page reads it back through
+  // safeReturnTo, which refuses anything that is not a path inside the portal.
   if (isClientRoute && (!session || session.type !== 'client')) {
-    return NextResponse.redirect(new URL('/client/login', request.url));
+    const next = loginWithReturn(pathname, request.nextUrl.search);
+    return NextResponse.redirect(new URL(next, request.url));
   }
 
   if (isAdminRoute && (!session || session.type !== 'user')) {
