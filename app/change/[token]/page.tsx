@@ -253,13 +253,26 @@ export default function ChangeOrderPage({ params }: { params: Promise<{ token: s
               <dl className="space-y-3">
                 {order.schedule.map((line) => (
                   <div key={line.index} className="flex items-baseline justify-between gap-4 text-sm">
-                    <dt className="text-white/60">
+                    <dt className="min-w-0 text-white/60">
                       {line.label}
                       {line.frozen && (
-                        <span className="ml-2 text-xs text-white/30">already settled or invoiced</span>
+                        // `inline-block whitespace-nowrap` so the note wraps as
+                        // one thing. Left as plain inline text it was a
+                        // continuation of the label's line flow, so at 390px it
+                        // split mid-phrase — "already settled" stayed on the
+                        // label's line and "or invoiced" dropped underneath on
+                        // its own, reading as a stray fragment against the next
+                        // payment rather than as a note about this one.
+                        <span className="ml-2 inline-block whitespace-nowrap text-xs text-white/30">
+                          already settled or invoiced
+                        </span>
                       )}
                     </dt>
-                    <dd className={`tabular-nums ${line.frozen ? 'text-white/40' : 'font-semibold'}`}>
+                    {/* An amount must never wrap or be squeezed by a long
+                        label — it is the number the client is checking. */}
+                    <dd
+                      className={`shrink-0 tabular-nums ${line.frozen ? 'text-white/40' : 'font-semibold'}`}
+                    >
                       {money(line.amountCents)}
                     </dd>
                   </div>
@@ -307,9 +320,16 @@ export default function ChangeOrderPage({ params }: { params: Promise<{ token: s
                   Agree to this change
                 </PillCTA>
 
+                {/*
+                  `py-1` for the same reason as Logout in the portal header:
+                  without it this measured 20px tall, under the 24px WCAG 2.5.8
+                  asks for. It is the only way to say no on a document that
+                  changes what somebody pays, which is a poor control to make
+                  people aim at on a phone.
+                */}
                 <button
                   onClick={() => setDeclining(true)}
-                  className="mt-5 block text-sm text-white/40 transition-colors hover:text-white/70"
+                  className="mt-4 block py-1 text-sm text-white/40 transition-colors hover:text-white/70"
                 >
                   This isn&apos;t right — decline it
                 </button>
