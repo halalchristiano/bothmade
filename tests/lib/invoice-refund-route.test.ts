@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const prisma = {
   invoice: {
     findUnique: vi.fn(),
-    update: vi.fn(async (args: { data: Record<string, unknown> }) => args.data),
+    updateMany: vi.fn(async (_a: unknown) => ({ count: 1 })),
   },
   payment: { create: vi.fn() },
   projectUpdate: { create: vi.fn(async () => ({})) },
@@ -66,7 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   requireStaff.mockResolvedValue({ userId: 'user_1', role: 'owner' });
   prisma.invoice.findUnique.mockResolvedValue({ ...INVOICE });
-  prisma.invoice.update.mockImplementation(async (args: { data: Record<string, unknown> }) => args.data);
+  prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
   sessionsRetrieve.mockResolvedValue({ payment_intent: 'pi_test_1' });
   refundsCreate.mockResolvedValue({ id: 're_test_1' });
 });
@@ -112,7 +112,7 @@ describe('refunding through Stripe', () => {
     const res = await call({ amountCents: 100_000, method: 'stripe', reason: 'Descoped' });
 
     expect(res.status).toBe(502);
-    expect(prisma.invoice.update).not.toHaveBeenCalled();
+    expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -122,7 +122,7 @@ describe('refunding through Stripe', () => {
     const res = await call({ amountCents: 100_000, method: 'stripe', reason: 'Descoped' });
 
     expect(res.status).toBe(502);
-    expect(prisma.invoice.update).not.toHaveBeenCalled();
+    expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
   });
 
   it('refuses a card refund when no Stripe payment was ever recorded', async () => {
@@ -185,7 +185,7 @@ describe('the refund ledger', () => {
 
     await call({ amountCents: 50_000, method: 'manual', reason: 'More descoped' });
 
-    expect(prisma.invoice.update).toHaveBeenCalledWith(
+    expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ refundedCents: 150_000 }) })
     );
   });
@@ -196,5 +196,58 @@ describe('who may refund', () => {
     requireStaff.mockResolvedValue(null);
 
     expect((await call({ amountCents: 1000, method: 'manual', reason: 'x' })).status).toBe(401);
+  });
+});
+
+/**
+ * Two people pressing Refund at once — or one person pressing it twice.
+ *
+ * The idempotency key already stops Stripe sending the money twice: both
+ * requests compute the same key from the invoice and the amount, and Stripe
+ * replays the first refund for the second. That covered the visible half and
+ * left the expensive one open.
+ *
+ * Both requests read `refundedCents: 0`, both measured the ceiling against
+ * it, and both then wrote `0 + amount` and created a NEGATIVE PAYMENT ROW.
+ * The invoice came out right by luck — last writer wins on the same number —
+ * and the ledger came out saying twice as much money went back as actually
+ * did. That is the half that matters, because every balance figure in the app
+ * is derived from Payment rows rather than from invoice fields, so the
+ * phantom row reopens a paid-off project and understates revenue with nothing
+ * on screen to contradict it.
+ *
+ * `refundedCents` in the WHERE is the version check. A request that lost the
+ * race matches nothing and stops before writing.
+ */
+describe('two refunds racing each other', () => {
+  it('claims the invoice against the exact figure the ceiling was measured on', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...INVOICE, refundedCents: 100_000 });
+
+    await call({ amountCents: 50_000, method: 'manual', reason: 'More descoped' });
+
+    expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'inv_1', refundedCents: 100_000 } })
+    );
+  });
+
+  it('writes no second ledger row when it lost the race', async () => {
+    prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await call({ amountCents: 100_000, method: 'stripe', reason: 'Descoped' });
+
+    expect(res.status).toBe(409);
+    // The money is fine — Stripe replayed rather than re-sent. What must not
+    // happen is a second -£1,000 appearing in the ledger for it.
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(prisma.projectUpdate.create).not.toHaveBeenCalled();
+  });
+
+  it('still records the winner normally', async () => {
+    const res = await call({ amountCents: 100_000, method: 'stripe', reason: 'Descoped' });
+
+    expect(res.status).toBe(200);
+    expect(prisma.payment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: -100_000 }) })
+    );
   });
 });

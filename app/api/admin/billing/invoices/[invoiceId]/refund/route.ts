@@ -175,18 +175,59 @@ export async function POST(
     const original = invoice.payments[0];
     const writeLedgerRow = method !== 'credit' && Boolean(original);
 
-    const [updated] = await prisma.$transaction([
-      prisma.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          refundedCents: invoice.refundedCents + amountCents,
-          refundedAt: new Date(),
-          refundReason: reason,
-          refundMethod: method,
-          stripeRefundId: stripeRefundId ?? invoice.stripeRefundId,
-          refundedById: session.userId,
+    /*
+     * Scoped to the invoice as it was READ, which is what makes a double-click
+     * safe rather than merely half-safe.
+     *
+     * The idempotency key above already stops Stripe sending the money twice —
+     * two racing requests both compute `refund-inv_1-0-250000` and Stripe
+     * replays the first refund for the second. What it does not touch is this
+     * side. Both requests read `refundedCents: 0`, both passed the ceiling
+     * check on it, and both then wrote `0 + 250000` and created a NEGATIVE
+     * PAYMENT ROW. The invoice ends up correct by luck — last writer wins on
+     * the same number — and the ledger ends up saying $5,000 went back to a
+     * client who received $2,500.
+     *
+     * That is the expensive half. Every balance figure in the app is derived
+     * from Payment rows rather than from invoice fields (see
+     * amountPaidTowardProject), so the phantom row reopens a paid-off project
+     * and understates revenue, and nothing on any screen contradicts it.
+     *
+     * `refundedCents` in the WHERE is the version check: it is exactly the
+     * value the ceiling was measured against, so a second request that lost
+     * the race matches nothing and stops before writing anything. Same shape
+     * as the guard in the mark-paid route, for the same reason.
+     */
+    const claimed = await prisma.invoice.updateMany({
+      where: { id: invoice.id, refundedCents: invoice.refundedCents },
+      data: {
+        refundedCents: invoice.refundedCents + amountCents,
+        refundedAt: new Date(),
+        refundReason: reason,
+        refundMethod: method,
+        stripeRefundId: stripeRefundId ?? invoice.stripeRefundId,
+        refundedById: session.userId,
+      },
+    });
+
+    if (claimed.count === 0) {
+      /*
+       * Somebody else refunded this in the moment between our read and our
+       * write. The money is fine — Stripe replayed rather than re-sent, so
+       * exactly one refund exists — and their write recorded it. Ours must
+       * not be recorded a second time.
+       */
+      return NextResponse.json(
+        {
+          error:
+            'That invoice was refunded by somebody else a moment ago. The money went back once; nothing was recorded twice.',
         },
-      }),
+        { status: 409 }
+      );
+    }
+
+    const [updated] = await prisma.$transaction([
+      prisma.invoice.findUnique({ where: { id: invoice.id } }),
       ...(writeLedgerRow
         ? [
             prisma.payment.create({
