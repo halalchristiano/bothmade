@@ -71,6 +71,8 @@ interface InvoiceRow {
   issuedBy: { name: string | null; email: string } | null;
   /** One of a project's scheduled payments rather than a one-off charge. */
   isInstalment?: boolean;
+  /** How much has actually arrived against it — an invoice can be part paid. */
+  receivedCents?: number;
 }
 
 interface LineDraft {
@@ -883,6 +885,15 @@ function BillingWorkspace() {
                           {formatCentsExact(invoice.refundedCents)} back
                         </p>
                       )}
+                      {/* Part paid. Without this the row says "Open, $1,200"
+                          about an invoice with six hundred already against it,
+                          and the next person chases the whole amount. */}
+                      {invoice.status === 'open' && (invoice.receivedCents ?? 0) > 0 && (
+                        <p className="mt-0.5 text-[10px] tabular-nums text-emerald-300/80">
+                          {formatCentsExact(invoice.receivedCents ?? 0)} in ·{' '}
+                          {formatCentsExact(invoice.amountCents - (invoice.receivedCents ?? 0))} left
+                        </p>
+                      )}
                     </div>
                   </div>
                   </Link>
@@ -935,7 +946,11 @@ function BillingWorkspace() {
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
                     <InvoiceActions
-                      invoice={{ ...invoice, projectId: invoice.project.id }}
+                      invoice={{
+                        ...invoice,
+                        projectId: invoice.project.id,
+                        receivedCents: invoice.receivedCents ?? 0,
+                      }}
                       onDone={loadInvoices}
                     />
                   </div>

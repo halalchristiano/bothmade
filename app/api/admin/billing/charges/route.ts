@@ -11,6 +11,7 @@ import {
   readChargeDraft,
 } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
+import { receivedCents } from '@/lib/invoice-settlement';
 
 /**
  * Raise a one-off charge against an existing customer.
@@ -342,13 +343,17 @@ export async function GET(request: NextRequest) {
       ...(search ?? {}),
     };
 
-    const [invoices, byStatus, refundsByMethod, total, listTotal] = await Promise.all([
+    const [invoices, byStatus, refundsByMethod, total, listTotal, partPaid] = await Promise.all([
       prisma.invoice.findMany({
         where: listWhere,
         include: {
           client: { select: { id: true, company: true, email: true } },
           project: { select: { id: true, name: true } },
           issuedBy: { select: { name: true, email: true } },
+          // What has actually arrived against each one. An invoice can now be
+          // part paid by transfer, and "open" alone stops being the whole
+          // story the moment it is.
+          payments: { select: { amount: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: LIST_LIMIT,
@@ -375,6 +380,20 @@ export async function GET(request: NextRequest) {
       }),
       prisma.invoice.count({ where }),
       prisma.invoice.count({ where: listWhere }),
+      /*
+       * Money already received against invoices that are still open.
+       *
+       * Outstanding used to be the sum of open invoices' totals, which was
+       * exactly right while an invoice was all-or-nothing. It can now be part
+       * paid by transfer — so without this, six hundred arriving against a
+       * twelve-hundred invoice leaves the figure claiming twelve hundred is
+       * owed, and the page whose whole job is reconciling against a bank
+       * statement is the one overstating.
+       */
+      prisma.payment.aggregate({
+        where: { invoice: { ...(where ?? {}), status: 'open' } },
+        _sum: { amount: true },
+      }),
     ]);
 
     /*
@@ -423,14 +442,21 @@ export async function GET(request: NextRequest) {
         // Flagged on the row rather than sent as a separate list, so nothing
         // downstream has to do the join a second time to know what it is
         // looking at.
-        invoices: invoices.map((invoice) => ({
+        invoices: invoices.map(({ payments, ...invoice }) => ({
           ...invoice,
           isInstalment: instalmentNumbers.has(invoice.number),
+          // Summed rather than sent as rows: the screen wants one number and
+          // handing it a list invites a second opinion about what it adds to.
+          receivedCents: receivedCents(payments),
         })),
         totals: {
           // The only figure that is a to-do list: raised, not cancelled, not
           // paid. Everything else on this page is history.
-          outstandingCents: open?._sum.amountCents ?? 0,
+          // Net of anything already received against a still-open invoice.
+          outstandingCents: Math.max(
+            0,
+            (open?._sum.amountCents ?? 0) - (partPaid._sum.amount ?? 0)
+          ),
           outstandingCount: open?._count._all ?? 0,
           paidCents: paid?._sum.amountCents ?? 0,
           paidCount: paid?._count._all ?? 0,

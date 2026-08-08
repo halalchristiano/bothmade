@@ -68,6 +68,7 @@ const OPEN_INVOICE = {
   createdAt: new Date('2026-02-01T10:00:00Z'),
   client: { id: 'c1', company: 'Acme Dental', email: 'owner@acme.test', contactName: 'Dana' },
   project: { id: 'proj_1', name: 'Acme — Website' },
+  payments: [],
 };
 
 beforeEach(() => {
@@ -300,5 +301,95 @@ describe('what the client gets afterwards', () => {
     const body = await (await call()).json();
 
     expect(body.warnings.join(' ')).toContain('still reads as unpaid');
+  });
+});
+
+/**
+ * A client transferring six hundred against a twelve-hundred invoice.
+ *
+ * The route recorded the invoice's full amount whatever arrived — so the
+ * invoice closed, the pay link came down, a receipt went out saying paid, and
+ * six hundred still owed dropped off every list that would have chased it.
+ */
+describe('money that only covers part of it', () => {
+  it('records what arrived, not what was billed', async () => {
+    await call({ method: 'Bank transfer, ref ACME0312', amountCents: 60000 });
+
+    expect(prisma.payment.create.mock.calls[0][0].data.amount).toBe(60000);
+  });
+
+  it('leaves the invoice open, because it is', async () => {
+    await call({ method: 'Transfer', amountCents: 60000 });
+
+    const written = prisma.invoice.updateMany.mock.calls[0][0];
+    expect(written.data.status).toBeUndefined();
+    expect(written.data.paidAt).toBeUndefined();
+    // How the most recent money arrived is still worth recording — it is the
+    // only thing anybody wants from that field while reconciling.
+    expect(written.data.paidMethod).toBe('Transfer');
+  });
+
+  /*
+   * Killing the link would take away the client's way of sending the rest,
+   * which is the opposite of what anybody wants after a part payment.
+   */
+  it('leaves the payment link working so they can send the rest', async () => {
+    await call({ method: 'Transfer', amountCents: 60000 });
+
+    expect(paymentLinksUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not settle an instalment on half of it', async () => {
+    prisma.instalment.findUnique.mockResolvedValue({ id: 'inst_2', index: 2, stripeSessionId: 'cs_1' });
+
+    await call({ method: 'Transfer', amountCents: 60000 });
+
+    expect(prisma.instalment.updateMany).not.toHaveBeenCalled();
+    expect(sessionsExpire).not.toHaveBeenCalled();
+  });
+
+  /*
+   * A receipt says settled and the rebuilt PDF is headed "Paid in full". On a
+   * half-settled invoice both are documents that contradict the money, handed
+   * to the person most likely to file them.
+   */
+  it('sends no receipt and rebuilds no paid-in-full PDF', async () => {
+    const res = await call({ method: 'Transfer', amountCents: 60000 });
+    const body = await res.json();
+
+    expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
+    expect(restoreInvoicePdfAsPaid).not.toHaveBeenCalled();
+    expect(body.settled).toBe(false);
+    expect(body.remainingCents).toBe(60000);
+    expect(body.warnings.join(' ')).toContain('$600 is still owed');
+  });
+
+  it('measures a second payment against what is left, not the total', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      ...OPEN_INVOICE,
+      payments: [{ amount: 60000 }],
+    });
+
+    const res = await call({ method: 'Transfer', amountCents: 70000 });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('already come in');
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('closes it when the last of the money arrives', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      ...OPEN_INVOICE,
+      payments: [{ amount: 60000 }],
+    });
+
+    const res = await call({ method: 'Transfer', amountCents: 60000 });
+    const body = await res.json();
+
+    expect(body.settled).toBe(true);
+    expect(prisma.invoice.updateMany.mock.calls[0][0].data.status).toBe('paid');
+    expect(paymentLinksUpdate).toHaveBeenCalledWith('plink_1', { active: false });
+    expect(sendPaymentReceiptEmail).toHaveBeenCalledOnce();
   });
 });

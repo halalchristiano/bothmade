@@ -51,6 +51,12 @@ export interface ActionableInvoice {
   isInstalment?: boolean;
   /** Where the schedule lives, for the link that replaces Send on one. */
   projectId?: string;
+  /**
+   * How much of it has already arrived, summed from the payment rows against
+   * it. Marking one paid used to record the invoice's full amount whatever
+   * turned up, so a part payment closed the invoice and lost the rest.
+   */
+  receivedCents?: number;
 }
 
 interface Deduction {
@@ -176,9 +182,23 @@ function MarkPaidModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const outstanding = invoice.amountCents - (invoice.receivedCents ?? 0);
+
   const [method, setMethod] = useState('');
+  const [amount, setAmount] = useState((outstanding / 100).toFixed(2));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  const amountCents = dollarsToCents(amount);
+  const amountProblem =
+    amountCents === null
+      ? 'Enter an amount like 600 or 600.00.'
+      : amountCents <= 0
+        ? 'Enter an amount above zero.'
+        : amountCents > outstanding
+          ? `The most you can record is ${formatCentsExact(outstanding)}.`
+          : null;
+  const partial = amountCents !== null && !amountProblem && amountCents < outstanding;
 
   const submit = async () => {
     setBusy(true);
@@ -187,7 +207,7 @@ function MarkPaidModal({
       const res = await fetch(`/api/admin/billing/invoices/${invoice.id}/mark-paid`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method }),
+        body: JSON.stringify({ method, amountCents }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -210,10 +230,39 @@ function MarkPaidModal({
           {invoice.description} — {formatCentsExact(invoice.amountCents)}
         </p>
         <p className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-xs text-white/45">
-          For money that arrived outside Stripe. The payment link stops working immediately, so the
-          client can&apos;t pay the same invoice a second time, and the amount goes into the ledger as
-          a real payment rather than only flipping a status.
+          {partial ? (
+            <>
+              A part payment. {invoice.number} stays open for the remaining{' '}
+              {formatCentsExact(outstanding - (amountCents ?? 0))}, the payment link keeps working so
+              they can send it, and no receipt goes out — a receipt says settled, and it isn&apos;t.
+            </>
+          ) : (
+            <>
+              For money that arrived outside Stripe. The payment link stops working immediately, so
+              the client can&apos;t pay the same invoice a second time, and the amount goes into the
+              ledger as a real payment rather than only flipping a status.
+            </>
+          )}
         </p>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-white/50">How much arrived?</label>
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            className={inputClass}
+          />
+          {amountProblem ? (
+            <p className="mt-1 text-[11px] text-amber-300">{amountProblem}</p>
+          ) : (
+            <p className="mt-1 text-[11px] text-white/30">
+              {(invoice.receivedCents ?? 0) > 0
+                ? `${formatCentsExact(invoice.receivedCents ?? 0)} has already come in — ${formatCentsExact(outstanding)} left.`
+                : 'The whole invoice, unless they sent part of it.'}
+            </p>
+          )}
+        </div>
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-white/50">How did it arrive?</label>
@@ -236,8 +285,10 @@ function MarkPaidModal({
           <BrandButton variant="quiet" onClick={onClose}>
             Not yet
           </BrandButton>
-          <BrandButton onClick={submit} disabled={busy || !method.trim()}>
-            {busy ? 'Recording…' : `Record ${formatCentsExact(invoice.amountCents)} received`}
+          <BrandButton onClick={submit} disabled={busy || !method.trim() || !!amountProblem}>
+            {busy
+              ? 'Recording…'
+              : `Record ${formatCentsExact(amountCents ?? 0)} received`}
           </BrandButton>
         </div>
       </div>

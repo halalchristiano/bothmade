@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const prisma = {
   project: { findUnique: vi.fn() },
   instalment: { findMany: vi.fn() },
+  payment: { aggregate: vi.fn() },
   invoice: {
     findFirst: vi.fn(),
     create: vi.fn(),
@@ -77,6 +78,36 @@ const CHARGE = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  /*
+   * Reset, not just cleared — these two carry queues.
+   *
+   * The ledger-totals tests below arm `groupBy` with two
+   * `mockResolvedValueOnce` values (status buckets, then the refund split) and
+   * `create` with one. `vi.clearAllMocks()` empties `mock.calls` and leaves
+   * those queues exactly where they were, so any test that returns before
+   * consuming them hands the leftovers to whichever test runs next — which
+   * under `--sequence.shuffle` is a different one every time.
+   *
+   * That is what happened: the instalment-flag test read the status buckets
+   * where it expected an empty groupBy, and failed in four runs out of five
+   * while passing in file order. The same leak class as the copy-button one,
+   * two rounds ago, which is why it is written down rather than just fixed.
+   */
+  prisma.invoice.groupBy.mockReset();
+  prisma.invoice.create.mockReset();
+
+  /*
+   * Every collaborator the GET handler touches, armed here rather than inside
+   * whichever describe happened to need it first.
+   *
+   * These two were stubbed only in the ledger-totals block, so in file order
+   * the instalment tests below inherited them and passed — and under
+   * `--sequence.shuffle`, running first, they got `undefined` back from
+   * payment.aggregate, threw inside the route, and asserted against a 500.
+   * Setup that belongs to the route belongs to every test of it.
+   */
+  prisma.instalment.findMany.mockResolvedValue([]);
+  prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -359,7 +390,6 @@ describe('the ledger totals', () => {
 
   beforeEach(() => {
     prisma.invoice.findMany.mockResolvedValue([]);
-    prisma.instalment.findMany.mockResolvedValue([]);
     prisma.invoice.groupBy
       .mockResolvedValueOnce([
         { status: 'open', _sum: { amountCents: 340000 }, _count: { _all: 3 } },
@@ -500,8 +530,8 @@ describe('telling the two kinds of invoice apart', () => {
     prisma.invoice.groupBy.mockResolvedValue([]);
     prisma.invoice.count.mockResolvedValue(2);
     prisma.invoice.findMany.mockResolvedValue([
-      { id: 'inv_1', number: 'BM-2026-0031', status: 'open' },
-      { id: 'inv_2', number: 'BM-2026-0030', status: 'open' },
+      { id: 'inv_1', number: 'BM-2026-0031', status: 'open', payments: [] },
+      { id: 'inv_2', number: 'BM-2026-0030', status: 'open', payments: [{ amount: 60000 }] },
     ]);
     prisma.instalment.findMany.mockResolvedValue([
       { invoiceNumber: 'BM-2026-0030', projectId: 'proj_1' },
@@ -511,8 +541,20 @@ describe('telling the two kinds of invoice apart', () => {
   it('flags the scheduled ones on the row', async () => {
     const body = await (await GET(listRequest())).json();
 
-    expect(body.invoices[0]).toMatchObject({ number: 'BM-2026-0031', isInstalment: false });
-    expect(body.invoices[1]).toMatchObject({ number: 'BM-2026-0030', isInstalment: true });
+    expect(body.invoices[0]).toMatchObject({
+      number: 'BM-2026-0031',
+      isInstalment: false,
+      receivedCents: 0,
+    });
+    expect(body.invoices[1]).toMatchObject({
+      number: 'BM-2026-0030',
+      isInstalment: true,
+      // Part paid. The rows carry a summed figure rather than the payment
+      // list, so nothing downstream forms a second opinion about the total.
+      receivedCents: 60000,
+    });
+    // And the raw rows do not travel with it.
+    expect(body.invoices[1].payments).toBeUndefined();
   });
 
   it('asks only about the rows on screen', async () => {

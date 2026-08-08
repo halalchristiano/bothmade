@@ -3,7 +3,12 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { readReason } from '@/lib/invoice-lifecycle';
-import { canMarkPaid, manualPaymentType } from '@/lib/invoice-settlement';
+import {
+  canMarkPaid,
+  manualPaymentType,
+  readManualPayment,
+  receivedCents,
+} from '@/lib/invoice-settlement';
 import { restoreInvoicePdfAsPaid } from '@/lib/invoice-dispatch';
 import { sendPaymentReceiptEmail } from '@/lib/email';
 import { projectStanding } from '@/lib/project-standing';
@@ -59,7 +64,10 @@ export async function POST(
     if (!session) return unauthorizedResponse();
 
     const { invoiceId } = await params;
-    const body = (await request.json().catch(() => null)) as { method?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as {
+      method?: unknown;
+      amountCents?: unknown;
+    } | null;
 
     /*
      * How it arrived, required rather than optional.
@@ -79,7 +87,12 @@ export async function POST(
 
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { project: { select: { id: true } } },
+      include: {
+        project: { select: { id: true } },
+        // What has already come in, so a second partial payment is measured
+        // against the remainder rather than the total.
+        payments: { select: { amount: true } },
+      },
     });
     if (!invoice) {
       return NextResponse.json({ error: 'That invoice no longer exists.' }, { status: 404 });
@@ -90,6 +103,22 @@ export async function POST(
       return NextResponse.json({ error: allowed.error }, { status: 409 });
     }
 
+    /*
+     * How much of it arrived — which was not a question this route asked.
+     *
+     * It recorded the invoice's FULL amount, always. A client transferring
+     * six hundred against a twelve-hundred invoice left the books saying
+     * twelve hundred came in: the invoice closed, the pay link came down, a
+     * receipt went out saying paid, and the six hundred still owed dropped
+     * off every list that would have chased it.
+     */
+    const alreadyIn = receivedCents(invoice.payments);
+    const payment = readManualPayment(invoice, alreadyIn, { amountCents: body?.amountCents });
+    if (!payment.ok) {
+      return NextResponse.json({ error: payment.error }, { status: 400 });
+    }
+    const { amountCents, settles, remainingAfterCents } = payment.draft;
+
     // Which instalment this settles, if any — it decides both the payment
     // type and whether there is a checkout session to expire.
     const instalment = await prisma.instalment.findUnique({
@@ -97,10 +126,15 @@ export async function POST(
       select: { id: true, index: true, stripeSessionId: true },
     });
 
-    // The way to pay it comes down before it is recorded as paid, so nobody
-    // can pay it twice. Custom charges carry a payment link; instalments are
-    // paid through a checkout session held on their own row.
-    if (invoice.stripePaymentLinkId) {
+    /*
+     * The way to pay it comes down before it is recorded as paid, so nobody
+     * can pay it twice — but only when this payment actually closes it.
+     *
+     * A part payment leaves money owed, and killing the link would take away
+     * the client's way of sending the rest. That is the whole reason the two
+     * halves are separated here rather than sharing one branch.
+     */
+    if (settles && invoice.stripePaymentLinkId) {
       try {
         await stripe.paymentLinks.update(invoice.stripePaymentLinkId, { active: false });
       } catch (error) {
@@ -115,7 +149,7 @@ export async function POST(
       }
     }
 
-    if (instalment?.stripeSessionId) {
+    if (settles && instalment?.stripeSessionId) {
       try {
         await stripe.checkout.sessions.expire(instalment.stripeSessionId);
       } catch (error) {
@@ -142,17 +176,27 @@ export async function POST(
        * Scoped to a still-open row, so two people pressing this at once
        * settle it once. The second update matches nothing and the second
        * payment is not written.
+       *
+       * A part payment writes the same guard against the same still-open row
+       * without closing it — the concurrency question is "has somebody else
+       * already dealt with this invoice", and it has the same answer either
+       * way. `paidMethod` is written on both: on a partial it records how the
+       * most recent money arrived, which is the only thing anybody wants from
+       * it while reconciling.
        */
       const moved = await tx.invoice.updateMany({
         where: { id: invoice.id, status: 'open' },
-        data: { status: 'paid', paidAt, paidMethod: method, paidById: session.userId },
+        data: settles
+          ? { status: 'paid', paidAt, paidMethod: method, paidById: session.userId }
+          : { paidMethod: method, paidById: session.userId },
       });
       if (moved.count === 0) return null;
 
       await tx.payment.create({
         data: {
           projectId: invoice.projectId,
-          amount: invoice.amountCents,
+          // What actually arrived, not what was billed.
+          amount: amountCents,
           type: manualPaymentType(instalment),
           invoiceId: invoice.id,
           // Null, and deliberately so: there is no Stripe session behind this
@@ -162,7 +206,10 @@ export async function POST(
         },
       });
 
-      if (instalment) {
+      // An instalment is settled only when its invoice is. Half of Payment 2
+      // of 3 is not Payment 2 of 3, and the client's schedule must not say
+      // otherwise.
+      if (instalment && settles) {
         await tx.instalment.updateMany({
           where: { id: instalment.id, status: { not: 'paid' } },
           data: { status: 'paid', paidAt },
@@ -200,19 +247,31 @@ export async function POST(
      * receipt that fails to send is worth reporting, not worth undoing a
      * payment over.
      */
-    const receiptPdfUrl = await restoreInvoicePdfAsPaid(prisma, settled, paidAt).catch((error) => {
-      console.error(`Invoice ${invoice.number}: receipt PDF not rebuilt:`, error);
-      return null;
-    });
+    /*
+     * Neither happens on a part payment, and both would be wrong if they did.
+     *
+     * The rebuilt PDF is headed "Paid in full" — on a half-settled invoice
+     * that is a document contradicting the money, handed to the person most
+     * likely to file it. And a receipt saying the invoice is settled is how a
+     * client stops thinking about the rest of it. What they get instead is
+     * nothing automatic, and the sentence below tells whoever pressed the
+     * button exactly what is still owed so they can say it themselves.
+     */
+    const receiptPdfUrl = settles
+      ? await restoreInvoicePdfAsPaid(prisma, settled, paidAt).catch((error) => {
+          console.error(`Invoice ${invoice.number}: receipt PDF not rebuilt:`, error);
+          return null;
+        })
+      : null;
 
     let receiptSent = false;
-    if (settled.client.email) {
+    if (settles && settled.client.email) {
       const receipt = await sendPaymentReceiptEmail({
         toEmail: settled.client.email,
         contactName: settled.client.contactName,
         company: settled.client.company,
         projectName: settled.project.name,
-        amountLabel: formatCentsExact(settled.amountCents),
+        amountLabel: formatCentsExact(amountCents),
         paidOnLabel: invoiceDate(paidAt),
         forLabel: `Invoice ${settled.number}`,
         invoiceNumber: settled.number,
@@ -234,14 +293,23 @@ export async function POST(
       {
         success: true,
         invoice: receiptPdfUrl ? { ...settled, pdfUrl: receiptPdfUrl } : settled,
+        settled: settles,
+        recordedCents: amountCents,
+        remainingCents: remainingAfterCents,
         receiptSent,
         warnings: [
-          settled.client.email
-            ? receiptSent
-              ? null
-              : `The receipt didn't reach ${settled.client.email}. The payment is recorded either way — tell them by hand.`
-            : 'This client has no email address on file, so no receipt was sent.',
-          receiptPdfUrl ? null : "The invoice PDF couldn't be rebuilt as a receipt, so their copy still reads as unpaid.",
+          // On a part payment the useful sentence is what is still owed, not
+          // what did or did not get emailed — nothing was supposed to be.
+          settles
+            ? settled.client.email
+              ? receiptSent
+                ? null
+                : `The receipt didn't reach ${settled.client.email}. The payment is recorded either way — tell them by hand.`
+              : 'This client has no email address on file, so no receipt was sent.'
+            : `${formatCentsExact(remainingAfterCents)} is still owed on ${settled.number}, so it stays open and the payment link still works. No receipt was sent — tell them what's left yourself.`,
+          settles && !receiptPdfUrl
+            ? "The invoice PDF couldn't be rebuilt as a receipt, so their copy still reads as unpaid."
+            : null,
         ].filter((warning): warning is string => Boolean(warning)),
       },
       { status: 200 }
