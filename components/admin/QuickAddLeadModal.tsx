@@ -69,7 +69,10 @@ export function QuickAddLeadModal({
   const [bulkText, setBulkText] = useState('');
   const [bulkStatus, setBulkStatus] = useState<LeadStatus>('new');
   const [bulkCreating, setBulkCreating] = useState(false);
-  const [bulkResult, setBulkResult] = useState('');
+  const [bulkResult, setBulkResult] = useState<{
+    tone: 'ok' | 'partial' | 'error';
+    message: string;
+  } | null>(null);
 
   const inputClass =
     'w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all';
@@ -99,7 +102,7 @@ export function QuickAddLeadModal({
     const lines = bulkText.split('\n').map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
     setBulkCreating(true);
-    setBulkResult('');
+    setBulkResult(null);
     try {
       const response = await fetch('/api/admin/leads/bulk', {
         method: 'POST',
@@ -108,11 +111,39 @@ export function QuickAddLeadModal({
       });
       const data = await response.json();
       if (data.success) {
-        setBulkResult(`Added ${data.count} companies.`);
-        setBulkText('');
+        /*
+         * The box is only emptied for lines that actually became leads.
+         *
+         * One paste is capped, and it used to be capped in silence: 250 rows
+         * in, "Added 200 companies" out, textarea cleared, fifty companies
+         * gone with nothing left to paste them from. The count was true and
+         * the message was a lie by omission — success, reported over the top
+         * of somebody's work being dropped.
+         *
+         * So the remainder goes back where it came from, ready to send
+         * again, and the line under the box says how many are still sitting
+         * there rather than leaving it to be inferred from a number.
+         */
+        const skipped = Number(data.skipped) || 0;
+        if (skipped > 0) {
+          const limit = Number(data.limit) || lines.length - skipped;
+          setBulkText(lines.slice(limit).join('\n'));
+          setBulkResult({
+            tone: 'partial',
+            message:
+              `Added ${data.count} companies — that is the most one paste can add. ` +
+              `The remaining ${skipped} ${skipped === 1 ? 'line is' : 'lines are'} still in the box; ` +
+              `press Add All again to send ${skipped === 1 ? 'it' : 'them'}.`,
+          });
+        } else {
+          setBulkResult({ tone: 'ok', message: `Added ${data.count} companies.` });
+          setBulkText('');
+        }
         onCreated();
       } else {
-        setBulkResult(data.error || 'Failed to bulk-add');
+        // Green for a refusal, which is what this was, because the one line
+        // under the box was hard-coded emerald whatever it said.
+        setBulkResult({ tone: 'error', message: data.error || 'Failed to bulk-add' });
       }
     } finally {
       setBulkCreating(false);
@@ -268,7 +299,24 @@ export function QuickAddLeadModal({
               </div>
             </div>
 
-            {bulkResult && <p className="text-sm text-emerald-300">{bulkResult}</p>}
+            {bulkResult && (
+              <p
+                // Announced, because the interesting case — half the paste
+                // added and the rest handed back — happens after a click
+                // that also refills the box above it, and there is nothing
+                // to notice if you were looking at the box.
+                role="status"
+                className={`text-sm leading-relaxed ${
+                  bulkResult.tone === 'ok'
+                    ? 'text-emerald-300'
+                    : bulkResult.tone === 'partial'
+                      ? 'text-amber-200'
+                      : 'text-red-300'
+                }`}
+              >
+                {bulkResult.message}
+              </p>
+            )}
 
             <button
               onClick={handleBulkCreate}
