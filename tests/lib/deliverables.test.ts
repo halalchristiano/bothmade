@@ -79,3 +79,31 @@ describe('adding one', () => {
     if (!result.ok) expect(result.error).toMatch(/Add the link/);
   });
 });
+
+describe('a file name pasted into the link box', () => {
+  /**
+   * The box above it asks for a file name, so this is the likeliest paste
+   * there is. "Source.zip" is a label, a dot, a label — indistinguishable
+   * from a hostname to the rescue rule, so it became `https://source.zip`,
+   * saved without complaint, and put a link on the client's own handover page
+   * that opens nothing.
+   */
+  it.each(['Source.zip', 'Brand guidelines.pdf'.replace(' ', '-'), 'mockup.fig', 'logo.svg', 'backup.sql'])(
+    'refuses %s rather than inventing a host out of it',
+    (name) => {
+      expect(deliverableHref(name)).toBeNull();
+    }
+  );
+
+  /** Anything with a path is a URL somebody meant. This rescue stays. */
+  it('still rescues a real host with a path', () => {
+    expect(deliverableHref('example.com/brief.pdf')).toBe('https://example.com/brief.pdf');
+    expect(deliverableHref('files.example.com/pack.zip')).toBe('https://files.example.com/pack.zip');
+  });
+
+  /** And a bare hostname is still a hostname — no file extension is a TLD. */
+  it('still rescues a bare host', () => {
+    expect(deliverableHref('example.com')).toBe('https://example.com');
+    expect(deliverableHref('bothmade.studio')).toBe('https://bothmade.studio');
+  });
+});

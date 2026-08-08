@@ -569,11 +569,29 @@ export default function AdminProjectDetailPage() {
         handleUploadUrl: `/api/admin/projects/${projectId}/deliverables/upload`,
       });
 
-      await fetch(`/api/admin/projects/${projectId}/deliverables`, {
+      /*
+       * The half that was not checked.
+       *
+       * The blob upload above is awaited and its failures caught. This one —
+       * the request that actually puts the file on the record — had no `ok`
+       * check at all, so a 400 or a 500 fell straight through to
+       * loadProject(). The bytes were in storage, the list came back without
+       * them, and the screen said nothing: an upload that finished and a file
+       * that is not there look identical.
+       */
+      const res = await fetch(`/api/admin/projects/${projectId}/deliverables`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: file.name, url: blob.url, size: formatBytes(file.size) }),
       });
+      if (!res.ok) {
+        const said = await res.json().catch(() => null);
+        setUploadError(
+          said?.error ||
+            'The file uploaded but was not added to this project. Try adding it again.'
+        );
+        return;
+      }
       loadProject();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
@@ -583,11 +601,28 @@ export default function AdminProjectDetailPage() {
     }
   };
 
+  /*
+   * Deleting had no error handling of any kind — no `ok` check, no catch. A
+   * refusal or a dead network meant loadProject() redrew the same list with
+   * the file still in it, which reads as a button that does not work. On the
+   * handover pack, where the reason to remove something is usually that it is
+   * the wrong file in front of a client.
+   */
   const handleDeleteDeliverable = async (id: string) => {
-    await fetch(`/api/admin/projects/${projectId}/deliverables?id=${id}`, {
-      method: 'DELETE',
-    });
-    loadProject();
+    setUploadError('');
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}/deliverables?id=${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const said = await res.json().catch(() => null);
+        setUploadError(said?.error || 'That file was not removed — it is still on the project.');
+      }
+    } catch {
+      setUploadError('Could not reach the server — that file was not removed.');
+    } finally {
+      loadProject();
+    }
   };
 
   if (loading) {
@@ -1370,7 +1405,11 @@ export default function AdminProjectDetailPage() {
                 className="w-full text-xs text-white/60 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-white file:text-ink file:font-medium file:text-xs file:cursor-pointer hover:file:bg-white/90 disabled:opacity-50"
               />
               {uploadingFile && <p className="text-xs text-sky-300">Uploading...</p>}
-              {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+              {uploadError && (
+                <p role="alert" className="text-xs text-red-400">
+                  {uploadError}
+                </p>
+              )}
 
               <div className="flex items-center gap-2 py-2">
                 <div className="h-px flex-1 bg-white/10" />

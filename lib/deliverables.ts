@@ -25,6 +25,19 @@ const ALLOWED_PROTOCOLS = ['http:', 'https:'];
  * deliverable URL is typed by a person and rendered as an anchor on two
  * dashboards, one of which a client is logged into.
  */
+/**
+ * Endings that mean "this is a file", not "this is a website". None of them
+ * is a real TLD, so nothing that is genuinely a bare hostname is caught.
+ */
+const FILE_EXTENSIONS = new Set([
+  'zip', 'rar', '7z', 'tar', 'gz',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'rtf',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'heic', 'tiff',
+  'psd', 'ai', 'eps', 'indd', 'sketch', 'fig', 'xd',
+  'mp4', 'mov', 'avi', 'mp3', 'wav',
+  'json', 'xml', 'sql', 'env', 'key', 'pem',
+]);
+
 export function deliverableHref(url: unknown): string | null {
   if (typeof url !== 'string') return null;
   const trimmed = url.trim();
@@ -39,6 +52,23 @@ export function deliverableHref(url: unknown): string | null {
     // so it is worth rescuing rather than rejecting — but only when it looks
     // like a host rather than like a sentence somebody typed.
     if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/|$)/i.test(trimmed) && !/\s/.test(trimmed)) {
+      /*
+       * …but a filename is not a host, and it looks exactly like one.
+       *
+       * "Source.zip" passes the test above — a label, a dot, a label, end of
+       * string — so pasting the FILE name into the URL box produced
+       * `https://source.zip`, saved without complaint, and put a link on the
+       * client's own handover page that opens nothing. The box above it is
+       * literally asking for a file name, so this is the likeliest paste
+       * there is, and the one nobody notices until a client tries it.
+       *
+       * Only the bare form is caught. Anything with a path is a URL somebody
+       * meant — `example.com/brief.pdf` still rescues, which is the case this
+       * rescue was written for.
+       */
+      const bare = !trimmed.includes('/');
+      const ext = trimmed.slice(trimmed.lastIndexOf('.') + 1).toLowerCase();
+      if (bare && FILE_EXTENSIONS.has(ext)) return null;
       return `https://${trimmed}`;
     }
     return null;
