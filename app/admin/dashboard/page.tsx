@@ -1508,7 +1508,7 @@ export default function AdminDashboardPage() {
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
       <div className="mb-6">
         <Kicker className="mb-2">Studio</Kicker>
-        <h1 className="text-3xl font-bold tracking-tight mb-1">
+        <h1 className="text-3xl font-semibold tracking-tight mb-1">
           Welcome back{name ? `, ${name}` : ''}
         </h1>
         <p className="text-white/40">Sell it, get paid for it, ship it — in that order.</p>

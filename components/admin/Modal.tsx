@@ -230,7 +230,7 @@ export function Modal({
           <>
             <div className="flex justify-between items-start gap-3 p-6 pb-4">
               <div>
-                <h2 id={titleId} className="text-lg font-bold">
+                <h2 id={titleId} className="text-lg font-semibold">
                   {title}
                 </h2>
                 {subtitle && (

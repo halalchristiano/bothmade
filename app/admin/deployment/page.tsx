@@ -177,7 +177,7 @@ export default function DeploymentPage() {
         {lanes.map(({ lane, rows: laneRows }) =>
           laneRows.length === 0 ? null : (
             <section key={lane}>
-              <h2 className="text-sm font-bold text-white/85">
+              <h2 className="text-sm font-semibold text-white/85">
                 {LANE_COPY[lane].title}
                 <span className="ml-2 text-xs font-normal text-white/30">{laneRows.length}</span>
               </h2>

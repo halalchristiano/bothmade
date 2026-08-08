@@ -318,7 +318,7 @@ export default function DeploymentDetailPage() {
 
       {/* --- The domain ----------------------------------------------------- */}
       <section className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
-        <h2 className="flex items-center gap-2 text-sm font-bold">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Globe size={15} className="text-sky-300" />
           The domain
         </h2>
@@ -426,7 +426,7 @@ export default function DeploymentDetailPage() {
 
       {/* --- The checklist -------------------------------------------------- */}
       <section className="mt-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
-        <h2 className="flex items-center gap-2 text-sm font-bold">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Server size={15} className="text-sky-300" />
           Before it goes live
         </h2>
@@ -498,7 +498,7 @@ export default function DeploymentDetailPage() {
 
       {/* --- The two contractual moments ------------------------------------ */}
       <section className="mt-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
-        <h2 className="flex items-center gap-2 text-sm font-bold">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
           <ShieldCheck size={15} className="text-sky-300" />
           What the contract asks us to record
         </h2>

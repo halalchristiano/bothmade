@@ -661,7 +661,7 @@ export default function CallCockpit() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="min-w-0">
               <div className="flex items-center gap-2 min-w-0">
-                <h1 className="text-lg font-bold truncate">{lead.company}</h1>
+                <h1 className="text-lg font-semibold truncate">{lead.company}</h1>
                 {reason && REASON_LABEL[reason] && (
                   <span
                     className={`shrink-0 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold ${

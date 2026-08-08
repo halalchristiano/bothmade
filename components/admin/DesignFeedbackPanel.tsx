@@ -116,7 +116,7 @@ export function DesignFeedbackPanel({ projectId }: { projectId: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-bold text-white">What the client asked for</h3>
+        <h3 className="text-sm font-semibold text-white">What the client asked for</h3>
         <span
           className={`rounded-md border px-2 py-0.5 text-[11px] ${
             revisions.remaining === 0

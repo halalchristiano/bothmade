@@ -97,7 +97,7 @@ export default function AdminLoginPage() {
         <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-8 shadow-e4 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.1] before:to-transparent">
           {showForgotPassword ? (
             <>
-              <h1 className="text-2xl font-bold mb-2">Reset password</h1>
+              <h1 className="text-2xl font-semibold mb-2">Reset password</h1>
               <p className="text-white/50 mb-6 text-sm">
                 Enter your team email and we&apos;ll send you a reset link.
               </p>
@@ -163,7 +163,7 @@ export default function AdminLoginPage() {
             </>
           ) : (
             <>
-          <h1 className="text-2xl font-bold mb-2">Admin</h1>
+          <h1 className="text-2xl font-semibold mb-2">Admin</h1>
           <p className="text-white/50 mb-6 text-sm">Internal team access only</p>
 
           <form onSubmit={handleLogin} className="space-y-4">

@@ -161,7 +161,7 @@ function NewProjectForm() {
         ← Back to Projects
       </Link>
 
-      <h1 className="text-3xl font-bold mt-4 mb-2">New Project</h1>
+      <h1 className="text-3xl font-semibold mt-4 mb-2">New Project</h1>
       <p className="text-white/40 mb-8 text-sm">
         Manually create a client and project — for deals closed outside Stripe (bank transfer,
         invoice, cash).
@@ -169,7 +169,7 @@ function NewProjectForm() {
 
       <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-8 space-y-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
         <div>
-          <h2 className="text-lg font-bold mb-4">Client</h2>
+          <h2 className="text-lg font-semibold mb-4">Client</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2 text-white/70">Contact Name</label>
@@ -199,7 +199,7 @@ function NewProjectForm() {
         </div>
 
         <div className="pt-6 border-t border-white/10">
-          <h2 className="text-lg font-bold mb-4">Project</h2>
+          <h2 className="text-lg font-semibold mb-4">Project</h2>
           <div className="mb-4">
             <BaseServicePicker value={baseService} onChange={setBaseService} />
           </div>

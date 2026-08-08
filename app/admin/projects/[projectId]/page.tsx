@@ -1155,7 +1155,7 @@ export default function AdminProjectDetailPage() {
           </div>
 
           <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
-            <h2 className="text-xl font-bold mb-4">Activity</h2>
+            <h2 className="text-xl font-semibold mb-4">Activity</h2>
             <div className="space-y-4 max-h-[500px] overflow-y-auto mb-6">
               {thread.length === 0 && <p className="text-white/40 text-sm">No activity yet.</p>}
               {thread.map((item) => {
@@ -1259,7 +1259,7 @@ export default function AdminProjectDetailPage() {
           {/* Internal team notes — never shown to the client */}
           <div className="relative rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] shadow-e2 p-6">
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-bold">Internal Notes</h2>
+              <h2 className="text-xl font-semibold">Internal Notes</h2>
               <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300">
                 Team only — never shown to client
               </span>
@@ -1293,7 +1293,7 @@ export default function AdminProjectDetailPage() {
 
           {/* Flag a question for the rest of the team */}
           <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
-            <h2 className="text-lg font-bold mb-1">Flag For The Team</h2>
+            <h2 className="text-lg font-semibold mb-1">Flag For The Team</h2>
             <p className="text-xs text-white/40 mb-3">
               Ping the team chat about this project — shows in their notifications until resolved.
             </p>
@@ -1324,7 +1324,7 @@ export default function AdminProjectDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           {project.contractUrl && (
             <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
-              <h2 className="text-lg font-bold mb-4">Signed Agreement</h2>
+              <h2 className="text-lg font-semibold mb-4">Signed Agreement</h2>
               <a
                 href={project.contractUrl}
                 target="_blank"
@@ -1341,7 +1341,7 @@ export default function AdminProjectDetailPage() {
           )}
 
           <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
-            <h2 className="text-lg font-bold mb-4">Deliverables</h2>
+            <h2 className="text-lg font-semibold mb-4">Deliverables</h2>
 
             <div className="space-y-3 mb-6">
               {project.deliverables.length === 0 && (

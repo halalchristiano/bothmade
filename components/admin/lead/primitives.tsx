@@ -122,7 +122,7 @@ export function Step({
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-bold text-white/90">{title}</h3>
+        <h3 className="text-sm font-semibold text-white/90">{title}</h3>
         <p className="text-xs text-white/40 mt-0.5">{hint}</p>
       </div>
       <ChevronRight

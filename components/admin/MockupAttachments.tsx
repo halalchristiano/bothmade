@@ -775,7 +775,7 @@ export function MockupsCard({ refreshSignal = 0 }: { refreshSignal?: number } = 
   return (
     <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
       <div className="mb-1 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-bold">
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
           <ImageIcon size={18} /> Mockups
         </h2>
         <Link href="/admin/mockup-queue" className="text-xs text-sky-300/70 hover:text-sky-300">

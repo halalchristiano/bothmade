@@ -36,7 +36,7 @@ export function ImportHistoryModal({ onClose }: { onClose: () => void }) {
       <>
         <div className="flex justify-between items-start p-6 pb-4 shrink-0">
           <div>
-            <h2 className="text-lg font-bold">CSV import history</h2>
+            <h2 className="text-lg font-semibold">CSV import history</h2>
             <p className="text-xs text-white/40 mt-0.5">Every import ever run — a receipt trail, not just a memory.</p>
           </div>
           <ModalCloseButton onClose={onClose} />

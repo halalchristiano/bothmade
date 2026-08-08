@@ -214,7 +214,7 @@ export function ChangeOrderPanel({
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-sm font-bold">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
           <FileDiff size={15} className="text-sky-300" />
           Change orders
         </h3>

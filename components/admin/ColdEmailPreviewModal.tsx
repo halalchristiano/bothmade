@@ -68,7 +68,7 @@ export function ColdEmailPreviewModal({
       <>
         <div className="flex items-start justify-between gap-3 p-6 pb-4 border-b border-white/[0.06]">
           <div>
-            <h2 className="text-lg font-bold">Review before sending</h2>
+            <h2 className="text-lg font-semibold">Review before sending</h2>
             <p className="text-xs text-white/40 mt-0.5">
               Exactly what each recipient will get — uncheck any you want to skip.
             </p>

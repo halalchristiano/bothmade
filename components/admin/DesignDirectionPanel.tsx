@@ -129,7 +129,7 @@ export function DesignDirectionPanel({ projectId }: { projectId: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-sm font-bold text-white">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
           <Compass size={14} className="text-purple-300" />
           The brief they signed
         </h3>

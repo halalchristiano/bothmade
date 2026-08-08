@@ -2140,7 +2140,7 @@ export default function LeadDetailPage() {
         return (
           <div className="relative mt-4 rounded-2xl border border-white/[0.06] bg-surface p-4 sm:p-6 min-w-0 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
             <div className="mb-5">
-              <h2 className="text-base font-bold">Your brief for {lead.company}</h2>
+              <h2 className="text-base font-semibold">Your brief for {lead.company}</h2>
 
               {/* Who you are actually calling, and on what number, at the top
                   where you look — not buried in a card further down the tab.
@@ -2706,7 +2706,7 @@ export default function LeadDetailPage() {
                 <div className="flex items-start gap-2 min-w-0">
                   {/* break-words, not truncate — a long company name must wrap
                       rather than force the row wider than the phone screen. */}
-                  <h1 className="text-xl font-bold min-w-0 break-words">{lead.company}</h1>
+                  <h1 className="text-xl font-semibold min-w-0 break-words">{lead.company}</h1>
                   <button
                     onClick={handleToggleHot}
                     title={lead.hotLead ? 'Unmark as hot' : 'Mark as hot lead'}
@@ -3523,7 +3523,7 @@ export default function LeadDetailPage() {
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-bold">
             ✦
           </span>
-          <h2 className="text-xl font-bold">Onboard This Customer</h2>
+          <h2 className="text-xl font-semibold">Onboard This Customer</h2>
         </div>
         <p className="text-sm text-white/40 mb-4 ml-11">
           Configure exactly what they want, then send a payment link or generate a contract — no need to send them back to the pricing page.
