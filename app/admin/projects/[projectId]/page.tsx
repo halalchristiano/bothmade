@@ -1062,111 +1062,127 @@ export default function AdminProjectDetailPage() {
               </div>
             </div>
 
-            <div className="mt-6 pt-6 border-t border-white/10">
-              {/* Directly above the stage control, because presenting the
-                  design is the act that makes moving to Build legitimate. */}
-              <div className="mb-4">
-                <DesignReviewPanel
-                  projectId={projectId}
-                  review={
-                    project.designReview ?? {
-                      presentedAt: null,
-                      reviewEndsAt: null,
-                      approvedAt: null,
-                      deemed: false,
-                    }
-                  }
-                  onChanged={loadProject}
-                />
-              </div>
-
-              <p className="mb-3 text-sm font-semibold">Current Status</p>
-              {/*
-                A status, drawn like every other status in the app.
-
-                This was the sky-to-purple gradient — spent on a word that
-                says "build". The gradient is the one thing reserved for
-                moments a screen wants to be looked at, and a stage label is
-                not one: it changes five times a project and is read, not
-                admired. Toned by stage instead, so the colour carries meaning
-                — complete reads done, launch reads imminent — which a
-                gradient identical at every stage never could.
-              */}
-              <div className="mb-4">
-                <Badge
-                  solid
-                  tone={
-                    project.status === 'complete'
-                      ? 'emerald'
-                      : project.status === 'launch'
-                        ? 'amber'
-                        : project.status === 'discovery'
-                          ? 'neutral'
-                          : 'sky'
-                  }
-                >
-                  <span className="capitalize">{project.status}</span>
-                </Badge>
-              </div>
-
-              <select
-                value={statusDraft}
-                onChange={(e) => {
-                  setStatusDraft(e.target.value);
-                  // Untouched — either empty, or still exactly what we last
-                  // wrote. Anything you have edited is yours and survives.
-                  const untouched =
-                    !statusDescription.trim() || statusDescription === autoFilledRef.current;
-                  if (untouched) {
-                    const next = stageMessage(e.target.value).body;
-                    autoFilledRef.current = next;
-                    setStatusDescription(next);
-                  }
-                }}
-                className={`${inputClass} mb-3 capitalize`}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s} className="capitalize bg-[#05030a]">
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <textarea
-                value={statusDescription}
-                onChange={(e) => setStatusDescription(e.target.value)}
-                placeholder="Describe this update for the client..."
-                rows={10}
-                className={`${inputClass} resize-none mb-1`}
-              />
-              <p className="mb-3 text-[11px] text-white/30">
-                This is what your client reads. Pick a stage above and it fills in — edit it, or
-                send as is.
-              </p>
-              <button
-                onClick={handleStatusUpdate}
-                disabled={statusSaving || (statusDraft === project.status && !statusDescription)}
-                className="w-full rounded-lg bg-white py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                {statusSaving ? 'Saving...' : 'Send Status Update'}
-              </button>
-
-              {openedGate && (
-                <div className="mt-3">
-                  <GatePrompt
-                    gate={openedGate}
-                    projectId={projectId}
-                    company={project.client.company}
-                    onDone={loadProject}
-                    onDismiss={() => setOpenedGate(null)}
-                  />
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
         {/* CENTER: Messages & Updates */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-4 space-y-6">
+          {/*
+            Where the project actually gets moved on, in a column wide enough
+            to write in.
+
+            This lived in the three-tenths rail, stacked under the price, the
+            schedule, the completion date and the live URL — so the textarea a
+            client's update is written in was about 180px across, and the rail
+            ran a full column longer than either of the two beside it. The
+            page already made this argument once about the onboarding form,
+            a few lines further down: a working surface in a narrow column
+            "felt like a settings panel rather than a thing you use".
+
+            It is the same surface as Send Message to Client below it, doing
+            the same job on the same person, so the two now sit together.
+          */}
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+                {/* Directly above the stage control, because presenting the
+                    design is the act that makes moving to Build legitimate. */}
+                <div className="mb-4">
+                  <DesignReviewPanel
+                    projectId={projectId}
+                    review={
+                      project.designReview ?? {
+                        presentedAt: null,
+                        reviewEndsAt: null,
+                        approvedAt: null,
+                        deemed: false,
+                      }
+                    }
+                    onChanged={loadProject}
+                  />
+                </div>
+
+                <p className="mb-3 text-sm font-semibold">Current Status</p>
+                {/*
+                  A status, drawn like every other status in the app.
+
+                  This was the sky-to-purple gradient — spent on a word that
+                  says "build". The gradient is the one thing reserved for
+                  moments a screen wants to be looked at, and a stage label is
+                  not one: it changes five times a project and is read, not
+                  admired. Toned by stage instead, so the colour carries meaning
+                  — complete reads done, launch reads imminent — which a
+                  gradient identical at every stage never could.
+                */}
+                <div className="mb-4">
+                  <Badge
+                    solid
+                    tone={
+                      project.status === 'complete'
+                        ? 'emerald'
+                        : project.status === 'launch'
+                          ? 'amber'
+                          : project.status === 'discovery'
+                            ? 'neutral'
+                            : 'sky'
+                    }
+                  >
+                    <span className="capitalize">{project.status}</span>
+                  </Badge>
+                </div>
+
+                <select
+                  value={statusDraft}
+                  onChange={(e) => {
+                    setStatusDraft(e.target.value);
+                    // Untouched — either empty, or still exactly what we last
+                    // wrote. Anything you have edited is yours and survives.
+                    const untouched =
+                      !statusDescription.trim() || statusDescription === autoFilledRef.current;
+                    if (untouched) {
+                      const next = stageMessage(e.target.value).body;
+                      autoFilledRef.current = next;
+                      setStatusDescription(next);
+                    }
+                  }}
+                  className={`${inputClass} mb-3 capitalize`}
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s} className="capitalize bg-[#05030a]">
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <textarea
+                  value={statusDescription}
+                  onChange={(e) => setStatusDescription(e.target.value)}
+                  placeholder="Describe this update for the client..."
+                  rows={10}
+                  className={`${inputClass} resize-none mb-1`}
+                />
+                <p className="mb-3 text-[11px] text-white/30">
+                  This is what your client reads. Pick a stage above and it fills in — edit it, or
+                  send as is.
+                </p>
+                <button
+                  onClick={handleStatusUpdate}
+                  disabled={statusSaving || (statusDraft === project.status && !statusDescription)}
+                  className="w-full rounded-lg bg-white py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
+                >
+                  {statusSaving ? 'Saving...' : 'Send Status Update'}
+                </button>
+
+                {openedGate && (
+                  <div className="mt-3">
+                    <GatePrompt
+                      gate={openedGate}
+                      projectId={projectId}
+                      company={project.client.company}
+                      onDone={loadProject}
+                      onDismiss={() => setOpenedGate(null)}
+                    />
+                  </div>
+                )}
+          </div>
+
           {/* In the wide column, not beside the schedule it affects: the
               summary IS the document the client signs, and in a sidebar it
               truncated to three words — which is the one part of a change
@@ -1366,7 +1382,7 @@ export default function AdminProjectDetailPage() {
         </div>
 
         {/* RIGHT: Deliverables */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
           {project.contractUrl && (
             <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
               <h2 className="text-lg font-semibold mb-4">Signed Agreement</h2>
@@ -1481,21 +1497,23 @@ export default function AdminProjectDetailPage() {
           This is a working surface — questions to write, answers to read —
           and it was in a two-tenths column, which is most of why it felt
           like a settings panel rather than a thing you use. */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6">
         <OnboardingBuilder
           projectId={projectId}
           questions={questions}
           onChanged={loadQuestions}
         />
-        <div className="flex flex-col justify-end">
-          {/* Destructive and permanent, so it earns neither prominence nor a
-              single click. */}
-          <DeleteProject
-            projectId={projectId}
-            company={project.client.company}
-            projectName={project.name}
-          />
-        </div>
+      </div>
+
+      {/* Destructive and permanent, so it earns neither prominence nor a
+          single click — and no longer an empty half-page column holding one
+          grey link, which is what giving it its own grid cell amounted to. */}
+      <div className="mt-6 flex justify-end">
+        <DeleteProject
+          projectId={projectId}
+          company={project.client.company}
+          projectName={project.name}
+        />
       </div>
     </div>
   );

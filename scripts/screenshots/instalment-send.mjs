@@ -87,7 +87,16 @@ const PROJECT = {
   balanceDue: 966_667,
   payments: [{ id: 'pay_1', amount: 483_333, type: 'deposit', createdAt: day(40) }],
   invoices: [],
-  deliverables: [],
+  /*
+   * Files and a signed agreement, because an empty right rail is not what
+   * this page looks like in use — and a layout judged against empty mock
+   * data gets rebuilt to fix a void that real data fills.
+   */
+  deliverables: [
+    { id: 'd_1', name: 'Homepage — final.fig', url: 'https://files.test/home.fig', size: '4.2 MB', createdAt: day(6) },
+    { id: 'd_2', name: 'Brand assets.zip', url: 'https://files.test/brand.zip', size: '18 MB', createdAt: day(9) },
+    { id: 'd_3', name: 'Copy deck v3.docx', url: 'https://files.test/copy.docx', size: '240 KB', createdAt: day(11) },
+  ],
   createdAt: day(48),
   client: { id: 'c_1', email: 'dana@northgatedental.test', company: 'Northgate Dental', contactName: 'Dana' },
   messages: [],
@@ -95,7 +104,7 @@ const PROJECT = {
   sourcedLead: null,
   handoffAcknowledgedAt: day(45),
   designReview: { presentedAt: day(12), reviewEndsAt: day(-2), approvedAt: day(6), deemed: false, round: 1 },
-  contractUrl: null,
+  contractUrl: 'https://files.test/northgate-agreement.pdf',
 };
 
 /*
