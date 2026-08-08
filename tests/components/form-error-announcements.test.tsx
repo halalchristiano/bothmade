@@ -114,9 +114,22 @@ describe('what the server said lands inside it', () => {
     const user = userEvent.setup();
     const { container } = render(<StartPage />);
 
-    await user.type(screen.getByLabelText(/^contact name/i), 'Ada');
-    await user.type(screen.getByLabelText(/^email address/i), 'ada@northgate.test');
-    await user.type(screen.getByLabelText(/^company name/i), 'Northgate');
+    /*
+     * Pasted rather than typed, and not only for speed.
+     *
+     * `user.type` fires one event per character, and each one re-renders the
+     * whole enquiry page — three fields cost more than everything else in
+     * this file put together, and this is the test that fell over when the
+     * machine was busy. Nothing here is about keystrokes: what is under test
+     * is what the live region says after the server refuses. Pasting an email
+     * address is also what people actually do with one.
+     */
+    await user.click(screen.getByLabelText(/^contact name/i));
+    await user.paste('Ada');
+    await user.click(screen.getByLabelText(/^email address/i));
+    await user.paste('ada@northgate.test');
+    await user.click(screen.getByLabelText(/^company name/i));
+    await user.paste('Northgate');
     await user.click(screen.getByRole('button', { name: /send my selections/i }));
 
     await waitFor(() => {

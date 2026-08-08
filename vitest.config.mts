@@ -5,6 +5,31 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
+    /*
+     * 15s, not Vitest's 5s, and it applies to both projects below.
+     *
+     * A timeout is a budget, not an assertion — nothing in this suite claims
+     * that a form submits or an email renders inside five seconds. But a
+     * dozen tests sit between 1.1s and 2.1s of that budget on an idle
+     * four-core box, for two separate and equally ordinary reasons: in
+     * `components`, `user.type` fires one event per character into a page
+     * that re-renders on each one, so filling three fields costs more than
+     * everything else in its file; in `lib`, the first test in a file pays
+     * the module-load cost of whatever it imports, which is over a second for
+     * the mailer and the mockup templates.
+     *
+     * Comfortable at 25% of the budget, a coin toss at 300%. Running the
+     * suite on a busy machine failed three tests, and a different three the
+     * second time — `form-error-announcements`, then `mailer-plaintext`,
+     * `mockups` and `send-guard`. Nothing was wrong with any of them. CI
+     * runners are shared, and this is the exact shape of a test that passes
+     * on a laptop and fails in the pipeline for no reason anybody can find,
+     * which is how a suite stops being believed.
+     *
+     * 15s still stops a genuinely hung test from stalling the run.
+     */
+    testTimeout: 15_000,
+
     // Two environments, one command. Logic tests (pricing, contracts, CSV,
     // lead state) have no business paying for a DOM, and component tests
     // can't run without one.
