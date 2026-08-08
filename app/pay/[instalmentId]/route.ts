@@ -115,19 +115,27 @@ export async function GET(
           : null;
 
         /*
-         * Nothing is minted when money has already arrived against it.
+         * A part-paid instalment gets a checkout for what is LEFT.
          *
-         * A Checkout Session here is for the instalment's FULL amount; there
-         * is no partial version of one. So a client who transferred fifteen
-         * hundred of a three-thousand instalment and then pressed "Pay Payment
-         * 2 of 3 — $3,000" in their own dashboard would have paid the whole
-         * thing again on top of it.
+         * This used to refuse outright, and refusing was the right first
+         * answer: the session minted here was always for the instalment's full
+         * amount, so a client who transferred fifteen hundred of a
+         * three-thousand instalment and then pressed the button in their
+         * invoice email would have paid the whole thing again on top of it.
+         * Landing them on their dashboard instead was safe.
          *
-         * Same shape as the voided-invoice case beside it, and the same
-         * answer: no session, and the redirect below lands them on their
-         * dashboard, which says what has arrived and what is left.
+         * It was also a dead end. The dashboard tells them fifteen hundred is
+         * outstanding and offers no way to send it — from the one link most
+         * clients ever pay from, the button in the invoice email. "Safe" there
+         * meant the money stopped moving and somebody had to notice by hand.
+         *
+         * liveCheckoutUrl takes the outstanding amount now, so the useful
+         * answer is available: charge the balance. The void and refund guards
+         * below are deliberately untouched — those are the cases where a human
+         * should decide before anything is collected at all.
          */
         const alreadyIn = receivedCents(invoice?.payments);
+        const outstandingCents = inst.amountCents - alreadyIn;
         /*
          * And nothing is minted once money has gone back off it either.
          *
@@ -139,13 +147,14 @@ export async function GET(
          */
         const wentBack = (invoice?.refundedCents ?? 0) > 0;
 
-        if (invoice?.status !== 'void' && alreadyIn === 0 && !wentBack) {
+        if (invoice?.status !== 'void' && outstandingCents > 0 && !wentBack) {
           const live = await liveCheckoutUrl(
             stripe,
             inst,
             { id: inst.project.id, name: inst.project.name, clientEmail: inst.project.client.email },
             siteUrl,
-            invoice?.id
+            invoice?.id,
+            outstandingCents
           );
 
           if (live) {

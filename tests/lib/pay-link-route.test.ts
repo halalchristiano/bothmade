@@ -299,21 +299,63 @@ describe('the click itself', () => {
  *
  * Marking an invoice part paid by transfer writes a payment against it and
  * deliberately leaves the instalment `due` — half of Payment 2 of 3 is not
- * Payment 2 of 3. This route reads `due` and mints a Checkout Session for the
- * instalment's FULL amount, so the client's own "Pay Payment 2 of 3 — $3,000"
- * button would take three thousand on top of the fifteen hundred they had
+ * Payment 2 of 3. This route reads `due`, and the session it mints used to be
+ * for the instalment's FULL amount, so the button in the client's invoice
+ * email would have taken three thousand on top of the fifteen hundred they had
  * already transferred.
  *
- * The same shape as the voided-invoice guard above it, and the same answer:
- * no session, and land them on the dashboard, which now says what has arrived
- * and what is left.
+ * Refusing was the right first answer to that, and it is what this file used
+ * to hold. It was also a dead end: the dashboard told them fifteen hundred was
+ * left and offered no way to send it, from the one link most clients ever pay
+ * from. liveCheckoutUrl takes the outstanding amount now, so the useful answer
+ * is available — charge the balance.
+ *
+ * The void and refund guards below are deliberately unchanged. Those are the
+ * cases where a human should decide before anything is collected at all.
  */
 describe('an instalment with money already against its invoice', () => {
-  it('mints nothing, so the client cannot pay the whole thing twice', async () => {
+  it('mints a checkout for the balance, not the face value', async () => {
     prisma.invoice.findUnique.mockResolvedValue({
       id: 'invoice_1',
       status: 'open',
       payments: [{ amount: 150_000 }],
+    });
+
+    const res = await go();
+
+    expect(sessionsCreate).toHaveBeenCalledOnce();
+    const body = sessionsCreate.mock.calls[0]![0] as {
+      line_items: Array<{ price_data: { unit_amount: number; product_data: { name: string } } }>;
+    };
+    // The instalment bills 300,000; 150,000 has arrived.
+    expect(body.line_items[0].price_data.unit_amount).toBe(150_000);
+    expect(body.line_items[0].price_data.product_data.name).toContain('balance');
+    expect(res.headers.get('location')).toBe('https://stripe.test/cs_new');
+  });
+
+  /**
+   * The stored session was minted for the face value, so handing it back on a
+   * part-paid row is the same overcharge arriving by a slower route.
+   */
+  it('will not hand back the cached full-price link', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'invoice_1',
+      status: 'open',
+      payments: [{ amount: 150_000 }],
+    });
+    sessionsRetrieve.mockResolvedValue({ status: 'open' });
+
+    const res = await go();
+
+    expect(res.headers.get('location')).toBe('https://stripe.test/cs_new');
+  });
+
+  /** Nothing left to collect means no session, and no confusing Stripe page. */
+  it('mints nothing once the whole instalment has arrived', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'invoice_1',
+      status: 'open',
+      payments: [{ amount: 300_000 }],
     });
 
     const res = await go();
