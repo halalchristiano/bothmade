@@ -15,7 +15,7 @@ import { DesignDirectionPanel } from '@/components/admin/DesignDirectionPanel';
 import { Linkify } from '@/components/Linkify';
 import { GatePrompt, type OpenedGate } from '@/components/admin/GatePrompt';
 import { DesignReviewPanel } from '@/components/admin/DesignReviewPanel';
-import { Card, LoadError, PageIn } from '@/components/admin/ui';
+import { Badge, Card, LoadError, PageIn } from '@/components/admin/ui';
 import { OnboardingBuilder } from '@/components/admin/OnboardingBuilder';
 import { DeleteProject } from '@/components/admin/DeleteProject';
 import { stageMessage } from '@/lib/stage-gates';
@@ -968,10 +968,34 @@ export default function AdminProjectDetailPage() {
                 />
               </div>
 
-              <p className="text-sm font-semibold mb-3">Current Status</p>
-              <span className="inline-block px-3 py-1.5 rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-semibold capitalize mb-4">
-                {project.status}
-              </span>
+              <p className="mb-3 text-sm font-semibold">Current Status</p>
+              {/*
+                A status, drawn like every other status in the app.
+
+                This was the sky-to-purple gradient — spent on a word that
+                says "build". The gradient is the one thing reserved for
+                moments a screen wants to be looked at, and a stage label is
+                not one: it changes five times a project and is read, not
+                admired. Toned by stage instead, so the colour carries meaning
+                — complete reads done, launch reads imminent — which a
+                gradient identical at every stage never could.
+              */}
+              <div className="mb-4">
+                <Badge
+                  solid
+                  tone={
+                    project.status === 'complete'
+                      ? 'emerald'
+                      : project.status === 'launch'
+                        ? 'amber'
+                        : project.status === 'discovery'
+                          ? 'neutral'
+                          : 'sky'
+                  }
+                >
+                  <span className="capitalize">{project.status}</span>
+                </Badge>
+              </div>
 
               <select
                 value={statusDraft}
