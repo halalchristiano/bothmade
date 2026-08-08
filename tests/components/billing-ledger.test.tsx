@@ -315,3 +315,109 @@ describe('a scheduled payment in the list', () => {
     expect(await screen.findByRole('button', { name: /Mark paid/ })).toBeTruthy();
   });
 });
+
+/**
+ * Raising a charge used to end in one green sentence and a dead end. The
+ * response has always carried the pay link and the filed PDF and both were
+ * thrown away — so the next move was scrolling the ledger to find the row
+ * you had just created, to get at the link you wanted to paste into a
+ * message.
+ */
+describe('after a charge is raised', () => {
+  const RAISED = {
+    success: true,
+    invoice: {
+      number: 'BM-2026-0032',
+      amountCents: 120_000,
+      paymentUrl: 'https://pay.test/new',
+      pdfUrl: 'https://blob.test/new.pdf',
+      sentToEmail: 'dana@northgate.test',
+      client: { company: 'Northgate Dental' },
+    },
+    clientDelivered: true,
+    warnings: [],
+  };
+
+  function stubRaise(body: Record<string, unknown> = RAISED, ok = true) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === 'POST') {
+          return new Response(JSON.stringify(body), {
+            status: ok ? 201 : 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const payload = url.includes('/api/admin/billing/charges')
+          ? { success: true, invoices, totals: TOTALS, matching: invoices.length, truncated: false }
+          : {
+              success: true,
+              customers: [
+                {
+                  id: 'c1',
+                  company: 'Northgate Dental',
+                  contactName: 'Dana',
+                  email: 'dana@northgate.test',
+                  projects: [{ id: 'p1', name: 'Northgate — Website', status: 'build', totalPrice: 1 }],
+                },
+              ],
+            };
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      })
+    );
+  }
+
+  async function raise() {
+    render(<BillingPage />);
+    await userEvent.type(screen.getByPlaceholderText(/Search by company/), 'north');
+    await userEvent.click(await screen.findByText('Northgate Dental'));
+    await userEvent.type(screen.getByPlaceholderText(/e\.g\. Extra round/), 'Third design round');
+    await userEvent.type(screen.getAllByPlaceholderText('Description')[0], 'Design round');
+    await userEvent.type(screen.getByPlaceholderText('0.00'), '1200');
+    await userEvent.click(screen.getByRole('button', { name: /^Charge / }));
+  }
+
+  it('hands over the pay link and the invoice, rather than a number to go hunting with', async () => {
+    stubRaise();
+    await raise();
+
+    const box = within(await screen.findByRole('status', { name: 'Charge raised' }));
+    expect(box.getByText(/BM-2026-0032 raised for/)).toBeTruthy();
+    expect(box.getByRole('button', { name: 'Copy pay link' })).toBeTruthy();
+    expect(box.getByRole('link', { name: 'Open the invoice' }).getAttribute('href')).toBe(
+      'https://blob.test/new.pdf'
+    );
+  });
+
+  /*
+   * A send that failed reports a warning, and the headline must not contradict
+   * it. "Emailed to dana@" above "the client's copy didn't send" is the pair
+   * that gets an invoice forgotten about.
+   */
+  it('does not claim it was emailed when the send failed', async () => {
+    stubRaise({
+      ...RAISED,
+      clientDelivered: false,
+      warnings: ["The client's copy didn't send: mailbox full"],
+    });
+    await raise();
+
+    const box = within(await screen.findByRole('status', { name: 'Charge raised' }));
+    expect(box.getByText(/not emailed/)).toBeTruthy();
+    expect(box.getByText(/mailbox full/)).toBeTruthy();
+  });
+
+  it('can be dismissed rather than sitting there forever', async () => {
+    stubRaise();
+    await raise();
+
+    await screen.findByRole('status', { name: 'Charge raised' });
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+
+    expect(screen.queryByRole('status', { name: 'Charge raised' })).toBeNull();
+  });
+});

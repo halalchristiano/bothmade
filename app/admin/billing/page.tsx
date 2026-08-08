@@ -128,7 +128,24 @@ function BillingWorkspace() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
-  const [result, setResult] = useState<{ number: string; amountLabel: string; warnings: string[] } | null>(null);
+  /*
+   * What was just raised, and the two things anybody does with it next.
+   *
+   * This used to be a number and an amount — one green sentence and a dead
+   * end. The response has always carried the pay link and the filed PDF and
+   * both were thrown away, so "raised BM-2026-0031 for $1,200" was followed
+   * by scrolling down the ledger to find the row you had just created, to get
+   * at the link you wanted to paste into a message.
+   */
+  const [result, setResult] = useState<{
+    number: string;
+    amountLabel: string;
+    company: string;
+    sentTo: string | null;
+    paymentUrl: string | null;
+    pdfUrl: string | null;
+    warnings: string[];
+  } | null>(null);
 
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [totals, setTotals] = useState<LedgerTotals | null>(null);
@@ -326,6 +343,13 @@ function BillingWorkspace() {
       setResult({
         number: data.invoice.number,
         amountLabel: formatCentsExact(data.invoice.amountCents),
+        company: data.invoice.client?.company || customer?.company || 'the client',
+        // What the server actually did, not what the checkbox asked for: a
+        // send that failed reports a warning, and this line must not claim it
+        // went.
+        sentTo: data.clientDelivered ? data.invoice.sentToEmail || null : null,
+        paymentUrl: data.invoice.paymentUrl || null,
+        pdfUrl: data.invoice.pdfUrl || null,
         warnings: data.warnings || [],
       });
       setNeedsConfirmation(false);
@@ -558,11 +582,41 @@ function BillingWorkspace() {
 
           {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
 
+          {/*
+            What happened, and the two things anybody does next.
+
+            This was one green sentence — "BM-2026-0031 raised for $1,200" —
+            and nothing else. The response has always carried the pay link and
+            the filed PDF, and both were thrown away, so the next move was
+            scrolling the ledger to find the row you had just made, to get at
+            the link you wanted to paste into a message. Everything here was
+            already in hand.
+          */}
           {result && (
-            <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3">
-              <p className="text-sm text-emerald-200">
-                {result.number} raised for {result.amountLabel}.
-              </p>
+            // role="status" so a screen reader announces the outcome of a
+            // money action rather than leaving it to be discovered by
+            // wandering back up the page.
+            <div
+              role="status"
+              aria-label="Charge raised"
+              className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-emerald-200">
+                  {result.number} raised for {result.amountLabel}
+                  {/* What the send actually did. A failed one is reported in
+                      the warnings below, so this must not claim it went. */}
+                  {result.sentTo ? ` and emailed to ${result.sentTo}` : ` — not emailed`}.
+                </p>
+                <button
+                  onClick={() => setResult(null)}
+                  className="-m-1 shrink-0 p-1 text-emerald-200/50 transition-colors hover:text-emerald-100"
+                  aria-label="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
               {result.warnings.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {result.warnings.map((warning, i) => (
@@ -571,6 +625,28 @@ function BillingWorkspace() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {(result.paymentUrl || result.pdfUrl) && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                  {result.paymentUrl && (
+                    <CopyButton
+                      value={result.paymentUrl}
+                      label="Copy pay link"
+                      className="-my-1 py-1 text-emerald-200/80 transition-colors hover:text-emerald-100"
+                    />
+                  )}
+                  {result.pdfUrl && (
+                    <a
+                      href={result.pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="-my-1 py-1 text-emerald-200/80 transition-colors hover:text-emerald-100"
+                    >
+                      Open the invoice
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           )}
