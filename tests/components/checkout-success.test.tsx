@@ -19,6 +19,38 @@ vi.mock('@/app/checkout/success/PurchaseTrack', () => ({
   PurchaseTrack: () => null,
 }));
 
+/**
+ * And the page a client lands on with the money already gone.
+ *
+ * Every other screen in this business is dark — the portal, the status page,
+ * the unsubscribe page, both error pages. This one was white cards on a grey
+ * gradient with no wordmark on it at all: a generic receipt template, shown
+ * at the single moment somebody has handed over the largest sum they will
+ * ever send us, by a studio that sells design.
+ */
+describe('the page that greets a payment', () => {
+  it('carries the studio the client just paid', async () => {
+    await renderPage({ type: 'welcome' });
+
+    expect(screen.getByText('Bothmade')).toBeInTheDocument();
+  });
+
+  it('is the same dark surface as everything else the client has seen', async () => {
+    const { container } = render(await CheckoutSuccessPage({ searchParams: Promise.resolve({}) }));
+
+    expect(container.querySelector('main')?.className).toContain('bg-[#05030a]');
+  });
+
+  it('is dark for a care plan too, which is a different branch of the page', async () => {
+    const { container } = render(
+      await CheckoutSuccessPage({ searchParams: Promise.resolve({ type: 'care' }) })
+    );
+
+    expect(container.querySelector('main')?.className).toContain('bg-[#05030a]');
+    expect(screen.getByText('Bothmade')).toBeInTheDocument();
+  });
+});
+
 /** The page is async and takes searchParams as a promise, as Next 16 hands them over. */
 async function renderPage(params: { type?: string }) {
   render(await CheckoutSuccessPage({ searchParams: Promise.resolve(params) }));

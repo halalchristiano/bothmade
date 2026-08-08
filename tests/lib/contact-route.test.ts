@@ -376,13 +376,45 @@ describe('POST /api/contact — telling Evan', () => {
   });
 
   it('says so when a known address writes in again', async () => {
-    leadFindFirst.mockResolvedValue({ id: 'lead_existing' });
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: 'user_evan' });
 
     await POST(request(VALID, freshIp()));
 
     const alert = sendEmail.mock.calls[0][0];
     expect(alert.html).toContain('already in the pipeline');
     expect(alert.html).toContain('https://bothmade.studio/admin/leads/lead_existing');
+  });
+
+  /*
+   * "Whoever already owns this lead keeps it" is the right rule, and it was
+   * the only rule — so a row with no owner stayed that way. The digest above
+   * runs `assignedToId: user.id` once per user, so an unassigned lead is in
+   * nobody's digest and never surfaces again. It is not a rare state either:
+   * deleting a teammate nulls every lead they owned, on purpose.
+   */
+  it('claims a returning lead that belongs to nobody', async () => {
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: null });
+
+    await POST(request(VALID, freshIp()));
+
+    expect(leadUpdate.mock.calls[0][0].data.assignedToId).toBe('user_evan');
+  });
+
+  it('leaves a returning lead with the rep who already has it', async () => {
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: 'user_someone_else' });
+
+    await POST(request(VALID, freshIp()));
+
+    expect(leadUpdate.mock.calls[0][0].data).not.toHaveProperty('assignedToId');
+  });
+
+  it('writes no owner onto a returning lead when there is no sales account', async () => {
+    userFindFirst.mockResolvedValue(null);
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: null });
+
+    await POST(request(VALID, freshIp()));
+
+    expect(leadUpdate.mock.calls[0][0].data).not.toHaveProperty('assignedToId');
   });
 
   it('still alerts evan@ when no sales account exists, leaving the lead unassigned', async () => {

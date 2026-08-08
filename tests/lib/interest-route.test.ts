@@ -163,13 +163,66 @@ describe('the pricing calculator refuses what the contact form refuses', () => {
   });
 
   it('matches an existing lead on the trimmed address, not the raw one', async () => {
-    leadFindFirst.mockResolvedValue({ id: 'lead_existing' });
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: EVAN.id });
 
     await POST(request({ ...VALID, email: '  kiana@example.com  ' }, freshIp()));
 
     expect(leadFindFirst.mock.calls[0][0].where.email).toBe('kiana@example.com');
     expect(activityCreate).toHaveBeenCalledOnce();
     expect(leadCreate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A returning lead that belongs to nobody.
+ *
+ * "Whoever already owns this lead keeps it" is the right rule and it was the
+ * only rule, so a row with `assignedToId: null` stayed null. The follow-up
+ * digest queries `assignedToId: user.id` once per user, which means an
+ * unassigned lead is in nobody's digest and never surfaces again — and
+ * unassigned is not a rare state: deleting a teammate sets every lead they
+ * owned to null on purpose. So somebody pricing a project on our own
+ * calculator, for the second time, landed on a row nothing looks at.
+ */
+describe('a second visit from somebody already in the CRM', () => {
+  const update = () => leadUpdate.mock.calls[0][0].data;
+
+  it('claims the lead when nobody owns it', async () => {
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: null });
+
+    await POST(request({ ...VALID }, freshIp()));
+
+    expect(update().assignedToId).toBe(EVAN.id);
+  });
+
+  it('leaves an owned lead with the rep who has it', async () => {
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: 'user_someone_else' });
+
+    await POST(request({ ...VALID }, freshIp()));
+
+    // Reassigning a row a rep has been working is not this route's call.
+    expect(update()).not.toHaveProperty('assignedToId');
+  });
+
+  it('records the visit either way', async () => {
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: null });
+
+    await POST(request({ ...VALID }, freshIp()));
+
+    expect(update().replyReceivedAt).toBeInstanceOf(Date);
+    expect(activityCreate.mock.calls[0][0].data.automated).toBe(true);
+  });
+
+  it('writes no owner when there is no sales rep to be one', async () => {
+    // findSalesRep falls back to an address with no user behind it. Writing
+    // that id would be writing null over null, and worse, would read as a
+    // deliberate assignment in the audit trail.
+    userFindFirst.mockResolvedValue(null);
+    leadFindFirst.mockResolvedValue({ id: 'lead_existing', assignedToId: null });
+
+    await POST(request({ ...VALID }, freshIp()));
+
+    expect(update()).not.toHaveProperty('assignedToId');
   });
 });
 

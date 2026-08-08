@@ -167,7 +167,7 @@ async function recordEnquiry(
 
   const existing = await prisma.lead.findFirst({
     where: { email: enquiry.email },
-    select: { id: true, painPoints: true },
+    select: { id: true, painPoints: true, assignedToId: true },
   });
 
   if (existing) {
@@ -184,7 +184,14 @@ async function recordEnquiry(
     });
     // They came to us — the strongest buying signal there is, and the sales
     // views sort on it. Touch updatedAt so this lead surfaces to the top.
-    // Assignment is left alone: whoever already owns this lead keeps it.
+    //
+    // Whoever already owns this lead keeps it — that has always been the rule
+    // here and it is the right one. What it did not cover is a lead nobody
+    // owns: `assignedToId` is nullable, deleting a teammate sets every row
+    // they had to null on purpose, and the follow-up digest queries
+    // `assignedToId: user.id` per user — so an unassigned lead appears in
+    // nobody's digest and never surfaces again. There is no owner to respect
+    // in that case, so it gets one.
     /*
      * Merged, never replaced. A returning enquirer's row is sales-owned by
      * now — somebody may have researched it — so new ticks are added to what
@@ -195,7 +202,11 @@ async function recordEnquiry(
     ];
     await prisma.lead.update({
       where: { id: existing.id },
-      data: { replyReceivedAt: new Date(), painPoints: merged.join(',') },
+      data: {
+        replyReceivedAt: new Date(),
+        painPoints: merged.join(','),
+        ...(existing.assignedToId || !assignToId ? {} : { assignedToId: assignToId }),
+      },
     });
     return { leadId: existing.id, returning: true };
   }

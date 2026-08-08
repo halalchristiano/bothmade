@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
       const existing = await prisma.lead.findFirst({
         where: { email: cleanEmail },
-        select: { id: true },
+        select: { id: true, assignedToId: true },
       });
 
       if (existing) {
@@ -148,7 +148,26 @@ export async function POST(request: NextRequest) {
         });
         await prisma.lead.update({
           where: { id: existing.id },
-          data: { replyReceivedAt: new Date() },
+          data: {
+            replyReceivedAt: new Date(),
+            /*
+             * Claimed only if nobody owns it.
+             *
+             * Whoever already has this lead keeps it — reassigning a row a rep
+             * has been working is not this route's decision to make. But an
+             * unassigned row has no owner to respect, and the follow-up digest
+             * queries `assignedToId: user.id` per user, so a lead belonging to
+             * nobody is in nobody's digest: it does not surface, ever. That is
+             * not a rare state either — deleting a teammate sets every lead
+             * they owned to null on purpose, and the Team page says so as it
+             * happens ("N leads are now unassigned").
+             *
+             * So the warmest signal in the system — somebody pricing a project
+             * on our own calculator, a second time — was landing on a row
+             * nothing looks at.
+             */
+            ...(existing.assignedToId || !rep.id ? {} : { assignedToId: rep.id }),
+          },
         });
         leadId = existing.id;
         returning = true;
