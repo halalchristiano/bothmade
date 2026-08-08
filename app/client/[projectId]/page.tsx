@@ -1554,7 +1554,13 @@ export default function ClientDashboard() {
                         )}
 
                         <div className="flex flex-wrap items-center gap-2 mt-3">
-                          {!paid && !voided && invoice.paymentUrl && (
+                          {/* `refunded` as well as the route's own gate, on
+                              purpose. The route withholds the link on an
+                              invoice money has gone back off — but the button
+                              here is what actually charges somebody, and it
+                              should not be one payload away from charging a
+                              client for work we have just refunded them for. */}
+                          {!paid && !voided && refunded <= 0 && invoice.paymentUrl && (
                             <a
                               href={invoice.paymentUrl}
                               className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-sky-400 to-purple-500 text-black text-xs font-semibold"

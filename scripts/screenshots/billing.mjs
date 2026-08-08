@@ -80,7 +80,27 @@ const INVOICES = [
     lineItems: [{ label: 'Photography day', priceCents: 140000 }, { label: 'Retouching', priceCents: 40000 }],
     client: { id: 'c4', company: 'Vellum Studio', email: 'hi@vellum.test' },
     project: { id: 'p4', name: 'Vellum — Website' }, issuedBy: { name: 'Kiana', email: 'k@b.studio' },
-    receivedCents: 90000 },
+    receivedCents: 90000, grossReceivedCents: 90000,
+    // Money that arrived by transfer. There is no charge behind it, so the
+    // refund box must not offer to reverse one.
+    hasCardPayment: false },
+  /*
+   * Refunded, and still open.
+   *
+   * A refund moves `refundedCents`, not `status`, and writes a negative row
+   * into the same ledger the payments live in — so the netted figure is back
+   * to zero, which is also the number that means "nothing ever arrived". This
+   * is the row where those two situations have to look different.
+   */
+  { id: 'inv_6', number: 'BM-2026-0026', description: 'Product photography — cancelled shoot',
+    amountCents: 140000, status: 'open', pdfUrl: 'https://blob.test/g.pdf', paymentUrl: null,
+    sentToEmail: 'studio@fernbank.test', sendCount: 2, lastSentAt: day(26), refundedCents: 60000,
+    refundMethod: 'manual', refundReason: 'Shoot cancelled — the deposit went back by transfer',
+    voidReason: null, createdAt: day(29),
+    lineItems: [{ label: 'Shoot day', priceCents: 110000 }, { label: 'Location', priceCents: 30000 }],
+    client: { id: 'c5', company: 'Fernbank Optical', email: 'studio@fernbank.test' },
+    project: { id: 'p5', name: 'Fernbank — Website' }, issuedBy: { name: 'Kiana', email: 'k@b.studio' },
+    receivedCents: 0, grossReceivedCents: 60000, hasCardPayment: false },
   { id: 'inv_3', number: 'BM-2026-0029', description: 'Retainer — March', amountCents: 90000,
     status: 'open', pdfUrl: null, paymentUrl: null, sentToEmail: null, sendCount: 0, lastSentAt: null,
     refundedCents: 0, refundMethod: null, refundReason: null, voidReason: null, createdAt: day(6),
@@ -109,7 +129,10 @@ const INSTALMENT = {
 
 const SETTLED = [
   { ...INVOICES[0], id: 'inv_9', number: 'BM-2026-0024', status: 'paid',
-    description: 'Additional photography retouching', amountCents: 48000, createdAt: day(48) },
+    description: 'Additional photography retouching', amountCents: 48000, createdAt: day(48),
+    // Paid through Stripe, so a card refund is possible here and is the one
+    // the box should open on.
+    receivedCents: 48000, grossReceivedCents: 48000, hasCardPayment: true },
   { ...INVOICES[1], id: 'inv_8', number: 'BM-2026-0023', status: 'void', amountCents: 75000,
     description: 'SEO audit add-on', voidReason: 'Raised against the wrong project', createdAt: day(53) },
 ];
@@ -261,6 +284,44 @@ await shot('raised', 'the pay link and the invoice, right where it was raised');
 await page.getByRole('button', { name: 'All' }).click();
 await page.waitForTimeout(800);
 await shot('all-states', 'paid, cancelled, a scheduled payment, and open together');
+
+/*
+ * The two refund boxes, which differ in the two ways that matter.
+ *
+ * On an invoice paid by card, the card option is live and selected. On one
+ * part paid by transfer there is no charge to reverse, so it is disabled and
+ * says why — and the ceiling is what came in rather than the face value,
+ * which the box now explains rather than simply refusing anything above it.
+ */
+/*
+ * Opened by asking the dialog which invoice it is, rather than by counting
+ * rows. A nth-Refund-button selector picked the wrong invoice on the first
+ * run here and captured the same modal twice, which a screenshot cannot tell
+ * you — both images look like a refund box.
+ */
+async function openRefund(number) {
+  const buttons = page.getByRole('button', { name: 'Refund' });
+  for (let i = 0; i < (await buttons.count()); i++) {
+    await buttons.nth(i).click();
+    const title = page.getByRole('heading', { name: `Refund invoice ${number}` });
+    if (await title.isVisible().catch(() => false)) return;
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+  }
+  throw new Error(`No Refund button opened ${number} — the row is not offering one.`);
+}
+
+await openRefund('BM-2026-0024');
+await page.waitForTimeout(400);
+await shot('refund-card', 'paid by card — the card option is live and selected');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+
+await openRefund('BM-2026-0027');
+await page.waitForTimeout(400);
+await shot('refund-transfer', 'part paid by transfer — no card to reverse, capped at what came in');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
 
 /*
  * The check a screenshot cannot make. A page wider than the viewport
