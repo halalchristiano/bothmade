@@ -12,6 +12,7 @@ import {
   type RefundScenario,
 } from '@/lib/refund-entitlement';
 import { ensureInstalments } from '@/lib/instalments';
+import { grossReceivedCents } from '@/lib/invoice-settlement';
 
 /**
  * "If this ended today, what do they get back?"
@@ -119,9 +120,15 @@ export async function GET(request: NextRequest) {
         refundedCents: true,
         status: true,
         createdAt: true,
+        // An open invoice can be holding money the client sent by transfer,
+        // and that money is refundable off exactly this row.
+        payments: { select: { amount: true } },
       },
     });
-    const allocation = allocateRefund(invoices, entitlement.settlement.returnedToClientCents);
+    const allocation = allocateRefund(
+      invoices.map(({ payments, ...inv }) => ({ ...inv, grossReceivedCents: grossReceivedCents(payments) })),
+      entitlement.settlement.returnedToClientCents
+    );
 
     return NextResponse.json(
       {

@@ -73,6 +73,8 @@ interface InvoiceRow {
   isInstalment?: boolean;
   /** How much has actually arrived against it — an invoice can be part paid. */
   receivedCents?: number;
+  /** Money in before any of it went back out — the ceiling on a refund. */
+  grossReceivedCents?: number;
 }
 
 interface LineDraft {
@@ -986,6 +988,9 @@ function BillingWorkspace() {
                         ...invoice,
                         projectId: invoice.project.id,
                         receivedCents: invoice.receivedCents ?? 0,
+                        // What may go back off it, which on a part-paid
+                        // invoice is what came in rather than its face value.
+                        grossReceivedCents: invoice.grossReceivedCents ?? 0,
                       }}
                       onDone={loadInvoices}
                     />

@@ -358,6 +358,53 @@ describe('which invoice the money comes off', () => {
     expect(result.invoices.map((i) => i.number)).toEqual(['BM-1']);
   });
 
+  /**
+   * The row that had the money and was not offered.
+   *
+   * `status === 'paid'` was the right test for "has this invoice got money on
+   * it" right up until an invoice could be part paid by transfer. After that,
+   * a cancelled project whose client had sent $900 towards an open invoice was
+   * told that $900 had "no invoice to come off — it was paid before the
+   * invoice ledger existed, or recorded by hand". Neither was true, and the
+   * sentence pointed whoever was doing the refund away from the one row that
+   * could actually take it.
+   */
+  describe('an invoice the client part paid', () => {
+    const partPaid = {
+      ...inv('a', 'BM-1', 250_000, 0, 'open', 1),
+      grossReceivedCents: 90_000,
+    };
+
+    it('can carry a refund for what actually came in', () => {
+      const result = allocateRefund([partPaid], 90_000);
+
+      expect(result.invoices.map((i) => [i.number, i.allocatedCents])).toEqual([['BM-1', 90_000]]);
+      expect(result.unallocatedCents).toBe(0);
+    });
+
+    /* Its face value is what was asked for, not what is there to give back. */
+    it('is capped at what came in, not at what it asks for', () => {
+      const result = allocateRefund([partPaid], 250_000);
+
+      expect(result.invoices[0].allocatedCents).toBe(90_000);
+      expect(result.unallocatedCents).toBe(160_000);
+    });
+
+    it('carries its own status through instead of being drawn as paid', () => {
+      const result = allocateRefund([partPaid], 90_000);
+
+      expect(result.invoices[0].status).toBe('open');
+      expect(result.invoices[0].grossReceivedCents).toBe(90_000);
+    });
+
+    it('leaves an open invoice nobody has sent anything against alone', () => {
+      const result = allocateRefund([{ ...partPaid, grossReceivedCents: 0 }], 90_000);
+
+      expect(result.invoices).toEqual([]);
+      expect(result.unallocatedCents).toBe(90_000);
+    });
+  });
+
   it('ignores invoices that were never paid, and voided ones', () => {
     const result = allocateRefund(
       [inv('a', 'BM-1', 500_000, 0, 'open'), inv('b', 'BM-2', 500_000, 0, 'void'), inv('c', 'BM-3', 500_000, 0, 'paid')],

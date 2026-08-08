@@ -74,6 +74,25 @@ export function receivedCents(payments: Array<{ amount: number }> | null | undef
   return payments.reduce((sum, payment) => sum + (payment?.amount ?? 0), 0);
 }
 
+/**
+ * Money that came IN, before any of it went back out.
+ *
+ * A refund writes a negative row into the same ledger, which is exactly what
+ * receivedCents() above should count — "what is still sitting here" is the
+ * figure a badge and a chase are about. It is the wrong figure for deciding
+ * how much MAY go back, because the invoice's own `refundedCents` already
+ * subtracts that, and taking it off twice would refuse the second half of a
+ * refund somebody has every right to make.
+ *
+ * So: two readings of one ledger, named for which question they answer. This
+ * one pairs with `refundedCents`, the same way an invoice's face value does
+ * on an invoice that was paid in full.
+ */
+export function grossReceivedCents(payments: Array<{ amount: number }> | null | undefined): number {
+  if (!Array.isArray(payments)) return 0;
+  return payments.reduce((sum, payment) => sum + Math.max(0, payment?.amount ?? 0), 0);
+}
+
 export interface ManualPayment {
   amountCents: number;
   /** True when this payment closes the invoice; false when money is still owed. */

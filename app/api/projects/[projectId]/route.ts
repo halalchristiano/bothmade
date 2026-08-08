@@ -11,7 +11,7 @@ import { sendProjectLiveEmail } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { clientWantsEmail } from '@/lib/email-preferences';
 import { warrantyEndFrom } from '@/lib/launch';
-import { receivedCents } from '@/lib/invoice-settlement';
+import { grossReceivedCents, receivedCents } from '@/lib/invoice-settlement';
 
 /**
  * `Project.deliverables` is a JSON string column, and this is the client's
@@ -343,6 +343,13 @@ export async function GET(
              * whole invoice again on top of what they had already sent.
              */
             receivedCents: received,
+            /*
+             * The same ledger read the other way: money in before any of it
+             * went back out. It is what decides how much of a part-paid
+             * invoice may be refunded, so the Refund action needs it and the
+             * client has no use for it.
+             */
+            grossReceivedCents: session.type === 'user' ? grossReceivedCents(invoice.payments) : undefined,
             };
           }),
           deliverables: readDeliverables(project.deliverables, project.id),

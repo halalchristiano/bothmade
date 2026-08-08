@@ -10,6 +10,7 @@ import { formatCentsExact } from '@/lib/pricing';
 import {
   MAX_REASON_LENGTH,
   REFUND_METHOD_LABELS,
+  refundCeilingCents,
   settlement,
   type RefundMethod,
 } from '@/lib/invoice-lifecycle';
@@ -57,6 +58,12 @@ export interface ActionableInvoice {
    * turned up, so a part payment closed the invoice and lost the rest.
    */
   receivedCents?: number;
+  /**
+   * Money in before any of it went back out. Pairs with `refundedCents` the
+   * way an invoice's face value does on a settled one, and is what decides
+   * how much of a part-paid invoice may be given back.
+   */
+  grossReceivedCents?: number;
 }
 
 interface Deduction {
@@ -74,7 +81,7 @@ export function InvoiceActions({
 }) {
   const [open, setOpen] = useState<'void' | 'refund' | 'send' | 'paid' | null>(null);
 
-  const remaining = invoice.amountCents - invoice.refundedCents;
+  const remaining = refundCeilingCents(invoice, invoice.grossReceivedCents ?? 0);
   /*
    * Cancelling is only for an invoice nobody has paid anything towards.
    *
@@ -84,7 +91,13 @@ export function InvoiceActions({
    * pattern this file already removed once, for Send on instalments.
    */
   const canVoid = invoice.status === 'open' && (invoice.receivedCents ?? 0) === 0;
-  const canRefund = invoice.status === 'paid' && remaining > 0;
+  /*
+   * Not "is it paid" but "is any of the client's money here" — which for a
+   * settled invoice is the same question and for a part-paid one is the only
+   * way their $900 ever gets back out. Cancel refuses that row, correctly,
+   * and told whoever read the refusal to refund or credit it instead.
+   */
+  const canRefund = remaining > 0;
   /*
    * Both of these are "this invoice is still a request for money", which is
    * exactly what an open invoice is: a paid one has nothing to chase and a
@@ -520,7 +533,7 @@ function RefundModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const remaining = invoice.amountCents - invoice.refundedCents;
+  const remaining = refundCeilingCents(invoice, invoice.grossReceivedCents ?? 0);
 
   const [amount, setAmount] = useState((remaining / 100).toFixed(2));
   const [method, setMethod] = useState<RefundMethod>('stripe');

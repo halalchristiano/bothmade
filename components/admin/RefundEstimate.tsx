@@ -40,6 +40,8 @@ interface RefundableInvoice {
   description: string;
   amountCents: number;
   refundedCents: number;
+  status: string;
+  grossReceivedCents: number;
   remainingCents: number;
   allocatedCents: number;
 }
@@ -367,6 +369,16 @@ export function RefundEstimate({
                         {formatCentsExact(inv.remainingCents)} left on it
                         {inv.refundedCents > 0 && ` · ${formatCentsExact(inv.refundedCents)} already back`}
                       </p>
+                      {/* Part paid, and so refundable for what came in rather
+                          than for what it asks for. Saying which is the
+                          difference between a number that looks wrong and one
+                          that explains itself. */}
+                      {inv.status !== 'paid' && (
+                        <p className="mt-0.5 text-[11px] text-sky-300/70">
+                          Still open — {formatCentsExact(inv.grossReceivedCents)} of{' '}
+                          {formatCentsExact(inv.amountCents)} came in
+                        </p>
+                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
                       <span className="text-sm font-semibold tabular-nums text-emerald-300">
@@ -379,8 +391,10 @@ export function RefundEstimate({
                             number: inv.number,
                             description: inv.description,
                             amountCents: inv.amountCents,
-                            status: 'paid',
+                            status: inv.status,
                             refundedCents: inv.refundedCents,
+                            grossReceivedCents: inv.grossReceivedCents,
+                            receivedCents: inv.grossReceivedCents - inv.refundedCents,
                             sentToEmail: null,
                           }}
                           onDone={() => {

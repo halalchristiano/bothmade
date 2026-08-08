@@ -11,7 +11,7 @@ import {
   readChargeDraft,
 } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
-import { receivedCents } from '@/lib/invoice-settlement';
+import { grossReceivedCents, receivedCents } from '@/lib/invoice-settlement';
 
 /**
  * Raise a one-off charge against an existing customer.
@@ -448,6 +448,10 @@ export async function GET(request: NextRequest) {
           // Summed rather than sent as rows: the screen wants one number and
           // handing it a list invites a second opinion about what it adds to.
           receivedCents: receivedCents(payments),
+          // Money in before any of it went back out. Refunds are capped
+          // against this rather than against what is still sitting here,
+          // because the invoice's own refundedCents already subtracts them.
+          grossReceivedCents: grossReceivedCents(payments),
         })),
         totals: {
           // The only figure that is a to-do list: raised, not cancelled, not

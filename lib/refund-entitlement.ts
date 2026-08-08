@@ -1,5 +1,5 @@
 import { gateReached } from '@/lib/billing';
-import { settlement, type SettlementLine, type Settlement } from '@/lib/invoice-lifecycle';
+import { refundCeilingCents, settlement, type SettlementLine, type Settlement } from '@/lib/invoice-lifecycle';
 
 /**
  * What a client is actually owed if the project ended today.
@@ -252,6 +252,14 @@ export interface RefundableInvoice {
   amountCents: number;
   refundedCents: number;
   createdAt: string | Date;
+  /**
+   * Carried through rather than assumed. The screen used to draw every row
+   * here as a paid invoice, which was safe while only paid invoices appeared
+   * on it, and became a lie about the row the moment a part-paid one could.
+   */
+  status: string;
+  /** Money in before anything went back out — what makes an open row eligible. */
+  grossReceivedCents: number;
   /** What is left on this invoice, ignoring the entitlement. */
   remainingCents: number;
   /** What may actually be refunded here, once the entitlement is shared out. */
@@ -266,6 +274,8 @@ export interface AllocationInput {
   refundedCents: number;
   status: string;
   createdAt: string | Date;
+  /** Money in before anything went back out. Only consulted on an open invoice. */
+  grossReceivedCents?: number;
 }
 
 export interface Allocation {
@@ -278,15 +288,24 @@ export function allocateRefund(
   invoices: AllocationInput[],
   returnedToClientCents: number
 ): Allocation {
-  // Only a paid invoice with something left on it can carry a refund. An open
-  // one was never paid; a void one is not money.
+  // An invoice can carry a refund for as much of the client's money as is
+  // actually sitting on it. For a settled one that is its face value, which
+  // is what this used to assume outright. A void one is not money.
+  //
+  // An open one used to be "never paid" and so never eligible — true until an
+  // invoice could be part paid by transfer. A cancelled project whose client
+  // had sent $900 towards an open invoice got told that $900 had "no invoice
+  // to come off", which was wrong twice over: it named the wrong reason, and
+  // it pointed the person doing the refund away from the row that could
+  // actually take it.
   const eligible = invoices
-    .filter((inv) => inv.status === 'paid' && inv.amountCents - inv.refundedCents > 0)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    .map((inv) => ({ inv, ceiling: refundCeilingCents(inv, inv.grossReceivedCents ?? 0) }))
+    .filter(({ ceiling }) => ceiling > 0)
+    .sort((a, b) => new Date(a.inv.createdAt).getTime() - new Date(b.inv.createdAt).getTime());
 
   let left = Math.max(0, returnedToClientCents);
-  const out: RefundableInvoice[] = eligible.map((inv) => {
-    const remainingCents = inv.amountCents - inv.refundedCents;
+  const out: RefundableInvoice[] = eligible.map(({ inv, ceiling }) => {
+    const remainingCents = ceiling;
     const allocatedCents = Math.min(remainingCents, left);
     left -= allocatedCents;
     return {
@@ -296,6 +315,8 @@ export function allocateRefund(
       amountCents: inv.amountCents,
       refundedCents: inv.refundedCents,
       createdAt: inv.createdAt,
+      status: inv.status,
+      grossReceivedCents: inv.grossReceivedCents ?? 0,
       remainingCents,
       allocatedCents,
     };

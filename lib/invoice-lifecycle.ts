@@ -92,7 +92,7 @@ export function canVoid(invoice: { status: string }, receivedCents = 0): VoidChe
   if (receivedCents > 0) {
     return {
       ok: false,
-      error: `${formatCentsExact(receivedCents)} has already come in against that invoice, so cancelling it would write off money the client really sent. Record the rest and refund it, or raise a credit — cancelling is only for an invoice nobody has paid anything towards.`,
+      error: `${formatCentsExact(receivedCents)} has already come in against that invoice, so cancelling it would write off money the client really sent. Refund that ${formatCentsExact(receivedCents)} or raise a credit for it — cancelling is only for an invoice nobody has paid anything towards.`,
     };
   }
   return { ok: true };
@@ -107,25 +107,56 @@ export interface RefundRequest {
 export type RefundDraft = { ok: true; draft: RefundRequest } | { ok: false; error: string };
 
 /**
+ * The most that may go back on an invoice.
+ *
+ * On a settled invoice this is what it has always been: face value less
+ * whatever has already gone back. The interesting case is the one that did
+ * not exist until an invoice could be part paid by transfer — `open`, with
+ * real money of the client's sitting against it.
+ *
+ * That money had nowhere to go. Refunding refused it for not being paid;
+ * cancelling refused it, correctly, for having a payment on it. The advice
+ * on the cancel refusal — "record the rest and refund it, or raise a credit"
+ * — described a route that did not exist, and $900 of somebody else's money
+ * sat on a row with no way out of it but a database console.
+ *
+ * `grossReceived` is money in before anything went back out, because
+ * `refundedCents` is subtracted here and taking the same refund off twice
+ * would refuse the second half of one.
+ */
+export function refundCeilingCents(
+  invoice: { status: string; amountCents: number; refundedCents: number },
+  grossReceived = 0
+): number {
+  if (invoice.status === 'void') return 0;
+  // Never more than the invoice: an overpayment is a different conversation,
+  // and refunding one through here would misreport what the invoice was for.
+  const held = invoice.status === 'paid' ? invoice.amountCents : Math.min(invoice.amountCents, grossReceived);
+  return Math.max(0, held - invoice.refundedCents);
+}
+
+/**
  * Reads a refund request, or says why it isn't one.
  *
  * The ceiling is what is left on the invoice, not the invoice total: two
  * partial refunds that each pass on their own can add up to more than the
  * client ever paid, and the second one is only wrong in the presence of the
  * first. So the already-refunded amount is an input here rather than a check
- * somewhere downstream.
+ * somewhere downstream — and on a part-paid invoice, so is what came in.
  */
 export function readRefundRequest(
   invoice: { status: string; amountCents: number; refundedCents: number },
-  input: { amountCents?: unknown; method?: unknown; reason?: unknown }
+  input: { amountCents?: unknown; method?: unknown; reason?: unknown },
+  grossReceived = 0
 ): RefundDraft {
   if (invoice.status === 'void') {
     return { ok: false, error: 'That invoice is void — there is nothing to refund.' };
   }
-  if (invoice.status !== 'paid') {
+  const ceiling = refundCeilingCents(invoice, grossReceived);
+  if (invoice.status !== 'paid' && ceiling <= 0) {
     return {
       ok: false,
-      error: "That invoice hasn't been paid, so there's nothing to give back. Void it instead.",
+      error: "Nothing has come in against that invoice, so there's nothing to give back. Cancel it instead.",
     };
   }
 
@@ -143,7 +174,7 @@ export function readRefundRequest(
     return { ok: false, error: 'Enter an amount above zero.' };
   }
 
-  const remaining = invoice.amountCents - invoice.refundedCents;
+  const remaining = ceiling;
   if (remaining <= 0) {
     return { ok: false, error: 'That invoice has already been refunded in full.' };
   }
@@ -153,7 +184,9 @@ export function readRefundRequest(
       error:
         invoice.refundedCents > 0
           ? `Only ${formatCentsExact(remaining)} is left on that invoice — ${formatCentsExact(invoice.refundedCents)} has already gone back.`
-          : `That's more than the invoice. The most you can refund is ${formatCentsExact(remaining)}.`,
+          : invoice.status !== 'paid'
+            ? `Only ${formatCentsExact(remaining)} of that invoice has been paid, so that's the most that can go back.`
+            : `That's more than the invoice. The most you can refund is ${formatCentsExact(remaining)}.`,
     };
   }
 
@@ -243,7 +276,20 @@ export function displayState(invoice: {
   receivedCents?: number;
 }): InvoiceDisplayState {
   if (invoice.status === 'void') return 'void';
-  if (invoice.status !== 'paid' || invoice.refundedCents <= 0) {
+  /*
+   * Refunds first, and no longer only on settled invoices.
+   *
+   * Part payment made an `open` invoice something money can go back off, so
+   * "open with a refund on it" went from impossible to reachable. Reading
+   * `status` before `refundedCents` would have drawn that row as plain Open —
+   * the badge for an invoice nothing has ever happened to — on the one row
+   * where money has moved in both directions.
+   */
+  if (invoice.refundedCents > 0) {
+    if (invoice.refundMethod === 'credit') return 'credited';
+    return invoice.refundedCents >= invoice.amountCents ? 'refunded' : 'part-refunded';
+  }
+  {
     if (invoice.status === 'paid') return 'paid';
     /*
      * Open, with some of it already in.
@@ -256,8 +302,6 @@ export function displayState(invoice: {
      */
     return (invoice.receivedCents ?? 0) > 0 ? 'part-paid' : 'open';
   }
-  if (invoice.refundMethod === 'credit') return 'credited';
-  return invoice.refundedCents >= invoice.amountCents ? 'refunded' : 'part-refunded';
 }
 
 export const DISPLAY_STATE_LABELS: Record<InvoiceDisplayState, string> = {

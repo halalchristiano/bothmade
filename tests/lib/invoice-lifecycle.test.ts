@@ -97,7 +97,88 @@ describe('reading a refund request', () => {
     );
 
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/void it instead/i);
+    // "Cancel", because that is the word on the button that does it.
+    if (!result.ok) expect(result.error).toMatch(/cancel it instead/i);
+  });
+
+  /**
+   * An open invoice with the client's money on it.
+   *
+   * The dead end this closes: part payment made `open` a state an invoice can
+   * hold real money in, and both exits were shut. Refunding refused it for
+   * not being paid; cancelling refused it, rightly, for having a payment on
+   * it — and the cancel refusal's own advice was "record the rest and refund
+   * it, or raise a credit", which described a route that did not exist. Nine
+   * hundred dollars of somebody else's money sat on a row with no way out of
+   * it that did not involve a database console.
+   */
+  describe('refunding an invoice that is only part paid', () => {
+    const partPaid = { status: 'open', amountCents: 250_000, refundedCents: 0 };
+
+    it('gives back money that actually came in', () => {
+      const result = readRefundRequest(
+        partPaid,
+        { amountCents: 90_000, method: 'manual', reason: 'Project cancelled' },
+        90_000
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.draft.amountCents).toBe(90_000);
+    });
+
+    /* The face value is what was ASKED for. Refunding it would send back
+       $160,000 that never arrived. */
+    it('will not give back more than arrived', () => {
+      const result = readRefundRequest(
+        partPaid,
+        { amountCents: 250_000, method: 'manual', reason: 'Project cancelled' },
+        90_000
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/\$900 of that invoice has been paid/i);
+    });
+
+    /*
+     * The second half of a refund that went out in two parts.
+     *
+     * A money-moving refund writes a negative row into the same ledger the
+     * payments live in, so "what is still sitting here" has already dropped by
+     * the first $400. Capping against that figure AND subtracting
+     * refundedCents takes the same $400 off twice, and the client's remaining
+     * $500 becomes $100 they cannot have.
+     */
+    it('counts money in, not money still here, so a second partial refund is not blocked', () => {
+      const result = readRefundRequest(
+        { status: 'open', amountCents: 250_000, refundedCents: 40_000 },
+        { amountCents: 50_000, method: 'manual', reason: 'The rest of it' },
+        90_000
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('still refuses a void invoice, whatever came in', () => {
+      const result = readRefundRequest(
+        { status: 'void', amountCents: 250_000, refundedCents: 0 },
+        { amountCents: 1000, method: 'manual', reason: 'x' },
+        90_000
+      );
+
+      expect(result.ok).toBe(false);
+    });
+
+    /* A settled invoice's ceiling is its face value, exactly as before —
+       payment rows are not consulted and cannot lower it. */
+    it('leaves a paid invoice reading off its own face value', () => {
+      const result = readRefundRequest(
+        { status: 'paid', amountCents: 250_000, refundedCents: 0 },
+        { amountCents: 250_000, method: 'stripe', reason: 'x' },
+        0
+      );
+
+      expect(result.ok).toBe(true);
+    });
   });
 
   it('refuses a refund of nothing, or of a negative amount', () => {
@@ -229,6 +310,34 @@ describe('cancelling an invoice money has arrived against', () => {
   it('keeps refusing a settled or already-cancelled one', () => {
     expect(canVoid({ status: 'paid' }, 0).ok).toBe(false);
     expect(canVoid({ status: 'void' }, 0).ok).toBe(false);
+  });
+});
+
+/**
+ * Open, and money has moved in both directions.
+ *
+ * Impossible until an invoice could be part paid and then refunded off, so
+ * nothing had ever had to draw it. Reading `status` before `refundedCents`
+ * gave it the badge for an invoice nothing has ever happened to.
+ */
+describe('what the badge says once a part-paid invoice has been refunded', () => {
+  const base = { status: 'open', amountCents: 250_000, receivedCents: 0 };
+
+  it('says the money went back rather than calling the row untouched', () => {
+    expect(displayState({ ...base, refundedCents: 90_000 })).toBe('part-refunded');
+  });
+
+  it('distinguishes a credit here too', () => {
+    expect(displayState({ ...base, refundedCents: 90_000, refundMethod: 'credit' })).toBe('credited');
+  });
+
+  it('leaves a cancelled invoice cancelled', () => {
+    expect(displayState({ ...base, status: 'void', refundedCents: 90_000 })).toBe('void');
+  });
+
+  it('changes nothing for an open invoice nothing has come off', () => {
+    expect(displayState({ ...base, refundedCents: 0, receivedCents: 90_000 })).toBe('part-paid');
+    expect(displayState({ ...base, refundedCents: 0 })).toBe('open');
   });
 });
 

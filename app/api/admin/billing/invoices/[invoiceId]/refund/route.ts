@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { readRefundRequest, settlement, type SettlementLine } from '@/lib/invoice-lifecycle';
+import { grossReceivedCents } from '@/lib/invoice-settlement';
 import { sendInvoiceRefundedEmail } from '@/lib/email';
 import { formatCentsExact } from '@/lib/pricing';
 
@@ -70,11 +71,13 @@ export async function POST(
       return NextResponse.json({ error: 'That invoice no longer exists.' }, { status: 404 });
     }
 
-    const parsed = readRefundRequest(invoice, {
-      amountCents: body?.amountCents,
-      method: body?.method,
-      reason: body?.reason,
-    });
+    const parsed = readRefundRequest(
+      invoice,
+      { amountCents: body?.amountCents, method: body?.method, reason: body?.reason },
+      // An open invoice may still be holding money — someone sent part of it
+      // by transfer. What can go back is what came in, not the face value.
+      grossReceivedCents(invoice.payments)
+    );
     if (!parsed.ok) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }

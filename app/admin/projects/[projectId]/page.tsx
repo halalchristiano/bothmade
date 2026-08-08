@@ -85,6 +85,8 @@ interface ProjectDetail {
     paidMethod?: string | null;
     /** How much has arrived against it — an invoice can be part paid. */
     receivedCents?: number;
+    /** Money in before any of it went back out — the ceiling on a refund. */
+    grossReceivedCents?: number;
   }>;
   deliverables: Deliverable[];
   createdAt: string;
@@ -958,6 +960,9 @@ export default function AdminProjectDetailPage() {
                             // carrying a client's money, and the route refuses
                             // it after two clicks.
                             receivedCents: invoice.receivedCents ?? 0,
+                            // What may go back off it, which on a part-paid
+                            // invoice is what came in, not its face value.
+                            grossReceivedCents: invoice.grossReceivedCents ?? 0,
                             projectId,
                           }}
                           onDone={loadProject}
