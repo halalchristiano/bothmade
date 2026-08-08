@@ -26,12 +26,16 @@ const prisma = {
 
 const sessionsRetrieve = vi.fn(async (_id: string) => ({ status: 'open' }) as unknown);
 const sessionsCreate = vi.fn(async (_a: unknown) => ({ id: 'cs_new', url: 'https://stripe.test/cs_new' }) as unknown);
+const sessionsExpire = vi.fn(async (_id: string) => ({}) as unknown);
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.test' }));
 vi.mock('stripe', () => ({
   default: class {
-    checkout = { sessions: { retrieve: sessionsRetrieve, create: sessionsCreate } };
+    // `expire` is part of the surface now: minting a replacement for a
+    // part-paid instalment kills the session it replaces, or the client is
+    // left holding two live checkouts for one payment.
+    checkout = { sessions: { retrieve: sessionsRetrieve, create: sessionsCreate, expire: sessionsExpire } };
   },
 }));
 

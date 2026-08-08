@@ -25,6 +25,8 @@ const instalmentUpdate = vi.fn();
 const invoiceFindUnique = vi.fn();
 const liveCheckoutUrl = vi.fn();
 const sessionsCreate = vi.fn();
+const sessionsExpire = vi.fn(async (_id: string) => ({}) as unknown);
+const sessionsRetrieve = vi.fn(async (_id: string) => ({ status: 'expired' }) as unknown);
 let principal: { session: unknown; response: unknown };
 
 vi.mock('@/lib/prisma', () => ({
@@ -49,7 +51,7 @@ vi.mock('@/lib/billing', () => ({ amountPaidTowardProject: (p: Array<{ amount: n
   p.reduce((s, x) => s + x.amount, 0) }));
 vi.mock('stripe', () => ({
   default: class {
-    checkout = { sessions: { create: (...a: unknown[]) => sessionsCreate(...a) } };
+    checkout = { sessions: { create: sessionsCreate, retrieve: sessionsRetrieve, expire: sessionsExpire } };
   },
 }));
 

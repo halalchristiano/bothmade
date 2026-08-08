@@ -39,6 +39,7 @@ const sessionsCreate = vi.fn(
   async (..._a: unknown[]) => ({ id: 'cs_new', url: 'https://stripe.test/cs_new' }) as unknown
 );
 const sessionsRetrieve = vi.fn(async (_id: string) => ({ status: 'open' }) as unknown);
+const sessionsExpire = vi.fn(async (_id: string) => ({}) as unknown);
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.test' }));
@@ -48,7 +49,7 @@ vi.mock('@/lib/middleware', () => ({
 }));
 vi.mock('stripe', () => ({
   default: class {
-    checkout = { sessions: { create: sessionsCreate, retrieve: sessionsRetrieve } };
+    checkout = { sessions: { create: sessionsCreate, retrieve: sessionsRetrieve, expire: sessionsExpire } };
   },
 }));
 

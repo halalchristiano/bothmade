@@ -20,9 +20,10 @@ import type Stripe from 'stripe';
 
 const retrieve = vi.fn();
 const create = vi.fn();
+const expire = vi.fn();
 
 const stripe = {
-  checkout: { sessions: { retrieve, create } },
+  checkout: { sessions: { retrieve, create, expire } },
 } as unknown as Pick<Stripe, 'checkout'>;
 
 const INSTALMENT = {
@@ -42,6 +43,8 @@ const SITE = 'https://bothmade.studio';
 beforeEach(() => {
   retrieve.mockReset();
   create.mockReset();
+  expire.mockReset();
+  expire.mockResolvedValue({});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -185,5 +188,72 @@ describe('when Stripe refuses', () => {
     create.mockResolvedValue({ id: 'cs_new', url: null });
 
     expect(await liveCheckoutUrl(stripe, INSTALMENT, PROJECT, SITE)).toBeNull();
+  });
+});
+
+describe('the session it refused to reuse', () => {
+  /*
+   * The double-collection window this module exists to close, left open by
+   * the one branch that deliberately does not reuse.
+   *
+   * Once part of an instalment has arrived, the stored session is a request
+   * for more than is owed, so a fresh one is minted for the balance. The
+   * stored one was left alone — still `open`, still in the client's inbox,
+   * still asking for the face value. A client who transfers half and then
+   * clicks the original email pays the whole instalment on top of the half
+   * they already sent.
+   *
+   * The instalment send route already expires the old session before minting
+   * a replacement, for exactly this reason. This is the same act, so it needs
+   * the same clean-up.
+   */
+  it('expires the stored session when it mints a smaller one for a part-paid instalment', async () => {
+    retrieve.mockResolvedValue({ status: 'open' });
+    create.mockResolvedValue({ id: 'cs_new', url: 'https://checkout.stripe.com/new' });
+
+    const live = await liveCheckoutUrl(stripe, INSTALMENT, PROJECT, SITE, 'inv_1', 150000);
+
+    expect(live).toMatchObject({ minted: true, sessionId: 'cs_new' });
+    expect(expire).toHaveBeenCalledWith('cs_stored');
+  });
+
+  it('charges only what is still outstanding, not the face value', async () => {
+    retrieve.mockResolvedValue({ status: 'open' });
+    create.mockResolvedValue({ id: 'cs_new', url: 'https://checkout.stripe.com/new' });
+
+    await liveCheckoutUrl(stripe, INSTALMENT, PROJECT, SITE, 'inv_1', 150000);
+
+    const [args] = create.mock.calls[0] as [{ line_items: Array<{ price_data: { unit_amount: number } }> }];
+    expect(args.line_items[0].price_data.unit_amount).toBe(150000);
+  });
+
+  it('does not try to expire a session that was never stored', async () => {
+    create.mockResolvedValue({ id: 'cs_new', url: 'https://checkout.stripe.com/new' });
+
+    await liveCheckoutUrl(
+      stripe,
+      { ...INSTALMENT, paymentUrl: null, stripeSessionId: null },
+      PROJECT,
+      SITE,
+      'inv_1',
+      150000
+    );
+
+    expect(expire).not.toHaveBeenCalled();
+  });
+
+  /*
+   * Reuse is still reuse. Nothing has been paid, the stored session is open
+   * and asks for the right money — expiring it here would throw away the link
+   * already in the client's inbox and replace it with one that dies sooner.
+   */
+  it('leaves the stored session alone when it hands it back', async () => {
+    retrieve.mockResolvedValue({ status: 'open' });
+
+    const live = await liveCheckoutUrl(stripe, INSTALMENT, PROJECT, SITE, 'inv_1');
+
+    expect(live).toMatchObject({ minted: false });
+    expect(expire).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 });

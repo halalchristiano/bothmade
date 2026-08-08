@@ -100,6 +100,27 @@ export async function liveCheckoutUrl(
     return { url: inst.paymentUrl, sessionId: inst.stripeSessionId, minted: false };
   }
 
+  /*
+   * Kill what we just refused to reuse.
+   *
+   * Refusing to hand back the stored session is only half the job. On the
+   * part-paid branch that session is still `open` and still in the client's
+   * inbox asking for the face value, so declining to reuse it and then
+   * minting a smaller one beside it produces exactly the thing the paragraph
+   * at the top of this file calls the double-collection window: two live
+   * checkouts for one instalment. A client who transfers half of a $12,000
+   * payment and then clicks the original email sends the other $12,000.
+   *
+   * The instalment send route already expires the old session before minting
+   * a replacement. This is the same act and needs the same clean-up. Failures
+   * are swallowed on purpose — already expired, already paid, or never
+   * existed are all fine, and none of them are a reason to deny somebody a
+   * way to pay.
+   */
+  if (inst.stripeSessionId) {
+    await stripe.checkout.sessions.expire(inst.stripeSessionId).catch(() => null);
+  }
+
   try {
     const checkout = await stripe.checkout.sessions.create({
       mode: 'payment',
