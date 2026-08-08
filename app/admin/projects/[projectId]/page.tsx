@@ -694,137 +694,33 @@ export default function AdminProjectDetailPage() {
           it sits where the page opens rather than under a scroll. */}
       <RecurringCarePanel projectId={projectId} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
-        {/* LEFT: Project Info */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
-            <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
-            <Link
-              href={`/admin/clients/${project.client.id}`}
-              className="text-sm text-white/50 transition-colors hover:text-sky-300"
-            >
-              {project.client.company}
-            </Link>
+      {/*
+        The money, across the page.
 
-            {/*
-              The link the client actually watches, on the page where you are
-              already looking at their project.
+        This is the reason the page exists — it is where a client actually
+        gets billed — and it was three nested boxes at the bottom of a
+        three-tenths rail: a schedule about 200px wide whose rows read
+        "Payment 2 of 3 · $…" over "On d…", a balance under it, and the
+        one-off charges under that. The most important control on the screen
+        was the smallest thing on it, tucked below the timeline and the
+        add-ons list.
 
-              The API has always sent shareToken here — the comment beside it
-              says it "travels no further than the dashboard that offers copy
-              share link", and that was exactly the problem. Sending a client
-              their tracking link is a routine thing to want from a project,
-              and it meant going back to the dashboard, finding the row, and
-              hoping the project was still on it: that list is filtered to
-              handoffs and at-risk work, so for a healthy mid-build project
-              the link was reachable from nowhere at all.
-            */}
-            {project.shareToken && (
-              /*
-               * Labelled once above, then short controls beneath.
-               *
-               * "Copy status link" as a button label wrapped onto two lines in
-               * this column and shoved Revoke out of line with it. Naming the
-               * thing in a caption and letting the buttons say only what they
-               * do fits, and reads better besides: three verbs in a row rather
-               * than one sentence and two orphans.
-               */
-              <div className="mt-4 border-t border-white/[0.06] pt-4">
-                <p className="text-xs font-medium text-white/40">Client status link</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                <CopyButton
-                  value={`${typeof window === 'undefined' ? '' : window.location.origin}/status/${project.id}?t=${project.shareToken}`}
-                  label="Copy"
-                  title="Copy the client's status link"
-                />
-                <a
-                  href={`/status/${project.id}?t=${encodeURIComponent(project.shareToken)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open the client's status page"
-                  className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-sky-300"
-                >
-                  <ExternalLink size={13} />
-                </a>
-                {/*
-                  The other half of handing out a link.
-
-                  /api/share-links/rotate has accepted { type: 'project' }
-                  from staff since it was written, and the lead page and the
-                  client's own dashboard both call it — but the admin project
-                  page never did. So the one screen where somebody copies a
-                  client's status link was the one screen with no way to take
-                  it back, and the person most likely to notice a link went
-                  somewhere it shouldn't is whoever sent it.
-                */}
-                <button
-                  type="button"
-                  onClick={handleRotateShareLink}
-                  disabled={rotatingLink}
-                  title="Replace this link — every copy already sent stops working"
-                  className="rounded-lg px-2 py-1 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-amber-300 disabled:opacity-50"
-                >
-                  {rotatingLink ? 'Replacing…' : 'Revoke'}
-                </button>
-                </div>
-              </div>
-            )}
-            {linkNotice && (
-              <p role="status" className="mt-2 text-xs text-amber-300/90">
-                {linkNotice}
-              </p>
-            )}
-
-            <div className="mt-6 space-y-4 text-sm">
-              <div>
-                <p className="text-white/40 mb-1">Base Service</p>
-                <p className="font-medium capitalize">{project.baseService.replace('-', ' ')}</p>
-              </div>
-              {project.addOns.length > 0 && (
-                <div>
-                  <p className="text-white/40 mb-1">Add-ons</p>
-                  {/* addOnLabel, not CSS capitalize: the raw key rendered as
-                      "Seo", which reads like a typo somebody meant. */}
-                  <p className="font-medium">{project.addOns.map(addOnLabel).join(', ')}</p>
-                </div>
-              )}
-              {project.customItems && project.customItems.length > 0 && (
-                <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-amber-300 mb-2">
-                    ⚠ Custom items — not in the standard catalogue
-                  </p>
-                  <div className="space-y-1">
-                    {project.customItems.map((item, i) => (
-                      <div key={i}>
-                        <p className="font-medium flex justify-between">
-                          <span>{item.label}</span>
-                          <span className="text-white/60">{formatCents(item.priceCents)}</span>
-                        </p>
-                        {/* What was actually agreed, verbatim from the
-                            contract — this is the page someone opens when
-                            they're about to build the thing. */}
-                        {item.description && (
-                          <p className="mt-0.5 text-xs leading-relaxed text-white/60">{item.description}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div>
-                <p className="text-white/40 mb-1">Timeline</p>
-                <p className="font-medium">{project.timeline || '—'}</p>
-              </div>
-              <div>
-                <p className="text-white/40 mb-1">Total Price</p>
-                <p className="font-medium">{formatCents(project.totalPrice)}</p>
-              </div>
+        Two-thirds to the schedule, because it carries the row you read and
+        the button you press. The remaining third stacks the balance — two
+        figures and a bar — over the one-off charges, which stay a separate
+        card rather than being folded into the balance: they are billed on
+        top of the contracted price, and showing them as one number is how a
+        project reads as paid off because somebody was invoiced for a change
+        request.
+      */}
+      <div className="mb-6 grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+            <div className="mb-4">
+              <InstalmentPanel projectId={projectId} onLoaded={setInstalmentCount} />
             </div>
-
-            <div className="mt-6 pt-6 border-t border-white/10">
-              <div className="mb-4">
-                <InstalmentPanel projectId={projectId} onLoaded={setInstalmentCount} />
-              </div>
+        </div>
+        <div className="space-y-6">
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
               <p className="text-sm font-semibold mb-3">Payment Status</p>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-white/40">Paid</span>
@@ -865,13 +761,8 @@ export default function AdminProjectDetailPage() {
                   )}
                 </>
               )}
-            </div>
-
-            {/* One-off charges. Deliberately below the balance rather than
-                inside it: these are billed outside the contracted price, and
-                showing them as one number is how a project reads as paid off
-                because somebody was invoiced for a change request. */}
-            <div className="mt-6 pt-6 border-t border-white/10">
+          </div>
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold">Custom Charges</p>
                 <Link
@@ -1014,7 +905,137 @@ export default function AdminProjectDetailPage() {
                   ))}
                 </div>
               )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
+        {/* LEFT: Project Info */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+            <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
+            <Link
+              href={`/admin/clients/${project.client.id}`}
+              className="text-sm text-white/50 transition-colors hover:text-sky-300"
+            >
+              {project.client.company}
+            </Link>
+
+            {/*
+              The link the client actually watches, on the page where you are
+              already looking at their project.
+
+              The API has always sent shareToken here — the comment beside it
+              says it "travels no further than the dashboard that offers copy
+              share link", and that was exactly the problem. Sending a client
+              their tracking link is a routine thing to want from a project,
+              and it meant going back to the dashboard, finding the row, and
+              hoping the project was still on it: that list is filtered to
+              handoffs and at-risk work, so for a healthy mid-build project
+              the link was reachable from nowhere at all.
+            */}
+            {project.shareToken && (
+              /*
+               * Labelled once above, then short controls beneath.
+               *
+               * "Copy status link" as a button label wrapped onto two lines in
+               * this column and shoved Revoke out of line with it. Naming the
+               * thing in a caption and letting the buttons say only what they
+               * do fits, and reads better besides: three verbs in a row rather
+               * than one sentence and two orphans.
+               */
+              <div className="mt-4 border-t border-white/[0.06] pt-4">
+                <p className="text-xs font-medium text-white/40">Client status link</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                <CopyButton
+                  value={`${typeof window === 'undefined' ? '' : window.location.origin}/status/${project.id}?t=${project.shareToken}`}
+                  label="Copy"
+                  title="Copy the client's status link"
+                />
+                <a
+                  href={`/status/${project.id}?t=${encodeURIComponent(project.shareToken)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open the client's status page"
+                  className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-sky-300"
+                >
+                  <ExternalLink size={13} />
+                </a>
+                {/*
+                  The other half of handing out a link.
+
+                  /api/share-links/rotate has accepted { type: 'project' }
+                  from staff since it was written, and the lead page and the
+                  client's own dashboard both call it — but the admin project
+                  page never did. So the one screen where somebody copies a
+                  client's status link was the one screen with no way to take
+                  it back, and the person most likely to notice a link went
+                  somewhere it shouldn't is whoever sent it.
+                */}
+                <button
+                  type="button"
+                  onClick={handleRotateShareLink}
+                  disabled={rotatingLink}
+                  title="Replace this link — every copy already sent stops working"
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-amber-300 disabled:opacity-50"
+                >
+                  {rotatingLink ? 'Replacing…' : 'Revoke'}
+                </button>
+                </div>
+              </div>
+            )}
+            {linkNotice && (
+              <p role="status" className="mt-2 text-xs text-amber-300/90">
+                {linkNotice}
+              </p>
+            )}
+
+            <div className="mt-6 space-y-4 text-sm">
+              <div>
+                <p className="text-white/40 mb-1">Base Service</p>
+                <p className="font-medium capitalize">{project.baseService.replace('-', ' ')}</p>
+              </div>
+              {project.addOns.length > 0 && (
+                <div>
+                  <p className="text-white/40 mb-1">Add-ons</p>
+                  {/* addOnLabel, not CSS capitalize: the raw key rendered as
+                      "Seo", which reads like a typo somebody meant. */}
+                  <p className="font-medium">{project.addOns.map(addOnLabel).join(', ')}</p>
+                </div>
+              )}
+              {project.customItems && project.customItems.length > 0 && (
+                <div className="rounded-lg border-2 border-amber-400/40 bg-amber-400/10 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-300 mb-2">
+                    ⚠ Custom items — not in the standard catalogue
+                  </p>
+                  <div className="space-y-1">
+                    {project.customItems.map((item, i) => (
+                      <div key={i}>
+                        <p className="font-medium flex justify-between">
+                          <span>{item.label}</span>
+                          <span className="text-white/60">{formatCents(item.priceCents)}</span>
+                        </p>
+                        {/* What was actually agreed, verbatim from the
+                            contract — this is the page someone opens when
+                            they're about to build the thing. */}
+                        {item.description && (
+                          <p className="mt-0.5 text-xs leading-relaxed text-white/60">{item.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <p className="text-white/40 mb-1">Timeline</p>
+                <p className="font-medium">{project.timeline || '—'}</p>
+              </div>
+              <div>
+                <p className="text-white/40 mb-1">Total Price</p>
+                <p className="font-medium">{formatCents(project.totalPrice)}</p>
+              </div>
             </div>
+
 
             <div className="mt-6 pt-6 border-t border-white/10">
               <p className="text-sm font-semibold mb-3">Estimated Completion</p>
@@ -1062,6 +1083,26 @@ export default function AdminProjectDetailPage() {
               </div>
             </div>
 
+          </div>
+
+          {/* Beside the scope it changes, not in the conversation column.
+              "The price and scope agreed at signing still stand" is a
+              statement about the card directly above this one, and it was
+              two columns away from it. */}
+          <div id="change-orders">
+            <ChangeOrderPanel
+              projectId={projectId}
+              totalPrice={project.totalPrice}
+              // What the contract's answer turns on: which gate the project
+              // has passed, and how much of the revision allowance is left.
+              stage={{
+                status: project.status,
+                designPresentedAt: project.designReview?.presentedAt ?? null,
+                designApprovedAt: project.designReview?.approvedAt ?? null,
+                designRevisionsUsed: project.designReview?.revisions?.used ?? 0,
+              }}
+              onApplied={loadProject}
+            />
           </div>
         </div>
 
@@ -1199,21 +1240,6 @@ export default function AdminProjectDetailPage() {
 
           <DesignFeedbackPanel projectId={projectId} />
 
-          <div id="change-orders">
-            <ChangeOrderPanel
-              projectId={projectId}
-              totalPrice={project.totalPrice}
-              // What the contract's answer turns on: which gate the project
-              // has passed, and how much of the revision allowance is left.
-              stage={{
-                status: project.status,
-                designPresentedAt: project.designReview?.presentedAt ?? null,
-                designApprovedAt: project.designReview?.approvedAt ?? null,
-                designRevisionsUsed: project.designReview?.revisions?.used ?? 0,
-              }}
-              onApplied={loadProject}
-            />
-          </div>
 
           <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
             <h2 className="text-xl font-semibold mb-4">Activity</h2>
@@ -1317,68 +1343,6 @@ export default function AdminProjectDetailPage() {
             </div>
           </div>
 
-          {/* Internal team notes — never shown to the client */}
-          <div className="relative rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] shadow-e2 p-6">
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-semibold">Internal Notes</h2>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300">
-                Team only — never shown to client
-              </span>
-            </div>
-            <div className="space-y-3 max-h-64 overflow-y-auto my-4">
-              {notes.length === 0 && <p className="text-white/40 text-sm">No internal notes yet.</p>}
-              {notes.map((note) => (
-                <div key={note.id} className="p-3 rounded-lg bg-white/5">
-                  <p className="text-sm text-white/70 whitespace-pre-wrap">{note.content}</p>
-                  <p className="text-xs text-white/30 mt-1">
-                    {note.author?.name || 'Team'} · {new Date(note.createdAt).toLocaleString()}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <textarea
-              value={noteContent}
-              onChange={(e) => setNoteContent(e.target.value)}
-              rows={2}
-              placeholder="Note to the rest of the team — e.g. 'Evan: this client is price-sensitive, don't push the growth plan yet'"
-              className={`${inputClass} resize-none mb-3`}
-            />
-            <button
-              onClick={handleAddNote}
-              disabled={noteSaving || !noteContent.trim()}
-              className="rounded-lg border border-amber-400/40 px-5 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 hover:bg-amber-400/10 transition-colors"
-            >
-              {noteSaving ? 'Saving...' : 'Add Internal Note'}
-            </button>
-          </div>
-
-          {/* Flag a question for the rest of the team */}
-          <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
-            <h2 className="text-lg font-semibold mb-1">Flag For The Team</h2>
-            <p className="text-xs text-white/40 mb-3">
-              Ping the team chat about this project — shows in their notifications until resolved.
-            </p>
-            <div className="flex gap-2 mb-2">
-              <input
-                value={flagMessage}
-                onChange={(e) => setFlagMessage(e.target.value)}
-                placeholder="e.g. Client wants to add e-commerce — can you re-quote?"
-                className={`${inputClass} text-sm`}
-              />
-              <button
-                onClick={handleFlagForTeam}
-                disabled={flagSending || !flagMessage.trim()}
-                className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
-              >
-                {flagSending ? 'Sending...' : 'Send'}
-              </button>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-white/40 cursor-pointer">
-              <input type="checkbox" checked={flagUrgent} onChange={(e) => setFlagUrgent(e.target.checked)} />
-              🚩 Flag as needing a response
-            </label>
-            {flagStatus && <p className="text-xs text-emerald-300 mt-2">{flagStatus}</p>}
-          </div>
         </div>
 
         {/* RIGHT: Deliverables */}
@@ -1490,6 +1454,75 @@ export default function AdminProjectDetailPage() {
             </div>
           </div>
 
+
+          {/* The two things on this page the client never sees, together and
+              at the end — rather than interleaved with the messages that do
+              go to them. */}
+          {/* Internal team notes — never shown to the client */}
+          <div className="relative rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] shadow-e2 p-6">
+            {/* Wraps. In the rail this now sits in, the heading and the badge
+                do not fit on one line, and holding them there put a two-line
+                pill through the middle of the title. */}
+            <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <h2 className="text-xl font-semibold">Internal Notes</h2>
+              <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-xs text-amber-300">
+                Team only — never shown to client
+              </span>
+            </div>
+            <div className="space-y-3 max-h-64 overflow-y-auto my-4">
+              {notes.length === 0 && <p className="text-white/40 text-sm">No internal notes yet.</p>}
+              {notes.map((note) => (
+                <div key={note.id} className="p-3 rounded-lg bg-white/5">
+                  <p className="text-sm text-white/70 whitespace-pre-wrap">{note.content}</p>
+                  <p className="text-xs text-white/30 mt-1">
+                    {note.author?.name || 'Team'} · {new Date(note.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <textarea
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              rows={2}
+              placeholder="Note to the rest of the team — e.g. 'Evan: this client is price-sensitive, don't push the growth plan yet'"
+              className={`${inputClass} resize-none mb-3`}
+            />
+            <button
+              onClick={handleAddNote}
+              disabled={noteSaving || !noteContent.trim()}
+              className="rounded-lg border border-amber-400/40 px-5 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 hover:bg-amber-400/10 transition-colors"
+            >
+              {noteSaving ? 'Saving...' : 'Add Internal Note'}
+            </button>
+          </div>
+
+          {/* Flag a question for the rest of the team */}
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
+            <h2 className="text-lg font-semibold mb-1">Flag For The Team</h2>
+            <p className="text-xs text-white/40 mb-3">
+              Ping the team chat about this project — shows in their notifications until resolved.
+            </p>
+            <div className="flex gap-2 mb-2">
+              <input
+                value={flagMessage}
+                onChange={(e) => setFlagMessage(e.target.value)}
+                placeholder="e.g. Client wants to add e-commerce — can you re-quote?"
+                className={`${inputClass} text-sm`}
+              />
+              <button
+                onClick={handleFlagForTeam}
+                disabled={flagSending || !flagMessage.trim()}
+                className="px-4 py-2 rounded-lg border border-white/20 text-sm hover:bg-white/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {flagSending ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-white/40 cursor-pointer">
+              <input type="checkbox" checked={flagUrgent} onChange={(e) => setFlagUrgent(e.target.checked)} />
+              🚩 Flag as needing a response
+            </label>
+            {flagStatus && <p className="text-xs text-emerald-300 mt-2">{flagStatus}</p>}
+          </div>
         </div>
       </div>
 
