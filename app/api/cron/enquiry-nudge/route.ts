@@ -44,9 +44,15 @@ export async function GET(request: NextRequest) {
         emailDeliveryFailedAt: true,
         painPoints: true,
         shareToken: true,
+        /*
+         * Ordered and dated, not just counted. The count paces the sequence;
+         * the newest timestamp is what stops a second run on the same day
+         * from advancing it — see shouldNudge.
+         */
         activities: {
           where: { type: 'email', content: { startsWith: 'Nudge' } },
-          select: { id: true },
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
         },
       },
       take: 200,
@@ -54,10 +60,12 @@ export async function GET(request: NextRequest) {
 
     let sent = 0;
     let stopped = 0;
+    const now = new Date();
 
     for (const lead of candidates) {
       const already = lead.activities.length;
-      if (!shouldNudge(lead, already)) {
+      const lastNudgedAt = lead.activities[0]?.createdAt ?? null;
+      if (!shouldNudge(lead, already, lastNudgedAt, now)) {
         if (already >= MAX_NUDGES) stopped += 1;
         continue;
       }

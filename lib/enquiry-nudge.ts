@@ -90,7 +90,30 @@ export function shouldNudge(
     replyReceivedAt: Date | null;
     emailDeliveryFailedAt?: Date | null;
   },
-  nudgesSent: number
+  nudgesSent: number,
+  /**
+   * When the last one went, and now — so that "daily" is a property of this
+   * function rather than of the schedule.
+   *
+   * The sequence was paced entirely by how many had been sent: send number
+   * four goes out whenever the route next runs, whenever that is. That is
+   * only once a day for as long as nothing runs the route twice, and a
+   * `maxDuration = 60` loop that emails up to 200 leads is exactly the kind
+   * of thing that times out and gets retried — at which point every lead the
+   * first run reached gets the next message in the sequence minutes later.
+   * A manual run does the same.
+   *
+   * lib/payment-chase.ts already enforces this for the other automated
+   * sequence, in the same words: "One chase per calendar day whatever
+   * happens: a cron that fires twice, or a manual run on the same day, must
+   * not send two emails." A prospect receiving "just following up" twice
+   * before lunch is how a sending domain stops being delivered at all.
+   *
+   * Optional so callers that genuinely cannot see the history keep their old
+   * behaviour rather than silently sending nothing.
+   */
+  lastNudgedAt?: Date | null,
+  now: Date = new Date()
 ): boolean {
   if (!lead.email) return false;
   if (lead.doNotContact) return false;
@@ -98,7 +121,22 @@ export function shouldNudge(
   // A bounced address is not a silent prospect, it is a dead address.
   if (lead.emailDeliveryFailedAt) return false;
   if (!['new', 'contacted'].includes(lead.status)) return false;
-  return nudgesSent < MAX_NUDGES;
+  if (nudgesSent >= MAX_NUDGES) return false;
+  if (lastNudgedAt && !aDayApart(lastNudgedAt, now)) return false;
+  return true;
+}
+
+/**
+ * A whole day between two sends, measured in hours rather than calendar days.
+ *
+ * Calendar days would let 23:50 and 00:10 count as two, which is the same
+ * two-emails-in-twenty-minutes this exists to stop. Twenty hours rather than
+ * twenty-four so a cron that drifts slightly later each day never skips one.
+ */
+const MIN_HOURS_BETWEEN_NUDGES = 20;
+
+function aDayApart(last: Date, now: Date): boolean {
+  return now.getTime() - last.getTime() >= MIN_HOURS_BETWEEN_NUDGES * 60 * 60 * 1000;
 }
 
 /** Parses the stored comma list back into keys, ignoring anything unknown. */
