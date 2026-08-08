@@ -1580,6 +1580,31 @@ export default function ClientDashboard() {
                           </p>
                         )}
 
+                        {/*
+                          More of their money here than the invoice was for.
+                          
+                          Two payments landing on one invoice — a transfer, and
+                          then the original pay link, which is for the whole
+                          amount and has no partial version. The studio's
+                          ledger says "$900 overpaid" on this row. The client's
+                          copy said "Paid", which is true, and left the person
+                          who is actually out of pocket as the only one not
+                          told.
+                        */}
+                        {received > invoice.amountCents && (
+                          <p className="mt-2 text-xs text-amber-300">
+                            {/* The explicit space is load-bearing: JSX drops
+                                the whitespace between an expression and the
+                                text after it when the expression ends a line,
+                                which is how "$900more than" got shipped once
+                                already on this very screen. */}
+                            {formatCentsExact(received - invoice.amountCents)}{' '}
+                            more than this invoice was for has reached us — almost always a transfer
+                            and a card payment landing on the same invoice. It&apos;s yours;
+                            we&apos;re sending it back.
+                          </p>
+                        )}
+
                         {/* Their own money, said back to them. Without this
                             the row asks for the full amount from somebody who
                             has already sent part of it. */}

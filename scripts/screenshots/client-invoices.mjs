@@ -28,6 +28,9 @@ import path from 'node:path';
  *   - a refunded invoice must not offer one either, and must not promise a
  *     payment link is coming. A refund leaves an open invoice open, so this
  *     is a client being invited to pay in full for work we just refunded.
+ *   - an invoice that took MORE than it asked for says so. "Paid" is true
+ *     there and is not the whole truth, and the client is the one out of
+ *     pocket.
  *   - the page must never grow wider than the viewport. A horizontal
  *     scrollbar is the one layout failure a still image hides completely,
  *     because the screenshot is taken at the page's own width.
@@ -94,6 +97,20 @@ const INVOICES = [
     amountCents: 90000, status: 'open', pdfUrl: 'https://blob.test/c.pdf',
     paymentUrl: 'https://pay.test/c', createdAt: day(6), paidAt: null, refundedCents: 0,
     refundMethod: null, refundedAt: null, refundReason: null, voidReason: null, receivedCents: 0,
+  },
+  /*
+   * More money than the invoice was for. A transfer arrived, then the
+   * original pay link — fixed-amount, for the whole invoice — took it again.
+   * The studio's ledger says "$900 overpaid"; the client's copy said "Paid",
+   * which is true and leaves the person actually out of pocket as the only
+   * one not told.
+   */
+  {
+    id: 'inv_6', number: 'BM-2026-0022', description: 'Brand photography day — paid twice',
+    lineItems: [{ label: 'Photography day', priceCents: 180000 }],
+    amountCents: 180000, status: 'paid', pdfUrl: 'https://blob.test/f.pdf', paymentUrl: null,
+    createdAt: day(41), paidAt: day(38), refundedCents: 0, refundMethod: null, refundedAt: null,
+    refundReason: null, voidReason: null, receivedCents: 270000,
   },
   /* Settled, and cancelled — both carry their reason, which is written for
      the client rather than for our books. */
@@ -230,6 +247,14 @@ for (const device of DEVICES) {
   }
   if (/payment link for this shortly/.test(refunded)) {
     problems.push(`${device.key}: the refunded invoice is promising a payment link is coming.`);
+  }
+
+  const overpaid = await row('BM-2026-0022').innerText();
+  if (!/\$900 more than this invoice was for/.test(overpaid)) {
+    problems.push(`${device.key}: the overpaid invoice does not tell the client their money is here.`);
+  }
+  if (/Pay \$/.test(overpaid)) {
+    problems.push(`${device.key}: the overpaid invoice is offering to take more.`);
   }
 
   /* And the control, so a rule that hides everything reads as a failure too. */
