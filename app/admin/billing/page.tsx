@@ -120,6 +120,19 @@ export default function BillingPage() {
 
 function BillingWorkspace() {
   const router = useRouter();
+  /*
+   * Held in a ref rather than closed over.
+   *
+   * `loadInvoices` below is a useCallback whose identity drives an effect,
+   * and it carries the guard against a stale answer overwriting a newer one.
+   * Putting `router` in its dependency list makes that identity depend on an
+   * object the page does not control — one hook returning a fresh object per
+   * render is enough to re-run the load on every render and defeat the race
+   * handling entirely. The push function is all this needs, and a ref keeps
+   * it current without joining the dependency list.
+   */
+  const pushRef = useRef(router.push);
+  pushRef.current = router.push;
   const searchParams = useSearchParams();
   const deepLinkedProjectId = searchParams.get('projectId');
 
@@ -232,7 +245,7 @@ function BillingWorkspace() {
       // An empty ledger and a signed-out session look identical here — and
       // an empty ledger is also what a quiet month looks like, so nothing on
       // the page would ever have said which of the three it was.
-      if (redirectIfSessionExpired(response, router.push)) return;
+      if (redirectIfSessionExpired(response, pushRef.current)) return;
       const data = await response.json();
       // Somebody asked something else while this was in the air. Its answer is
       // about a list that is no longer on screen.
@@ -253,7 +266,7 @@ function BillingWorkspace() {
       // re-enabling it would offer a page that belongs to the old list.
       if (mine === askedAt.current) setLoadingMore(false);
     }
-  }, [filter, ledgerSearch, router]);
+  }, [filter, ledgerSearch]);
 
   useEffect(() => {
     loadInvoices();
