@@ -34,10 +34,17 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     }
   }
 
-  if (typeof document === 'undefined') return false;
+  if (typeof document === 'undefined' || !document.body) return false;
+
+  const area = document.createElement('textarea');
+  // Whatever the person had highlighted before pressing the button. Selecting
+  // the textarea below replaces it, and not putting it back means a copy
+  // button silently deselects the thing somebody was reading.
+  const previous = typeof window !== 'undefined' ? window.getSelection?.() : null;
+  const restore =
+    previous && previous.rangeCount > 0 ? previous.getRangeAt(0).cloneRange() : null;
 
   try {
-    const area = document.createElement('textarea');
     area.value = text;
     // Off-screen rather than hidden: a display:none element cannot be
     // selected, and selecting it is the entire mechanism here.
@@ -46,10 +53,26 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     area.setAttribute('readonly', '');
     document.body.appendChild(area);
     area.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(area);
-    return ok;
+    // iOS Safari ignores select() on a readonly field and copies nothing.
+    area.setSelectionRange?.(0, text.length);
+    return document.execCommand('copy');
   } catch {
     return false;
+  } finally {
+    /*
+     * The textarea comes out whatever happened.
+     *
+     * `removeChild` used to sit inside the try, after `execCommand` — and
+     * `execCommand('copy')` throws in browsers that refuse a clipboard write
+     * outside a user gesture. So every failed copy left an off-screen
+     * textarea in the document forever, on exactly the button this module
+     * exists for: one that looks like it did nothing, so the honest response
+     * is to press it again.
+     */
+    area.remove();
+    if (restore && previous) {
+      previous.removeAllRanges();
+      previous.addRange(restore);
+    }
   }
 }

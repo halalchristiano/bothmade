@@ -92,6 +92,29 @@ export default function Error({
             Back home
           </PillCTA>
         </motion.div>
+
+        {/*
+         * The reference, which this page took and threw away.
+         *
+         * `digest` was destructured here and never rendered, while the admin
+         * boundary — used by the two people who can read the server logs
+         * themselves — has always shown it. That is backwards. In production
+         * a Server Component's real message is deliberately replaced by a
+         * generic one, and this hash is the only thing tying what a visitor
+         * saw to what the server wrote down. Without it "your site broke" is
+         * an unanswerable report, and the person making it is the one who
+         * cannot look anything up.
+         */}
+        {error.digest && (
+          <motion.p
+            className="mt-12 font-mono text-[11px] text-white/25"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+          >
+            Reference {error.digest} — quote this if you get in touch.
+          </motion.p>
+        )}
       </div>
     </main>
   );
