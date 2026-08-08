@@ -374,12 +374,47 @@ describe('after a charge is raised', () => {
   async function raise() {
     render(<BillingPage />);
     await userEvent.type(screen.getByPlaceholderText(/Search by company/), 'north');
-    await userEvent.click(await screen.findByText('Northgate Dental'));
+    // By role, not by text: the ledger row shows the same company name, and
+    // the row's meta line puts it in its own element so an exact text match
+    // now finds two.
+    await userEvent.click(await screen.findByRole('button', { name: /Northgate Dental/ }));
     await userEvent.type(screen.getByPlaceholderText(/e\.g\. Extra round/), 'Third design round');
     await userEvent.type(screen.getAllByPlaceholderText('Description')[0], 'Design round');
     await userEvent.type(screen.getByPlaceholderText('0.00'), '1200');
     await userEvent.click(screen.getByRole('button', { name: /^Charge / }));
   }
+
+  /*
+   * These were five loose inputs and a button with an onClick, so Enter did
+   * nothing in any of them — and on a phone the keyboard's return key, the
+   * one thing under your thumb after typing an amount, was dead across the
+   * whole form. Safe because the studio-wide send guard sits in front of the
+   * route rather than the button: return opens the confirmation, it does not
+   * put anything in an inbox.
+   */
+  it('can be raised from the keyboard', async () => {
+    stubRaise();
+    render(<BillingPage />);
+    await userEvent.type(screen.getByPlaceholderText(/Search by company/), 'north');
+    await userEvent.click(await screen.findByRole('button', { name: /Northgate Dental/ }));
+    await userEvent.type(screen.getByPlaceholderText(/e\.g\. Extra round/), 'Third design round');
+    await userEvent.type(screen.getAllByPlaceholderText('Description')[0], 'Design round');
+    await userEvent.type(screen.getByPlaceholderText('0.00'), '1200{Enter}');
+
+    expect(await screen.findByRole('status', { name: 'Charge raised' })).toBeTruthy();
+  });
+
+  /* Adding a line is not raising a charge. */
+  it('does not raise anything when a helper button inside the form is pressed', async () => {
+    stubRaise();
+    render(<BillingPage />);
+    await userEvent.type(screen.getByPlaceholderText(/Search by company/), 'north');
+    await userEvent.click(await screen.findByRole('button', { name: /Northgate Dental/ }));
+    await userEvent.click(screen.getByRole('button', { name: '+ Add line' }));
+
+    expect(screen.queryByRole('status', { name: 'Charge raised' })).toBeNull();
+    expect(screen.getAllByPlaceholderText('Description')).toHaveLength(2);
+  });
 
   it('hands over the pay link and the invoice, rather than a number to go hunting with', async () => {
     stubRaise();

@@ -390,6 +390,26 @@ function BillingWorkspace() {
         <Card className="order-1 p-6">
           <CardHeader icon={Plus} title="New custom charge" tone="emerald" />
 
+          {/*
+            A real form, so the keyboard works.
+            These were five loose inputs and a button with an onClick. Enter
+            did nothing in any of them, and on a phone the keyboard's return
+            key — the one thing under your thumb after typing an amount — was
+            dead across the whole thing. This is the screen somebody fills in
+            most often here.
+
+            Safe to submit on Enter because the studio-wide send guard sits in
+            front of the route itself, not the button: pressing return opens
+            the confirmation showing the email as the client will get it. It
+            cannot put anything in an inbox on its own.
+          */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (canSubmit) submit(needsConfirmation);
+            }}
+          >
+
           {/* Customer */}
           <div className="mb-5">
             <label className="block text-xs font-semibold text-white/50 mb-2 uppercase tracking-wide">Customer</label>
@@ -404,6 +424,7 @@ function BillingWorkspace() {
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={clearCustomer}
                     className="text-white/40 hover:text-white transition-colors shrink-0"
                     aria-label="Choose a different customer"
@@ -459,6 +480,7 @@ function BillingWorkspace() {
                     )}
                     {results.map((found) => (
                       <button
+                        type="button"
                         key={found.id}
                         onClick={() => pickCustomer(found)}
                         className="w-full text-left px-3 py-2 hover:bg-white/[0.04] transition-colors"
@@ -540,6 +562,7 @@ function BillingWorkspace() {
                        beside the amount field, so the easiest thing to hit by
                        accident on this form was the one that deletes a line. */
                     <button
+                      type="button"
                       onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
                       className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white"
                       aria-label={`Remove line ${index + 1}`}
@@ -554,6 +577,7 @@ function BillingWorkspace() {
                 the form that builds a client's invoice, and the only way to
                 add a second line. Same words, a real control around them. */}
             <button
+              type="button"
               onClick={() => setLines((current) => [...current, { label: '', amount: '' }])}
               className="mt-2 inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-xs font-medium text-sky-300 transition-colors hover:bg-sky-400/10 hover:text-sky-200"
             >
@@ -585,8 +609,8 @@ function BillingWorkspace() {
           </label>
 
           <BrandButton
+            type="submit"
             variant="primary"
-            onClick={() => submit(needsConfirmation)}
             disabled={!canSubmit}
             className="w-full"
           >
@@ -604,6 +628,8 @@ function BillingWorkspace() {
           {blocker && !error && <p className="mt-2.5 text-xs text-white/35">{blocker}</p>}
 
           {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
+
+          </form>
 
           {/*
             What happened, and the two things anybody does next.
@@ -830,12 +856,17 @@ function BillingWorkspace() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{invoice.description}</p>
-                      <p className="text-xs text-white/40 truncate">
-                        {invoice.client.company}
-                        {' · '}
-                        {invoice.number}
-                        {' · '}
-                        {new Date(invoice.createdAt).toLocaleDateString()}
+                      {/* Wraps rather than truncates.
+                          Three facts on one truncated line means the phone
+                          drops the end of it — "BM-2026-0031 · 7/8/20…" — and
+                          the year off a date is the sort of loss nobody
+                          notices until they are reconciling something. The
+                          company can still ellipsis on its own; the number and
+                          the date are short and now always readable. */}
+                      <p className="flex flex-wrap gap-x-1 text-xs text-white/40">
+                        <span className="min-w-0 max-w-full truncate">{invoice.client.company}</span>
+                        <span>· {invoice.number}</span>
+                        <span>· {new Date(invoice.createdAt).toLocaleDateString()}</span>
                       </p>
                       {/* How long it has been sitting there and whether
                           anybody has asked about it since. Neither half is
