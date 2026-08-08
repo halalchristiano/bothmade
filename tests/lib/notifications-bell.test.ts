@@ -32,7 +32,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const prisma = {
-  user: { findUnique: vi.fn() },
+  user: {
+    findUnique: vi.fn(),
+    /*
+     * The route also looks up the outreach mailbox, to warn when the
+     * auto-follow-up cron cannot run. Resolved to a fully connected account
+     * here on purpose: these tests are about what the bell says when a
+     * colleague writes or a lead replies, and an unconfigured mailbox would
+     * add a setup warning to every one of their expectations.
+     *
+     * tests/lib/outreach-health.test.ts is where that check is actually
+     * tested. This just has to model the call so the route does not throw —
+     * a stub missing a method the route calls fails the whole handler in its
+     * catch, which is how six tests here went red at once.
+     */
+    findFirst: vi.fn(),
+  },
   teamMessage: { findMany: vi.fn() },
   lead: { findMany: vi.fn() },
   project: { findMany: vi.fn() },
@@ -88,6 +103,15 @@ const ring = async (): Promise<Item[]> => {
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.user.findUnique.mockResolvedValue({ teamChatReadAt: READ_AT });
+  // Set here, not on the stub: clearAllMocks() above wipes an implementation
+  // attached at declaration, which left the outreach warning firing in the two
+  // tests that assert an exact item count.
+  prisma.user.findFirst.mockResolvedValue({
+    email: 'kiana@bothmadestudio.com',
+    gmailAddress: 'kiana@bothmadestudio.com',
+    gmailAppPassword: 'encrypted',
+    googleRefreshToken: null,
+  });
   prisma.teamMessage.findMany.mockResolvedValue([]);
   prisma.lead.findMany.mockResolvedValue([]);
   prisma.project.findMany.mockResolvedValue([]);
