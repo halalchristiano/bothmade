@@ -597,18 +597,57 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
     setSnoozing(true);
+    setListError('');
     const nextFollowUpAt = new Date(Date.now() + days * 86_400_000).toISOString();
     try {
-      await Promise.all(
+      /*
+       * Settled, not `Promise.all`, and every response actually read.
+       *
+       * This fired N requests and looked at none of them. `fetch` resolves on
+       * a 403 and a 500 just as happily as on a 200, so every one of twenty
+       * PATCHes could fail and this still cleared the selection and reloaded
+       * — the list came back with the same dates on it and nothing said why.
+       * Snoozing is the action somebody takes to get twenty leads out of
+       * today's queue; the failure mode was those twenty silently staying in
+       * it, which is precisely the rot the button exists to prevent, now with
+       * a rep who believes it is handled.
+       *
+       * A dropped connection was worse: `Promise.all` rejects on the first
+       * one, there was no `catch`, so the rejection escaped the handler
+       * entirely. No selection cleared, no reload, no message — a button that
+       * appeared to do nothing at all.
+       */
+      const results = await Promise.allSettled(
         ids.map((id) =>
           fetch(`/api/admin/leads/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nextFollowUpAt }),
+          }).then((res) => {
+            if (!res.ok) throw new Error(String(res.status));
+            return id;
           })
         )
       );
-      setSelected(new Set());
+
+      const failed = ids.filter((_, i) => results[i]!.status === 'rejected');
+
+      // The ones that did not move stay selected, so "try again" means the
+      // three that failed rather than the twenty that already worked.
+      setSelected(new Set(failed));
+      if (failed.length) {
+        const one = failed.length === 1;
+        if (failed.length === ids.length) {
+          setListError(
+            one
+              ? "Couldn't snooze that lead — it is still due. Try again."
+              : `Couldn't snooze those ${failed.length} leads — they are still due. Try again.`
+          );
+        } else {
+          const rest = one ? 'The other one is still due and stays' : `The other ${failed.length} are still due and stay`;
+          setListError(`Snoozed ${ids.length - failed.length} of ${ids.length}. ${rest} selected.`);
+        }
+      }
       await load();
     } finally {
       setSnoozing(false);
