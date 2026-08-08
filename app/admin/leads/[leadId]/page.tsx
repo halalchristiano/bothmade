@@ -220,6 +220,33 @@ interface DealProject {
   }>;
 }
 
+/**
+ * A labelled field in the inline edit form. Visible rather than only
+ * announced: "which box is this" is a question a sighted person asks too, the
+ * moment a placeholder is replaced by a value.
+ */
+function EditField({
+  id,
+  label,
+  hint,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-xs text-white/40 mb-1.5">
+        {label}
+      </label>
+      {hint && <p className="text-xs text-white/25 mb-1.5">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
 export default function LeadDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -2795,38 +2822,70 @@ export default function LeadDetailPage() {
 
             {editing ? (
               <div className="space-y-3">
-                <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" className={inputClass} />
-                <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className={inputClass} />
-                <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
-                <PhoneField value={phone} onChange={setPhone} className={inputClass} />
-                <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source" className={inputClass} />
-                <input
-                  value={estimatedValue}
-                  onChange={(e) => setEstimatedValue(e.target.value)}
-                  placeholder="Estimated value (USD)"
-                  type="number"
-                  className={inputClass}
-                />
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Quick notes..."
-                  rows={3}
-                  className={`${inputClass} resize-none`}
-                />
-                <input
-                  value={originalWebsite}
-                  onChange={(e) => setOriginalWebsite(e.target.value)}
-                  placeholder="Their existing website (https://...)"
-                  className={inputClass}
-                />
-                <textarea
-                  value={salesNote}
-                  onChange={(e) => setSalesNote(e.target.value)}
-                  placeholder="Note for Evan — strategy, what to lead with, etc."
-                  rows={2}
-                  className={`${inputClass} resize-none`}
-                />
+                {/*
+                  Labelled, not just hinted. Every one of these carried its
+                  name in `placeholder` alone — the one place a name cannot
+                  stay, because it is gone as soon as there is a value in the
+                  box, which on an existing lead is immediately and always.
+                  Opening this form to change one field showed eight boxes of
+                  text with nothing saying which was which.
+
+                  Email is the one that made it obvious. It is the field a rep
+                  comes here to correct after a bounce, and it is the field
+                  whose label vanishes the instant the wrong address loads
+                  into it.
+                */}
+                <EditField id="edit-company" label="Company">
+                  <input id="edit-company" value={company} onChange={(e) => setCompany(e.target.value)} className={inputClass} />
+                </EditField>
+                <EditField id="edit-contact" label="Contact name">
+                  <input id="edit-contact" value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputClass} />
+                </EditField>
+                <EditField id="edit-email" label="Email">
+                  <input id="edit-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
+                </EditField>
+                <EditField id="edit-phone" label="Phone">
+                  <PhoneField id="edit-phone" value={phone} onChange={setPhone} className={inputClass} />
+                </EditField>
+                <EditField id="edit-source" label="Source">
+                  <input id="edit-source" value={source} onChange={(e) => setSource(e.target.value)} className={inputClass} />
+                </EditField>
+                <EditField id="edit-value" label="Estimated value (USD)">
+                  <input
+                    id="edit-value"
+                    value={estimatedValue}
+                    onChange={(e) => setEstimatedValue(e.target.value)}
+                    type="number"
+                    className={inputClass}
+                  />
+                </EditField>
+                <EditField id="edit-notes" label="Quick notes">
+                  <textarea
+                    id="edit-notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                    className={`${inputClass} resize-none`}
+                  />
+                </EditField>
+                <EditField id="edit-website" label="Their existing website">
+                  <input
+                    id="edit-website"
+                    value={originalWebsite}
+                    onChange={(e) => setOriginalWebsite(e.target.value)}
+                    placeholder="https://…"
+                    className={inputClass}
+                  />
+                </EditField>
+                <EditField id="edit-sales-note" label="Note for Evan" hint="Strategy, what to lead with, anything he should know before ringing.">
+                  <textarea
+                    id="edit-sales-note"
+                    value={salesNote}
+                    onChange={(e) => setSalesNote(e.target.value)}
+                    rows={2}
+                    className={`${inputClass} resize-none`}
+                  />
+                </EditField>
 
                 <div>
                   <p className="text-xs text-white/40 mb-2">What's wrong with their current setup?</p>

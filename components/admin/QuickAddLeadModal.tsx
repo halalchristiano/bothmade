@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { QUICK_ADD_STATUSES, LEAD_STATUS_LABELS, type LeadStatus } from '@/lib/leads';
 import { Modal } from './Modal';
 import { PhoneField } from '@/components/PhoneField';
@@ -12,6 +12,38 @@ import { PhoneField } from '@/components/PhoneField';
  * The Bulk tab exists for working through a list of prospects at once rather
  * than one form submission per company.
  */
+/**
+ * A labelled field. The label is visible rather than only announced, because
+ * "which box is this" is a question a sighted person asks too — as soon as
+ * the placeholder is gone.
+ */
+function Field({
+  id,
+  label,
+  hint,
+  required = false,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-xs text-white/40 mb-1.5">
+        {label}
+        {required && (
+          <span className="text-white/25"> (required)</span>
+        )}
+      </label>
+      {hint && <p className="text-xs text-white/25 mb-1.5">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
 export function QuickAddLeadModal({
   onClose,
   onCreated,
@@ -19,6 +51,8 @@ export function QuickAddLeadModal({
   onClose: () => void;
   onCreated: (leadId?: string) => void;
 }) {
+  // Namespaced so two of these on one page can't collide on `htmlFor`.
+  const formId = useId();
   const [mode, setMode] = useState<'single' | 'bulk'>('single');
 
   // Single
@@ -116,11 +150,61 @@ export function QuickAddLeadModal({
 
         {mode === 'single' ? (
           <div className="space-y-3">
-            <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company *" className={inputClass} autoFocus />
-            <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className={inputClass} />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
-            <PhoneField value={phone} onChange={setPhone} className={inputClass} />
-            <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source (referral, cold outreach, inbound...)" className={inputClass} />
+            {/*
+              Labelled, not just hinted.
+
+              These five carried their names in `placeholder` alone, which is
+              the one place a name cannot stay: it is gone the moment there is
+              a character in the box. Fill four fields, glance back to check
+              the third, and there is nothing to read but the value — which is
+              precisely when you want to know whether that box was Email or
+              Source. It is also not a label to a screen reader, so the form
+              announced five unnamed text boxes.
+
+              The status group below has had a real <label> since it was
+              written; this is the same treatment for the rest of the form.
+            */}
+            <Field id={`${formId}-company`} label="Company" required>
+              <input
+                id={`${formId}-company`}
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                placeholder="Acme Roofing"
+                className={inputClass}
+                autoFocus
+              />
+            </Field>
+            <Field id={`${formId}-contact`} label="Contact name">
+              <input
+                id={`${formId}-contact`}
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Jane Okafor"
+                className={inputClass}
+              />
+            </Field>
+            <Field id={`${formId}-email`} label="Email">
+              <input
+                id={`${formId}-email`}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="jane@acme.test"
+                className={inputClass}
+              />
+            </Field>
+            <Field id={`${formId}-phone`} label="Phone">
+              <PhoneField id={`${formId}-phone`} value={phone} onChange={setPhone} className={inputClass} />
+            </Field>
+            <Field id={`${formId}-source`} label="Source" hint="Referral, cold outreach, inbound…">
+              <input
+                id={`${formId}-source`}
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder="Referral"
+                className={inputClass}
+              />
+            </Field>
 
             <div>
               <label className="block text-xs text-white/40 mb-1.5">Starting status</label>
@@ -157,6 +241,8 @@ export function QuickAddLeadModal({
               Paste one company per line. Optionally add an email after a comma — <code className="text-white/60">Acme Inc, jane@acme.com</code>.
             </p>
             <textarea
+              id={`${formId}-bulk`}
+              aria-label="Companies to add, one per line"
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
               rows={8}
