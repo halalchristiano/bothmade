@@ -141,6 +141,24 @@ export async function GET(
       instalments.filter((i) => i.invoiceNumber).map((i) => [i.invoiceNumber as string, i])
     );
 
+    /*
+     * How much has arrived against each instalment, by the same link.
+     *
+     * The instalment row records what was BILLED and nothing about what has
+     * been received, and it deliberately stays `due` until its invoice is
+     * settled in full — half of Payment 2 of 3 is not Payment 2 of 3. So the
+     * schedule below, left to itself, tells a client who has already sent
+     * $6,000 that the whole $12,000 is due now. Their money is simply absent
+     * from the one list they read to know where they stand.
+     *
+     * The invoice card further down already says what is left; this is the
+     * same fact reaching the schedule beside it, so the two halves of the same
+     * screen stop disagreeing.
+     */
+    const receivedByInvoiceNumber = new Map(
+      project.invoices.map((invoice) => [invoice.number, receivedCents(invoice.payments)])
+    );
+
     let sourcedLead: { id: string; company: string } | null = null;
     if (session.type === 'user' && project.convertedFromLeadId) {
       sourcedLead = await prisma.lead.findUnique({
@@ -223,19 +241,31 @@ export async function GET(
           // falling through to the lump-balance label. Checkout internals
           // (session ids, raw payment URLs) stay server-side; the client
           // pays through pay-balance, which validates freshness.
-          instalments: instalments.map((inst) => ({
-            id: inst.id,
-            index: inst.index,
-            count: inst.count,
-            label: inst.label,
-            percent: inst.percent,
-            amountCents: inst.amountCents,
-            trigger: inst.trigger,
-            status: inst.status,
-            invoiceNumber: inst.invoiceNumber,
-            dueAt: inst.dueAt,
-            paidAt: inst.paidAt,
-          })),
+          instalments: instalments.map((inst) => {
+            // Clamped at nothing: a refund nets the sum back down and could
+            // in principle take it negative, and "-$500 received" is not a
+            // sentence anybody's dashboard should contain.
+            const receivedCentsForInst = Math.max(
+              0,
+              inst.invoiceNumber ? receivedByInvoiceNumber.get(inst.invoiceNumber) ?? 0 : 0
+            );
+            return {
+              id: inst.id,
+              index: inst.index,
+              count: inst.count,
+              label: inst.label,
+              percent: inst.percent,
+              amountCents: inst.amountCents,
+              trigger: inst.trigger,
+              status: inst.status,
+              invoiceNumber: inst.invoiceNumber,
+              dueAt: inst.dueAt,
+              paidAt: inst.paidAt,
+              // Only meaningful while it is still owed. On a settled row the
+              // figure equals the amount and saying so twice is noise.
+              receivedCents: inst.status === 'paid' ? 0 : receivedCentsForInst,
+            };
+          }),
           // Who raised an invoice is an internal detail — the client gets
           // the invoice, not the org chart.
           invoices: project.invoices.map((invoice) => {

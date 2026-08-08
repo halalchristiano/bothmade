@@ -58,6 +58,14 @@ interface ClientInstalment {
   invoiceNumber: string | null;
   dueAt: string | null;
   paidAt: string | null;
+  /**
+   * Money already received against this payment while it is still owed.
+   *
+   * An instalment stays `due` until its invoice is settled in full, so a
+   * client who has transferred part of one is looking at a row that says the
+   * whole amount is due now. Zero on anything settled.
+   */
+  receivedCents?: number;
 }
 
 interface Project {
@@ -1349,7 +1357,22 @@ export default function ClientDashboard() {
 
               {(project.instalments?.length ?? 0) > 0 && (
                 <div className="mb-6 space-y-2">
-                  {project.instalments!.map((inst) => (
+                  {project.instalments!.map((inst) => {
+                    /*
+                     * What is actually left on this payment.
+                     *
+                     * The row used to show the billed amount and "Due now",
+                     * full stop, so a client who had already transferred half
+                     * read their own schedule as asking for all of it again —
+                     * their money nowhere on the one list they check to know
+                     * where they stand. The invoice card below already says
+                     * what is left; this is the same fact reaching the schedule
+                     * beside it.
+                     */
+                    const received = Math.min(inst.receivedCents ?? 0, inst.amountCents);
+                    const partPaid = inst.status !== 'paid' && received > 0;
+                    const outstanding = inst.amountCents - received;
+                    return (
                     <div
                       key={inst.id}
                       className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
@@ -1371,15 +1394,30 @@ export default function ClientDashboard() {
                         <p className="text-sm truncate">
                           {inst.label}
                           <span className="text-white/40">
-                            {' '}· ${(inst.amountCents / 100).toLocaleString('en-US', {
-                              minimumFractionDigits: inst.amountCents % 100 ? 2 : 0,
-                              maximumFractionDigits: inst.amountCents % 100 ? 2 : 0,
-                            })}
+                            {' '}· {formatCentsExact(partPaid ? outstanding : inst.amountCents)}
                           </span>
+                          {/*
+                            The billed figure stays visible, struck through, so
+                            the number the client has on their invoice and in
+                            their agreement is still findable on the row that
+                            no longer leads with it.
+                          */}
+                          {partPaid && (
+                            <span className="text-white/25 line-through">
+                              {' '}{formatCentsExact(inst.amountCents)}
+                            </span>
+                          )}
                         </p>
                         <p className="text-[11px] text-white/35 truncate">
                           {inst.status === 'paid'
                             ? `Paid${inst.paidAt ? ` ${new Date(inst.paidAt).toLocaleDateString()}` : ''}`
+                            : partPaid
+                            ? /*
+                               * Thanked, not just accounted for. The client did
+                               * the right thing and the previous row read as
+                               * though nothing had happened.
+                               */
+                              `${formatCentsExact(received)} received, thank you — ${formatCentsExact(outstanding)} left${inst.invoiceNumber ? ` · invoice ${inst.invoiceNumber}` : ''}`
                             : inst.status === 'due'
                             ? `Due now${inst.dueAt ? ` — by ${new Date(inst.dueAt).toLocaleDateString()}` : ''}${inst.invoiceNumber ? ` · invoice ${inst.invoiceNumber}` : ''}`
                             : inst.trigger === 'design-approval'
@@ -1390,7 +1428,8 @@ export default function ClientDashboard() {
                         </p>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
