@@ -1227,10 +1227,15 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                 onClick={toggleSelectAllVisible}
                 className="flex items-center gap-2 text-xs text-white/50 hover:text-white transition-colors"
               >
+                {/* Decoration: the button around it is the real control and
+                    carries the name, so this must not be a second stop in the
+                    tab order announcing "checkbox" with nothing attached. */}
                 <input
                   type="checkbox"
                   checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))}
                   readOnly
+                  aria-hidden="true"
+                  tabIndex={-1}
                   className="accent-sky-400 pointer-events-none"
                 />
                 Select all {filtered.length}
@@ -1268,6 +1273,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                       checked={selected.has(lead.id)}
                       onClick={(e) => e.stopPropagation()}
                       onChange={() => toggleSelected(lead.id)}
+                      aria-label={`Select ${lead.company}`}
                       className="accent-sky-400"
                     />
                     {lead.qualifiedAt && <CheckCircle2 size={13} className="text-emerald-400" />}{lead.hotLead && <Flame size={13} className="text-amber-400" />}<ColdOutreachFlag lead={lead} />
@@ -1306,10 +1312,22 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                 <thead className="border-b border-white/10">
                   <tr>
                     <th className="px-6 py-3">
+                      {/*
+                        Named, and named with the count.
+
+                        This column drove bulk delete, bulk reassign and bulk
+                        email while every box in it — this one and one per row
+                        — announced as "checkbox, not checked" and nothing
+                        else. There was no way to tell the select-all from a
+                        row, or a row from the business it belonged to, so the
+                        only way to know what was about to be deleted was to
+                        be able to see the screen.
+                      */}
                       <input
                         type="checkbox"
                         checked={filtered.length > 0 && filtered.every((l) => selected.has(l.id))}
                         onChange={toggleSelectAllVisible}
+                        aria-label={`Select all ${filtered.length} leads shown`}
                         className="accent-sky-400"
                       />
                     </th>
@@ -1354,6 +1372,7 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                           type="checkbox"
                           checked={selected.has(lead.id)}
                           onChange={() => toggleSelected(lead.id)}
+                          aria-label={`Select ${lead.company}`}
                           className="accent-sky-400"
                         />
                       </td>
