@@ -147,3 +147,41 @@ describe('the mobile nav sheet', () => {
     expect(pane!.className).toMatch(/max-h-\[calc\(100dvh/);
   });
 });
+
+/**
+ * The dead skip link that came first.
+ *
+ * The marketing site's "Skip to contact form" lives in the ROOT layout, which
+ * wraps the admin too — so every admin page opened with a skip link pointing
+ * at a `#contact` that exists on the marketing pages and nowhere else. Adding
+ * the admin's own made it worse rather than better: the dead one is earlier in
+ * the DOM, so it took the first Tab and the real one took the second.
+ *
+ * Found by pressing Tab in a real browser. This file mocked the admin layout
+ * alone, so nothing here could see the layout above it.
+ */
+describe('the marketing skip link, on a page with no contact form', () => {
+  it('offers nothing when its target is not on the page', async () => {
+    const { SkipToContact } = await import('@/components/SkipToContact');
+    render(<SkipToContact />);
+
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: 'Skip to contact form' })).toBeNull()
+    );
+  });
+
+  it('offers itself when the contact form is there', async () => {
+    const { SkipToContact } = await import('@/components/SkipToContact');
+    const target = document.createElement('div');
+    target.id = 'contact';
+    document.body.appendChild(target);
+
+    render(<SkipToContact />);
+
+    expect(screen.getByRole('link', { name: 'Skip to contact form' })).toHaveAttribute(
+      'href',
+      '#contact'
+    );
+    target.remove();
+  });
+});

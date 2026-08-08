@@ -8,6 +8,7 @@ import "./globals.css";
 import { ScrollReset } from "@/components/ScrollReset";
 import { ScrollProgress } from "@/components/ScrollProgress";
 import { ScrollSeamIndicator } from "@/components/ScrollSeamIndicator";
+import { SkipToContact } from "@/components/SkipToContact";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -102,12 +103,11 @@ export default function RootLayout({
             }),
           }}
         />
-        <a
-          href="#contact"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[200] focus:rounded-full focus:bg-white focus:px-6 focus:py-3 focus:text-sm focus:font-medium focus:text-black"
-        >
-          Skip to contact form
-        </a>
+        {/* Only on pages that actually have a contact form — see the
+            component. This is the root layout, so it wraps the admin too, and
+            an admin page opened with a skip link to a #contact that does not
+            exist there. */}
+        <SkipToContact />
         <ScrollProgress />
         <ScrollReset />
         <ScrollSeamIndicator />
