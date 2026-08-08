@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { canVoid, readReason } from '@/lib/invoice-lifecycle';
+import { receivedCents } from '@/lib/invoice-settlement';
 import { restoreInvoicePdfAsCancelled } from '@/lib/invoice-dispatch';
 import { sendInvoiceVoidedEmail } from '@/lib/email';
 import { formatCentsExact } from '@/lib/pricing';
@@ -51,13 +52,17 @@ export async function POST(
       include: {
         client: { select: { company: true, email: true, contactName: true } },
         project: { select: { id: true, name: true, status: true } },
+        // An invoice can be part paid by transfer, so "open" no longer means
+        // "nothing has arrived" — and cancelling one that money has come in
+        // against would write off a payment that really happened.
+        payments: { select: { amount: true } },
       },
     });
     if (!invoice) {
       return NextResponse.json({ error: 'That invoice no longer exists.' }, { status: 404 });
     }
 
-    const allowed = canVoid(invoice);
+    const allowed = canVoid(invoice, receivedCents(invoice.payments));
     if (!allowed.ok) {
       return NextResponse.json({ error: allowed.error }, { status: 409 });
     }

@@ -75,7 +75,15 @@ export function InvoiceActions({
   const [open, setOpen] = useState<'void' | 'refund' | 'send' | 'paid' | null>(null);
 
   const remaining = invoice.amountCents - invoice.refundedCents;
-  const canVoid = invoice.status === 'open';
+  /*
+   * Cancelling is only for an invoice nobody has paid anything towards.
+   *
+   * `status === 'open'` used to mean exactly that, and stopped meaning it the
+   * day an invoice could be part paid by transfer. Offering Cancel on one
+   * carrying $900 of a client's money and refusing after two clicks is the
+   * pattern this file already removed once, for Send on instalments.
+   */
+  const canVoid = invoice.status === 'open' && (invoice.receivedCents ?? 0) === 0;
   const canRefund = invoice.status === 'paid' && remaining > 0;
   /*
    * Both of these are "this invoice is still a request for money", which is

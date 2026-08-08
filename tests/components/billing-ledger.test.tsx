@@ -284,6 +284,38 @@ describe('finding one invoice', () => {
   });
 });
 
+describe('an invoice with money already against it', () => {
+  const PART_PAID = { ...CHASED, id: 'inv_7', number: 'BM-2026-0027', receivedCents: 60_000 };
+
+  /*
+   * Cancelling writes off a payment that really happened. Offering the button
+   * and refusing after two clicks is the pattern this page removed once
+   * already, for Send on instalments.
+   */
+  it('does not offer to cancel it', async () => {
+    invoices = [PART_PAID];
+    stubFetch();
+
+    render(<BillingPage />);
+
+    await screen.findByText(/open 31 days/);
+    // Exactly "Cancel" — the "Cancelled" filter chip is a button too, and a
+    // loose match finds it and proves nothing.
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    // Recording the rest is still the point of the row.
+    expect(screen.getByRole('button', { name: /Mark paid/ })).toBeTruthy();
+  });
+
+  it('says what has arrived and what is left', async () => {
+    invoices = [PART_PAID];
+    stubFetch();
+
+    render(<BillingPage />);
+
+    expect(await screen.findByText(/\$600 in · \$600 left/)).toBeTruthy();
+  });
+});
+
 describe('a scheduled payment in the list', () => {
   /*
    * Sent from the project, which holds the checkout session that pays it.

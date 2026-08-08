@@ -62,6 +62,10 @@ const INVOICE = {
   stripePaymentLinkId: null,
   client: { company: 'Acme', email: 'client@acme.test', contactName: 'Dana' },
   project: { id: 'proj_1', name: 'Acme Site', status: 'design' },
+  // Nothing has arrived against it. An invoice can be part paid by transfer,
+  // and the route now reads this to refuse cancelling one that money has come
+  // in against.
+  payments: [],
 };
 
 const INSTALMENT = { id: 'inst_1', label: 'Payment 2 of 3', stripeSessionId: 'cs_live' };
@@ -236,5 +240,43 @@ describe('the PDF a cancelled invoice leaves behind', () => {
     await voidIt();
 
     expect(restoreInvoicePdfAsCancelled).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Void means "this should never have existed": the pay link dies, the client
+ * is told to ignore it, and both dashboards mark it cancelled. Doing that to
+ * an invoice a client has already sent money against writes off a payment
+ * that really happened — the exact thing the paid-invoice guard exists to
+ * prevent, reached through the door that opened when invoices stopped being
+ * all-or-nothing.
+ */
+describe('an invoice money has already come in against', () => {
+  it('is not cancellable, and the refusal says how much arrived', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...INVOICE, payments: [{ amount: 90_000 }] });
+
+    const res = await voidIt();
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toContain('$900');
+    expect(prisma.invoice.update).not.toHaveBeenCalled();
+  });
+
+  /*
+   * And nothing is taken down on the way. The link is what the client would
+   * use to send the rest.
+   */
+  it('leaves the way to pay it alone', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      ...INVOICE,
+      stripePaymentLinkId: 'plink_1',
+      payments: [{ amount: 90_000 }],
+    });
+
+    await voidIt();
+
+    expect(paymentLinksUpdate).not.toHaveBeenCalled();
+    expect(sessionsExpire).not.toHaveBeenCalled();
   });
 });

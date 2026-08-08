@@ -60,7 +60,7 @@ export function readReason(value: unknown): string | null {
 export type VoidCheck = { ok: true } | { ok: false; error: string };
 
 /** Only an open invoice can be voided. See the note above on why. */
-export function canVoid(invoice: { status: string }): VoidCheck {
+export function canVoid(invoice: { status: string }, receivedCents = 0): VoidCheck {
   if (invoice.status === 'void') {
     return { ok: false, error: 'That invoice is already void.' };
   }
@@ -73,6 +73,27 @@ export function canVoid(invoice: { status: string }): VoidCheck {
   }
   if (invoice.status !== 'open') {
     return { ok: false, error: 'Only an open invoice can be voided.' };
+  }
+  /*
+   * Open, but not empty.
+   *
+   * This check used to read `status` alone, which was exactly right while an
+   * invoice was all-or-nothing: open meant nothing had arrived. It stopped
+   * being true the day one could be part paid by transfer — a client who
+   * sends $900 against $1,200 leaves an invoice that is still `open` and has
+   * real money sitting against it.
+   *
+   * So the guard above, whose whole reason for existing is that voiding must
+   * never erase a payment that really happened, would have let you erase one.
+   * Void means "this should never have existed": the pay link dies, the
+   * client is told to ignore it, and both dashboards mark it cancelled —
+   * while $900 of theirs stays in the account attached to a cancelled row.
+   */
+  if (receivedCents > 0) {
+    return {
+      ok: false,
+      error: `${formatCentsExact(receivedCents)} has already come in against that invoice, so cancelling it would write off money the client really sent. Record the rest and refund it, or raise a credit — cancelling is only for an invoice nobody has paid anything towards.`,
+    };
   }
   return { ok: true };
 }

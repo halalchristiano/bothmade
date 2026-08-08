@@ -204,3 +204,30 @@ describe('what the badge says', () => {
     expect(displayState({ status: 'void', amountCents: 1000, refundedCents: 0 })).toBe('void');
   });
 });
+
+/**
+ * Voiding must never erase a payment that really happened — that is the whole
+ * reason the paid check exists. It read `status` alone, which was exactly
+ * right while an invoice was all-or-nothing, and stopped being right the day
+ * one could be part paid by transfer: a client who sends $900 against $1,200
+ * leaves an invoice that is still `open` with real money against it.
+ */
+describe('cancelling an invoice money has arrived against', () => {
+  it('refuses, and says how much came in', () => {
+    const check = canVoid({ status: 'open' }, 90_000);
+
+    expect(check.ok).toBe(false);
+    expect(check.ok === false && check.error).toContain('$900');
+    expect(check.ok === false && check.error).toContain('money the client really sent');
+  });
+
+  it('still allows one nobody has paid anything towards', () => {
+    expect(canVoid({ status: 'open' }, 0).ok).toBe(true);
+    expect(canVoid({ status: 'open' }).ok).toBe(true);
+  });
+
+  it('keeps refusing a settled or already-cancelled one', () => {
+    expect(canVoid({ status: 'paid' }, 0).ok).toBe(false);
+    expect(canVoid({ status: 'void' }, 0).ok).toBe(false);
+  });
+});
