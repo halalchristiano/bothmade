@@ -2,12 +2,84 @@
 
 import { useEffect, useState } from 'react';
 import { BrandButton, inputClass } from '@/components/admin/ui';
+import { taskDueLabel } from '@/lib/tasks';
 
 interface TaskItem {
   id: string;
   title: string;
   done: boolean;
   dueAt: string | null;
+}
+
+/**
+ * The same order the API returns: still to do first, then by what is due
+ * soonest, then newest.
+ *
+ * Needed here because a task added without a reload has to land where the
+ * server would have put it. Nulls last — a task with no date is not more
+ * urgent than one due this morning, and `undefined - number` is NaN, which
+ * sorts nothing.
+ */
+function sortTasks(tasks: TaskItem[]): TaskItem[] {
+  const due = (t: TaskItem) => (t.dueAt ? new Date(t.dueAt).getTime() : Number.POSITIVE_INFINITY);
+  return tasks.slice().sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    if (due(a) !== due(b)) return due(a) - due(b);
+    return 0;
+  });
+}
+
+/** How loudly a due date reads. Overdue is the only one that gets a colour
+    people notice from across a desk. */
+const DUE_TONE: Record<string, string> = {
+  overdue: 'text-red-300',
+  today: 'text-amber-200',
+  soon: 'text-white/45',
+  later: 'text-white/30',
+};
+
+/**
+ * One line of the list.
+ *
+ * Both halves — still to do, and done — were the same eleven lines of JSX
+ * written twice, which is how the due date would have ended up on one of
+ * them and not the other.
+ */
+function Row({
+  task,
+  onToggle,
+  onDelete,
+  done = false,
+}: {
+  task: TaskItem;
+  onToggle: (t: TaskItem) => void;
+  onDelete: (id: string) => void;
+  done?: boolean;
+}) {
+  const due = taskDueLabel(task.dueAt);
+  return (
+    <label className={`flex items-center gap-2 group text-sm py-1 ${done ? 'opacity-40' : ''}`}>
+      <input type="checkbox" checked={task.done} onChange={() => onToggle(task)} />
+      <span className={`flex-1 ${done ? 'line-through' : ''}`}>{task.title}</span>
+      {/*
+        The reason this row is where it is. The list has always been ordered
+        by due date and never showed one, so the order looked arbitrary and a
+        task due this afternoon was indistinguishable from one with no date
+        at all. Hidden once a task is done — a finished job is not late.
+      */}
+      {due && !done && (
+        <span data-numeric className={`shrink-0 text-xs ${DUE_TONE[due.tone] ?? 'text-white/30'}`}>
+          {due.label}
+        </span>
+      )}
+      <button
+        onClick={() => onDelete(task.id)}
+        className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-300 text-xs transition-opacity"
+      >
+        remove
+      </button>
+    </label>
+  );
 }
 
 /**
@@ -19,6 +91,18 @@ interface TaskItem {
 export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = {}) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [newTitle, setNewTitle] = useState('');
+  /**
+   * A due date, which this list has sorted by since it was written and never
+   * once let anybody set.
+   *
+   * `dueAt` is on the model, it is the second key in the GET's orderBy, and
+   * the widget was the only client — so in practice every task carried null,
+   * the sort did nothing, and "what is due first" was a question the to-do
+   * list could not answer about itself. Optional, because most of these are
+   * "ring them back" and a date box you must fill in is a box people stop
+   * using.
+   */
+  const [newDueAt, setNewDueAt] = useState('');
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
@@ -46,15 +130,22 @@ export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = 
       const response = await fetch('/api/admin/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle }),
+        // Sent only when there is one. An empty string is "no date" to the
+        // route as well, but not sending the key at all is what a caller
+        // that does not care about due dates looks like.
+        body: JSON.stringify({ title: newTitle, ...(newDueAt ? { dueAt: newDueAt } : {}) }),
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data?.success) {
-        setTasks((prev) => [data.task, ...prev]);
+        // Inserted in the right place rather than at the top: the list is
+        // ordered by what is due first, and a new task landing above one due
+        // this morning would be the widget contradicting its own sort.
+        setTasks((prev) => sortTasks([data.task, ...prev]));
         setNewTitle('');
+        setNewDueAt('');
       } else {
         // The title stays in the box on purpose — it is the only copy.
-        setError("Couldn't save that task — try again.");
+        setError(data?.error ?? "Couldn't save that task — try again.");
       }
     } catch {
       setError('Could not reach the server — check your connection.');
@@ -129,7 +220,7 @@ export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = 
     <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
       <h2 className="mb-4 text-base font-semibold">My to-dos</h2>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         <input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
@@ -137,7 +228,17 @@ export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = 
           placeholder="Add a task…"
           aria-label="Add a task"
           // The shared field style, rather than a fourth local copy of it.
-          className={`${inputClass} flex-1`}
+          className={`${inputClass} min-w-40 flex-1`}
+        />
+        {/* The field that makes the sort mean something. Optional, and last,
+            so the common case is still type-and-Enter. */}
+        <input
+          type="date"
+          value={newDueAt}
+          onChange={(e) => setNewDueAt(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          aria-label="Due date (optional)"
+          className={`${inputClass} w-36 shrink-0 [color-scheme:dark]`}
         />
         <BrandButton onClick={handleAdd} disabled={adding || !newTitle.trim()} className="shrink-0">
           Add
@@ -157,31 +258,13 @@ export function TasksWidget({ refreshSignal = 0 }: { refreshSignal?: number } = 
       ) : (
         <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
           {pending.map((t) => (
-            <label key={t.id} className="flex items-center gap-2 group text-sm py-1">
-              <input type="checkbox" checked={t.done} onChange={() => handleToggle(t)} />
-              <span className="flex-1">{t.title}</span>
-              <button
-                onClick={() => handleDelete(t.id)}
-                className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-300 text-xs transition-opacity"
-              >
-                remove
-              </button>
-            </label>
+            <Row key={t.id} task={t} onToggle={handleToggle} onDelete={handleDelete} />
           ))}
           {done.length > 0 && (
             <>
               <p className="text-[10px] uppercase tracking-wide text-white/25 mt-3 mb-1">Done</p>
               {done.map((t) => (
-                <label key={t.id} className="flex items-center gap-2 group text-sm py-1 opacity-40">
-                  <input type="checkbox" checked={t.done} onChange={() => handleToggle(t)} />
-                  <span className="flex-1 line-through">{t.title}</span>
-                  <button
-                    onClick={() => handleDelete(t.id)}
-                    className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-300 text-xs transition-opacity"
-                  >
-                    remove
-                  </button>
-                </label>
+                <Row key={t.id} task={t} onToggle={handleToggle} onDelete={handleDelete} done />
               ))}
             </>
           )}
