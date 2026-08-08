@@ -33,22 +33,52 @@ export default function PublicStatusPage() {
 
   const [project, setProject] = useState<PublicProject | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  /**
+   * Two different failures, told apart.
+   *
+   * `gone` is a link that will never work — wrong or expired token, project
+   * deleted. `unavailable` is a load that failed this time: no signal, a 500,
+   * a proxy returning HTML where JSON was expected. They want opposite words
+   * and only one of them is worth a retry button.
+   *
+   * They used to share one branch under a heading that always read "Not
+   * found", showing whatever string came back. That meant a client on a train
+   * saw "Not found — Failed to fetch" about their own project, and a server
+   * error showed them the words "Internal server error". Neither is something
+   * to put in front of somebody who is paying us, and the first is not even
+   * true.
+   */
+  const [failure, setFailure] = useState<'gone' | 'unavailable' | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (shareToken === null) return;
+    let cancelled = false;
+    setLoading(true);
+    setFailure(null);
+
     fetch(`/api/public/projects/${projectId}/status?t=${encodeURIComponent(shareToken)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setProject(data.project);
-        } else {
-          setError(data.error || 'Failed to load project status');
-        }
+      .then(async (res) => {
+        // 404 is what a wrong or expired token gets, deliberately and
+        // indistinguishably from an unknown project.
+        if (res.status === 404) return { kind: 'gone' as const };
+        if (!res.ok) return { kind: 'unavailable' as const };
+        const data = await res.json().catch(() => null);
+        if (data?.success && data.project) return { kind: 'ok' as const, project: data.project };
+        return { kind: 'unavailable' as const };
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load project status'))
-      .finally(() => setLoading(false));
-  }, [projectId, shareToken]);
+      .catch(() => ({ kind: 'unavailable' as const }))
+      .then((result) => {
+        if (cancelled) return;
+        if (result.kind === 'ok') setProject(result.project);
+        else setFailure(result.kind);
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, shareToken, reloadKey]);
 
   if (loading) {
     return (
@@ -59,14 +89,34 @@ export default function PublicStatusPage() {
     );
   }
 
-  if (error || !project) {
+  if (failure || !project) {
+    // Only an explicit "this will never work" reads as expired. A transient
+    // failure also leaves `project` null, so testing that first would have
+    // sent every dropped connection down the dead-link branch — which is the
+    // wrong half of the bug this is fixing.
+    const gone = failure !== 'unavailable';
     return (
       <main className="flex min-h-screen items-center justify-center bg-ink px-4 text-white">
         <div className="relative max-w-md rounded-2xl border border-white/[0.06] bg-surface p-8 text-center shadow-e3 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
-          <h1 className="mb-3 text-2xl font-semibold">Not found</h1>
+          <h1 className="mb-3 text-2xl font-semibold">
+            {gone ? 'This link has expired' : "We couldn't load this just now"}
+          </h1>
           <p className="text-sm text-white/50">
-            {error || "This status link doesn't exist or has expired."}
+            {gone
+              ? 'Ask us for a fresh link and we will send one over.'
+              : 'That is our end, not yours. Try again in a moment.'}
           </p>
+          {/* Only where trying again could actually help. Offering it on a
+              dead link is an invitation to press it forever. */}
+          {!gone && (
+            <button
+              type="button"
+              onClick={() => setReloadKey((n) => n + 1)}
+              className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-white px-5 py-2 text-sm font-medium text-ink shadow-e2 transition-[background-color,transform] duration-150 ease-ui hover:bg-white/90 active:translate-y-px"
+            >
+              Try again
+            </button>
+          )}
         </div>
       </main>
     );
