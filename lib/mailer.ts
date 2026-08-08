@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { decryptSecret } from '@/lib/crypto';
 import { buildFromHeader } from '@/lib/gmail-mime';
-import { sanitizeEmailAddress, sanitizeHeaderValue, sanitizeSubject } from '@/lib/html';
+import { htmlToPlainText, sanitizeEmailAddress, sanitizeHeaderValue, sanitizeSubject } from '@/lib/html';
 import { sendEmail as sendViaResend } from '@/lib/email';
 import { sendAsDelegatedUser, isDomainDelegationConfigured } from '@/lib/gmail-delegated';
 import { createGmailOAuthBatchClient, sendViaGmailOAuth, type GmailOAuthClient } from '@/lib/gmail-oauth';
@@ -155,6 +155,20 @@ export async function sendAsUser(
         to: email.to,
         subject: email.subject,
         html: email.html,
+        // Nodemailer builds multipart/alternative when it is given both, and
+        // sends text/html alone when it is not — which is what this was doing.
+        //
+        // The other three transports already carry a plaintext part:
+        // encodeMimeMessage() assembles one for the delegated and OAuth Gmail
+        // paths, and lib/email.ts passes `text` to Resend. This path was
+        // missed, and it is the worst one to miss it on. HTML-only is a scored
+        // spam signal, the reasoning written up in lib/gmail-mime.ts applies
+        // here unchanged — authentication was already clean and Gmail was
+        // filing these as phishing anyway — and this is the App Password
+        // transport, which is the one createGmailBatchTransport pools for bulk
+        // cold outreach. The highest-volume, most deliverability-sensitive
+        // path was the only one still sending HTML alone.
+        text: htmlToPlainText(email.html),
         ...(email.unsubscribeUrl
           ? {
               headers: {
