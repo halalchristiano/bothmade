@@ -18,10 +18,29 @@ import { CopyButton } from '@/components/admin/CopyButton';
  * nobody had open while the button looked exactly as it does on success.
  */
 
+/*
+ * Both of these are defined with Object.defineProperty, and neither is a mock
+ * — so `vi.restoreAllMocks()` does not touch them. That was a real leak, and
+ * a self-inflicted one: the fallback test below defines `document.execCommand`
+ * and, before this, never took it away again. Under `--sequence.shuffle` it
+ * ran first roughly half the time, and the "browser will not let it copy"
+ * test then found a WORKING execCommand and copied successfully — failing on
+ * an assertion about a state the environment no longer had.
+ *
+ * Restoring the original descriptor, rather than assigning undefined, is what
+ * makes it a restore: on a platform where either genuinely exists, deleting
+ * it would be its own leak in the other direction.
+ */
 const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
 
 function setClipboard(value: unknown) {
   Object.defineProperty(navigator, 'clipboard', { value, configurable: true, writable: true });
+}
+
+function restore(target: object, key: string, original: PropertyDescriptor | undefined) {
+  if (original) Object.defineProperty(target, key, original);
+  else delete (target as Record<string, unknown>)[key];
 }
 
 beforeEach(() => {
@@ -29,8 +48,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
-  else setClipboard(undefined);
+  restore(navigator, 'clipboard', originalClipboard);
+  restore(document, 'execCommand', originalExecCommand);
   vi.restoreAllMocks();
 });
 
