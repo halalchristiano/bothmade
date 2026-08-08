@@ -212,6 +212,9 @@ export default function AdminProjectDetailPage() {
 
   const [notes, setNotes] = useState<Array<{ id: string; content: string; createdAt: string; author: { name: string } | null }>>([]);
   const [noteContent, setNoteContent] = useState('');
+  /** A note that would not save, and a list that would not load. */
+  const [noteError, setNoteError] = useState('');
+  const [notesFailed, setNotesFailed] = useState(false);
   const [noteSaving, setNoteSaving] = useState(false);
 
   const [questions, setQuestions] = useState<
@@ -293,10 +296,29 @@ export default function AdminProjectDetailPage() {
     }
   };
 
+  /*
+   * "No internal notes yet" is a claim about the project, and a failed
+   * request is not entitled to make it.
+   *
+   * This checked neither the status nor the network, so a 500 or a dead
+   * connection left `notes` at [] and the panel said there were none — on a
+   * project where somebody had written "spoke to Dana, she wants the booking
+   * form above the fold". The same lie the five Delivery lists used to tell,
+   * and this panel was the one place it was left.
+   */
   const loadNotes = async () => {
-    const response = await fetch(`/api/admin/projects/${projectId}/notes`);
-    const data = await response.json();
-    if (data.success) setNotes(data.notes);
+    try {
+      const response = await fetch(`/api/admin/projects/${projectId}/notes`);
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        setNotesFailed(true);
+        return;
+      }
+      setNotes(data.notes ?? []);
+      setNotesFailed(false);
+    } catch {
+      setNotesFailed(true);
+    }
   };
 
   const loadQuestions = async () => {
@@ -308,16 +330,25 @@ export default function AdminProjectDetailPage() {
   const handleAddNote = async () => {
     if (!noteContent.trim()) return;
     setNoteSaving(true);
+    setNoteError('');
     try {
       const response = await fetch(`/api/admin/projects/${projectId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: noteContent }),
       });
-      if (response.ok) {
-        setNoteContent('');
-        loadNotes();
+      if (!response.ok) {
+        const said = await response.json().catch(() => null);
+        // The text stays in the box either way — but silence next to a note
+        // still sitting there reads as "it saved and the panel is slow".
+        setNoteError(said?.error || 'That note was not saved. It is still in the box — try again.');
+        return;
       }
+      setNoteContent('');
+      setNoteError('');
+      loadNotes();
+    } catch {
+      setNoteError('Could not reach the server — that note was not saved.');
     } finally {
       setNoteSaving(false);
     }
@@ -1594,7 +1625,21 @@ export default function AdminProjectDetailPage() {
               </span>
             </div>
             <div className="space-y-3 max-h-64 overflow-y-auto my-4">
-              {notes.length === 0 && <p className="text-white/40 text-sm">No internal notes yet.</p>}
+              {notesFailed ? (
+                <p role="alert" className="text-sm text-amber-200/80">
+                  These notes could not be loaded. This is a loading problem, not a project with
+                  nothing written on it — there may well be notes here.{' '}
+                  <button
+                    type="button"
+                    onClick={loadNotes}
+                    className="underline transition-colors hover:text-amber-100"
+                  >
+                    Try again
+                  </button>
+                </p>
+              ) : (
+                notes.length === 0 && <p className="text-white/40 text-sm">No internal notes yet.</p>
+              )}
               {notes.map((note) => (
                 <div key={note.id} className="p-3 rounded-lg bg-white/5">
                   <p className="text-sm text-white/70 whitespace-pre-wrap">{note.content}</p>
@@ -1611,6 +1656,11 @@ export default function AdminProjectDetailPage() {
               placeholder="Note to the rest of the team — e.g. 'Evan: this client is price-sensitive, don't push the growth plan yet'"
               className={`${inputClass} resize-none mb-3`}
             />
+            {noteError && (
+              <p role="alert" className="mb-3 text-sm text-red-300">
+                {noteError}
+              </p>
+            )}
             <button
               onClick={handleAddNote}
               disabled={noteSaving || !noteContent.trim()}

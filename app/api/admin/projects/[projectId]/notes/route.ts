@@ -49,14 +49,42 @@ export async function POST(
 
 
     const { projectId } = await params;
-    const { content } = await request.json();
+    const body = await request.json().catch(() => ({}) as Record<string, unknown>);
 
+    /*
+     * `if (!content)` was the whole check, and it let three things through.
+     *
+     * A string of spaces is falsy only when it is empty, so "   " passed and
+     * became a note that renders as a blank grey box nobody can explain or
+     * delete. A non-string passed too — the create then failed on the column
+     * type and answered 500, which reads as our fault rather than as a bad
+     * request. And there was no ceiling at all on something typed into a
+     * textarea that is read back in a scrolling panel.
+     */
+    const content = typeof body?.content === 'string' ? body.content.trim() : '';
     if (!content) {
-      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Write something first — a blank note helps nobody.' },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * And the project has to exist. Without this the create failed on the
+     * foreign key and answered 500 — "we broke" for what is really a stale
+     * tab writing to a project somebody else deleted, which is the ordinary
+     * way this happens with several people in the admin at once.
+     */
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true },
+    });
+    if (!project) {
+      return NextResponse.json({ error: 'That project no longer exists.' }, { status: 404 });
     }
 
     const note = await prisma.teamNote.create({
-      data: { projectId, content, authorId: session.userId },
+      data: { projectId, content: content.slice(0, 5000), authorId: session.userId },
       include: { author: { select: { id: true, name: true } } },
     });
 
