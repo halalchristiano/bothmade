@@ -428,10 +428,24 @@ export default function AdminProjectDetailPage() {
   };
 
   const [openedGate, setOpenedGate] = useState<OpenedGate | null>(null);
+  /** Said after a stage move that deliberately told nobody. */
+  const [statusNote, setStatusNote] = useState('');
+
+  /**
+   * Is the picked stage earlier than the one the project is actually at?
+   *
+   * The whole difference between an update and a correction, and the page
+   * used to draw them identically.
+   */
+  const goingBack =
+    Boolean(project) &&
+    statusDraft !== '' &&
+    STATUSES.indexOf(statusDraft) < STATUSES.indexOf(project!.status);
 
   const handleStatusUpdate = async () => {
     setStatusSaving(true);
     setActionError('');
+    setStatusNote('');
     try {
       const response = await fetch(`/api/admin/projects/${projectId}/status`, {
         method: 'PATCH',
@@ -444,6 +458,14 @@ export default function AdminProjectDetailPage() {
         // The moment Section 7 calls "the day of approval". Reported by the
         // route, never acted on by it — see GatePrompt.
         setOpenedGate(data?.gateOpened ?? null);
+        // A correction and a sent update both end here with a green result,
+        // and they are not the same thing. Saying which stops somebody
+        // believing a client was told when deliberately they were not.
+        setStatusNote(
+          data?.correctedSilently === true
+            ? 'Stage corrected. The client was not emailed and nothing was added to their timeline.'
+            : ''
+        );
         loadProject();
       } else {
         // The stage did not move. Believing it did is how a client goes
@@ -1191,11 +1213,28 @@ export default function AdminProjectDetailPage() {
                     // wrote. Anything you have edited is yours and survives.
                     const untouched =
                       !statusDescription.trim() || statusDescription === autoFilledRef.current;
-                    if (untouched) {
-                      const next = stageMessage(e.target.value).body;
-                      autoFilledRef.current = next;
-                      setStatusDescription(next);
+                    if (!untouched) return;
+                    /*
+                     * Nothing is filled in for a stage you are moving BACK to.
+                     *
+                     * The stage copy is written forward — "Design has started",
+                     * "Discovery's done and we're designing" — and picking an
+                     * earlier stage used to load it anyway, under a button that
+                     * says Send Status Update. Pressing it told a client whose
+                     * site was in Build that design had just begun.
+                     *
+                     * Left empty instead, which is what makes the route treat it
+                     * as a correction and tell nobody. Anything typed here is a
+                     * deliberate message and is still sent.
+                     */
+                    if (STATUSES.indexOf(e.target.value) < STATUSES.indexOf(project.status)) {
+                      autoFilledRef.current = '';
+                      setStatusDescription('');
+                      return;
                     }
+                    const next = stageMessage(e.target.value).body;
+                    autoFilledRef.current = next;
+                    setStatusDescription(next);
                   }}
                   className={`${inputClass} mb-3 capitalize`}
                 >
@@ -1216,13 +1255,33 @@ export default function AdminProjectDetailPage() {
                   This is what your client reads. Pick a stage above and it fills in — edit it, or
                   send as is.
                 </p>
+
+                {/* What a backwards move actually does, said before it is
+                    pressed rather than discovered afterwards. */}
+                {goingBack && (
+                  <p role="status" className="mb-3 text-[11px] leading-relaxed text-amber-200/80">
+                    {statusDescription.trim()
+                      ? `Moving ${project.client.company} back to ${statusDraft}. You have written something, so they will be emailed it.`
+                      : `Moving ${project.client.company} back to ${statusDraft} — a correction. Nothing is written, so the client is not told and nothing appears on their timeline. Write a message above if you do want them to hear about it.`}
+                  </p>
+                )}
                 <button
                   onClick={handleStatusUpdate}
                   disabled={statusSaving || (statusDraft === project.status && !statusDescription)}
                   className="w-full rounded-lg bg-white py-2.5 font-semibold text-ink disabled:opacity-50 hover:opacity-90 transition-opacity"
                 >
-                  {statusSaving ? 'Saving...' : 'Send Status Update'}
+                  {statusSaving
+                    ? 'Saving...'
+                    : goingBack && !statusDescription.trim()
+                      ? 'Correct the stage'
+                      : 'Send Status Update'}
                 </button>
+
+                {statusNote && (
+                  <p role="status" className="mt-3 text-[11px] leading-relaxed text-white/45">
+                    {statusNote}
+                  </p>
+                )}
 
                 {openedGate && (
                   <div className="mt-3">

@@ -43,11 +43,51 @@ export async function PATCH(
     // gate being passed, and prompting for money on it would be the system
     // asking to invoice because somebody fixed a typo.
     const movingForward = statusStage > project.statusStage;
+    const movingBackward = statusStage < project.statusStage;
+
+    /*
+     * A correction is not an announcement.
+     *
+     * Everything below this line assumed the stage only ever goes up. So
+     * moving a project back — a mis-click on the dropdown, a stage advanced
+     * by the wrong person — did the full ceremony in reverse: it wrote the
+     * earlier stage's forward-looking copy onto the client's timeline and
+     * emailed it to them. A client whose site is in Build got "Design has
+     * started — Discovery's done and we're designing... You'll see a concept
+     * before a single line of code is written."
+     *
+     * That is not a small piece of noise. It reads as the project having gone
+     * backwards, which is the single thing a client is most likely to ring up
+     * about, and it is being said by us, in our own words, on purpose as far
+     * as they can tell.
+     *
+     * So a backwards move with nothing written is treated as what it is: an
+     * internal correction. The stage moves, and nobody is told. A backwards
+     * move WITH a message is a different act — somebody has deliberately
+     * written to the client about it — and that still goes.
+     */
+    const wrote = typeof description === 'string' && description.trim().length > 0;
+    const silentCorrection = movingBackward && !wrote;
 
     const updatedProject = await prisma.project.update({
       where: { id: (await params).projectId },
       data: { status, statusStage },
     });
+
+    if (silentCorrection) {
+      return NextResponse.json(
+        {
+          success: true,
+          project: updatedProject,
+          update: null,
+          gateOpened: null,
+          // Named, so the page can say what just happened rather than
+          // implying an update went out.
+          correctedSilently: true,
+        },
+        { status: 200 }
+      );
+    }
 
     // What the client actually reads. The defaults used to be "Status changed
     // to build" and "Project moved to the build phase." — the software talking
