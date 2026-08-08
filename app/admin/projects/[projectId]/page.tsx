@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 // Deliverables are still real file uploads — only chat attachments became links.
 import { upload } from '@vercel/blob/client';
-import { Lock, Mail } from 'lucide-react';
+import { ExternalLink, Lock, Mail } from 'lucide-react';
 import { EmailComposer } from '@/components/admin/EmailComposer';
 import { RecurringCarePanel } from '@/components/admin/RecurringCarePanel';
 import { InstalmentPanel } from '@/components/admin/InstalmentPanel';
@@ -48,6 +48,8 @@ interface Deliverable {
 interface ProjectDetail {
   id: string;
   name: string;
+  /** Capability token for the public /status link. Null only on old rows. */
+  shareToken?: string | null;
   status: string;
   statusStage: number;
   baseService: string;
@@ -647,14 +649,45 @@ export default function AdminProjectDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
         {/* LEFT: Project Info */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
-            <h1 className="text-2xl font-bold mb-1">{project.name}</h1>
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
+            <h1 className="mb-1 text-2xl font-semibold">{project.name}</h1>
             <Link
               href={`/admin/clients/${project.client.id}`}
-              className="text-sm text-white/50 hover:text-sky-300 transition-colors"
+              className="text-sm text-white/50 transition-colors hover:text-sky-300"
             >
               {project.client.company}
             </Link>
+
+            {/*
+              The link the client actually watches, on the page where you are
+              already looking at their project.
+
+              The API has always sent shareToken here — the comment beside it
+              says it "travels no further than the dashboard that offers copy
+              share link", and that was exactly the problem. Sending a client
+              their tracking link is a routine thing to want from a project,
+              and it meant going back to the dashboard, finding the row, and
+              hoping the project was still on it: that list is filtered to
+              handoffs and at-risk work, so for a healthy mid-build project
+              the link was reachable from nowhere at all.
+            */}
+            {project.shareToken && (
+              <div className="mt-4 flex items-center gap-2 border-t border-white/[0.06] pt-4">
+                <CopyButton
+                  value={`${typeof window === 'undefined' ? '' : window.location.origin}/status/${project.id}?t=${project.shareToken}`}
+                  label="Copy status link"
+                />
+                <a
+                  href={`/status/${project.id}?t=${encodeURIComponent(project.shareToken)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open the client's status page"
+                  className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-sky-300"
+                >
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+            )}
 
             <div className="mt-6 space-y-4 text-sm">
               <div>
