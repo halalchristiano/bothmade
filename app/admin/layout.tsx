@@ -73,7 +73,7 @@ function NavLinks({
             // Matched to Kicker. 0.4em mono caps is a texture rather than a
             // label — at that spacing the word stops being read and starts
             // being looked at, which is a strange thing to ask of a signpost.
-            <p className="px-3 pb-2 text-2xs font-medium uppercase tracking-[0.16em] text-white/25">
+            <p className="px-3 pb-2 text-2xs font-medium uppercase tracking-[0.16em] text-white/50">
               {group.section}
             </p>
           )}
@@ -92,7 +92,7 @@ function NavLinks({
                   } ${
                     active
                       ? 'bg-white/[0.06] font-medium text-white shadow-e1'
-                      : 'font-normal text-white/45 hover:bg-white/[0.03] hover:text-white/85'
+                      : 'font-normal text-white/65 hover:bg-white/[0.03] hover:text-white/90'
                   }`}
                 >
                   {/* The one gradient element per screen. */}
@@ -109,7 +109,7 @@ function NavLinks({
                   <Icon
                     size={17}
                     strokeWidth={active ? 2 : 1.75}
-                    className={active ? 'text-sky-300' : 'text-white/40'}
+                    className={active ? 'text-sky-300' : 'text-white/65'}
                   />
                   {item.label}
                   {isChat && unreadCount > 0 && (
@@ -165,7 +165,8 @@ const TYPE_TONES: Record<SearchResult['type'], string> = {
   client: 'bg-emerald-400/15 text-emerald-200/90',
   project: 'bg-purple-400/15 text-purple-200/90',
   invoice: 'bg-amber-400/15 text-amber-200/90',
-  note: 'bg-white/[0.07] text-white/45',
+  // The four above sit at /90 of a colour; this one is the same tier in grey.
+  note: 'bg-white/[0.07] text-white/70',
 };
 
 // Exported for its own tests: the debounce-and-abort sequence is the kind of
@@ -260,7 +261,7 @@ export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; 
       }}
     >
       <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" aria-hidden="true" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/55" aria-hidden="true" />
         <input
           value={query}
           autoFocus={autoFocus}
@@ -274,7 +275,7 @@ export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; 
           aria-controls={listboxId}
           aria-autocomplete="list"
           aria-activedescendant={activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined}
-          className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all"
+          className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-transparent transition-all"
         />
       </div>
       {showList && (
@@ -292,9 +293,9 @@ export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; 
             you draw them differently.
           */}
           {searching && results.length === 0 ? (
-            <p className="text-white/30 text-sm p-4">Searching…</p>
+            <p className="text-white/55 text-sm p-4">Searching…</p>
           ) : results.length === 0 ? (
-            <p className="text-white/30 text-sm p-4">No matches.</p>
+            <p className="text-white/55 text-sm p-4">No matches.</p>
           ) : (
             results.map((r, i) => (
               <button
@@ -318,7 +319,7 @@ export function SearchBox({ onNavigate, autoFocus }: { onNavigate?: () => void; 
                     {TYPE_LABELS[r.type]}
                   </span>
                 </div>
-                {r.subtitle && <p className="mt-0.5 truncate text-xs text-white/40">{r.subtitle}</p>}
+                {r.subtitle && <p className="mt-0.5 truncate text-xs text-white/60">{r.subtitle}</p>}
               </button>
             ))
           )}
@@ -428,7 +429,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             {/* Focused by CommandPalette itself, after it has noted where
                 focus came from — see the effect above. */}
             <SearchBox onNavigate={onClose} />
-            <p className="px-1 pt-2 text-[10px] text-white/25">
+            <p className="px-1 pt-2 text-[10px] text-white/55">
               Type to search leads, clients and projects · Esc to close
             </p>
           </motion.div>
@@ -523,7 +524,7 @@ function NotificationBell() {
             className="absolute top-full right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-white/10 bg-raised shadow-2xl z-50"
           >
             {items.length === 0 ? (
-              <p className="text-white/30 text-sm p-4">You're all caught up.</p>
+              <p className="text-white/55 text-sm p-4">You're all caught up.</p>
             ) : (
               items.map((item) => (
                 <button
@@ -542,7 +543,7 @@ function NotificationBell() {
                   />
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{item.label}</p>
-                    <p className="text-xs text-white/40 mt-0.5 truncate">{item.detail}</p>
+                    <p className="text-xs text-white/60 mt-0.5 truncate">{item.detail}</p>
                   </div>
                 </button>
               ))
@@ -727,12 +728,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="mt-4 mb-3 px-4">
             <button
               onClick={() => setPaletteOpen(true)}
-              className="flex w-full items-center gap-2 rounded-lg border border-white/[0.08] bg-black/25 py-2 pl-3 pr-2 text-sm text-white/30 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] transition-[border-color,color] duration-150 ease-ui hover:border-white/[0.16] hover:text-white/60"
+              className="flex w-full items-center gap-2 rounded-lg border border-white/[0.08] bg-black/25 py-2 pl-3 pr-2 text-sm text-white/60 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] transition-[border-color,color] duration-150 ease-ui hover:border-white/[0.16] hover:text-white/85"
               aria-label="Search (Cmd+K)"
             >
               <Search size={15} />
               <span className="flex-1 text-left">Search…</span>
-              <kbd className="flex items-center gap-0.5 rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-2xs text-white/30">
+              <kbd className="flex items-center gap-0.5 rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-2xs text-white/55">
                 <Command size={9} />K
               </kbd>
             </button>
@@ -749,13 +750,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{userName || 'Team'}</p>
-                <p className="text-xs text-white/35 capitalize">{userRole}</p>
+                <p className="text-xs text-white/55 capitalize">{userRole}</p>
               </div>
               <NotificationBell />
             </div>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-2 py-2 mt-1 rounded-md text-sm text-white/40 hover:text-white hover:bg-white/[0.04] transition-colors"
+              className="w-full flex items-center gap-2 px-2 py-2 mt-1 rounded-md text-sm text-white/65 hover:text-white hover:bg-white/[0.04] transition-colors"
             >
               <LogOut size={15} />
               Logout
