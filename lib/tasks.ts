@@ -85,8 +85,22 @@ export function taskDueLabel(dueAt: Date | string | null, now: Date = new Date()
   if (days === 1) return { label: 'Due tomorrow', tone: 'soon' };
   if (days <= 7) return { label: `Due in ${days} days`, tone: 'soon' };
 
+  /*
+   * The year, once it is not this one.
+   *
+   * Without it, a task due 8 August next year renders as "Due Aug 8" — which
+   * on 8 August this year is the same words the row above it would use for
+   * today. Found by looking at a screenshot of a real list rather than by
+   * reading this function: every unit test for it used dates inside one year,
+   * so the two cases were never on screen together.
+   */
+  const sameYear = due.getFullYear() === now.getFullYear();
   return {
-    label: `Due ${due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+    label: `Due ${due.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    })}`,
     tone: 'later',
   };
 }

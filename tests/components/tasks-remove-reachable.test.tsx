@@ -20,8 +20,10 @@ import { TasksWidget } from '@/components/admin/TasksWidget';
  *     "remove" is what a screen reader heard, with nothing saying which task
  *     each one belonged to.
  *
- * The target size is the same rule the client portal's Logout was fixed to:
- * `p-1.5` takes it from 42×16 to 42×28, past the 24px in WCAG 2.5.8.
+ * The target size is the same rule the client portal's Logout was fixed to.
+ * Measured in a browser at 393px with the pointer parked away from the row:
+ * 41×18 at opacity 0 before, 53×30 at opacity 0.4 after. WCAG 2.5.8 asks for
+ * 24.
  *
  * jsdom has no layout engine, so what is asserted here is the rule that
  * produces the size, plus the behaviour that can be observed: focus, names,
@@ -89,8 +91,8 @@ describe('the remove control', () => {
   it('is big enough to aim at', async () => {
     await open();
 
-    // 42×16 without this. WCAG 2.5.8 asks for 24; p-1.5 gives 28, the same
-    // rule the client portal's Logout was fixed to.
+    // 41×18 without this, measured in a browser; 53×30 with it. WCAG 2.5.8
+    // asks for 24, and this is the rule the portal's Logout was fixed to.
     expect(removeButtons()[0].className).toMatch(/\bp-1\.5\b/);
   });
 

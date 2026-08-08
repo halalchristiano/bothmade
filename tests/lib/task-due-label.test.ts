@@ -45,6 +45,23 @@ describe('what a due date says', () => {
     expect(taskDueLabel(at('2026-08-09T09:00:00'), at('2026-08-08T12:00:00'))?.label).toBe('Due tomorrow');
   });
 
+  /*
+   * The one a screenshot found and every unit test here had missed, because
+   * they all used dates inside a single year: 8 August NEXT year rendered as
+   * "Due Aug 8", which on 8 August this year is what the row above it says
+   * about today.
+   */
+  it('names the year once it is not this one', () => {
+    const label = taskDueLabel(at('2027-08-08T09:00:00'), at('2026-08-08T12:00:00'));
+
+    expect(label?.label).toMatch(/2027/);
+    expect(label?.label, 'a date a year out must not read as today').not.toBe('Due Aug 8');
+  });
+
+  it('leaves the year off when it is this one', () => {
+    expect(taskDueLabel(at('2026-09-30T09:00:00'), at('2026-08-08T12:00:00'))?.label).not.toMatch(/2026/);
+  });
+
   it('counts down inside the week, then gives the date', () => {
     expect(taskDueLabel(at('2026-08-12T09:00:00'), at('2026-08-08T12:00:00'))).toEqual({
       label: 'Due in 4 days',

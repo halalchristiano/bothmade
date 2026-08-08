@@ -89,8 +89,9 @@ function Row({
         So: shown once anything in the row is hovered OR the button itself
         has focus, and never fully transparent — 40% is legible without
         competing with the title, which is what the fade was protecting.
-        `p-1.5` takes it from 42×16 to 42×28, past the 24px WCAG 2.5.8 asks
-        for, matching the rule the client portal's controls were fixed to.
+        `p-1.5` takes it from 41×18 to 53×30 — measured in a browser at
+        393px, before and after — past the 24px WCAG 2.5.8 asks for and
+        matching the rule the client portal's controls were fixed to.
       */}
       <button
         onClick={() => onDelete(task.id)}
