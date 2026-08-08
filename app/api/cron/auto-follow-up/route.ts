@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCronAuth } from '@/lib/cron-auth';
-import { decryptSecret } from '@/lib/crypto';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
@@ -233,10 +232,24 @@ export async function GET(request: NextRequest) {
           name: sender.name,
           email: sender.email,
           gmailAddress: sender.gmailAddress,
-          gmailAppPassword: sender.gmailAppPassword ? decryptSecret(sender.gmailAppPassword) : null,
-          googleRefreshToken: sender.googleRefreshToken
-            ? decryptSecret(sender.googleRefreshToken)
-            : null,
+          /*
+           * Handed over encrypted, which is what sendAsUser takes.
+           *
+           * These two were decrypted here first, and sendAsUser decrypts them
+           * again — so the second call was handed plaintext, threw, and was
+           * swallowed by the fallback it sits inside. The run reported
+           * success and every follow-up went out through Resend instead of
+           * the mailbox this job exists to send from: not in her Sent folder,
+           * not building the domain's sending reputation, and invisible
+           * because Resend works.
+           *
+           * The whole point of naming one sender is that these come from that
+           * mailbox. Falling back silently to a shared sender is the exact
+           * failure the sender check above refuses to allow, arriving one
+           * step later.
+           */
+          gmailAppPassword: sender.gmailAppPassword,
+          googleRefreshToken: sender.googleRefreshToken,
         },
         {
           to: lead.email as string,

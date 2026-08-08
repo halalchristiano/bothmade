@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
-import { decryptSecret } from '@/lib/crypto';
 import { sendAsUser } from '@/lib/mailer';
 import { renderShell } from '@/lib/email';
 import { escParagraphs } from '@/lib/html';
@@ -93,8 +92,12 @@ export async function POST(
         name: sender.name,
         email: sender.email,
         gmailAddress: sender.gmailAddress,
-        gmailAppPassword: sender.gmailAppPassword ? decryptSecret(sender.gmailAppPassword) : null,
-        googleRefreshToken: sender.googleRefreshToken ? decryptSecret(sender.googleRefreshToken) : null,
+        // Encrypted, which is what sendAsUser takes — it decrypts them
+        // itself. Decrypting here first handed the second call plaintext,
+        // which throws inside the fallback that wraps it, so the send quietly
+        // went out through Resend instead of this person's own Gmail.
+        gmailAppPassword: sender.gmailAppPassword,
+        googleRefreshToken: sender.googleRefreshToken,
       },
       {
         to: lead.email,

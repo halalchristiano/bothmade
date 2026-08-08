@@ -39,7 +39,25 @@ const sendAsUser = vi.fn(
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/mailer', () => ({ sendAsUser }));
-vi.mock('@/lib/crypto', () => ({ decryptSecret: (s: string) => s }));
+/*
+ * A fake that refuses what the real one refuses.
+ *
+ * This was `(s) => s` — an identity function, which quietly made decrypting
+ * an already-decrypted value a no-op. The route decrypted the sender's
+ * credentials and handed them to sendAsUser, which decrypts them again, and
+ * this mock made that look fine. In production the second call throws, both
+ * Gmail paths fall back, and every follow-up goes out through the shared
+ * Resend sender instead of the mailbox the job exists to send from.
+ *
+ * A mock more permissive than the thing it stands in for does not simplify a
+ * test; it deletes the assertion the test was written to make.
+ */
+vi.mock('@/lib/crypto', () => ({
+  decryptSecret: (value: string) => {
+    if (!value.startsWith('enc:')) throw new Error('not an encrypted value');
+    return value.slice(4);
+  },
+}));
 vi.mock('@/lib/site-url', () => ({ resolveSiteUrl: () => 'https://bothmade.studio' }));
 vi.mock('@/lib/cron-auth', () => ({ requireCronAuth: () => null }));
 
@@ -58,7 +76,7 @@ const SENDER = {
   avatarUrl: null,
   gmailAddress: 'kiana@bothmadestudio.com',
   gmailAppPassword: null,
-  googleRefreshToken: 'tok',
+  googleRefreshToken: 'enc:tok',
 };
 
 let n = 0;
@@ -401,5 +419,73 @@ describe('more due than one run will take', () => {
     // budget would not allow.
     expect(body.heldBack).toBe(50);
     delete process.env.DAILY_EMAIL_LIMIT;
+  });
+});
+
+
+/**
+ * What the sender's credentials are when they reach sendAsUser.
+ *
+ * They are stored encrypted and sendAsUser decrypts them itself — its own
+ * type says so. This route decrypted them first, so sendAsUser was handed
+ * plaintext and decrypted it again, which throws.
+ *
+ * The throw was invisible. Both Gmail paths inside sendAsUser sit in a
+ * try/catch whose whole purpose is falling back to the shared Resend sender,
+ * so the run reported success and every follow-up went out from Resend
+ * instead of the mailbox this job exists to send from — not in her Sent
+ * folder, not building the domain's sending reputation, and undetectable
+ * from the outside because Resend works fine.
+ *
+ * Which is exactly the failure the sender check at the top of this route
+ * refuses to allow, arriving one step later and quietly.
+ */
+describe('the credentials handed to the mailer', () => {
+  it('passes them as stored, for the mailer to decrypt', async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      ...SENDER,
+      gmailAppPassword: 'enc:app-password',
+      googleRefreshToken: 'enc:refresh-token',
+    });
+    prisma.lead.findMany.mockResolvedValue([lead()]);
+
+    await GET(request() as never);
+
+    const identity = sendAsUser.mock.calls[0]![0] as {
+      gmailAppPassword: string | null;
+      googleRefreshToken: string | null;
+    };
+    // Still encrypted. The mailer is the one that opens them.
+    expect(identity.gmailAppPassword).toBe('enc:app-password');
+    expect(identity.googleRefreshToken).toBe('enc:refresh-token');
+  });
+
+  it('passes null through rather than inventing a credential', async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      ...SENDER,
+      gmailAppPassword: null,
+      googleRefreshToken: null,
+    });
+    prisma.lead.findMany.mockResolvedValue([lead()]);
+
+    await GET(request() as never);
+
+    const identity = sendAsUser.mock.calls[0]![0] as {
+      gmailAppPassword: string | null;
+      googleRefreshToken: string | null;
+    };
+    expect(identity.gmailAppPassword).toBeNull();
+    expect(identity.googleRefreshToken).toBeNull();
+  });
+
+  /* The mailbox is the point of the job, so the address goes with them. */
+  it('sends as the named mailbox', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead()]);
+
+    await GET(request() as never);
+
+    expect((sendAsUser.mock.calls[0]![0] as { gmailAddress: string }).gmailAddress).toBe(
+      'kiana@bothmadestudio.com'
+    );
   });
 });

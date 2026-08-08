@@ -7,7 +7,6 @@ import { clientMockupLink, mockupInclude, normalizeMockupUrl, recordLeadMockup }
 import { findDesigner } from '@/lib/notify';
 import { mockupRequestEmail } from '@/lib/email';
 import { sendAsUser } from '@/lib/mailer';
-import { decryptSecret } from '@/lib/crypto';
 import { parseSalesPoints } from '@/lib/leads';
 import { resolveSiteUrl } from '@/lib/site-url';
 
@@ -459,12 +458,10 @@ export async function PATCH(
               name: requester?.name ?? null,
               email: requester?.email ?? null,
               gmailAddress: requester?.gmailAddress ?? null,
-              gmailAppPassword: requester?.gmailAppPassword
-                ? decryptSecret(requester.gmailAppPassword)
-                : null,
-              googleRefreshToken: requester?.googleRefreshToken
-                ? decryptSecret(requester.googleRefreshToken)
-                : null,
+              // Encrypted — sendAsUser decrypts them itself, and doing it
+              // here too throws inside its own fallback and sends via Resend.
+              gmailAppPassword: requester?.gmailAppPassword ?? null,
+              googleRefreshToken: requester?.googleRefreshToken ?? null,
             },
             { to: designer.email, subject: mail.subject, html: mail.html }
           );
