@@ -12,19 +12,34 @@ import { PhoneField } from '@/components/PhoneField';
  * call that fails, and leadLocalTime cannot guess at all.
  */
 
+/*
+ * The harness carries a real <label>, because every call site does — the lead
+ * detail page, the quick-add modal and /start all wrap this in one.
+ *
+ * It used to render PhoneField bare and reach the input via
+ * getByLabelText('Phone'), which only resolved because the component set
+ * `aria-label={placeholder}` on itself. That was the bug: aria-label beats an
+ * associated <label>, so the one call site shape this harness modelled — no
+ * label at all — was the only one where the behaviour was harmless, while in
+ * production it renamed the field to its own example number. A harness that
+ * does not look like the caller cannot catch that.
+ */
 function Harness({ initial = '' }: { initial?: string }) {
   const [value, setValue] = useState(initial);
   return (
     <>
-      <PhoneField value={value} onChange={setValue} className="field" />
+      <label htmlFor="harness-phone">Phone</label>
+      <PhoneField id="harness-phone" value={value} onChange={setValue} className="field" />
       <output data-testid="stored">{value}</output>
     </>
   );
 }
 
 const stored = () => screen.getByTestId('stored').textContent;
-const number = () => screen.getByLabelText('Phone');
-const country = () => screen.getByLabelText('Country dial code');
+// By role, so the assertion follows the accessible-name precedence a
+// browser uses rather than matching a label an aria-label may be overriding.
+const number = () => screen.getByRole('textbox', { name: 'Phone' });
+const country = () => screen.getByRole('combobox', { name: 'Country dial code' });
 
 describe('what gets stored', () => {
   it('keeps the dial code and the number as one dialable string', async () => {

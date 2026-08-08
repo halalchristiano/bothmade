@@ -30,6 +30,7 @@ export function PhoneField({
   className,
   placeholder = 'Phone',
   id,
+  ariaLabel,
 }: {
   /** The whole number, dial code included — '' when empty. */
   value: string;
@@ -38,6 +39,13 @@ export function PhoneField({
   className: string;
   placeholder?: string;
   id?: string;
+  /**
+   * Only for a caller with no visible label. Every current call site has one,
+   * so this stays undefined and the <label> supplies the name — which is the
+   * point: aria-label overrides a real label, and the placeholder used to be
+   * passed here unconditionally.
+   */
+  ariaLabel?: string;
 }) {
   // The two controls hold their own state rather than being derived from the
   // stored string, and it matters in both directions.
@@ -110,7 +118,24 @@ export function PhoneField({
           type="tel"
           inputMode="tel"
           autoComplete="tel-national"
-          aria-label={placeholder}
+          /*
+            No aria-label here.
+
+            It used to be `aria-label={placeholder}`, and aria-label wins the
+            accessible-name computation over an associated <label> — so this
+            one line silently renamed the field at every call site. Chrome
+            resolved the name of the /start phone input to "7700 900123": the
+            example number, announced as if it were the question.
+
+            All three call sites already label it properly — `<label
+            htmlFor="start-phone">Phone (optional)`, `EditField label="Phone"`
+            on the lead detail page, and `Field label="Phone"` in the quick-add
+            modal — so removing the override is all that is needed and each one
+            gets its real name back. A caller that ever needs a name without a
+            visible label should pass `ariaLabel`, not have the placeholder
+            quietly promoted into one.
+          */
+          aria-label={ariaLabel}
           aria-invalid={looksWrong || undefined}
           placeholder={placeholder}
           value={national}

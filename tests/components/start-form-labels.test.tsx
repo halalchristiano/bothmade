@@ -42,13 +42,17 @@ describe('every field on the enquiry form has a name', () => {
   });
 
   it('gives the optional phone field a name too', () => {
-    // Already correct before this change, via htmlFor="start-phone"; asserted
-    // so it stays that way. Matched exactly rather than by /phone/i, because
-    // PhoneField is two controls — a country dial-code select and the number
-    // itself — and both legitimately carry "phone" in their names.
+    // By ROLE and name, not getByLabelText. This assertion originally used
+    // getByLabelText and passed while the field was in fact named
+    // "7700 900123" — PhoneField set aria-label={placeholder}, which beats a
+    // <label> in the accessible-name computation, and getByLabelText matches
+    // the label[for] regardless. It reported a name no browser would use.
+    // Role-based queries follow the real precedence. See
+    // tests/components/phone-field-name.test.tsx.
     render(<StartPage />);
-    expect(screen.getByLabelText('Phone (optional)')).toBeInTheDocument();
-    expect(screen.getByLabelText('Country dial code')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Phone (optional)' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Country dial code' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: '7700 900123' })).toBeNull();
   });
 
   it('does not lean on the placeholder to say what a field is', () => {
