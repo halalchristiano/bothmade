@@ -1,10 +1,14 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
+import { afterEach } from 'vitest';
+
+// Mocks, env stubs and global stubs are reset here, for both projects at once.
+// This file used to call vi.restoreAllMocks() itself and stop there, which
+// left vi.stubEnv and vi.stubGlobal leaking into the next test in the file.
+import './setup-state';
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
 });
 
 // jsdom implements neither of these, and framer-motion and every component

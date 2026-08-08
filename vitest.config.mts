@@ -15,6 +15,10 @@ export default defineConfig({
           name: 'lib',
           environment: 'node',
           include: ['tests/lib/**/*.test.ts'],
+          // Restores spies and unstubs env/globals between tests. This
+          // project had no setup file at all, so a vi.spyOn or vi.stubEnv
+          // stayed in force for every test after it in the same file.
+          setupFiles: ['./tests/setup-state.ts'],
         },
       },
       {
