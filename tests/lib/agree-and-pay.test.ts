@@ -244,3 +244,42 @@ describe('a signature already on file', () => {
     expect(sendClientSignedContractEmail).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * One client, one live checkout.
+ *
+ * The signature has had a replay guard since it was written — a second POST
+ * cannot overwrite agreementSignedAt or re-send the contract. The checkout
+ * never did. Every POST minted a fresh Checkout Session, and nothing on the
+ * Lead stored the previous one, so nothing could expire it: a double-tap that
+ * beat the button's own disable, a retry on a flaky connection, or a second
+ * tab left two payable links alive for the same deposit. The webhook keys
+ * idempotency on the session id, so two sessions are two Payment rows and two
+ * real charges — on the largest single amount a client ever sends us.
+ *
+ * The instalment flow closes this by expiring the old session before minting.
+ * This one has no stored id to expire, and an idempotency key needs none.
+ */
+describe('two taps on Agree & Pay', () => {
+  it('asks Stripe for the same session both times', async () => {
+    await POST(request(SIGNED), { params });
+    await POST(request(SIGNED), { params });
+
+    expect(sessionsCreate).toHaveBeenCalledTimes(2);
+    const [, firstOpts] = sessionsCreate.mock.calls[0] as [unknown, { idempotencyKey?: string }];
+    const [, secondOpts] = sessionsCreate.mock.calls[1] as [unknown, { idempotencyKey?: string }];
+
+    expect(firstOpts?.idempotencyKey, 'no idempotency key — Stripe will mint a second live checkout')
+      .toBeTruthy();
+    expect(secondOpts?.idempotencyKey).toBe(firstOpts?.idempotencyKey);
+  });
+
+  /** The lead and the amount, so a re-priced proposal is not served a stale one. */
+  it('keys on the lead and what is being charged', async () => {
+    await POST(request(SIGNED), { params });
+
+    const [, opts] = sessionsCreate.mock.calls[0] as [unknown, { idempotencyKey?: string }];
+    expect(opts?.idempotencyKey).toMatch(/lead_1/);
+    expect(opts?.idempotencyKey).toMatch(/\d{3,}/);
+  });
+});

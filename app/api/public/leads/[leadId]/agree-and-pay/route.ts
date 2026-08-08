@@ -385,7 +385,31 @@ export async function POST(
         // project price and marked all three instalments paid.
         depositAmount: String(deposit),
       },
-    });
+    },
+      /*
+       * Stripe's own guard against one client becoming two live checkouts.
+       *
+       * The signature has had a replay guard since it was written — a second
+       * POST cannot overwrite agreementSignedAt or re-send the contract. The
+       * checkout never did. Every POST minted a fresh Checkout Session, and
+       * nothing on the Lead stored the previous one, so nothing could expire
+       * it: a double-tap that beat the button's own disable, a retry on a
+       * flaky connection, or a second tab left two payable links alive for the
+       * same deposit. The webhook keys idempotency on the session id, so two
+       * sessions are two Payment rows and two real charges — on the largest
+       * single amount a client ever sends us.
+       *
+       * The instalment flow closes exactly this window by expiring the old
+       * session before minting; this one has no stored id to expire, and an
+       * idempotency key needs none. Stripe replays the original response for
+       * an identical request for 24 hours, which is precisely how long the
+       * session it returns lives.
+       *
+       * Keyed on the amount as well as the lead, so a genuinely re-priced
+       * proposal still gets its own session rather than the stale one.
+       */
+      { idempotencyKey: `signandpay-${leadId}-${chargeAmount}` }
+    );
 
     return NextResponse.json({ success: true, url: session.url }, { status: 200 });
   } catch (error) {
