@@ -73,23 +73,61 @@ export function InstalmentPanel({
   const [instalments, setInstalments] = useState<InstalmentRow[] | null>(null);
   const [sending, setSending] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  /*
+   * A load that failed, kept apart from a project that has no schedule.
+   *
+   * This panel returned null on both, so a payment schedule that could not be
+   * fetched looked exactly like a project that never had one — on the screen
+   * where somebody decides whether Payment 2 has been sent. "Additive" is the
+   * right instinct for a panel that adds detail; it is the wrong one for the
+   * only place the money state is shown.
+   */
+  const [loadFailed, setLoadFailed] = useState(false);
+  /** Which payment is waiting on a second press past its contract gate. */
+  const [gateAsk, setGateAsk] = useState<{ index: number; reason: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/projects/${projectId}/instalments`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        setLoadFailed(true);
+        return;
+      }
       const data = await res.json();
       const rows: InstalmentRow[] = data.instalments ?? [];
       setInstalments(rows);
+      setLoadFailed(false);
       onLoaded?.(rows.length);
     } catch {
-      // The panel is additive — a fetch failure just leaves it unrendered.
+      setLoadFailed(true);
     }
   }, [projectId, onLoaded]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  if (loadFailed && !instalments) {
+    return (
+      <div
+        role="alert"
+        className="rounded-xl border border-amber-400/25 bg-amber-400/[0.06] p-5 text-sm text-amber-100/90"
+      >
+        <p className="font-semibold">The payment schedule could not be loaded.</p>
+        <p className="mt-1 text-xs text-white/50">
+          This is a loading problem, not a project without a schedule — do not read it as nothing
+          being owed.
+        </p>
+        <button
+          type="button"
+          onClick={() => load()}
+          className="mt-3 rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/5"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   if (!instalments || instalments.length === 0) return null;
 
@@ -99,17 +137,22 @@ export function InstalmentPanel({
     .reduce((sum, i) => sum + i.amountCents, 0);
   const totalCents = instalments.reduce((sum, i) => sum + i.amountCents, 0);
 
-  async function send(index: number) {
+  async function send(index: number, acknowledgeGate = false) {
     setSending(index);
     setNotice(null);
+    setGateAsk(null);
     try {
       const res = await fetch(`/api/admin/projects/${projectId}/instalments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ index }),
+        body: JSON.stringify({ index, ...(acknowledgeGate ? { acknowledgeGate: true } : {}) }),
       });
       const data = await res.json();
-      if (!res.ok) {
+      if (res.status === 409 && data.gateNotReached) {
+        // Not an error to shrug at — the client would be invoiced for a
+        // milestone that has not happened. Asked, then sent on a second press.
+        setGateAsk({ index, reason: data.error });
+      } else if (!res.ok) {
         setNotice({ tone: 'error', text: data.error || 'Could not send the payment.' });
       } else if (!data.emailSent) {
         setNotice({
@@ -240,6 +283,42 @@ export function InstalmentPanel({
           );
         })}
       </ul>
+
+      {/*
+        The second press. Phrased as what the client would receive rather than
+        as a rule being broken — the person reading it is deciding whether to
+        invoice somebody for something that has not happened, and that is the
+        sentence they need.
+      */}
+      {gateAsk && (
+        <div
+          role="alert"
+          className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/[0.07] p-3.5"
+        >
+          <p className="text-xs font-semibold text-amber-100/90">{gateAsk.reason}</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-white/50">
+            Sending it now invoices them for a milestone the project has not reached. That is
+            sometimes right — an agreed early payment — but it is not the routine case.
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => send(gateAsk.index, true)}
+              disabled={sending !== null}
+              className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-400/10 disabled:opacity-50"
+            >
+              Send it anyway
+            </button>
+            <button
+              type="button"
+              onClick={() => setGateAsk(null)}
+              className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/5"
+            >
+              Not yet
+            </button>
+          </div>
+        </div>
+      )}
 
       {notice && (
         <p className={`mt-3 text-xs ${notice.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}`}>

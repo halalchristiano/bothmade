@@ -6,9 +6,28 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendInstalmentEmail } from '@/lib/email';
 import { buildInstalmentInvoicePdf } from '@/lib/invoice-pdf';
-import { formatInvoiceNumber, invoiceNumberPrefix } from '@/lib/billing';
+import { formatInvoiceNumber, gateReached, invoiceNumberPrefix } from '@/lib/billing';
 import { ensureInstalments, instalmentDueDate, instalmentEmailCopy } from '@/lib/instalments';
 import { formatCents, formatCentsExact } from '@/lib/pricing';
+
+/**
+ * The trigger in the words the client's own agreement uses, so the refusal
+ * below reads like the contract rather than like a column name.
+ */
+const TRIGGER_PHRASE: Record<string, string> = {
+  signing: 'on signing',
+  'design-approval': 'on design approval',
+  'ready-for-launch': 'when the project is ready to launch',
+};
+
+/** Where the project actually is, for the other half of that sentence. */
+const STAGE_LABEL: Record<number, string> = {
+  0: 'Discovery',
+  1: 'Design',
+  2: 'Build',
+  3: 'Launch',
+  4: 'Complete',
+};
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -119,6 +138,37 @@ export async function POST(
       return NextResponse.json(
         { error: `${earlierUnpaid.label} is still unpaid — send and settle that one first.` },
         { status: 400 }
+      );
+    }
+
+    /*
+     * Has the thing this payment is FOR actually happened?
+     *
+     * Every instalment carries a trigger out of the agreement — "on signing",
+     * "on design approval", "when ready for launch" — and the project's stage
+     * is the record of whether that moment arrived. gateReached() has existed
+     * in lib/billing.ts the whole time and is what the ops list uses to
+     * surface money sitting past its gate. The one path that actually bills a
+     * client never asked it.
+     *
+     * So Payment 3, labelled "When ready to launch", could be invoiced at a
+     * client while their project was still in Design — an invoice for a
+     * milestone that has not occurred, with the trigger printed on the PDF
+     * next to it. Nothing in the system disagreed, because nothing checked.
+     *
+     * Named rather than forbidden, which is the rule this codebase already
+     * follows for the launch checklist: a payment that genuinely has to go
+     * early goes, but on a second deliberate press rather than the same one
+     * that sends a routine invoice. `acknowledgeGate` is that second press;
+     * the panel asks for it in the client's own words.
+     */
+    if (!gateReached(inst.trigger, project.statusStage) && body?.acknowledgeGate !== true) {
+      return NextResponse.json(
+        {
+          error: `${inst.label} falls due ${TRIGGER_PHRASE[inst.trigger] ?? 'later in the project'}, and that has not happened yet — this project is still at ${STAGE_LABEL[project.statusStage] ?? 'an earlier stage'}.`,
+          gateNotReached: true,
+        },
+        { status: 409 }
       );
     }
 

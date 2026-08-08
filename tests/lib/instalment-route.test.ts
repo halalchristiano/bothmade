@@ -64,12 +64,25 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 
   requireStaff.mockResolvedValue({ userId: 'user_evan', type: 'user', role: 'sales' });
+  /*
+   * statusStage 2 — Build, which is to say the design has been approved.
+   *
+   * It was absent, and the project sat at 'design' while the tests below sent
+   * Payment 2, whose trigger is design approval. That is the send the
+   * agreement does not allow yet, and four of these cases asserted it worked:
+   * the fixture described a project that could not legitimately be billed and
+   * the route agreed with it, because the route never consulted the gate.
+   *
+   * A project being asked for Payment 2 is a project whose design is signed
+   * off. That is what this now says.
+   */
   prisma.project.findUnique.mockResolvedValue({
     id: 'proj_1',
     clientId: 'client_1',
     name: 'Northgate — Custom Website',
     totalPrice: 2000000,
-    status: 'design',
+    status: 'build',
+    statusStage: 2,
     client: { id: 'client_1', email: 'priya@northgate.com', company: 'Northgate', contactName: 'Priya' },
   });
   prisma.instalment.findMany.mockResolvedValue(structuredClone(SCHEDULE));
@@ -159,6 +172,7 @@ describe('sending an instalment', () => {
     prisma.project.findUnique.mockResolvedValue({
       id: 'proj_1',
       clientId: 'client_1',
+      statusStage: 2,
       name: 'Northgate — Custom Website',
       totalPrice: 0,
       status: 'design',
@@ -251,5 +265,108 @@ describe('the hardened claims', () => {
     expect(res.status).toBe(200);
     expect(data.instalment.invoiceNumber).not.toBe('BM-2026-0004');
     expect(prisma.invoice.create).toHaveBeenCalledOnce();
+  });
+});
+
+
+/**
+ * The gate the agreement writes, which the send path never asked about.
+ *
+ * Every instalment carries a trigger — "on signing", "on design approval",
+ * "when ready for launch" — and the project's stage records whether that
+ * moment arrived. gateReached() has been in lib/billing.ts the whole time,
+ * and the ops list uses it to surface money sitting past its gate. The one
+ * path that actually invoices a client did not consult it, so Payment 3
+ * could be sent, with "When ready to launch" printed on the PDF, at a
+ * project still in Design.
+ *
+ * Refused rather than blocked outright: an early payment is occasionally
+ * agreed, and the route takes it on a second, explicit press.
+ */
+describe('the trigger each payment is for', () => {
+  it('refuses Payment 2 while the design is not approved', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_1',
+      clientId: 'client_1',
+      name: 'Northgate — Custom Website',
+      totalPrice: 2000000,
+      status: 'design',
+      statusStage: 1,
+      client: { id: 'client_1', email: 'priya@northgate.com', company: 'Northgate', contactName: 'Priya' },
+    });
+
+    const res = await call({ index: 2 });
+    const data = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(data.gateNotReached).toBe(true);
+    // The sentence names both halves: what it is for, and where they are.
+    expect(data.error).toMatch(/design approval/i);
+    expect(data.error).toMatch(/Design/);
+    expect(prisma.invoice.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses Payment 3 at a project that is nowhere near launch', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_1',
+      clientId: 'client_1',
+      name: 'Northgate — Custom Website',
+      totalPrice: 2000000,
+      status: 'build',
+      statusStage: 2,
+      client: { id: 'client_1', email: 'priya@northgate.com', company: 'Northgate', contactName: 'Priya' },
+    });
+    prisma.instalment.findMany.mockResolvedValue(
+      structuredClone(SCHEDULE).map((i: { index: number; status: string }) =>
+        i.index === 2 ? { ...i, status: 'paid' } : i
+      )
+    );
+
+    const res = await call({ index: 3 });
+
+    expect(res.status).toBe(409);
+    expect(prisma.invoice.create).not.toHaveBeenCalled();
+  });
+
+  it('sends it anyway on a second, explicit press', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_1',
+      clientId: 'client_1',
+      name: 'Northgate — Custom Website',
+      totalPrice: 2000000,
+      status: 'design',
+      statusStage: 1,
+      client: { id: 'client_1', email: 'priya@northgate.com', company: 'Northgate', contactName: 'Priya' },
+    });
+
+    const res = await call({ index: 2, acknowledgeGate: true });
+
+    // An agreed early payment has to remain possible; it just cannot happen
+    // on the same press that sends a routine one.
+    expect(res.status).toBe(200);
+    expect(prisma.invoice.create).toHaveBeenCalled();
+  });
+
+  it('never stands in the way of the signing payment', async () => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_1',
+      clientId: 'client_1',
+      name: 'Northgate — Custom Website',
+      totalPrice: 2000000,
+      status: 'discovery',
+      statusStage: 0,
+      client: { id: 'client_1', email: 'priya@northgate.com', company: 'Northgate', contactName: 'Priya' },
+    });
+    prisma.instalment.findMany.mockResolvedValue(
+      structuredClone(SCHEDULE).map((i: { index: number; status: string }) =>
+        i.index === 1 ? { ...i, status: 'scheduled', stripeSessionId: null } : i
+      )
+    );
+
+    // "On signing" is true the moment the project exists — a gate that
+    // stopped Payment 1 would stop every project from starting.
+    const res = await call({ index: 1 });
+
+    expect(res.status).toBe(200);
   });
 });
