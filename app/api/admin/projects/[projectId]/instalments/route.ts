@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { sendInstalmentEmail } from '@/lib/email';
 import { buildInstalmentInvoicePdf } from '@/lib/invoice-pdf';
-import { formatInvoiceNumber, gateReached, invoiceNumberPrefix } from '@/lib/billing';
+import { createInvoiceRow, gateReached } from '@/lib/billing';
 import { ensureInstalments, instalmentDueDate, instalmentEmailCopy } from '@/lib/instalments';
 import { formatCents, formatCentsExact } from '@/lib/pricing';
 
@@ -78,14 +78,6 @@ export async function GET(
     success: true,
     instalments: instalments.map((inst) => ({ ...inst, payUrl: `${siteUrl}/pay/${inst.id}` })),
   });
-}
-
-async function claimInvoiceNumber(): Promise<string> {
-  const year = new Date().getUTCFullYear();
-  const issued = await prisma.invoice.count({
-    where: { number: { startsWith: invoiceNumberPrefix(year) } },
-  });
-  return formatInvoiceNumber(year, issued + 1);
 }
 
 export async function POST(
@@ -201,25 +193,31 @@ export async function POST(
       }
     }
     if (!invoice) {
-      for (let attempt = 0; attempt < 5 && !invoice; attempt++) {
-        const number = await claimInvoiceNumber();
-        try {
-          invoice = await prisma.invoice.create({
-            data: {
-              number,
-              clientId: project.clientId,
-              projectId: project.id,
-              description: `${inst.label} — ${project.name}`,
-              lineItems: [{ label: `${inst.label} (${inst.percent}% of project total)`, priceCents: inst.amountCents }],
-              amountCents: inst.amountCents,
-              issuedById: session.userId,
-              sentToEmail: project.client.email,
-            },
-          });
-        } catch {
-          continue; // P2002: someone else took that number — count again.
-        }
-      }
+      /*
+       * The shared allocator, which this route was already listed as a caller
+       * of and was not.
+       *
+       * It kept a private copy of the retry loop whose catch had no condition
+       * on it — so every failure `invoice.create` can throw was read as "that
+       * number is taken", tried four more times, and reported as a numbering
+       * problem. A foreign key that did not resolve, a dropped connection, a
+       * value the column would not take: all of them came back as "try
+       * again", which is advice for a thing that will fail identically every
+       * time, and none of them reached the log.
+       *
+       * createInvoiceRow rethrows anything that is not P2002, so a real fault
+       * lands in the catch at the bottom of this handler and is logged as
+       * itself.
+       */
+      invoice = await createInvoiceRow(prisma, {
+        clientId: project.clientId,
+        projectId: project.id,
+        description: `${inst.label} — ${project.name}`,
+        lineItems: [{ label: `${inst.label} (${inst.percent}% of project total)`, priceCents: inst.amountCents }],
+        amountCents: inst.amountCents,
+        issuedById: session.userId,
+        sentToEmail: project.client.email,
+      });
       if (!invoice) {
         return NextResponse.json({ error: 'Could not allocate an invoice number — try again.' }, { status: 503 });
       }
