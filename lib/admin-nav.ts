@@ -101,6 +101,74 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
 ];
 
 /**
+ * What the browser tab should say.
+ *
+ * Every one of the 24 admin pages showed the root layout's title —
+ * "Bothmade | Web & Apple Native Development" — because none of them sets one.
+ * Twenty-one are `'use client'` and so cannot export `metadata` at all, which
+ * is why this is derived at runtime from the path rather than declared per
+ * page.
+ *
+ * It matters because of how this tool is used. Working a lead means a project
+ * open in one tab, billing in another, the lead itself in a third — and all
+ * three tabs read identically, so picking the right one is guesswork, and
+ * browser history is a column of the same sentence. The studio's own staff
+ * pay that cost every day.
+ *
+ * ADMIN_NAV_ITEMS is already the source of truth for what each destination is
+ * called, so the tab now says the same word the sidebar does rather than a
+ * second list that can disagree with it.
+ *
+ * Matching is longest-first and segment-aware. Longest-first so
+ * `/admin/team-chat` wins over `/admin/team`; segment-aware so `/admin/call`
+ * does not claim `/admin/call-list`, which is a different page and a plain
+ * `startsWith` would hand it the wrong name. A detail page inherits its
+ * section — `/admin/leads/abc123` is "Leads" — which is the right altitude for
+ * a tab strip: the record's own name would be more precise and is not
+ * available here without a fetch.
+ */
+export function adminPageTitle(pathname: string): string {
+  const SUFFIX = 'Bothmade admin';
+  if (!pathname) return SUFFIX;
+
+  const match = [...ADMIN_NAV_ITEMS]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+  if (match) return `${match.label} · ${SUFFIX}`;
+
+  /*
+   * Real pages with no nav entry, named explicitly.
+   *
+   * Four of them, and they are not oversights: the three lead lenses became
+   * tabs inside /admin/sales, so Leads, Pipeline and Who-to-call lost their
+   * sidebar entries while keeping their routes — they are still reached from
+   * the sidebar search, from a dashboard row, and from every link that names a
+   * lead. /admin/leads/[leadId] in particular is where most of a sales day is
+   * spent and is exactly the tab somebody needs to find again.
+   *
+   * A list rather than a fallback that prettifies the URL segment, because
+   * "Call list" is not what this page is called and guessing a name from a
+   * path is how a tab ends up disagreeing with the heading on it.
+   */
+  const OFF_NAV: Record<string, string> = {
+    '/admin/leads': 'Leads',
+    '/admin/pipeline': 'Pipeline',
+    '/admin/call-list': 'Who to call',
+    '/admin/login': 'Log in',
+  };
+
+  const offNav = Object.entries(OFF_NAV)
+    .sort(([a], [b]) => b.length - a.length)
+    .find(([href]) => pathname === href || pathname.startsWith(`${href}/`));
+  if (offNav) return `${offNav[1]} · ${SUFFIX}`;
+
+  // Anything added later without either. Still better than the marketing
+  // title, and it says which half of the app you are in.
+  return SUFFIX;
+}
+
+/**
  * Consecutive items sharing a heading, grouped.
  *
  * Deliberately meant to run on the *filtered* list rather than the full one: a

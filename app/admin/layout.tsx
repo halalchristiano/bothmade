@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Search, Bell, LogOut, Menu, X, Command } from 'lucide-react';
-import { ADMIN_NAV_ITEMS, groupSections, type NavItem } from '@/lib/admin-nav';
+import { ADMIN_NAV_ITEMS, adminPageTitle, groupSections, type NavItem } from '@/lib/admin-nav';
 import { Wordmark } from '@/components/Wordmark';
 import { useAdminPoll } from '@/lib/use-admin-poll';
 import { SendGuard } from '@/components/admin/SendGuard';
@@ -565,6 +565,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  /*
+   * The browser tab, which said "Bothmade | Web & Apple Native Development" on
+   * all 24 admin pages.
+   *
+   * Set here rather than per page because 21 of them are `'use client'` and
+   * cannot export `metadata` at all. This layout already has the pathname for
+   * nav highlighting, so the title costs one effect and stays correct across
+   * client-side navigation — which is how every move inside the admin happens.
+   *
+   * Working one lead means the project in one tab, billing in another and the
+   * lead in a third; identical titles make choosing between them guesswork and
+   * turn browser history into a column of the same sentence.
+   */
+  useEffect(() => {
+    document.title = adminPageTitle(pathname);
+  }, [pathname]);
 
   // Session: once per signed-in period, not per navigation. Keyed on the
   // login boundary — with [] deps a user landing on /admin/login first (i.e.
