@@ -182,7 +182,7 @@ export async function POST(
      * After the write and best-effort: a void that has committed must not be
      * undone because a PDF would not render.
      */
-    await restoreInvoicePdfAsCancelled(
+    const cancelledPdfUrl = await restoreInvoicePdfAsCancelled(
       prisma,
       {
         id: invoice.id,
@@ -194,7 +194,10 @@ export async function POST(
       },
       voided.voidedAt ?? new Date(),
       reason
-    ).catch((error) => console.error(`Void ${invoice.number}: cancelled PDF not rebuilt:`, error));
+    ).catch((error) => {
+      console.error(`Void ${invoice.number}: cancelled PDF not rebuilt:`, error);
+      return null;
+    });
 
     // Only worth telling them if they were told about it in the first place.
     const notifyClient = body?.notifyClient !== false && Boolean(invoice.sentToEmail);
@@ -228,7 +231,31 @@ export async function POST(
       },
     }).catch((error) => console.error(`Void ${invoice.number}: timeline entry failed:`, error));
 
-    return NextResponse.json({ success: true, invoice: voided, clientNotified }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        invoice: voided,
+        clientNotified,
+        /*
+         * The document is the only part of this that leaves the app.
+         *
+         * A cancelled invoice puts a badge on two dashboards and a sentence
+         * in an email. The PDF is what a client forwards to their bookkeeper,
+         * who has neither — so a failed rebuild leaves them filing a bill we
+         * have withdrawn, still reading "Amount due".
+         *
+         * Failing quietly is right for the void: the ledger is the fact and
+         * it has committed. Failing quietly for the person who pressed the
+         * button is not, and the settling path has always told them.
+         */
+        warnings: cancelledPdfUrl
+          ? []
+          : [
+              `${invoice.number} is cancelled, but its PDF couldn't be rebuilt — the copy on both dashboards still reads "Amount due". Tell them not to pay it, or press Cancel again once Vercel Blob is back.`,
+            ],
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Void invoice error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

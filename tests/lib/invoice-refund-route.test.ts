@@ -39,6 +39,10 @@ vi.mock('stripe', () => ({
 vi.mock('@/lib/email', () => ({
   sendInvoiceRefundedEmail: vi.fn(async () => ({ sent: true })),
 }));
+const restoreInvoicePdfAsPartPaid = vi.fn(
+  async (..._a: unknown[]): Promise<string | null> => 'https://blob.test/part.pdf'
+);
+vi.mock('@/lib/invoice-dispatch', () => ({ restoreInvoicePdfAsPartPaid }));
 
 const { POST } = await import('@/app/api/admin/billing/invoices/[invoiceId]/refund/route');
 
@@ -69,6 +73,7 @@ beforeEach(() => {
   prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
   sessionsRetrieve.mockResolvedValue({ payment_intent: 'pi_test_1' });
   refundsCreate.mockResolvedValue({ id: 're_test_1' });
+  restoreInvoicePdfAsPartPaid.mockResolvedValue('https://blob.test/part.pdf');
 });
 
 describe('refunding through Stripe', () => {
@@ -249,5 +254,74 @@ describe('two refunds racing each other', () => {
     expect(prisma.payment.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ amount: -100_000 }) })
     );
+  });
+});
+
+
+/**
+ * A refund on an invoice that stays open.
+ *
+ * Refunding moves `refundedCents`, not `status`, so an invoice part paid by
+ * transfer and then refunded is still open — and its stored PDF, the copy a
+ * client's bookkeeper files, went on asking for the full amount from somebody
+ * we had just sent money back to. Nothing rebuilt it, because the only two
+ * rebuilds were "as paid" and "as cancelled".
+ */
+describe('the document a refunded, still-open invoice leaves behind', () => {
+  const OPEN = {
+    ...INVOICE,
+    status: 'open',
+    payments: [{ id: 'pay_1', stripeSessionId: null, amount: 90_000, type: 'custom' }],
+  };
+
+  beforeEach(() => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...OPEN });
+  });
+
+  it('is rebuilt with what is left here and what went back', async () => {
+    await call({ amountCents: 40_000, method: 'manual', reason: 'Shoot cancelled' });
+
+    expect(restoreInvoicePdfAsPartPaid).toHaveBeenCalledOnce();
+    expect(restoreInvoicePdfAsPartPaid.mock.calls[0][2]).toEqual({
+      receivedCents: 50_000,
+      refundedCents: 40_000,
+    });
+  });
+
+  /*
+   * A credit moves no money — it writes no negative Payment row, which is the
+   * whole distinction between the two. Taking it off what is sitting here
+   * would print a document claiming less of the client's money is here than
+   * actually is, on the one path where the cash never left the account.
+   */
+  it('takes nothing off what is here when the money was credited, not sent', async () => {
+    await call({ amountCents: 40_000, method: 'credit', reason: 'Against the next invoice' });
+
+    expect(restoreInvoicePdfAsPartPaid.mock.calls[0][2]).toEqual({
+      receivedCents: 90_000,
+      refundedCents: 40_000,
+    });
+  });
+
+  it('says so when the rebuild fails, rather than reporting a clean refund', async () => {
+    restoreInvoicePdfAsPartPaid.mockResolvedValueOnce(null);
+
+    const body = await (await call({ amountCents: 40_000, method: 'manual', reason: 'x' })).json();
+
+    expect(body.success).toBe(true);
+    expect(body.warnings.join(' ')).toMatch(/still has a PDF asking for the full/i);
+  });
+
+  /* A settled invoice's PDF says "Paid", which stays true after a refund —
+     and the refund email carries the settlement in the shape Section 8(l)
+     requires. Rewriting a receipt into something else is a different
+     document, not a corrected one. */
+  it('leaves a settled invoice receipt alone', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...INVOICE });
+
+    const body = await (await call({ amountCents: 40_000, method: 'stripe', reason: 'x' })).json();
+
+    expect(restoreInvoicePdfAsPartPaid).not.toHaveBeenCalled();
+    expect(body.warnings).toEqual([]);
   });
 });

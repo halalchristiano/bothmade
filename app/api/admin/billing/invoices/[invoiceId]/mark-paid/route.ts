@@ -358,10 +358,21 @@ export async function POST(
                 ? null
                 : `The receipt didn't reach ${settled.client.email}. The payment is recorded either way — tell them by hand.`
               : 'This client has no email address on file, so no receipt was sent.'
-            : `${formatCentsExact(remainingAfterCents)} is still owed on ${settled.number}, so it stays open and the payment link still works. No receipt was sent — tell them what's left yourself.`,
-          settles && !receiptPdfUrl
-            ? "The invoice PDF couldn't be rebuilt as a receipt, so their copy still reads as unpaid."
-            : null,
+            : /*
+               * This used to end "and the payment link still works", which
+               * stopped being true the moment the link started coming down on
+               * any recorded payment — it is for the FULL invoice, so leaving
+               * it up was a second way to pay the whole thing. A sentence
+               * telling somebody the client can still pay, when the client
+               * now cannot, is worse than no sentence: it is the reason
+               * nobody chases the balance.
+               */
+              `${formatCentsExact(remainingAfterCents)} is still owed on ${settled.number}. The pay link has been taken down — it was for the full amount — so chase the balance with a new charge. No receipt was sent.`,
+          receiptPdfUrl
+            ? null
+            : settles
+              ? "The invoice PDF couldn't be rebuilt as a receipt, so their copy still reads as unpaid."
+              : `${settled.number}'s PDF couldn't be rebuilt, so the copy on both dashboards still asks for the full ${formatCentsExact(settled.amountCents)} rather than what's left.`,
         ].filter((warning): warning is string => Boolean(warning)),
       },
       { status: 200 }

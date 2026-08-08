@@ -31,7 +31,7 @@ const prisma = {
 const sessionsExpire = vi.fn(async (_id: string) => ({}) as unknown);
 const paymentLinksUpdate = vi.fn(async (_id: string, _a: unknown) => ({}) as unknown);
 const sendInvoiceVoidedEmail = vi.fn(async (_a: unknown) => ({ sent: true }));
-const restoreInvoicePdfAsCancelled = vi.fn(async (..._a: unknown[]) => 'https://blob.test/cancelled.pdf');
+const restoreInvoicePdfAsCancelled = vi.fn(async (..._a: unknown[]): Promise<string | null> => "https://blob.test/cancelled.pdf");
 
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/middleware', () => ({
@@ -232,6 +232,45 @@ describe('the PDF a cancelled invoice leaves behind', () => {
 
     expect(res.status).toBe(200);
     expect(prisma.$transaction).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * The document is the only part of this that leaves the app.
+   *
+   * A cancelled invoice puts a badge on two dashboards and a sentence in an
+   * email. The PDF is what a client forwards to their bookkeeper, who has
+   * neither — so when the rebuild fails, the file they file still reads
+   * "Amount due: $1,200" on an invoice we have withdrawn.
+   *
+   * Failing quietly is the right call for the void itself: the ledger is the
+   * fact and it has committed. Failing quietly for the person who pressed the
+   * button is not. The settling path already warns them ("the receipt PDF
+   * couldn't be rebuilt"); this one logged to a console nobody is reading and
+   * returned success.
+   */
+  it('says so when the cancelled PDF could not be rebuilt', async () => {
+    restoreInvoicePdfAsCancelled.mockResolvedValueOnce(null);
+
+    const res = await voidIt();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.warnings.join(' ')).toMatch(/still reads/i);
+    expect(body.warnings.join(' ')).toContain('BM-2026-0007');
+  });
+
+  it('says so when the rebuild threw, too', async () => {
+    restoreInvoicePdfAsCancelled.mockRejectedValueOnce(new Error('blob down'));
+
+    const body = await (await voidIt()).json();
+
+    expect(body.warnings.join(' ')).toMatch(/still reads/i);
+  });
+
+  it('warns about nothing when it worked', async () => {
+    const body = await (await voidIt()).json();
+
+    expect(body.warnings).toEqual([]);
   });
 
   it('does not touch the PDF when the void was refused', async () => {

@@ -305,20 +305,48 @@ export async function POST(
      * Best-effort and last, like every other rebuild: the money has moved and
      * a refund is not undone because a PDF would not render.
      */
+    let rebuiltPdfUrl: string | null = null;
     if (invoice.status === 'open') {
-      const stillHere = receivedCents(invoice.payments) - statement.returnedToClientCents;
-      await restoreInvoicePdfAsPartPaid(
+      /*
+       * A credit moves no money, so nothing comes off what is sitting here.
+       *
+       * The ledger already works this way — a credit writes no negative
+       * Payment row, which is the whole distinction between the two. Taking
+       * it off here anyway would print a document saying less of the client's
+       * money is here than actually is, on the one path where the cash never
+       * left the account.
+       */
+      const stillHere =
+        receivedCents(invoice.payments) - (method === 'credit' ? 0 : statement.returnedToClientCents);
+      rebuiltPdfUrl = await restoreInvoicePdfAsPartPaid(
         prisma,
         { ...invoice, client: invoice.client },
         {
           receivedCents: Math.max(0, stillHere),
           refundedCents: invoice.refundedCents + amountCents,
         }
-      ).catch((error) => console.error(`Refund ${invoice.number}: PDF not rebuilt:`, error));
+      ).catch((error) => {
+        console.error(`Refund ${invoice.number}: PDF not rebuilt:`, error);
+        return null;
+      });
     }
 
     return NextResponse.json(
-      { success: true, invoice: updated, settlement: statement, clientNotified },
+      {
+        success: true,
+        invoice: updated,
+        settlement: statement,
+        clientNotified,
+        // Same reason as the void route: the PDF is what a client's
+        // bookkeeper files, and a failed rebuild leaves it asking for money
+        // we have just given back.
+        warnings:
+          invoice.status === 'open' && !rebuiltPdfUrl
+            ? [
+                `${invoice.number} still has a PDF asking for the full ${formatCentsExact(invoice.amountCents)} — it couldn't be rebuilt. The refund is recorded either way.`,
+              ]
+            : [],
+      },
       { status: 200 }
     );
   } catch (error) {

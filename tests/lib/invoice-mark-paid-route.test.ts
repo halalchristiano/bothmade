@@ -413,6 +413,30 @@ describe('money that only covers part of it', () => {
     });
   });
 
+  /*
+   * The sentence used to end "and the payment link still works", which
+   * stopped being true the moment the link started coming down on any
+   * recorded payment. Telling somebody the client can still pay, when the
+   * client now cannot, is the reason nobody chases the balance.
+   */
+  it('does not promise a payment link that has just been taken down', async () => {
+    const body = await (await call({ method: 'Transfer', amountCents: 60000 })).json();
+
+    const said = body.warnings.join(' ');
+    expect(said).not.toMatch(/link still works/i);
+    expect(said).toContain('$600 is still owed');
+    expect(said).toMatch(/taken down/i);
+    expect(said).toMatch(/new charge/i);
+  });
+
+  it('says so when the part-paid PDF could not be rebuilt', async () => {
+    vi.mocked(restoreInvoicePdfAsPartPaid).mockResolvedValueOnce(null);
+
+    const body = await (await call({ method: 'Transfer', amountCents: 60000 })).json();
+
+    expect(body.warnings.join(' ')).toMatch(/still asks for the full/i);
+  });
+
   it('counts money already in when it rebuilds', async () => {
     prisma.invoice.findUnique.mockResolvedValue({
       ...OPEN_INVOICE,
