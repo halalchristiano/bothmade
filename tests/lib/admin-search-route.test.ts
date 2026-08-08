@@ -195,3 +195,39 @@ describe('searching an invoice number', () => {
     expect(body.results.map((r: { type: string }) => r.type)).toEqual(['invoice', 'client']);
   });
 });
+
+/**
+ * Projects, by whose they are.
+ *
+ * They were matched on the project's own name only. That mostly worked by
+ * coincidence — the normal flow names a project "<Company> — <Service>", so
+ * the company was sitting inside the name. Rename one to "Patient Portal",
+ * which is what people actually call things, and it fell out of search.
+ */
+describe('finding a project by its client', () => {
+  const RENAMED = {
+    id: 'proj_9',
+    name: 'Patient Portal',
+    updatedAt: new Date('2026-08-03T00:00:00.000Z'),
+    client: { company: 'Linpotia Dental' },
+  };
+
+  it('asks about the client company, not just the project name', async () => {
+    await GET(request('Linpotia'));
+
+    const arms = JSON.stringify(projectFindMany.mock.calls[0][0].where.OR);
+    expect(arms).toContain('name');
+    expect(arms).toContain('company');
+  });
+
+  it('returns a project whose name says nothing about the client', async () => {
+    projectFindMany.mockResolvedValue([RENAMED]);
+
+    const body = await (await GET(request('Linpotia'))).json();
+
+    expect(body.results).toHaveLength(1);
+    expect(body.results[0].title).toBe('Patient Portal');
+    // The subtitle is what tells you whose it is, since the title no longer does.
+    expect(body.results[0].subtitle).toBe('Linpotia Dental');
+  });
+});

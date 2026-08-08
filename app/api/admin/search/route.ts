@@ -60,7 +60,25 @@ export async function GET(request: NextRequest) {
         select: { id: true, company: true, contactName: true, email: true, phone: true, updatedAt: true },
       }),
       prisma.project.findMany({
-        where: { name: { contains: q, mode: 'insensitive' } },
+        /*
+         * By the client's name as well as the project's own.
+         *
+         * Projects created through the normal flow are named
+         * "<Company> — <Service>", so searching a company mostly worked by
+         * coincidence: the company was sitting inside the project name. Rename
+         * one to "Patient Portal" — which is what people actually call
+         * things — and it fell out of search entirely.
+         *
+         * And a client can have several projects. Matching the company finds
+         * all of them, where before you got the Client row and had to click
+         * through to discover there were three.
+         */
+        where: {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { client: { company: { contains: q, mode: 'insensitive' } } },
+          ],
+        },
         orderBy: { updatedAt: 'desc' },
         take: 6,
         select: { id: true, name: true, updatedAt: true, client: { select: { company: true } } },
