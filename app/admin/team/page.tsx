@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, Copy, Trash2, UserCog, UserPlus } from 'lucide-react';
+import { AlertTriangle, Check, Copy, KeyRound, Trash2, UserCog, UserPlus, X } from 'lucide-react';
 import { Badge, BrandButton, Card, CardHeader, Kicker, PageIn, PageTitle, inputClass } from '@/components/admin/ui';
 import {
   USER_ROLES,
@@ -27,18 +27,47 @@ function roleTone(role: string): 'purple' | 'sky' | 'neutral' {
 }
 
 /**
- * The one-time password shown after adding someone. Only a hash is stored, so
- * this is genuinely the last chance to read it — hence a copy button rather
- * than a line of text people squint at and mistype.
+ * The one-time password shown after adding someone, or after resetting a
+ * teammate who is locked out. Only a hash is stored, so this is genuinely the
+ * last chance to read it — hence a copy button rather than a line of text
+ * people squint at and mistype.
+ *
+ * Dismissable, which it did not need to be while adding was the only thing
+ * that produced one: a reset happens to an account that already exists and
+ * will happen more often, and a live credential sitting on a studio screen
+ * until the next navigation is not something to leave to chance.
  */
-function InitialPassword({ email, password }: { email: string; password: string }) {
+function InitialPassword({
+  email,
+  password,
+  reason,
+  onDismiss,
+}: {
+  email: string;
+  password: string;
+  reason: 'added' | 'reset';
+  onDismiss: () => void;
+}) {
   const [copied, setCopied] = useState(false);
 
   return (
     <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-4 mb-5">
-      <p className="text-sm text-emerald-300 font-medium mb-1">{email} can now sign in.</p>
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <p className="text-sm text-emerald-300 font-medium">
+          {reason === 'added' ? `${email} can now sign in.` : `${email} can sign in again.`}
+        </p>
+        <button
+          onClick={onDismiss}
+          aria-label="Hide this password"
+          className="-mr-1 -mt-1 shrink-0 rounded-md p-1.5 text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
+        >
+          <X size={14} />
+        </button>
+      </div>
       <p className="text-[13px] text-white/50 mb-3">
-        This password is shown once and is not recoverable — send it to them now.
+        {reason === 'reset'
+          ? 'Their old password no longer works and they have been signed out everywhere. This one is shown once and is not recoverable — send it to them now.'
+          : 'This password is shown once and is not recoverable — send it to them now.'}
       </p>
       <div className="flex items-center gap-2">
         <code className="flex-1 rounded-md bg-black/40 px-3 py-2 font-mono text-sm text-white break-all">
@@ -70,7 +99,20 @@ export default function TeamPage() {
 
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: '', email: '', role: 'sales' as UserRole });
-  const [issued, setIssued] = useState<{ email: string; password: string } | null>(null);
+  const [issued, setIssued] = useState<
+    { email: string; password: string; reason: 'added' | 'reset' } | null
+  >(null);
+  /**
+   * A role change waiting to be confirmed.
+   *
+   * It used to apply the moment the dropdown changed. That put the two most
+   * consequential grants in the studio — Owner, which is team management and
+   * bulk deletion, and the below-the-floor pricing authority — one mis-click
+   * away, with no statement of what was being handed over and nothing to
+   * press to undo it. The Remove button beside it has always confirmed; this
+   * is the same courtesy for the control that is easier to hit by accident.
+   */
+  const [pendingRole, setPendingRole] = useState<{ id: string; role: UserRole } | null>(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -110,6 +152,7 @@ export default function TeamPage() {
   const changeRole = async (id: string, role: string) => {
     setBusyId(id);
     setError('');
+    setPendingRole(null);
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
         method: 'PATCH',
@@ -157,6 +200,33 @@ export default function TeamPage() {
     }
   };
 
+  const resetPassword = async (member: TeamMember) => {
+    const label = member.name || member.email;
+    if (
+      !confirm(
+        `Reset ${label}'s password? Their current one stops working and they are signed out everywhere. You will get a new one to send them.`
+      )
+    )
+      return;
+
+    setBusyId(member.id);
+    setError('');
+    setIssued(null);
+    try {
+      const res = await fetch(`/api/admin/users/${member.id}/reset-password`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? 'Could not reset that password.');
+        return;
+      }
+      setIssued({ email: data.email, password: data.initialPassword, reason: 'reset' });
+    } catch {
+      setError('Could not reset that password.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const add = async () => {
     setBusyId('new');
     setError('');
@@ -172,7 +242,7 @@ export default function TeamPage() {
         setError(data.error ?? 'Could not add that person.');
         return;
       }
-      setIssued({ email: data.user.email, password: data.initialPassword });
+      setIssued({ email: data.user.email, password: data.initialPassword, reason: 'added' });
       setDraft({ name: '', email: '', role: 'sales' });
       setAdding(false);
       await load();
@@ -222,7 +292,14 @@ export default function TeamPage() {
         </div>
       )}
 
-      {issued && <InitialPassword email={issued.email} password={issued.password} />}
+      {issued && (
+        <InitialPassword
+          email={issued.email}
+          password={issued.password}
+          reason={issued.reason}
+          onDismiss={() => setIssued(null)}
+        />
+      )}
 
       <Card className="p-6">
         <CardHeader
@@ -298,7 +375,9 @@ export default function TeamPage() {
           <p className="text-sm text-white/40">No accounts yet.</p>
         ) : (
           <ul className="divide-y divide-white/[0.06]">
-            {members.map((member) => (
+            {members.map((member) => {
+              const pending = pendingRole?.id === member.id ? pendingRole : null;
+              return (
               /* Wraps rather than competing for one line. Name, role and remove
                  were three items in a nowrap row, so on a phone the name — the
                  only thing that identifies the row — truncated first to keep a
@@ -325,9 +404,15 @@ export default function TeamPage() {
 
                 {canManage ? (
                   <select
-                    value={member.role}
+                    value={pending ? pending.role : member.role}
                     disabled={busyId === member.id || member.id === myId}
-                    onChange={(e) => changeRole(member.id, e.target.value)}
+                    onChange={(e) =>
+                      setPendingRole(
+                        e.target.value === member.role
+                          ? null
+                          : { id: member.id, role: e.target.value as UserRole }
+                      )
+                    }
                     aria-label={`Role for ${member.name || member.email}`}
                     className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[13px] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:border-white/30"
                   >
@@ -346,23 +431,68 @@ export default function TeamPage() {
                 )}
 
                 {canManage && member.id !== myId && (
-                  /* A real target around the icon. A 15px glyph is about a
-                     third of the width a finger needs, and it sits immediately
-                     beside the role dropdown — so the smallest control in the
-                     row was the destructive one, next to the one people
-                     actually came to use. The icon is unchanged; the padding
-                     is what you press. */
-                  <button
-                    onClick={() => remove(member)}
-                    disabled={busyId === member.id}
-                    aria-label={`Remove ${member.name || member.email}`}
-                    className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-30"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  <>
+                    {/* The way back in for somebody locked out. Without it the
+                        only route was delete-and-re-add, which unassigns every
+                        lead they own and takes their side of the team chat. */}
+                    <button
+                      onClick={() => resetPassword(member)}
+                      disabled={busyId === member.id}
+                      aria-label={`Reset password for ${member.name || member.email}`}
+                      title="Reset password"
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-sky-300 disabled:opacity-30"
+                    >
+                      <KeyRound size={15} />
+                    </button>
+
+                    {/* A real target around the icon. A 15px glyph is about a
+                        third of the width a finger needs, and it sits
+                        immediately beside the role dropdown — so the smallest
+                        control in the row was the destructive one, next to the
+                        one people actually came to use. The icon is unchanged;
+                        the padding is what you press. */}
+                    <button
+                      onClick={() => remove(member)}
+                      disabled={busyId === member.id}
+                      aria-label={`Remove ${member.name || member.email}`}
+                      className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-30"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </>
+                )}
+
+                {/* What the dropdown is about to hand over, said before it
+                    happens rather than discovered afterwards. The role's own
+                    description is the sentence — the same one shown when
+                    adding somebody, which is the only other place this
+                    decision gets made. */}
+                {pending && (
+                  <div className="basis-full rounded-lg border border-amber-400/25 bg-amber-400/[0.06] p-3">
+                    <p className="text-[13px] text-white">
+                      Make {member.name || member.email}{' '}
+                      <strong className="font-semibold">{USER_ROLE_LABELS[pending.role]}</strong>?
+                    </p>
+                    <p className="text-[12px] text-white/50 mt-1">
+                      {USER_ROLE_DESCRIPTIONS[pending.role]}
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      <BrandButton
+                        variant="primary"
+                        onClick={() => changeRole(member.id, pending.role)}
+                        disabled={busyId === member.id}
+                      >
+                        {busyId === member.id ? 'Changing…' : 'Change role'}
+                      </BrandButton>
+                      <BrandButton variant="quiet" onClick={() => setPendingRole(null)}>
+                        Cancel
+                      </BrandButton>
+                    </div>
+                  </div>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 

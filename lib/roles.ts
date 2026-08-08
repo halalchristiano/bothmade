@@ -24,11 +24,25 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
  * is actually enforced (see lib/middleware.ts): every staff account reaches
  * the whole admin surface, and the role only decides the few places where
  * that isn't true.
+ *
+ * These three sentences are the last thing an owner reads before handing
+ * somebody authority, so they have to match the guards rather than the shape
+ * the roles look like they have. Two things they used to get wrong, both in
+ * the direction that understates what is being granted:
+ *
+ *  - `canOverridePricing` is `role !== 'sales'`, not `role === 'owner'`. The
+ *    constrained role is Sales and only Sales — which is what lib/middleware
+ *    and lib/authz both say in prose. Calling the pricing authority
+ *    "owner-only" made Admin read as the safe middle option it is not.
+ *  - Admin said nothing about pricing at all. Silence about an authority a
+ *    role holds is the same mistake as claiming one it doesn't.
  */
 export const USER_ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-  owner: 'Staff, plus the owner-only actions: managing the team and quoting below the floor.',
-  sales: 'Staff, and inbound leads are assigned here. Cannot quote below the calculated floor.',
-  admin: 'Staff. The full admin surface, without the owner-only actions.',
+  owner:
+    'Staff, and can quote below the floor. The only role that can manage the team and delete records in bulk.',
+  sales:
+    'Staff, and inbound leads are assigned here. Cannot quote below the calculated floor, and cannot manage the team.',
+  admin: 'Staff, and can quote below the floor. Cannot manage the team.',
 };
 
 /**

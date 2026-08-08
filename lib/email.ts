@@ -2567,21 +2567,33 @@ export async function sendDesignDirectionSignedEmail(input: {
  */
 export async function sendPasswordChangedEmail(input: {
   toEmail: string;
-  /** "reset from a link" or "changed in settings" — they are different stories. */
-  via: 'reset' | 'settings';
+  /**
+   * "reset from a link", "changed in settings", or "reset for you by an
+   * owner" — three different stories, and the third is the one where the
+   * recipient did nothing and needs to be told anyway.
+   */
+  via: 'reset' | 'settings' | 'owner';
   changedAtLabel: string;
 }): Promise<boolean> {
   const how =
     input.via === 'reset'
       ? 'using a password-reset link sent to this address'
+      : input.via === 'owner'
+      ? 'by an owner, from the studio\u2019s Team page — they will have sent you the new one directly'
       : 'from your account settings, using your existing password';
 
   const bodyHtml = `
     <p>The password on your Bothmade account was changed on
        <strong style="color:#fff;">${esc(input.changedAtLabel)}</strong>, ${how}.</p>
-    <p>If that was you, there is nothing to do — this is only a record of it.</p>
+    <p>${
+      input.via === 'owner'
+        ? 'If you asked for that, there is nothing to do — this is only a record of it.'
+        : 'If that was you, there is nothing to do — this is only a record of it.'
+    }</p>
     <div style="background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.25); border-radius:12px; padding:18px 20px; margin:20px 0;">
-      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">If it was not you</p>
+      <p style="margin:0 0 6px 0; font-weight:700; color:#fff;">${
+        input.via === 'owner' ? 'If you did not ask for it' : 'If it was not you'
+      }</p>
       <p style="margin:0; font-size:14px; color:rgba(255,255,255,0.75);">
         Somebody else has access to this account. Write to
         <span style="color:#fff;">${esc(COMPANY_EMAIL)}</span> straight away — type the address in
