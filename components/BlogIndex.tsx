@@ -87,9 +87,26 @@ export function BlogIndex() {
                         {String(idx + 1).padStart(2, '0')}
                       </span>
 
-                      <h3 className="relative md:col-span-5 text-2xl md:text-3xl font-semibold text-white/35 group-hover:text-white transition-colors duration-500">
+                      {/*
+                        h2, not h3. These post titles are the only sub-heading
+                        on the page — there is no h2 above them — so an h3 made
+                        the outline jump h1 -> h3 and implied a level that does
+                        not exist. Someone navigating this page by heading, which
+                        is how a screen reader user finds the list of posts
+                        without listening to the intro, is told each title sits
+                        under a section that was never announced.
+
+                        Purely semantic: app/globals.css sets no heading styles,
+                        so Tailwind's preflight has already flattened h2 and h3
+                        to the same inherited size and weight, and every visible
+                        property here comes from the className. The rendering is
+                        byte-identical. components/BlogPost.tsx already uses h2
+                        for the equivalent level, so this also makes the index
+                        agree with the post pages it links to.
+                      */}
+                      <h2 className="relative md:col-span-5 text-2xl md:text-3xl font-semibold text-white/35 group-hover:text-white transition-colors duration-500">
                         {post.title}
-                      </h3>
+                      </h2>
 
                       <p className="relative md:col-span-4 text-white/40 text-sm leading-relaxed">
                         {post.dek}
