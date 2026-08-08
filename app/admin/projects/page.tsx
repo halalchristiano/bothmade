@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { amountPaidTowardProject, projectBalance } from '@/lib/billing';
 import { formatCents } from '@/lib/pricing';
-import { AlertTriangle, FolderKanban, MessageSquare, Plus } from 'lucide-react';
+import { AlertTriangle, CheckSquare, FolderKanban, MessageSquare, Plus } from 'lucide-react';
 import { Badge, Card, Kicker, LoadError, matchesSearch, PageIn, PageTitle, SearchFilter } from '@/components/admin/ui';
+import { BulkDeleteProjects } from '@/components/admin/BulkDeleteProjects';
 
 interface ProjectRow {
   id: string;
@@ -194,6 +195,15 @@ export default function AdminProjectsPage() {
   const [search, setSearch] = useState('');
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'attention' | 'newest' | 'stalest'>('attention');
+  /*
+   * Selecting is a mode, off by default.
+   *
+   * This list is a place you go to open a project, and a checkbox on every
+   * row of it is a permanent invitation to a destructive action nobody comes
+   * here for. With the mode off the rows are exactly what they were — links.
+   */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
       /*
        * "No X found" is a claim about the data, and a failed fetch is not
@@ -240,6 +250,29 @@ export default function AdminProjectsPage() {
     });
 
   const attentionCount = projects.filter(needsAttention).length;
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Only what is on screen. Selecting rows a filter is hiding is how someone
+  // deletes something they never saw.
+  const allVisibleSelected = shown.length > 0 && shown.every((p) => selected.has(p.id));
+  const toggleSelectAllVisible = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) shown.forEach((p) => next.delete(p.id));
+      else shown.forEach((p) => next.add(p.id));
+      return next;
+    });
+
+  const selectedRows = projects
+    .filter((p) => selected.has(p.id))
+    .map((p) => ({ id: p.id, company: p.client.company, name: p.name }));
 
   return (
     <PageIn className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10">
@@ -300,7 +333,41 @@ export default function AdminProjectsPage() {
           <option value="stalest" className="bg-raised text-white">Sort: Quietest first</option>
           <option value="newest" className="bg-raised text-white">Sort: Newest first</option>
         </select>
+        <button
+          onClick={() => {
+            setSelecting((v) => !v);
+            setSelected(new Set());
+          }}
+          aria-pressed={selecting}
+          className={`inline-flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-full border transition-colors ${
+            selecting
+              ? 'border-sky-400/40 bg-sky-400/10 text-sky-200'
+              : 'border-white/15 text-white/60 hover:bg-white/5'
+          }`}
+        >
+          <CheckSquare size={13} />
+          {selecting ? 'Done selecting' : 'Select'}
+        </button>
+        {selecting && shown.length > 0 && (
+          <button
+            onClick={toggleSelectAllVisible}
+            className="text-xs text-sky-300 transition-colors hover:text-sky-200"
+          >
+            {allVisibleSelected ? 'Deselect' : 'Select'} all {shown.length} shown
+          </button>
+        )}
       </div>
+
+      {selecting && (
+        <BulkDeleteProjects
+          selected={selectedRows}
+          onClear={() => setSelected(new Set())}
+          onDeleted={() => {
+            setSelected(new Set());
+            load();
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="flex min-h-[60vh] items-center justify-center">
@@ -316,16 +383,19 @@ export default function AdminProjectsPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {shown.map((project) => (
-            <Link
-              key={project.id}
-              href={`/admin/projects/${project.id}`}
-              className={`group block rounded-2xl border p-4 transition-colors ${
-                needsAttention(project)
-                  ? 'border-amber-400/25 bg-amber-400/[0.03] hover:border-amber-400/45'
-                  : 'border-white/[0.07] bg-white/[0.02] hover:border-white/20'
-              }`}
-            >
+          {shown.map((project) => {
+            const rowTone = needsAttention(project)
+              ? 'border-amber-400/25 bg-amber-400/[0.03] hover:border-amber-400/45'
+              : 'border-white/[0.07] bg-white/[0.02] hover:border-white/20';
+            const isSelected = selected.has(project.id);
+
+            /*
+             * The same row, wrapped two ways. Off, it is the link it has
+             * always been. On, it is a label around a checkbox — so the whole
+             * row is the hit target for ticking it, and no interactive
+             * control ends up nested inside an anchor.
+             */
+            const body = (
               <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
                 <div className="min-w-0 flex-1 basis-64">
                   <p className="truncate font-semibold text-white">{project.client.company}</p>
@@ -347,8 +417,38 @@ export default function AdminProjectsPage() {
                   </span>
                 </div>
               </div>
-            </Link>
-          ))}
+            );
+
+            if (!selecting) {
+              return (
+                <Link
+                  key={project.id}
+                  href={`/admin/projects/${project.id}`}
+                  className={`group block rounded-2xl border p-4 transition-colors ${rowTone}`}
+                >
+                  {body}
+                </Link>
+              );
+            }
+
+            return (
+              <label
+                key={project.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors ${
+                  isSelected ? 'border-sky-400/50 bg-sky-400/[0.07]' : rowTone
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelected(project.id)}
+                  aria-label={`Select ${project.client.company} — ${project.name}`}
+                  className="mt-1 shrink-0 accent-sky-400"
+                />
+                <div className="min-w-0 flex-1">{body}</div>
+              </label>
+            );
+          })}
         </div>
       )}
     </PageIn>
