@@ -14,7 +14,7 @@ import { parseCsv } from '@/lib/csv';
  * cannot execute when the accountant opens it.
  */
 
-const prisma = { invoice: { findMany: vi.fn() } };
+const prisma = { invoice: { findMany: vi.fn() }, instalment: { findMany: vi.fn() } };
 const requireStaff = vi.fn();
 const requireRole = vi.fn();
 
@@ -66,6 +66,7 @@ beforeEach(() => {
   requireStaff.mockResolvedValue({ userId: 'user_1', type: 'user', role: 'owner' });
   requireRole.mockReturnValue(null);
   prisma.invoice.findMany.mockResolvedValue([INVOICE]);
+  prisma.instalment.findMany.mockResolvedValue([]);
 });
 
 describe('who may download it', () => {
@@ -208,5 +209,91 @@ describe('a description that is trying to be a formula', () => {
 
     expect(rows[1]).toHaveLength(rows[0].length);
     expect(rows[1][rows[0].indexOf('For')]).toBe('Round 2, "final" — with notes');
+  });
+});
+
+
+/**
+ * Two ways this file could be confidently wrong, written against the version
+ * that shipped an hour before them.
+ *
+ * The commit that added it argued that a partial export is the worst kind of
+ * wrong, because it looks complete — and then capped itself at five thousand
+ * rows and said so only in a response header, which nobody downloading a file
+ * ever sees. The cap is right; being quiet about it is not.
+ *
+ * The other is worse and older. This list is every invoice raised: one-off
+ * charges AND the scheduled payments that make up a project's contracted
+ * price. The screen labels the second kind and refuses to send them; the file
+ * had no column for it, so summing the Amount column adds the extra work to
+ * the main contract and produces a revenue figure roughly double the truth.
+ */
+describe('what the file cannot afford to leave unsaid', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      ...INVOICE,
+      id: `inv_${i}`,
+      number: `BM-2026-${String(i).padStart(4, '0')}`,
+    }));
+
+  it('says inside itself when it did not fit', async () => {
+    prisma.invoice.findMany.mockResolvedValue(many(5000));
+
+    const rows = parseCsv(await (await GET(request())).text());
+
+    const last = rows[rows.length - 1];
+    expect(last[0]).toMatch(/only the most recent 5,000/i);
+    // In the first column, not among the money — a note that can be summed by
+    // accident is a different kind of wrong.
+    expect(last.slice(6).every((cell) => cell === '')).toBe(true);
+  });
+
+  it('says nothing of the sort when everything fitted', async () => {
+    prisma.invoice.findMany.mockResolvedValue(many(3));
+
+    const text = await (await GET(request())).text();
+
+    expect(text).not.toMatch(/only the most recent/i);
+    expect(parseCsv(text)).toHaveLength(4); // header + 3
+  });
+
+  /*
+   * An instalment is a slice of the project's contracted price. A one-off
+   * charge is work billed on top of it. Adding them together is the specific
+   * mistake this file makes easy, and the screen already knows the
+   * difference — it refuses to send an instalment and says why.
+   */
+  it('tells a scheduled payment apart from extra work', async () => {
+    prisma.invoice.findMany.mockResolvedValue([
+      INVOICE,
+      { ...INVOICE, id: 'inv_2', number: 'BM-2026-0030', description: 'Payment 2 of 3' },
+    ]);
+    prisma.instalment.findMany.mockResolvedValue([{ invoiceNumber: 'BM-2026-0030' }]);
+
+    const rows = parseCsv(await (await GET(request())).text());
+    const type = rows[0].indexOf('Type');
+
+    expect(type).toBeGreaterThan(-1);
+    expect(rows[1][type]).toBe('One-off charge');
+    expect(rows[2][type]).toBe('Scheduled payment');
+  });
+
+  it('asks about the invoices it is exporting, not the whole book', async () => {
+    prisma.invoice.findMany.mockResolvedValue([INVOICE]);
+
+    await GET(request());
+
+    expect(prisma.instalment.findMany.mock.calls[0][0].where.invoiceNumber.in).toEqual([
+      'BM-2026-0031',
+    ]);
+  });
+
+  /* An export with no rows must not go asking about an empty list. */
+  it('skips the lookup entirely when nothing matched', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+
+    await GET(request());
+
+    expect(prisma.instalment.findMany).not.toHaveBeenCalled();
   });
 });
