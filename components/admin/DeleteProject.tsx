@@ -18,8 +18,9 @@ import { inputClass } from '@/components/admin/ui';
  * confirmation that cannot be satisfied by clicking through on autopilot —
  * which is exactly the failure mode a red button with "Are you sure?" has.
  *
- * The server refuses outright if any payment is recorded. That check lives
- * there rather than here, because a guard the browser owns is a guard.
+ * The server refuses outright if any payment or invoice is recorded. That
+ * check lives there rather than here, because a guard the browser owns is a
+ * guard nobody has.
  */
 export function DeleteProject({
   projectId,
@@ -82,8 +83,8 @@ export function DeleteProject({
         design feedback. It cannot be undone, and the client keeps no copy.
       </p>
       <p className="mt-2 text-xs text-white/40">
-        A project with payments recorded against it cannot be deleted at all — those are an
-        accounting record.
+        A project with payments or invoices against it cannot be deleted at all — those are
+        accounting records. Decommission the client instead.
       </p>
 
       <label className="mt-3 block">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { ANY_STAFF, requireRole } from '@/lib/authz';
+import { accountingHold } from '@/lib/deletion-guards';
 
 /**
  * Delete a project, and everything hanging off it.
@@ -11,11 +12,12 @@ import { ANY_STAFF, requireRole } from '@/lib/authz';
  * design direction, the recurring offer. That is the whole record of an
  * engagement, and it does not come back.
  *
- * So two things guard it. A project with payments recorded against it cannot
- * be deleted at all — that is an accounting record, and no button should be
- * able to remove one; a test project that took real money is not a test
- * project. And the caller has to type the company name, which is the one
- * confirmation that cannot be satisfied by clicking through.
+ * So two things guard it. A project with payments or invoices against it
+ * cannot be deleted at all — those are accounting records, and no button
+ * should be able to remove one; a test project that took real money, or that
+ * a numbered invoice went out for, is not a test project. And the caller has
+ * to type the company name, which is the one confirmation that cannot be
+ * satisfied by clicking through.
  *
  * What happened is written to team chat before the row goes, because every
  * other place it could be recorded is inside the thing being deleted.
@@ -47,19 +49,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
      * Money makes it permanent.
      *
      * A payment is a record of something that actually happened between two
-     * businesses. Cascading one away to tidy up a list is the kind of
-     * deletion nobody discovers until an accountant asks about a figure that
-     * no longer reconciles.
+     * businesses, and an invoice is a numbered document that went to a
+     * client. Cascading either away to tidy up a list is the kind of deletion
+     * nobody discovers until an accountant asks about a figure that no longer
+     * reconciles.
+     *
+     * Both counts are checked in lib/deletion-guards.ts, shared with the bulk
+     * delete and with deleting a client. This route selected the invoice
+     * count and then read only `payments`, so a project that had been
+     * invoiced and not yet paid — the state most live engagements are in —
+     * deleted cleanly and took its invoices out of a sequence that is meant
+     * to be unbroken.
      */
-    if (project._count.payments > 0) {
-      return NextResponse.json(
-        {
-          error: `${project.client.company} has ${project._count.payments} payment${
-            project._count.payments === 1 ? '' : 's'
-          } recorded against it. Payments are an accounting record — this project cannot be deleted. Archive the client instead, or tell us what you actually need removed.`,
-        },
-        { status: 409 }
-      );
+    const hold = accountingHold(project.client.company, project._count);
+    if (hold) {
+      return NextResponse.json({ error: hold }, { status: 409 });
     }
 
     // Case-insensitive, because the point is proving you know which project
