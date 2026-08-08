@@ -83,8 +83,29 @@ export function Nav() {
 
   return (
     <>
+      {/*
+        `left-0` is load-bearing, however redundant it looks beside `w-full`.
+
+        A fixed element with no horizontal offset does not sit at the left of
+        the viewport — it sits at its STATIC position, wherever it would have
+        landed in flow, and only its width comes from the viewport. On every
+        page whose wrapper has horizontal padding that means the bar starts
+        24px in and its 100%-of-viewport width hangs 24px off the right.
+
+        app/not-found.tsx and app/error.tsx are both `<main class="... px-6
+        overflow-hidden">`, so on those two the menu button ended 10px off the
+        right edge with its bars cut mid-stroke, and `overflow-hidden` meant
+        nothing scrolled far enough to reach it. Those are precisely the two
+        pages where that button is the only thing on screen worth pressing:
+        somebody who has hit a dead end or an error, whose way back into the
+        site is the menu.
+
+        Harmless everywhere it already worked — those pages resolve the static
+        position to 0 anyway — which is why the fix belongs here rather than
+        in the two layouts that happen to expose it today.
+      */}
       <motion.nav
-        className={`fixed top-0 w-full z-50 border-b transition-all duration-500 ${
+        className={`fixed top-0 left-0 w-full z-50 border-b transition-all duration-500 ${
           scrolled
             ? 'backdrop-blur-xl bg-black/70 border-white/10 py-3'
             : 'backdrop-blur-md bg-black/20 border-transparent py-5'
