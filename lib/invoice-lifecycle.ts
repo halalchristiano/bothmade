@@ -129,9 +129,29 @@ export function refundCeilingCents(
   grossReceived = 0
 ): number {
   if (invoice.status === 'void') return 0;
-  // Never more than the invoice: an overpayment is a different conversation,
-  // and refunding one through here would misreport what the invoice was for.
-  const held = invoice.status === 'paid' ? invoice.amountCents : Math.min(invoice.amountCents, grossReceived);
+  /*
+   * What is actually sitting on this invoice.
+   *
+   * A settled one holds its face value — payment rows are not consulted and
+   * cannot lower it, because plenty of older invoices were settled before
+   * every payment was written down.
+   *
+   * They can raise it. An invoice can take MORE than it asked for: money
+   * arrives by transfer, then the client's original pay link takes the whole
+   * invoice again on top of it. This used to cap at the face value on the
+   * reasoning that an overpayment is a different conversation — which left
+   * the surplus as the one kind of money in the system with no way back to
+   * the person who sent it. It is theirs, and this is the box that returns
+   * money.
+   *
+   * An open invoice is capped at what came in, which is the whole point of
+   * the part-paid case: its face value is what was asked for, not what is
+   * there to give back.
+   */
+  const held =
+    invoice.status === 'paid'
+      ? Math.max(invoice.amountCents, grossReceived)
+      : Math.min(invoice.amountCents, grossReceived);
   return Math.max(0, held - invoice.refundedCents);
 }
 

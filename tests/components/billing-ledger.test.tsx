@@ -582,3 +582,48 @@ describe('charging the balance of a part-paid invoice', () => {
     expect(screen.queryByRole('button', { name: /Charge the .* left/ })).toBeNull();
   });
 });
+
+
+/**
+ * An invoice that took more than it asked for.
+ *
+ * Money arrives by transfer, then the client's original pay link — a
+ * fixed-amount link for the WHOLE invoice — takes it again on top. Both are
+ * real payments, the invoice reads "Paid", and it is: it is also holding $900
+ * of somebody else's money, which nothing on the page said.
+ */
+describe('an invoice with more money on it than it asked for', () => {
+  beforeEach(() => {
+    invoices = [
+      {
+        ...PART_PAID,
+        status: 'paid',
+        receivedCents: 270_000,
+        grossReceivedCents: 270_000,
+      },
+    ];
+    stubFetch();
+  });
+
+  it('says how much is over, rather than only that it is paid', async () => {
+    render(<BillingPage />);
+
+    expect(await screen.findByText('$900 overpaid')).toBeTruthy();
+  });
+
+  /* Refund is what returns it, so the row has to be offering one. */
+  it('offers the action that gives it back', async () => {
+    render(<BillingPage />);
+
+    expect(await screen.findByRole('button', { name: 'Refund' })).toBeTruthy();
+  });
+
+  it('says nothing on an invoice paid exactly once', async () => {
+    invoices = [{ ...PART_PAID, status: 'paid', receivedCents: 180_000, grossReceivedCents: 180_000 }];
+    stubFetch();
+    render(<BillingPage />);
+
+    await screen.findByRole('button', { name: 'Refund' });
+    expect(screen.queryByText(/overpaid/)).toBeNull();
+  });
+});

@@ -972,6 +972,15 @@ function BillingWorkspace() {
                           of {formatCentsExact(invoice.amountCents)}
                         </p>
                       )}
+                      {/* More money than it asked for — a transfer and the
+                          original pay link both landing on the same invoice.
+                          "Paid" is true and is not the whole truth, and the
+                          difference belongs to the client. */}
+                      {(invoice.receivedCents ?? 0) > invoice.amountCents && (
+                        <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-amber-300">
+                          {formatCentsExact((invoice.receivedCents ?? 0) - invoice.amountCents)} overpaid
+                        </p>
+                      )}
                     </div>
                   </div>
                   </Link>

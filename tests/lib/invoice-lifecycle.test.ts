@@ -168,8 +168,39 @@ describe('reading a refund request', () => {
       expect(result.ok).toBe(false);
     });
 
-    /* A settled invoice's ceiling is its face value, exactly as before —
-       payment rows are not consulted and cannot lower it. */
+    /**
+     * More money than the invoice asked for.
+     *
+     * Reachable the same way everything else here is: money arrives by
+     * transfer, then the client's original pay link — a fixed-amount link for
+     * the WHOLE invoice — takes it again on top. The surplus used to be the
+     * one kind of money in the system with no way back to the person who
+     * sent it: the ceiling was the face value, so the box refused to return
+     * the part that was over.
+     */
+    it('gives back money that arrived over and above the invoice', () => {
+      const result = readRefundRequest(
+        { status: 'paid', amountCents: 180_000, refundedCents: 0 },
+        { amountCents: 270_000, method: 'stripe', reason: 'Paid twice — the transfer and the link' },
+        270_000
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('still refuses more than actually arrived', () => {
+      const result = readRefundRequest(
+        { status: 'paid', amountCents: 180_000, refundedCents: 0 },
+        { amountCents: 280_000, method: 'stripe', reason: 'x' },
+        270_000
+      );
+
+      expect(result.ok).toBe(false);
+    });
+
+    /* A settled invoice's ceiling is at least its face value — payment rows
+       cannot lower it, because plenty of older invoices were settled before
+       every payment was written down. */
     it('leaves a paid invoice reading off its own face value', () => {
       const result = readRefundRequest(
         { status: 'paid', amountCents: 250_000, refundedCents: 0 },

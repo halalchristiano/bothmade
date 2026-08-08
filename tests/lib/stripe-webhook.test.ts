@@ -14,9 +14,9 @@ const prisma = {
   client: { findUnique: vi.fn(), create: vi.fn() },
   emailPreferences: { create: vi.fn() },
   projectUpdate: { create: vi.fn() },
-  payment: { create: vi.fn(), findUnique: vi.fn() },
+  payment: { create: vi.fn(), findUnique: vi.fn(), aggregate: vi.fn() },
   lead: { update: vi.fn(), updateMany: vi.fn() },
-  invoice: { updateMany: vi.fn() },
+  invoice: { updateMany: vi.fn(), findUnique: vi.fn() },
   instalment: { create: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   teamMessage: { create: vi.fn() },
   user: { findFirst: vi.fn() },
@@ -402,6 +402,70 @@ describe('a custom charge being paid', () => {
     await POST(request());
 
     expect(prisma.projectUpdate.create.mock.calls[0][0].data.description).toContain('BM-2026-0007');
+  });
+
+  /**
+   * The one the door was closed on today, from the other side.
+   *
+   * An invoice part paid by transfer used to keep its pay link — the
+   * reasoning being that killing it takes away the client's way of sending
+   * the rest. It is a fixed-amount Payment Link for the WHOLE invoice, so
+   * clicking it sends the whole invoice again on top of what was
+   * transferred, and this is the handler that receives that.
+   *
+   * The link comes down on any recorded payment now, but that only closes it
+   * going forward. Every invoice part paid before today still has a live link
+   * in the client's inbox, and a client already on the Stripe page when the
+   * transfer is recorded can still complete it. This is the last place that
+   * can notice, and it noticed nothing: it wrote the payment, marked the
+   * invoice paid, and left $2,700 sitting against an $1,800 invoice with
+   * every screen reading "Paid".
+   */
+  it('says so when the money coming in is more than the invoice asked for', async () => {
+    // $900 arrived by transfer, then the old pay link took the whole $1,800.
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'inv_1',
+      number: 'BM-2026-0007',
+      description: 'Brand photography day',
+      lineItems: [],
+      amountCents: 180000,
+      createdAt: new Date(),
+      paidAt: null,
+      client: { company: 'Acme', contactName: 'Dana' },
+    });
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: 270000 } });
+    constructWebhookEvent.mockReturnValue(completedSession(CUSTOM_METADATA, 180000));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    // The money is still recorded — it really arrived, and a webhook that
+    // drops it is worse than one that is quiet about it.
+    expect(prisma.payment.create).toHaveBeenCalled();
+    // But it is said out loud, with the figure, so somebody can give it back.
+    const shouted = vi.mocked(console.error).mock.calls.flat().join(' ');
+    expect(shouted).toContain('BM-2026-0007');
+    expect(shouted).toMatch(/\$900/);
+  });
+
+  it('stays quiet on an invoice paid exactly once', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'inv_1',
+      number: 'BM-2026-0007',
+      description: 'Brand photography day',
+      lineItems: [],
+      amountCents: 180000,
+      createdAt: new Date(),
+      paidAt: null,
+      client: { company: 'Acme', contactName: 'Dana' },
+    });
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: 180000 } });
+    constructWebhookEvent.mockReturnValue(completedSession(CUSTOM_METADATA, 180000));
+
+    await POST(request());
+
+    const shouted = vi.mocked(console.error).mock.calls.flat().join(' ');
+    expect(shouted).not.toMatch(/more than/i);
   });
 
   it('leaves a balance payment unlinked to any invoice', async () => {

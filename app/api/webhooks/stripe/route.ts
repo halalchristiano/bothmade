@@ -926,6 +926,7 @@ async function handleExistingProjectPayment(
           number: true,
           description: true,
           lineItems: true,
+          amountCents: true,
           createdAt: true,
           paidAt: true,
           client: { select: { company: true, contactName: true } },
@@ -933,6 +934,43 @@ async function handleExistingProjectPayment(
       });
       if (settledInvoice?.paidAt) {
         await restoreInvoicePdfAsPaid(prisma, settledInvoice, settledInvoice.paidAt);
+      }
+
+      /*
+       * More money than the invoice asked for.
+       *
+       * An invoice part paid by transfer used to keep its pay link, on the
+       * reasoning that killing it takes away the client's way of sending the
+       * rest. It is a fixed-amount Payment Link for the WHOLE invoice, so
+       * clicking it sends the whole invoice again on top of the transfer, and
+       * this handler is where that lands.
+       *
+       * The link comes down on any recorded payment now, which closes it
+       * going forward and does nothing about the two ways it still happens:
+       * every invoice part paid before that change has a live link sitting in
+       * a client's inbox, and a client already on the Stripe page when the
+       * transfer is recorded can still finish. Stripe's own
+       * completed_sessions limit does not help — this is the first completed
+       * session on that link.
+       *
+       * So this is the last place that can notice, and it noticed nothing:
+       * the payment was written, the invoice marked paid, and $2,700 sat
+       * against an $1,800 invoice with every screen reading "Paid". The money
+       * is still recorded either way — it really arrived, and a handler that
+       * drops it is worse than one that is quiet about it — but it is said
+       * out loud now, with the figure, so it can be given back.
+       */
+      if (settledInvoice) {
+        const against = await prisma.payment.aggregate({
+          where: { invoiceId },
+          _sum: { amount: true },
+        });
+        const received = against._sum.amount ?? 0;
+        if (received > settledInvoice.amountCents) {
+          console.error(
+            `Invoice ${settledInvoice.number} has taken ${formatCentsExact(received)} against ${formatCentsExact(settledInvoice.amountCents)} — ${formatCentsExact(received - settledInvoice.amountCents)} more than it asked for. Almost certainly a pay link used after money arrived another way. Refund the difference.`
+          );
+        }
       }
     } catch (pdfError) {
       console.error(`Receipt PDF for invoice ${invoiceId} was not rebuilt:`, pdfError);
