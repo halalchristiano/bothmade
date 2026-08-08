@@ -1517,8 +1517,9 @@ export default function ClientDashboard() {
                         {partPaid && (
                           <p className="mt-2 text-xs text-sky-300/80">
                             {formatCentsExact(received)} received —{' '}
-                            {formatCentsExact(invoice.amountCents - received)} left. We&apos;ll be in
-                            touch about the rest, or reply to any of our emails to settle it.
+                            {formatCentsExact(invoice.amountCents - received)}
+                            {' '}left. We&apos;ll be in touch about the rest, or reply to any of our
+                            emails to settle it.
                           </p>
                         )}
 
@@ -1542,7 +1543,12 @@ export default function ClientDashboard() {
                               Invoice PDF
                             </a>
                           )}
-                          {!paid && !voided && !invoice.paymentUrl && (
+                          {/* Not on a part-paid invoice: the line above it
+                              already says what is left and how it gets
+                              settled, and "we'll send a payment link shortly"
+                              beside it is a second, different promise about
+                              the same money. */}
+                          {!paid && !voided && !partPaid && !invoice.paymentUrl && (
                             <span className="text-[11px] text-white/40">
                               We&apos;ll send a payment link for this shortly.
                             </span>
