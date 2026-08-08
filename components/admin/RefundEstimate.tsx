@@ -42,6 +42,7 @@ interface RefundableInvoice {
   refundedCents: number;
   status: string;
   grossReceivedCents: number;
+  hasCardPayment: boolean;
   remainingCents: number;
   allocatedCents: number;
 }
@@ -395,6 +396,7 @@ export function RefundEstimate({
                             refundedCents: inv.refundedCents,
                             grossReceivedCents: inv.grossReceivedCents,
                             receivedCents: inv.grossReceivedCents - inv.refundedCents,
+                            hasCardPayment: inv.hasCardPayment,
                             sentToEmail: null,
                           }}
                           onDone={() => {

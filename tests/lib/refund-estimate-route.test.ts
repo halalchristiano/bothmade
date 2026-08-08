@@ -188,8 +188,21 @@ describe('what it is asked about', () => {
 });
 
 describe('where the refundable money sits', () => {
+  /*
+   * A scenario that actually returns money.
+   *
+   * The default one does not: a client cancelling at stage 1 is entitled to
+   * nothing back, so every assertion about sharing a pot out was comparing
+   * zero to zero and would have held no matter what the allocation did. The
+   * agency ending it is the case where money moves, which is the only case
+   * worth asserting an allocation about.
+   */
+  const refunding = '?projectId=proj_1&scenario=agency-ends';
+
   it('shares the pot across the paid invoices, oldest first', async () => {
-    const body = await (await GET(request('?projectId=proj_1'))).json();
+    const body = await (await GET(request(refunding))).json();
+
+    expect(body.entitlement.settlement.returnedToClientCents).toBeGreaterThan(0);
 
     const returned = body.entitlement.settlement.returnedToClientCents;
     const allocated = body.allocation.invoices.reduce(
@@ -200,24 +213,63 @@ describe('where the refundable money sits', () => {
   });
 
   /*
-   * An open invoice was never paid, so there is nothing on it to give back —
-   * except that an invoice can now be PART paid by transfer and stay open
-   * with real money against it. That money is still owed to the client; it
-   * just cannot go back through an invoice refund, and the route has to say
-   * so rather than quietly leave it out of both halves.
+   * An open invoice with money on it.
+   *
+   * It used to be excluded outright, on the reasoning that an open invoice
+   * was never paid — true until one could be part paid by transfer. What the
+   * screen then said about that client's $900 was that it had "no invoice to
+   * come off — it was paid before the invoice ledger existed, or recorded by
+   * hand". Neither was true, and it pointed whoever was doing the refund away
+   * from the one row that could take it.
    */
-  it('does not pretend a part-paid invoice can carry a refund', async () => {
+  it('lets a part-paid invoice carry a refund for what came in', async () => {
     prisma.invoice.findMany.mockResolvedValue([
-      { ...PAID_INVOICE, id: 'inv_2', number: 'BM-2026-0002', status: 'open', amountCents: 300_000 },
+      {
+        ...PAID_INVOICE,
+        id: 'inv_2',
+        number: 'BM-2026-0002',
+        status: 'open',
+        amountCents: 300_000,
+        payments: [{ amount: 90_000, stripeSessionId: null }],
+      },
     ]);
 
-    const body = await (await GET(request('?projectId=proj_1'))).json();
+    const body = await (await GET(request(refunding))).json();
+
+    expect(body.allocation.invoices.map((i: { number: string }) => i.number)).toEqual([
+      'BM-2026-0002',
+    ]);
+    // What came in, not the $3,000 it asks for.
+    expect(body.allocation.invoices[0].allocatedCents).toBe(90_000);
+    expect(body.allocation.invoices[0].status).toBe('open');
+    // No Checkout Session on it, so the card option must not be offered.
+    expect(body.allocation.invoices[0].hasCardPayment).toBe(false);
+  });
+
+  /*
+   * An open invoice nobody has sent anything against is still nothing to
+   * refund, and the entitlement is still named as money with nowhere to go
+   * rather than rounded away.
+   */
+  it('leaves an open invoice with nothing on it out of both halves', async () => {
+    prisma.invoice.findMany.mockResolvedValue([
+      {
+        ...PAID_INVOICE,
+        id: 'inv_2',
+        number: 'BM-2026-0002',
+        status: 'open',
+        amountCents: 300_000,
+        payments: [],
+      },
+    ]);
+
+    const body = await (await GET(request(refunding))).json();
 
     expect(body.allocation.invoices).toEqual([]);
-    // Named as money with nowhere to go rather than rounded away.
     expect(body.allocation.unallocatedCents).toBe(
       body.entitlement.settlement.returnedToClientCents
     );
+    expect(body.allocation.unallocatedCents).toBeGreaterThan(0);
   });
 
   it('leaves nothing on an invoice already fully refunded', async () => {
@@ -225,7 +277,7 @@ describe('where the refundable money sits', () => {
       { ...PAID_INVOICE, refundedCents: 800_000 },
     ]);
 
-    const body = await (await GET(request('?projectId=proj_1'))).json();
+    const body = await (await GET(request(refunding))).json();
 
     expect(body.allocation.invoices).toEqual([]);
   });

@@ -93,6 +93,24 @@ export function grossReceivedCents(payments: Array<{ amount: number }> | null | 
   return payments.reduce((sum, payment) => sum + Math.max(0, payment?.amount ?? 0), 0);
 }
 
+/**
+ * Whether any of this money came through Stripe.
+ *
+ * Which decides whether a card refund is possible at all: the refund route
+ * reaches the charge by reading the Checkout Session off a Payment row, so an
+ * invoice settled by bank transfer has nothing for Stripe to reverse.
+ *
+ * Tolerant of an absent relation for the same reason as the two above, and
+ * answering "no card" rather than throwing is also the honest answer — a
+ * caller who did not read the payments has not found one.
+ */
+export function hasCardPayment(
+  payments: Array<{ stripeSessionId?: string | null }> | null | undefined
+): boolean {
+  if (!Array.isArray(payments)) return false;
+  return payments.some((payment) => Boolean(payment?.stripeSessionId));
+}
+
 export interface ManualPayment {
   amountCents: number;
   /** True when this payment closes the invoice; false when money is still owed. */

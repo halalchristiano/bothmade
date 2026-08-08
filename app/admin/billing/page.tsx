@@ -75,6 +75,8 @@ interface InvoiceRow {
   receivedCents?: number;
   /** Money in before any of it went back out — the ceiling on a refund. */
   grossReceivedCents?: number;
+  /** Whether a card refund is possible — no Checkout Session, no charge to reverse. */
+  hasCardPayment?: boolean;
 }
 
 interface LineDraft {

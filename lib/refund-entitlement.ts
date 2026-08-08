@@ -260,6 +260,8 @@ export interface RefundableInvoice {
   status: string;
   /** Money in before anything went back out — what makes an open row eligible. */
   grossReceivedCents: number;
+  /** Whether any of it came through Stripe, and so whether a card refund is possible. */
+  hasCardPayment: boolean;
   /** What is left on this invoice, ignoring the entitlement. */
   remainingCents: number;
   /** What may actually be refunded here, once the entitlement is shared out. */
@@ -276,6 +278,7 @@ export interface AllocationInput {
   createdAt: string | Date;
   /** Money in before anything went back out. Only consulted on an open invoice. */
   grossReceivedCents?: number;
+  hasCardPayment?: boolean;
 }
 
 export interface Allocation {
@@ -317,6 +320,7 @@ export function allocateRefund(
       createdAt: inv.createdAt,
       status: inv.status,
       grossReceivedCents: inv.grossReceivedCents ?? 0,
+      hasCardPayment: inv.hasCardPayment ?? false,
       remainingCents,
       allocatedCents,
     };

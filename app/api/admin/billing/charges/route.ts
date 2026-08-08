@@ -11,7 +11,7 @@ import {
   readChargeDraft,
 } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
-import { grossReceivedCents, receivedCents } from '@/lib/invoice-settlement';
+import { grossReceivedCents, hasCardPayment, receivedCents } from '@/lib/invoice-settlement';
 
 /**
  * Raise a one-off charge against an existing customer.
@@ -353,7 +353,7 @@ export async function GET(request: NextRequest) {
           // What has actually arrived against each one. An invoice can now be
           // part paid by transfer, and "open" alone stops being the whole
           // story the moment it is.
-          payments: { select: { amount: true } },
+          payments: { select: { amount: true, stripeSessionId: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: LIST_LIMIT,
@@ -452,6 +452,10 @@ export async function GET(request: NextRequest) {
           // against this rather than against what is still sitting here,
           // because the invoice's own refundedCents already subtracts them.
           grossReceivedCents: grossReceivedCents(payments),
+          // Whether a card refund is even possible: the refund route needs a
+          // Checkout Session to find the charge behind. Offered and then
+          // refused is the pattern this ledger has removed twice already.
+          hasCardPayment: hasCardPayment(payments),
         })),
         totals: {
           // The only figure that is a to-do list: raised, not cancelled, not

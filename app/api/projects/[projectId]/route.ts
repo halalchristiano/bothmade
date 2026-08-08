@@ -11,7 +11,7 @@ import { sendProjectLiveEmail } from '@/lib/email';
 import { resolveSiteUrl } from '@/lib/site-url';
 import { clientWantsEmail } from '@/lib/email-preferences';
 import { warrantyEndFrom } from '@/lib/launch';
-import { grossReceivedCents, receivedCents } from '@/lib/invoice-settlement';
+import { grossReceivedCents, hasCardPayment, receivedCents } from '@/lib/invoice-settlement';
 
 /**
  * `Project.deliverables` is a JSON string column, and this is the client's
@@ -90,7 +90,7 @@ export async function GET(
             // An invoice can be part paid by transfer, and both sides need to
             // know: the studio so it chases the right figure, the client so
             // their own dashboard stops asking for money they have sent.
-            payments: { select: { amount: true } },
+            payments: { select: { amount: true, stripeSessionId: true } },
           },
         },
       },
@@ -350,6 +350,9 @@ export async function GET(
              * client has no use for it.
              */
             grossReceivedCents: session.type === 'user' ? grossReceivedCents(invoice.payments) : undefined,
+            // Whether a card refund is possible at all — the refund route
+            // needs a Checkout Session to find the charge behind.
+            hasCardPayment: session.type === 'user' ? hasCardPayment(invoice.payments) : undefined,
             };
           }),
           deliverables: readDeliverables(project.deliverables, project.id),

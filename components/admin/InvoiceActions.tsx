@@ -64,6 +64,15 @@ export interface ActionableInvoice {
    * how much of a part-paid invoice may be given back.
    */
   grossReceivedCents?: number;
+  /**
+   * Whether any of this money actually came through Stripe.
+   *
+   * The refund route needs a Checkout Session to find the charge behind, so
+   * a card refund on an invoice settled by transfer is refused — after the
+   * amount, the reason and the button. Absent means "not read", and the
+   * option stays offered rather than being hidden on a guess.
+   */
+  hasCardPayment?: boolean;
 }
 
 interface Deduction {
@@ -535,8 +544,22 @@ function RefundModal({
 }) {
   const remaining = refundCeilingCents(invoice, invoice.grossReceivedCents ?? 0);
 
+  /*
+   * Whether a card refund is even possible here.
+   *
+   * The route reads the Checkout Session off a Payment row to find the charge
+   * behind it, so an invoice settled by bank transfer — or part paid by one —
+   * has nothing for Stripe to refund. That was discovered after typing an
+   * amount, writing a reason and pressing the button, which is the third time
+   * this file has had to stop offering an action it was going to refuse.
+   *
+   * `undefined` means the payload predates this and nothing is known, so the
+   * option stays offered: a wrong guess here hides the right answer.
+   */
+  const cardRefundable = invoice.hasCardPayment !== false;
+
   const [amount, setAmount] = useState((remaining / 100).toFixed(2));
-  const [method, setMethod] = useState<RefundMethod>('stripe');
+  const [method, setMethod] = useState<RefundMethod>(cardRefundable ? 'stripe' : 'manual');
   const [reason, setReason] = useState('');
   const [deductions, setDeductions] = useState<Deduction[]>([]);
   const [notifyClient, setNotifyClient] = useState(true);
@@ -596,6 +619,15 @@ function RefundModal({
       <div className="space-y-4">
         <p className="text-sm text-white/60">
           {invoice.description} — {formatCentsExact(invoice.amountCents)}
+          {/* Why the ceiling is lower than the invoice. Without this the box
+              asks for an amount, caps it at $900 on a $1,800 invoice and
+              never says where $900 came from. */}
+          {invoice.status !== 'paid' && (
+            <span className="block text-xs text-sky-300/80">
+              Still open — {formatCentsExact(invoice.grossReceivedCents ?? 0)} of it came in, and
+              that is the most that can go back.
+            </span>
+          )}
           {invoice.refundedCents > 0 && (
             <span className="block text-xs text-amber-300/80">
               {formatCentsExact(invoice.refundedCents)} has already gone back —{' '}
@@ -607,34 +639,42 @@ function RefundModal({
         <div>
           <label className="mb-1.5 block text-xs font-medium text-white/50">How is it going back?</label>
           <div className="space-y-1.5">
-            {(Object.keys(REFUND_METHOD_LABELS) as RefundMethod[]).map((key) => (
-              <label
-                key={key}
-                className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition-colors ${
-                  method === key
-                    ? 'border-sky-400/40 bg-sky-400/[0.07]'
-                    : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="refund-method"
-                  checked={method === key}
-                  onChange={() => setMethod(key)}
-                  className="mt-0.5"
-                />
-                <span className="text-sm">
-                  {REFUND_METHOD_LABELS[key]}
-                  <span className="block text-[11px] text-white/35">
-                    {key === 'stripe'
-                      ? 'Money leaves the account now, through Stripe. This cannot be undone.'
-                      : key === 'manual'
-                        ? "You send it yourself — bank transfer, cheque. This only writes it down."
-                        : 'Nothing moves. The value is held against their next invoice.'}
+            {(Object.keys(REFUND_METHOD_LABELS) as RefundMethod[]).map((key) => {
+              const unavailable = key === 'stripe' && !cardRefundable;
+              return (
+                <label
+                  key={key}
+                  className={`flex items-start gap-2.5 rounded-xl border p-3 transition-colors ${
+                    unavailable
+                      ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.01] opacity-50'
+                      : method === key
+                        ? 'cursor-pointer border-sky-400/40 bg-sky-400/[0.07]'
+                        : 'cursor-pointer border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="refund-method"
+                    checked={method === key}
+                    disabled={unavailable}
+                    onChange={() => setMethod(key)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm">
+                    {REFUND_METHOD_LABELS[key]}
+                    <span className="block text-[11px] text-white/35">
+                      {unavailable
+                        ? 'No card payment on this invoice — the money came in another way, so there is no charge for Stripe to reverse.'
+                        : key === 'stripe'
+                          ? 'Money leaves the account now, through Stripe. This cannot be undone.'
+                          : key === 'manual'
+                            ? "You send it yourself — bank transfer, cheque. This only writes it down."
+                            : 'Nothing moves. The value is held against their next invoice.'}
+                    </span>
                   </span>
-                </span>
-              </label>
-            ))}
+                </label>
+              );
+            })}
           </div>
         </div>
 
