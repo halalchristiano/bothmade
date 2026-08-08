@@ -76,7 +76,7 @@ export function InvoiceActions({
       {canSend && (
         <button
           onClick={() => setOpen('send')}
-          className="inline-flex items-center gap-1 text-white/45 transition-colors hover:text-sky-300"
+          className="-my-1 inline-flex items-center gap-1 py-1 text-white/45 transition-colors hover:text-sky-300"
         >
           <Send size={11} /> {invoice.sendCount ? 'Send again' : 'Send'}
         </button>
@@ -84,7 +84,7 @@ export function InvoiceActions({
       {canMarkPaid && (
         <button
           onClick={() => setOpen('paid')}
-          className="inline-flex items-center gap-1 text-white/45 transition-colors hover:text-emerald-300"
+          className="-my-1 inline-flex items-center gap-1 py-1 text-white/45 transition-colors hover:text-emerald-300"
         >
           <Check size={11} /> Mark paid
         </button>
@@ -92,7 +92,7 @@ export function InvoiceActions({
       {canVoid && (
         <button
           onClick={() => setOpen('void')}
-          className="inline-flex items-center gap-1 text-white/45 hover:text-red-300 transition-colors"
+          className="-my-1 inline-flex items-center gap-1 py-1 text-white/45 transition-colors hover:text-red-300"
         >
           <Ban size={11} /> Cancel
         </button>
@@ -100,7 +100,7 @@ export function InvoiceActions({
       {canRefund && (
         <button
           onClick={() => setOpen('refund')}
-          className="inline-flex items-center gap-1 text-white/45 hover:text-amber-300 transition-colors"
+          className="-my-1 inline-flex items-center gap-1 py-1 text-white/45 transition-colors hover:text-amber-300"
         >
           <RotateCcw size={11} /> Refund
         </button>

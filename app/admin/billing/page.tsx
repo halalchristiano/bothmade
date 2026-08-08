@@ -359,7 +359,7 @@ function BillingWorkspace() {
         minmax(0,1fr) for exactly this reason; the mobile one never did.
       */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
-        <Card className="p-6">
+        <Card className="order-1 p-6">
           <CardHeader icon={Plus} title="New custom charge" tone="emerald" />
 
           {/* Customer */}
@@ -574,11 +574,23 @@ function BillingWorkspace() {
           )}
         </Card>
 
-        {/* Between raising a charge and the ledger, because it belongs to
-            neither: it is the thinking you do before you touch either one. */}
-        <RefundEstimate projectId={projectId} onRefunded={loadInvoices} />
+        {/*
+          On a wide screen this sits beside the charge form, in the second
+          column, because it belongs to neither the form nor the ledger: it is
+          the thinking you do before you touch either one.
 
-        <Card className="p-6">
+          On a phone there are no columns, so it landed between them — and
+          with no customer picked it is a panel a whole screen tall saying
+          "pick a customer above". Which meant the invoice ledger, the thing
+          people open this page for, began below the fold of the fold. Ordered
+          last on mobile and back into place at `lg`, so the estimator is
+          where you'd reach for it on a desk and out of the way on a phone.
+        */}
+        <div className="order-3 lg:order-2">
+          <RefundEstimate projectId={projectId} onRefunded={loadInvoices} />
+        </div>
+
+        <Card className="order-2 p-6 lg:order-3">
           <CardHeader
             icon={Receipt}
             title="Invoices raised"
@@ -775,31 +787,54 @@ function BillingWorkspace() {
                     </div>
                   </div>
                   </Link>
-                  <div className="flex flex-wrap items-center gap-3 mt-1.5 text-[11px]">
+                  {/*
+                    Two rows, not one wrapping line.
+
+                    Everything below the amount used to be a single flex-wrap
+                    of six things — a PDF link, a copy button, a sentence about
+                    where it was emailed, and three actions, two of which take
+                    money. On a phone that wrapped into four ragged lines with
+                    "Mark paid" landing wherever the sentence above it happened
+                    to end, at eleven pixels and no padding: well under the
+                    smallest target a thumb can hit reliably, for a control
+                    that settles an invoice.
+
+                    So the reference material goes on one line and the actions
+                    on their own, and the actions get vertical padding that
+                    reaches into the gap between rows — bigger to press
+                    without being bigger to look at.
+                  */}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
                     {invoice.pdfUrl && (
                       <a
                         href={invoice.pdfUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sky-300 hover:text-sky-200 transition-colors"
+                        className="-my-1 py-1 text-sky-300 transition-colors hover:text-sky-200"
                       >
                         Invoice PDF
                       </a>
                     )}
                     {invoice.paymentUrl && (
-                      <CopyButton value={invoice.paymentUrl} label="Copy pay link" />
+                      <CopyButton
+                        value={invoice.paymentUrl}
+                        label="Copy pay link"
+                        className="-my-1 py-1 text-white/50 transition-colors hover:text-white"
+                      />
                     )}
                     {/* "Not emailed" used to be the end of the sentence and
                         there was nothing to do about it. It is now a state
                         with a button beside it, so it says how many times
                         instead of only whether. */}
-                    <span className="text-white/30">
+                    <span className="min-w-0 truncate text-white/30">
                       {invoice.sendCount > 1
                         ? `Sent ${invoice.sendCount}× to ${invoice.sentToEmail}`
                         : invoice.sentToEmail
                           ? `Sent to ${invoice.sentToEmail}`
                           : 'Not emailed'}
                     </span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
                     <InvoiceActions invoice={invoice} onDone={loadInvoices} />
                   </div>
                   {/* The reason is the whole value of the record. An invoice
