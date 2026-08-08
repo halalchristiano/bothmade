@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const prisma = {
   project: { findUnique: vi.fn() },
+  instalment: { findMany: vi.fn() },
   invoice: {
     findFirst: vi.fn(),
     create: vi.fn(),
@@ -358,6 +359,7 @@ describe('the ledger totals', () => {
 
   beforeEach(() => {
     prisma.invoice.findMany.mockResolvedValue([]);
+    prisma.instalment.findMany.mockResolvedValue([]);
     prisma.invoice.groupBy
       .mockResolvedValueOnce([
         { status: 'open', _sum: { amountCents: 340000 }, _count: { _all: 3 } },
@@ -474,5 +476,58 @@ describe('the ledger totals', () => {
     await GET(listRequest('https://bothmade.test/api/admin/billing/charges?q=%20%20'));
 
     expect(prisma.invoice.findMany.mock.calls[0][0].where.OR).toBeUndefined();
+  });
+});
+
+/**
+ * The ledger lists every invoice raised — one-off charges and the three
+ * scheduled payments on every project alike. They are settled completely
+ * differently, and the row was offering an action that always refused: press
+ * Send on an instalment, read a confirmation, press Send again, and get back
+ * "send it from the project's payment schedule". Correct, and said far too
+ * late.
+ */
+describe('telling the two kinds of invoice apart', () => {
+  function listRequest() {
+    return {
+      nextUrl: new URL('https://bothmade.test/api/admin/billing/charges'),
+    } as unknown as Parameters<typeof GET>[0];
+  }
+
+  beforeEach(() => {
+    prisma.invoice.groupBy.mockResolvedValue([]);
+    prisma.invoice.aggregate?.mockResolvedValue?.({ _sum: { refundedCents: 0 } });
+    prisma.invoice.count.mockResolvedValue(2);
+    prisma.invoice.findMany.mockResolvedValue([
+      { id: 'inv_1', number: 'BM-2026-0031', status: 'open' },
+      { id: 'inv_2', number: 'BM-2026-0030', status: 'open' },
+    ]);
+    prisma.instalment.findMany.mockResolvedValue([
+      { invoiceNumber: 'BM-2026-0030', projectId: 'proj_1' },
+    ]);
+  });
+
+  it('flags the scheduled ones on the row', async () => {
+    const body = await (await GET(listRequest())).json();
+
+    expect(body.invoices[0]).toMatchObject({ number: 'BM-2026-0031', isInstalment: false });
+    expect(body.invoices[1]).toMatchObject({ number: 'BM-2026-0030', isInstalment: true });
+  });
+
+  it('asks only about the rows on screen', async () => {
+    await GET(listRequest());
+
+    expect(prisma.instalment.findMany.mock.calls[0][0].where).toEqual({
+      invoiceNumber: { in: ['BM-2026-0031', 'BM-2026-0030'] },
+    });
+  });
+
+  /* An empty page is not a reason to ask the database about nothing. */
+  it('does not run the join on an empty page', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+
+    await GET(listRequest());
+
+    expect(prisma.instalment.findMany).not.toHaveBeenCalled();
   });
 });

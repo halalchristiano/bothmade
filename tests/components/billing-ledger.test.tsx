@@ -58,6 +58,17 @@ const CHASED = {
   issuedBy: { name: 'Evan', email: 'evan@bothmade.studio' },
 };
 
+const INSTALMENT = {
+  ...CHASED,
+  id: 'inv_2',
+  number: 'BM-2026-0030',
+  description: 'Payment 2 of 3 — Northgate Website',
+  amountCents: 600_000,
+  sendCount: 1,
+  createdAt: day(9),
+  isInstalment: true,
+};
+
 const NEVER_SENT = {
   ...CHASED,
   id: 'inv_3',
@@ -270,5 +281,37 @@ describe('finding one invoice', () => {
     // And the box you would clear it in is still there. Gated on the rows
     // that came back, it unmounted itself and the only way out was a reload.
     expect(screen.getByPlaceholderText(/Find by company/)).toBeTruthy();
+  });
+});
+
+describe('a scheduled payment in the list', () => {
+  /*
+   * Sent from the project, which holds the checkout session that pays it.
+   * Offering Send here and refusing after two clicks is worse than not
+   * offering it — and a disabled button with no onward route just sends
+   * somebody hunting through the admin for where you can.
+   */
+  it('points at the schedule instead of offering a send that refuses', async () => {
+    invoices = [INSTALMENT];
+    stubFetch();
+
+    render(<BillingPage />);
+
+    const link = await screen.findByRole('link', { name: /Send from schedule/ });
+    expect(link.getAttribute('href')).toBe('/admin/projects/p1');
+    expect(screen.queryByRole('button', { name: /Send again/ })).toBeNull();
+  });
+
+  /*
+   * Marking one paid by hand stays: that route settles the instalment row
+   * alongside the invoice, so it is the one manual action that works on both.
+   */
+  it('still lets a transfer against it be recorded', async () => {
+    invoices = [INSTALMENT];
+    stubFetch();
+
+    render(<BillingPage />);
+
+    expect(await screen.findByRole('button', { name: /Mark paid/ })).toBeTruthy();
   });
 });

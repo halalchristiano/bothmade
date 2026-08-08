@@ -69,6 +69,8 @@ interface InvoiceRow {
   client: { id: string; company: string; email: string };
   project: { id: string; name: string };
   issuedBy: { name: string | null; email: string } | null;
+  /** One of a project's scheduled payments rather than a one-off charge. */
+  isInstalment?: boolean;
 }
 
 interface LineDraft {
@@ -835,7 +837,10 @@ function BillingWorkspace() {
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
-                    <InvoiceActions invoice={invoice} onDone={loadInvoices} />
+                    <InvoiceActions
+                      invoice={{ ...invoice, projectId: invoice.project.id }}
+                      onDone={loadInvoices}
+                    />
                   </div>
                   {/* The reason is the whole value of the record. An invoice
                       that changed and doesn't say why is the hardest thing to

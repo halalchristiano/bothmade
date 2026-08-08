@@ -377,6 +377,30 @@ export async function GET(request: NextRequest) {
       prisma.invoice.count({ where: listWhere }),
     ]);
 
+    /*
+     * Which of these are instalments, so the row can stop offering an action
+     * that always refuses.
+     *
+     * This list is every invoice raised — one-off charges and the three
+     * scheduled payments on every project alike. They are settled completely
+     * differently: an instalment is paid through a Checkout Session held on
+     * its own row, so the resend route turns one away with "send it from the
+     * project's payment schedule". Which is correct, and was being said AFTER
+     * somebody had pressed Send, read a confirmation, and pressed Send again.
+     *
+     * Matched on `invoiceNumber`, the unique join the void and mark-paid
+     * routes already use, and only for the rows on screen.
+     */
+    const instalments = invoices.length
+      ? await prisma.instalment.findMany({
+          where: { invoiceNumber: { in: invoices.map((i) => i.number) } },
+          select: { invoiceNumber: true, projectId: true },
+        })
+      : [];
+    const instalmentNumbers = new Set(
+      instalments.map((i) => i.invoiceNumber).filter((n): n is string => Boolean(n))
+    );
+
     const bucket = (status: string) => byStatus.find((row) => row.status === status);
     const open = bucket('open');
     const paid = bucket('paid');
@@ -396,7 +420,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        invoices,
+        // Flagged on the row rather than sent as a separate list, so nothing
+        // downstream has to do the join a second time to know what it is
+        // looking at.
+        invoices: invoices.map((invoice) => ({
+          ...invoice,
+          isInstalment: instalmentNumbers.has(invoice.number),
+        })),
         totals: {
           // The only figure that is a to-do list: raised, not cancelled, not
           // paid. Everything else on this page is history.

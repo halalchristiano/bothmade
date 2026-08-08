@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Ban, Check, RotateCcw, Send } from 'lucide-react';
+import Link from 'next/link';
+import { Ban, CalendarClock, Check, RotateCcw, Send } from 'lucide-react';
 import { Modal } from '@/components/admin/Modal';
 import { BrandButton, inputClass } from '@/components/admin/ui';
 import { dollarsToCents } from '@/lib/billing';
@@ -39,6 +40,17 @@ export interface ActionableInvoice {
   /** How the chase has gone. Absent on payloads written before sends were counted. */
   sendCount?: number;
   lastSentAt?: string | null;
+  /**
+   * One of the three scheduled payments on a project, rather than a one-off
+   * charge. It is settled through a Checkout Session held on the Instalment
+   * row, so the resend route refuses it and points at the project's schedule
+   * — which is right, and was being said only after somebody had pressed
+   * Send, read a confirmation and pressed Send again. Offering the action and
+   * then refusing it is worse than not offering it.
+   */
+  isInstalment?: boolean;
+  /** Where the schedule lives, for the link that replaces Send on one. */
+  projectId?: string;
 }
 
 interface Deduction {
@@ -66,8 +78,12 @@ export function InvoiceActions({
    * because they answer different questions and the day one of them grows a
    * condition the other doesn't, a shared boolean is how it goes unnoticed.
    */
-  const canSend = invoice.status === 'open';
+  // Not an instalment: those are sent from the project's schedule, which owns
+  // the checkout session that pays them. Marking one paid by hand is fine and
+  // stays — that route settles the instalment row alongside the invoice.
+  const canSend = invoice.status === 'open' && !invoice.isInstalment;
   const canMarkPaid = invoice.status === 'open';
+  const sendFromSchedule = invoice.status === 'open' && invoice.isInstalment && invoice.projectId;
 
   if (!canVoid && !canRefund && !canSend && !canMarkPaid) return null;
 
@@ -80,6 +96,18 @@ export function InvoiceActions({
         >
           <Send size={11} /> {invoice.sendCount ? 'Send again' : 'Send'}
         </button>
+      )}
+      {sendFromSchedule && (
+        // A link rather than a disabled button. "You can't do that here" with
+        // no onward route is the version of this that sends somebody hunting
+        // through the admin for where you can.
+        <Link
+          href={`/admin/projects/${invoice.projectId}`}
+          className="-my-1 inline-flex items-center gap-1 py-1 text-white/45 transition-colors hover:text-sky-300"
+          title="Scheduled payments are sent from the project, which holds the checkout that pays them."
+        >
+          <CalendarClock size={11} /> Send from schedule
+        </Link>
       )}
       {canMarkPaid && (
         <button
