@@ -477,3 +477,156 @@ describe('a custom charge being paid', () => {
     expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Contract-price money that arrives OUTSIDE the instalment flow — the legacy
+ * balance link, a manually minted checkout — is applied to the schedule
+ * oldest-first, WHOLE ROWS ONLY.
+ *
+ * Three mutations proved this whole branch was documented and unheld. All 53
+ * tests passed with the row-boundary check relaxed to `remaining < 0`, with
+ * the redelivery scoping removed from the instalment update, and with the
+ * `amount_total` fallback changed — and each still typechecked, so none was
+ * passing by breaking the file.
+ *
+ * The boundary check is the one that costs. Relax it and a client who paid
+ * $10,000 of a $12,000 schedule has all three rows stamped paid: the $2,000
+ * still owed disappears from the schedule the client sees, from the chase
+ * queue, and from every list that would have gone after it. The money is
+ * simply written off by arithmetic nobody ran.
+ */
+describe('money arriving outside the instalment flow', () => {
+  const THREE_ROWS = [
+    { id: 'i1', index: 1, amountCents: 400_000, status: 'due' },
+    { id: 'i2', index: 2, amountCents: 400_000, status: 'scheduled' },
+    { id: 'i3', index: 3, amountCents: 400_000, status: 'scheduled' },
+  ];
+
+  beforeEach(() => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_9',
+      name: 'Acme — Website',
+      status: 'build',
+      client: { company: 'Acme' },
+    });
+    prisma.instalment.findMany.mockResolvedValue(THREE_ROWS);
+    prisma.instalment.update.mockResolvedValue({});
+  });
+
+  const paidRowIds = () =>
+    prisma.instalment.update.mock.calls
+      .filter((c) => (c[0] as { data: { status?: string } }).data.status === 'paid')
+      .map((c) => (c[0] as { where: { id: string } }).where.id);
+
+  it('settles the rows a payment fully covers and stops at the one it does not', async () => {
+    // $10,000 against 3 × $4,000: two rows are covered, the third is not.
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 1_000_000));
+
+    await POST(request());
+
+    expect(paidRowIds()).toEqual(['i1', 'i2']);
+  });
+
+  it('settles the whole schedule when the payment covers it', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 1_200_000));
+
+    await POST(request());
+
+    expect(paidRowIds()).toEqual(['i1', 'i2', 'i3']);
+  });
+
+  /** Short of even the first row settles nothing, rather than the nearest one. */
+  it('settles nothing when the payment covers no row at all', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 150_000));
+
+    await POST(request());
+
+    expect(paidRowIds()).toEqual([]);
+    // The money is still recorded — it is allocation that is withheld, not receipt.
+    expect(prisma.payment.create.mock.calls[0][0].data).toMatchObject({ amount: 150_000 });
+  });
+
+  it('works oldest-first, so the schedule and the ledger cannot disagree', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, 800_000));
+
+    await POST(request());
+
+    // i1 before i2, never i3 before i2.
+    expect(paidRowIds()).toEqual(['i1', 'i2']);
+  });
+
+  /**
+   * A session Stripe hands over with no total. `?? 0` is the deliberate
+   * answer: nothing is allocated, because zero covers no row — the opposite
+   * of a fallback that guesses.
+   */
+  it('allocates nothing when Stripe sends no amount at all', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(BALANCE_METADATA, null));
+
+    await POST(request());
+
+    expect(prisma.payment.create.mock.calls[0][0].data).toMatchObject({ amount: 0 });
+    expect(paidRowIds()).toEqual([]);
+  });
+
+  it('leaves the schedule alone entirely for a custom charge', async () => {
+    constructWebhookEvent.mockReturnValue(
+      completedSession({ existingProjectId: 'proj_9', paymentType: 'custom', invoiceId: 'inv_1' }, 1_200_000)
+    );
+
+    await POST(request());
+
+    // A one-off charge is priced outside the contracted total, so it may not
+    // pay down rows of it however large it is.
+    expect(paidRowIds()).toEqual([]);
+  });
+});
+
+/**
+ * An instalment checkout carries its row's id and settles that exact row.
+ * Stripe redelivers events, so the update is scoped to a row that is not
+ * already paid — otherwise a redelivery days later rewrites `paidAt` and the
+ * client's schedule starts claiming the payment landed on the wrong day.
+ */
+describe('an instalment checkout being redelivered', () => {
+  const INST_METADATA = {
+    existingProjectId: 'proj_9',
+    paymentType: 'balance',
+    instalmentId: 'i2',
+    invoiceId: 'inv_1',
+  };
+
+  beforeEach(() => {
+    prisma.project.findUnique.mockResolvedValue({
+      id: 'proj_9',
+      name: 'Acme — Website',
+      status: 'build',
+      client: { company: 'Acme' },
+    });
+    prisma.instalment.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('settles the exact row the checkout named', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(INST_METADATA, 400_000));
+
+    await POST(request());
+
+    expect(prisma.instalment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'i2', projectId: 'proj_9' }),
+        data: expect.objectContaining({ status: 'paid' }),
+      })
+    );
+    // And does not touch the schedule oldest-first as well.
+    expect(prisma.instalment.update).not.toHaveBeenCalled();
+  });
+
+  it('scopes the write so a redelivery cannot rewrite when it was paid', async () => {
+    constructWebhookEvent.mockReturnValue(completedSession(INST_METADATA, 400_000));
+
+    await POST(request());
+
+    const where = (prisma.instalment.updateMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(where.status, 'an already-paid row must not match').toEqual({ not: 'paid' });
+  });
+});
