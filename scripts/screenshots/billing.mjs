@@ -133,6 +133,15 @@ const SETTLED = [
     // Paid through Stripe, so a card refund is possible here and is the one
     // the box should open on.
     receivedCents: 48000, grossReceivedCents: 48000, hasCardPayment: true },
+  /*
+   * More money than it asked for. A transfer arrived, then the client's
+   * original pay link — fixed-amount, for the WHOLE invoice — took it again
+   * on top. Both are real payments and the invoice really is paid; it is also
+   * holding $900 of somebody else's money.
+   */
+  { ...INVOICES[2], id: 'inv_7', number: 'BM-2026-0022', status: 'paid',
+    description: 'Brand photography day — paid twice', amountCents: 180000, createdAt: day(41),
+    receivedCents: 270000, grossReceivedCents: 270000, hasCardPayment: true },
   { ...INVOICES[1], id: 'inv_8', number: 'BM-2026-0023', status: 'void', amountCents: 75000,
     description: 'SEO audit add-on', voidReason: 'Raised against the wrong project', createdAt: day(53) },
 ];
@@ -310,6 +319,22 @@ async function openRefund(number) {
   }
   throw new Error(`No Refund button opened ${number} — the row is not offering one.`);
 }
+
+/*
+ * The row that replaces Send on a part-paid invoice. Sending it again would
+ * rebuild the original demand — the invoice total in the PDF and the email,
+ * and a pay link for it — so the next move is a charge for what is left.
+ */
+await page.getByRole('button', { name: 'Needs chasing' }).click();
+await page.waitForTimeout(700);
+await page.getByRole('button', { name: /^Charge the .* left$/ }).first().click();
+await page.waitForTimeout(700);
+await shot('charge-balance', 'the part-paid row fills the form with the difference');
+await page.getByRole('button', { name: 'Choose a different customer' }).click();
+await page.waitForTimeout(300);
+
+await page.getByRole('button', { name: 'All' }).click();
+await page.waitForTimeout(800);
 
 await openRefund('BM-2026-0024');
 await page.waitForTimeout(400);
