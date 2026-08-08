@@ -157,7 +157,18 @@ export async function GET(request: NextRequest) {
      */
     const lastActivity = await prisma.leadActivity.groupBy({
       by: ['leadId'],
-      where: { leadId: { in: leads.map((l) => l.id) } },
+      /*
+       * `automated: false` is the load-bearing half.
+       *
+       * Six things write this timeline without anybody here doing the work
+       * they describe: the nightly follow-up cron, an unsubscribe, the
+       * contact form, the start-page interest form, a checkout, and a client
+       * signing. The cron alone touches every lead in the sequence every
+       * night — so ordering on the raw timeline meant the board was sorted by
+       * a robot's overnight run each morning, which is the same defect as
+       * ordering on `updatedAt`, one level further down.
+       */
+      where: { leadId: { in: leads.map((l) => l.id) }, automated: false },
       _max: { createdAt: true },
     });
     const workedAt = new Map(lastActivity.map((r) => [r.leadId, r._max.createdAt]));

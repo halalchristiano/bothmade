@@ -237,6 +237,22 @@ describe('when each lead was last worked', () => {
   });
 
   /**
+   * The half that keeps the whole thing from being `updatedAt` again.
+   *
+   * Six writers put rows on this timeline with nobody here doing the work
+   * they describe — the nightly follow-up cron above all, which touches every
+   * lead in the sequence every night. Count those and the board is sorted by
+   * a robot's 3am run each morning: the same defect as ordering on
+   * `updatedAt`, one level further down, and harder to see because the cards
+   * would all be labelled "Worked 6h ago" and look true.
+   */
+  it('ignores the rows the app wrote for itself', async () => {
+    await GET(request());
+
+    expect(prisma.leadActivity.groupBy.mock.calls[0][0].where.automated).toBe(false);
+  });
+
+  /**
    * Never worked has to arrive as null, not as an absent field or a zero
    * date — the board sorts those cards to the bottom and labels them, and
    * both readings depend on telling "nobody has called them" apart from

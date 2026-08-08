@@ -68,6 +68,9 @@ export async function recordUnsubscribe(
         leadId: lead.id,
         type: 'note',
         content: 'Unsubscribed from follow-up emails. Do not contact by email.',
+        // The recipient did this to us. Counting it as work would put the one
+        // lead nobody may email again at the top of somebody's column.
+        automated: true,
       },
     })
     .catch((e) => console.error('Unsubscribe activity not written:', e));

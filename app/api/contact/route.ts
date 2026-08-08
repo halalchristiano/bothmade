@@ -176,6 +176,10 @@ async function recordEnquiry(
         leadId: existing.id,
         type: 'note',
         content: `Client used the contact form again.\n\n${detail}`,
+        // An enquiry to answer, not a call somebody made. The queue is what
+        // surfaces this for action; the board's "worked" order must not
+        // claim a rep touched it.
+        automated: true,
       },
     });
     // They came to us — the strongest buying signal there is, and the sales

@@ -290,6 +290,9 @@ export async function GET(request: NextRequest) {
               type: 'email',
               content: `Automated follow-up ${stage} of ${AUTO_FOLLOW_UP_TOTAL} sent — ${mail.subject}`,
               createdById: sender.id,
+              // Nobody sent this. `createdById` names the mailbox it went
+              // out from, which is why it cannot stand in for who worked it.
+              automated: true,
             },
           }),
           prisma.lead.update({

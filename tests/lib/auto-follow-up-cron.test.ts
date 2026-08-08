@@ -165,6 +165,27 @@ describe('sending', () => {
   });
 
   /**
+   * The timeline row this writes must say it was the app that wrote it.
+   *
+   * The sales board orders each column by when a lead was last worked, read
+   * off this timeline. This job runs nightly against every lead in the
+   * sequence, so an unflagged row here means the board is sorted by the 3am
+   * cron every morning — cards at the top nobody has spoken to, labelled
+   * "Worked 6h ago", which reads as true. `createdById` cannot stand in for
+   * the flag: it is set, deliberately, to the mailbox the mail went out
+   * from.
+   */
+  it('marks the timeline row as the app’s own, not somebody’s work', async () => {
+    prisma.lead.findMany.mockResolvedValue([lead()]);
+
+    await run();
+
+    const created = prisma.leadActivity.create.mock.calls[0]![0] as { data: Record<string, unknown> };
+    expect(created.data.automated).toBe(true);
+    expect(created.data.createdById, 'the sending mailbox is still recorded').toBeTruthy();
+  });
+
+  /**
    * Stamped sent even when it failed, and the failure recorded beside it.
    *
    * Leaving it due retries a dead address every night forever, and repeated

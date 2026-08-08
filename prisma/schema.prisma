@@ -866,8 +866,18 @@ model LeadActivity {
   createdById String?
   createdBy   User?   @relation("LeadActivityAuthor", fields: [createdById], references: [id], onDelete: SetNull)
 
+  // Written by the app rather than typed by somebody here: the nightly
+  // follow-up cron, an unsubscribe, a contact form, a client signing. The
+  // board's "last worked" order has to skip these — an automated email that
+  // goes out at 3am is not somebody working the lead, and counting it meant
+  // the cron reshuffled the top of every column overnight for work nobody
+  // had done. `createdById` cannot answer this: the cron stamps a real user
+  // as the sender.
+  automated Boolean @default(false)
+
   createdAt DateTime @default(now())
 
+  @@index([leadId, automated, createdAt])
   @@map("lead_activities")
 }
 

@@ -198,6 +198,16 @@ describe('POST /api/contact — where the message goes', () => {
     );
     // Writing in unprompted is a buying signal the sales views sort on.
     expect(leadUpdate.mock.calls[0][0].data.replyReceivedAt).toBeInstanceOf(Date);
+
+    /*
+     * An enquiry to answer, not a call somebody made — and the board's "last
+     * worked" order reads this timeline. Unflagged, a form submission at
+     * midnight puts the card at the top of its column captioned "Worked just
+     * now", which credits a rep with a conversation that never happened and
+     * hides the fact that nobody has replied yet. `replyReceivedAt` above is
+     * what surfaces this for action, in the queue, where it belongs.
+     */
+    expect(activityCreate.mock.calls[0][0].data.automated).toBe(true);
   });
 
   it('honours a STUDIO_INBOX override', async () => {

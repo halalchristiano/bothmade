@@ -85,10 +85,19 @@ describe('the unsubscribe route', () => {
     await post('tok_1');
 
     const { data } = prisma.leadActivity.create.mock.calls[0][0] as unknown as {
-      data: { leadId: string; content: string };
+      data: { leadId: string; content: string; automated: boolean };
     };
     expect(data.leadId).toBe('lead_1');
     expect(data.content).toMatch(/do not contact/i);
+
+    /*
+     * And flagged as the app's own row. The sales board orders each column by
+     * when a lead was last worked, off this same timeline — so an unflagged
+     * unsubscribe puts the one business nobody is allowed to email again at
+     * the top of somebody's column, captioned as though a rep had just
+     * spoken to them.
+     */
+    expect(data.automated, 'the recipient did this, not a rep').toBe(true);
   });
 
   it('redirects back with a 303, so a refresh cannot re-post it', async () => {

@@ -143,7 +143,8 @@ export async function POST(request: NextRequest) {
 
       if (existing) {
         await prisma.leadActivity.create({
-          data: { leadId: existing.id, type: 'note', content: summary },
+          // Their move, not ours.
+          data: { leadId: existing.id, type: 'note', content: summary, automated: true },
         });
         await prisma.lead.update({
           where: { id: existing.id },

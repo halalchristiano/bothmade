@@ -66,7 +66,8 @@ async function recordCheckoutAttempt(params: {
       // Leave status and owner alone — this lead is already someone's, and a
       // second checkout attempt must not walk a won deal backwards.
       await prisma.leadActivity.create({
-        data: { leadId: existing.id, type: 'note', content: summary },
+        // They checked out; nobody here worked the lead to make it happen.
+        data: { leadId: existing.id, type: 'note', content: summary, automated: true },
       });
       await prisma.lead.update({
         where: { id: existing.id },

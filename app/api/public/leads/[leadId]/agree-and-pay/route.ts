@@ -288,6 +288,8 @@ export async function POST(
             lead.proposalDepositOnly ? schedule[0].label : 'payment in full'
           } for ${formatCentsExact(chargeAmount)}.`,
           url: signedContractUrl || undefined,
+          // The client signed it. Their status change is what moves this card.
+          automated: true,
         },
       });
 
