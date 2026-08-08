@@ -72,9 +72,30 @@ function Row({
           {due.label}
         </span>
       )}
+      {/*
+        The only way to delete a task, and it was `opacity-0` until the row
+        was hovered.
+
+        There is no hover on a phone. The button is still in the layout and
+        still takes a tap, so on the dashboard's mobile view the way to
+        remove something was to press an invisible six-millimetre target
+        beside the checkbox — and the neighbouring miss ticks the task off
+        instead, because the whole row is the checkbox's label.
+
+        It was invisible to a keyboard as well: Tab moves focus onto it and
+        `group-hover` does not fire, so the focus ring sat on nothing. That
+        is 2.4.7 Focus Visible, and it is the same control.
+
+        So: shown once anything in the row is hovered OR the button itself
+        has focus, and never fully transparent — 40% is legible without
+        competing with the title, which is what the fade was protecting.
+        `p-1.5` takes it from 42×16 to 42×28, past the 24px WCAG 2.5.8 asks
+        for, matching the rule the client portal's controls were fixed to.
+      */}
       <button
         onClick={() => onDelete(task.id)}
-        className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-300 text-xs transition-opacity"
+        aria-label={`Remove “${task.title}”`}
+        className="shrink-0 rounded p-1.5 text-xs text-white/30 opacity-40 transition-opacity hover:text-red-300 group-hover:opacity-100 focus-visible:opacity-100"
       >
         remove
       </button>
