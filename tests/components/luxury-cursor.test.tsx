@@ -16,10 +16,25 @@ import { LuxuryCursor } from '@/components/LuxuryCursor';
  * white on white.
  */
 
-const FINE_POINTER = { matches: true, addEventListener() {}, removeEventListener() {} };
+/*
+ * Answers each media query on its own terms.
+ *
+ * This used to return `{ matches: true }` for everything, which was fine
+ * while the component asked only one question. It now also checks
+ * prefers-reduced-motion, and a blanket true meant "fine pointer" and "wants
+ * less motion" at the same time — a combination that describes nobody, and
+ * one under which the component correctly does nothing at all. The stub, not
+ * the component, was the thing that had to change.
+ */
+const media = (query: string) => ({
+  matches: query.includes('prefers-reduced-motion') ? false : true,
+  media: query,
+  addEventListener() {},
+  removeEventListener() {},
+});
 
 beforeEach(() => {
-  vi.stubGlobal('matchMedia', () => FINE_POINTER);
+  vi.stubGlobal('matchMedia', media);
   // The component drives position on the frame clock; one tick is enough.
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
     return 0 as unknown as number;

@@ -49,6 +49,33 @@ export function LuxuryCursor() {
     // hydration staring at a page with no pointer at all.
     const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
     if (!fine.matches) return;
+
+    /*
+     * Leave the real cursor alone for anyone who asked for less motion.
+     *
+     * Two separate reasons, and the second is the one that matters more.
+     *
+     * The trail is a lerp driven by requestAnimationFrame — an element that
+     * visibly lags and chases the pointer, which is the shape of motion
+     * prefers-reduced-motion exists to suppress. The reduced-motion block in
+     * globals.css cannot reach it: that flattens animation-duration and
+     * transition-duration, and this position is written straight to
+     * `style.transform` every frame, which neither of those touches. So the
+     * site's own policy stopped exactly here.
+     *
+     * And `.has-lux-cursor { cursor: none }` removes the *system* cursor
+     * entirely, replacing it with a 6px dot. Anyone running a large,
+     * high-contrast or otherwise customised OS pointer — which is a setting
+     * people turn on to be able to find it at all — loses it and gets the
+     * dot. Reduced motion is the closest signal a browser gives us that
+     * someone wants their own machine's behaviour rather than ours.
+     *
+     * Returning before the class is added leaves the two elements rendered at
+     * opacity-0 and the native cursor untouched, which is exactly what the
+     * touch-device path above already does.
+     */
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
     document.documentElement.classList.add('has-lux-cursor');
 
     let mouseX = window.innerWidth / 2;
