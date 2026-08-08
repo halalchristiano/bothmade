@@ -32,7 +32,10 @@
  * the client answering in one order while the studio reads the answers back
  * in another is its own small confusion.
  */
-export const ONBOARDING_ORDER = [{ order: 'asc' }, { createdAt: 'asc' }] as const;
+export const ONBOARDING_ORDER: Array<{ order?: 'asc'; createdAt?: 'asc' }> = [
+  { order: 'asc' },
+  { createdAt: 'asc' },
+];
 
 export type OnboardingType = 'text' | 'textarea' | 'select' | 'multi' | 'yesno';
 
