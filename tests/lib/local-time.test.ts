@@ -98,3 +98,73 @@ describe('leadLocalTime', () => {
     expect(denver?.hour).toBe(12);
   });
 });
+
+/**
+ * The edges of the window, which is where the window actually is.
+ *
+ * The cases above each pick an hour comfortably inside a band — 10:00 for
+ * "good", 04:00 for "bad", 12:00 for "workable" — and every one of them keeps
+ * passing while the boundaries move. Two mutations proved it: widening the
+ * mid-morning window from 11:00 to 12:00, and dropping the start of the
+ * working day from 08:00 to 06:00 so the queue would tell a rep it is fine to
+ * ring a business at six in the morning. Neither failed a single test.
+ *
+ * This is the one number on a call row a rep acts on without checking, and
+ * the comment at the top of this file says why: ringing a US lead at 4am
+ * burns them permanently. A band that can silently grow by two hours in
+ * either direction is not pinned down.
+ *
+ * New York, on a date well inside US daylight saving, so each UTC hour maps
+ * to exactly one local hour.
+ */
+describe('the edges of the callable day', () => {
+  const NY = '2125550100';
+  /** 2026-03-10 is EDT, UTC-4 — so local hour h is (h + 4):00 UTC. */
+  const atLocalHour = (h: number) =>
+    leadLocalTime(NY, new Date(`2026-03-10T${String(h + 4).padStart(2, '0')}:30:00Z`));
+
+  it('maps the fixture hours the way this test assumes', () => {
+    for (const h of [7, 8, 9, 10, 12, 13, 15, 16, 17, 18, 19]) {
+      expect(atLocalHour(h)?.hour, `local ${h}:30`).toBe(h);
+    }
+  });
+
+  it('will not call it workable before 8am', () => {
+    expect(atLocalHour(7)?.callability).toBe('bad');
+    expect(atLocalHour(7)?.advice).toMatch(/too early/i);
+    expect(atLocalHour(8)?.callability).toBe('okay');
+  });
+
+  it('opens the mid-morning window at 9 and closes it at 11', () => {
+    expect(atLocalHour(8)?.callability).toBe('okay');
+    expect(atLocalHour(9)?.callability).toBe('good');
+    expect(atLocalHour(10)?.callability).toBe('good');
+    expect(atLocalHour(11)?.callability).toBe('okay');
+  });
+
+  it('opens the afternoon window at 1 and closes it at 4', () => {
+    expect(atLocalHour(12)?.callability).toBe('okay');
+    expect(atLocalHour(13)?.callability).toBe('good');
+    expect(atLocalHour(15)?.callability).toBe('good');
+    expect(atLocalHour(16)?.callability).toBe('okay');
+  });
+
+  /**
+   * 17:00 stays workable but stops being about an office — the row says so,
+   * and a rep reads the sentence rather than the colour.
+   */
+  it('hands 5pm over to the trades, and gives up at 7', () => {
+    expect(atLocalHour(16)?.advice).toMatch(/winding down/i);
+    expect(atLocalHour(17)?.callability).toBe('okay');
+    expect(atLocalHour(17)?.advice).toMatch(/trade/i);
+    expect(atLocalHour(18)?.callability).toBe('okay');
+    expect(atLocalHour(19)?.callability).toBe('bad');
+    expect(atLocalHour(19)?.advice).toMatch(/too late/i);
+  });
+
+  it('names the reason it is only workable, band by band', () => {
+    expect(atLocalHour(8)?.advice).toMatch(/only just be in/i);
+    expect(atLocalHour(12)?.advice).toMatch(/lunch/i);
+    expect(atLocalHour(16)?.advice).toMatch(/winding down/i);
+  });
+});
