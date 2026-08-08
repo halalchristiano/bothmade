@@ -5,9 +5,57 @@ import { cookies } from 'next/headers';
 import { jwtSecret } from '@/lib/env';
 
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'auth_token';
-const AUTH_COOKIE_MAX_AGE = parseInt(
-  process.env.AUTH_COOKIE_MAX_AGE || '604800'
-); // 7 days
+
+/** Seven days, in seconds. */
+const DEFAULT_AUTH_COOKIE_MAX_AGE = 604800;
+
+/**
+ * How long a session cookie lives, in **seconds**.
+ *
+ * This was `parseInt(process.env.AUTH_COOKIE_MAX_AGE || '604800')`, and
+ * parseInt reads as far as it understands and then stops without complaining.
+ * `.env.example` offers this as an override with no stated units, so the
+ * natural ways to write a duration all parse to something, and all of them
+ * are wrong:
+ *
+ *   "7d"       ->  7 seconds
+ *   "2 weeks"  ->  2 seconds
+ *   "1e5"      ->  1 second
+ *   "abc"      ->  NaN
+ *   "-1"       ->  already expired
+ *
+ * A seven-second session is the worst of those, because it looks like a
+ * working login. The password is accepted, the redirect happens, and the next
+ * page load is back at the login screen — forever, on every device, with
+ * nothing in any log, because nothing failed. NaN is at least loud: it
+ * produces an invalid Max-Age and the cookie is discarded outright.
+ *
+ * So the value is validated rather than parsed. Anything that is not a whole
+ * positive number of seconds is refused by name, with the unit spelled out,
+ * and the default is used instead — a working seven-day session and a line in
+ * the log beats an unusable deployment and silence. Matching lib/env.ts,
+ * which takes the same view of a secret it cannot trust.
+ */
+/** Exported so the validation is testable without reloading the module. */
+export function resolveAuthCookieMaxAge(): number {
+  const raw = process.env.AUTH_COOKIE_MAX_AGE?.trim();
+  if (!raw) return DEFAULT_AUTH_COOKIE_MAX_AGE;
+
+  // Digits only. Number() would accept "1e5" and " 12 ", parseInt accepts
+  // "7d" — this accepts what the variable actually means and nothing else.
+  if (!/^\d+$/.test(raw) || Number(raw) <= 0) {
+    console.error(
+      `[auth] AUTH_COOKIE_MAX_AGE is "${raw}", which is not a positive whole number of ` +
+        `SECONDS. Using the default of ${DEFAULT_AUTH_COOKIE_MAX_AGE} (7 days) instead. ` +
+        'Note the unit: 7 days is 604800, not "7d".'
+    );
+    return DEFAULT_AUTH_COOKIE_MAX_AGE;
+  }
+
+  return Number(raw);
+}
+
+const AUTH_COOKIE_MAX_AGE = resolveAuthCookieMaxAge();
 
 export interface AuthPayload {
   userId: string;
