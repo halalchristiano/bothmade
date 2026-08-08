@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { loginWithReturn } from '@/lib/client-return-to';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, type Variants } from 'framer-motion';
@@ -62,7 +63,7 @@ export default function ClientProjectsPage() {
           fetch('/api/auth/me'),
         ]);
         if (projectsRes.status === 401) {
-          router.push('/client/login');
+          router.push(loginWithReturn(window.location.pathname, window.location.search));
           return;
         }
         const data = await projectsRes.json();
@@ -89,7 +90,7 @@ export default function ClientProjectsPage() {
           setCompany(me.client.contactName || me.client.company);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load projects');
+        setError('Failed to load projects');
       } finally {
         setLoading(false);
       }

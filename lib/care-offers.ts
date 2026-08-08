@@ -33,10 +33,22 @@ export function scheduleForOffer(offer: RecurringOffer): CarePlanSchedule {
   });
 }
 
-/** How the introductory discount is described on invoices and in email. */
+/**
+ * How the introductory discount is described on invoices and in email.
+ *
+ * Reads the type through the same guard `scheduleForOffer` uses, and for the
+ * same reason. That one falls back to 'percent' for a value it does not
+ * recognise — a row written before the column existed, or edited by hand —
+ * and this one treated everything that was not exactly 'percent' as an amount
+ * in cents. The two then disagreed about one row: the schedule charged 25%
+ * off while the invoice line read "$0/month off", because formatCents(25) is
+ * twenty-five cents. A discount described as nothing, on the document the
+ * client keeps.
+ */
 export function discountLabel(offer: RecurringOffer): string | null {
   if (offer.discountValue <= 0) return null;
-  return offer.discountType === 'percent'
+  const type: DiscountType = isDiscountType(offer.discountType) ? offer.discountType : 'percent';
+  return type === 'percent'
     ? `Introductory rate (${offer.discountValue}% off)`
     : `Introductory rate (${formatCents(offer.discountValue)}/month off)`;
 }

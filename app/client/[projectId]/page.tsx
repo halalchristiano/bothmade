@@ -6,6 +6,7 @@ import { AttachLink } from '@/components/AttachLink';
 import { AttachmentList } from '@/components/AttachmentCard';
 import { readAttachments, type Attachment } from '@/lib/attachments';
 import { Linkify } from '@/components/Linkify';
+import { loginWithReturn } from '@/lib/client-return-to';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
@@ -380,7 +381,9 @@ export default function ClientDashboard() {
     try {
       const response = await fetch(`/api/projects/${projectId}`);
       if (response.status === 401) {
-        router.push('/client/login');
+        // Carry where they were trying to go, so logging back in finishes
+        // the journey instead of dropping them on the project list.
+        router.push(loginWithReturn(window.location.pathname, window.location.search));
         return;
       }
       const data = await response.json();
@@ -397,7 +400,7 @@ export default function ClientDashboard() {
         setError(data.error || 'Failed to load project');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load project');
+      setError('Failed to load project');
     } finally {
       setLoading(false);
     }

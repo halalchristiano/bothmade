@@ -1,5 +1,7 @@
 'use client';
 
+import { safeReturnTo } from '@/lib/client-return-to';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -45,12 +47,28 @@ export default function ClientLoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        router.push(data.client?.mustChangePassword ? '/client/settings?force=1' : '/client/projects');
+        /*
+         * Back to whatever sent them here, when there was one.
+         *
+         * A client follows a link from an email to a project, the session has
+         * expired, and the portal bounces them here — then landed them on the
+         * project list, with no memory of what they clicked. `next` is read
+         * through safeReturnTo, which refuses anything that is not a path
+         * inside the client portal: a login page that redirects wherever a
+         * query string says is an open redirect.
+         *
+         * A forced password change still wins. Somebody on a generated
+         * password has to replace it before the rest of the portal will
+         * answer them at all, so sending them anywhere else is a redirect
+         * into a wall.
+         */
+        const next = safeReturnTo(new URLSearchParams(window.location.search).get('next'));
+        router.push(data.client?.mustChangePassword ? '/client/settings?force=1' : next);
       } else {
         setError(data.error || 'Login failed');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError('Login failed');
     } finally {
       setLoading(false);
     }
@@ -74,7 +92,7 @@ export default function ClientLoginPage() {
         setError('Failed to send reset email');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send reset email');
+      setError('Failed to send reset email');
     } finally {
       setLoading(false);
     }

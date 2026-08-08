@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { loginWithReturn } from '@/lib/client-return-to';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { ClientHeader } from '@/components/portal/ClientHeader';
@@ -65,7 +66,7 @@ function ClientSettingsInner() {
       try {
         const response = await fetch('/api/client/settings');
         if (response.status === 401) {
-          router.push('/client/login');
+          router.push(loginWithReturn(window.location.pathname, window.location.search));
           return;
         }
         const data = await response.json();
@@ -76,7 +77,17 @@ function ClientSettingsInner() {
           setMustChangePassword(true);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load settings');
+        /*
+       * The fallback, always — not the exception's own message.
+       *
+       * `err instanceof Error ? err.message : '…'` reads as careful and does
+       * the opposite: the fallback only ever showed for a thrown non-Error,
+       * which essentially never happens, so what a client actually saw was
+       * "Failed to fetch" on a dropped connection or "Unexpected token < in
+       * JSON" when a proxy served an error page. Seven places across this
+       * portal did it. The sentence underneath was already the right one.
+       */
+      setError('Failed to load settings');
       } finally {
         setLoading(false);
       }
@@ -101,7 +112,7 @@ function ClientSettingsInner() {
         setError(data.error || 'Failed to update preferences');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update preferences');
+      setError('Failed to update preferences');
     } finally {
       setSaving(false);
     }
@@ -145,7 +156,7 @@ function ClientSettingsInner() {
         setPasswordError(data.error || 'Failed to update password');
       }
     } catch (err) {
-      setPasswordError(err instanceof Error ? err.message : 'Failed to update password');
+      setPasswordError('Failed to update password');
     } finally {
       setPasswordSaving(false);
     }
