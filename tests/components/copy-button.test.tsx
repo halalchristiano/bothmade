@@ -76,6 +76,17 @@ describe('copying a payment link', () => {
     // shape of the environment this state exists for, so it is left absent
     // rather than stubbed. The helper's own try/catch is what turns the
     // resulting TypeError into an answer instead of a crash.
+    //
+    // Asserted rather than assumed: this test is only meaningful when there
+    // is no way at all to copy, and it previously inherited one from another
+    // test and passed anyway. If a stub ever leaks in here again, it should
+    // fail on this line saying why, not further down looking like the button
+    // regressed.
+    expect(navigator.clipboard, 'a clipboard leaked in from another test').toBeUndefined();
+    expect(
+      (document as { execCommand?: unknown }).execCommand,
+      'an execCommand stub leaked in from another test'
+    ).toBeUndefined();
 
     render(<CopyButton value="https://pay.test/abc" label="Copy pay link" />);
     await userEvent.click(screen.getByRole('button', { name: 'Copy pay link' }));
