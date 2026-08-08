@@ -293,3 +293,40 @@ describe('the click itself', () => {
     expect(res.headers.get('location')).toBe('https://bothmade.test/client');
   });
 });
+
+/**
+ * An instalment somebody has already sent part of.
+ *
+ * Marking an invoice part paid by transfer writes a payment against it and
+ * deliberately leaves the instalment `due` — half of Payment 2 of 3 is not
+ * Payment 2 of 3. This route reads `due` and mints a Checkout Session for the
+ * instalment's FULL amount, so the client's own "Pay Payment 2 of 3 — $3,000"
+ * button would take three thousand on top of the fifteen hundred they had
+ * already transferred.
+ *
+ * The same shape as the voided-invoice guard above it, and the same answer:
+ * no session, and land them on the dashboard, which now says what has arrived
+ * and what is left.
+ */
+describe('an instalment with money already against its invoice', () => {
+  it('mints nothing, so the client cannot pay the whole thing twice', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: 'invoice_1',
+      status: 'open',
+      payments: [{ amount: 150_000 }],
+    });
+
+    const res = await go();
+
+    expect(sessionsCreate).not.toHaveBeenCalled();
+    expect(res.headers.get('location')).toBe('https://bothmade.test/client/proj_1');
+  });
+
+  it('still mints one when nothing has arrived', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ id: 'invoice_1', status: 'open', payments: [] });
+
+    const res = await go();
+
+    expect(res.headers.get('location')).toContain('stripe.test');
+  });
+});

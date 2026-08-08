@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { resolveSiteUrl } from '@/lib/site-url';
+import { receivedCents } from '@/lib/invoice-settlement';
 import { liveCheckoutUrl } from '@/lib/instalment-checkout';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
@@ -94,12 +95,36 @@ export async function GET(
         // open invoice.
         const invoice = inst.invoiceNumber
           ? await prisma.invoice
-              .findUnique({ where: { number: inst.invoiceNumber }, select: { id: true, status: true } })
+              .findUnique({
+                where: { number: inst.invoiceNumber },
+                select: {
+                  id: true,
+                  status: true,
+                  // Money already against it. An invoice can be part paid by
+                  // transfer, and that deliberately leaves the instalment
+                  // `due` — half of Payment 2 of 3 is not Payment 2 of 3.
+                  payments: { select: { amount: true } },
+                },
+              })
               .catch(() => null)
           : null;
 
-        // A voided invoice behind a still-'due' instalment: nothing to pay.
-        if (invoice?.status !== 'void') {
+        /*
+         * Nothing is minted when money has already arrived against it.
+         *
+         * A Checkout Session here is for the instalment's FULL amount; there
+         * is no partial version of one. So a client who transferred fifteen
+         * hundred of a three-thousand instalment and then pressed "Pay Payment
+         * 2 of 3 — $3,000" in their own dashboard would have paid the whole
+         * thing again on top of it.
+         *
+         * Same shape as the voided-invoice case beside it, and the same
+         * answer: no session, and the redirect below lands them on their
+         * dashboard, which says what has arrived and what is left.
+         */
+        const alreadyIn = receivedCents(invoice?.payments);
+
+        if (invoice?.status !== 'void' && alreadyIn === 0) {
           const live = await liveCheckoutUrl(
             stripe,
             inst,
