@@ -3,6 +3,16 @@ name: CI
 # The test suite is worth nothing if nobody runs it. Vercel's build already
 # typechecks on every push, but it never runs the tests — so a PR could go
 # green with the whole suite failing.
+#
+# The reverse was also true until the Build step below existed: CI checked
+# types and tests and never once compiled the app. That gap is not theoretical
+# here, because vercel.json disables preview deployments for `claude/*`
+# branches — so for the branches most of this repo's work happens on, nothing
+# built them at all. The first real build of a change was the production
+# deploy, and `next build` fails on a whole class of things `tsc` is happy
+# with: a server component importing a client-only module, a bad "use client"
+# boundary, an invalid metadata export, a prerender error, a page whose
+# generateStaticParams throws.
 on:
   pull_request:
   push:
@@ -33,3 +43,49 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # Files are isolated from each other, but tests inside one file are not,
+      # and they run in source order every time — so a test that only passes
+      # because the one above it left a spy or an env stub behind looks
+      # permanently green. Shuffling is what turns that into a visible failure.
+      # This repo has lost time to it twice; tests/setup-state.ts is the floor
+      # that stops it, and this is the check that the floor is holding.
+      - name: Test (shuffled)
+        run: npm run test:shuffle
+
+      # Does it actually build?
+      #
+      # `npx next build`, NOT `npm run build` — the npm script is
+      # `prisma generate && prisma migrate deploy && next build`, and
+      # `migrate deploy` would run migrations against whatever DATABASE_URL
+      # resolves to. On CI that is the dummy below and it simply fails; the
+      # danger is the day someone "helpfully" points it at a real database and
+      # CI starts migrating production on every pull request. Compiling is the
+      # part with value here, and it needs no database.
+      #
+      # The values are placeholders, but not all of them are inert:
+      # STRIPE_SECRET_KEY is read at module scope by five checkout routes, so
+      # page-data collection dies without it — with an error naming neither the
+      # variable nor the file. JWT_SECRET and SESSION_SECRET satisfy the
+      # deliberate build-time check in next.config.ts, which is left switched
+      # on rather than bypassed with CI_SKIP_SECRET_CHECK so that adding a new
+      # required secret fails here instead of on the production deploy.
+      - name: Build
+        run: npx next build
+        env:
+          JWT_SECRET: ci-placeholder-not-a-real-secret
+          SESSION_SECRET: ci-placeholder-not-a-real-secret
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
+          DATABASE_URL: postgresql://user:password@localhost:5432/ci
+          DIRECT_URL: postgresql://user:password@localhost:5432/ci
+          NEXT_PUBLIC_SITE_URL: https://bothmade.studio
+
+      # Reported, not enforced. A new advisory against a transitive dependency
+      # can land overnight through nobody's change, and blocking every pull
+      # request in a studio with several agents pushing at once would cost more
+      # than it catches. The point is that it is on the run and someone sees
+      # it — four high-severity advisories sat in this project until they were
+      # looked for by hand. See SECURITY-NOTES.md.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
