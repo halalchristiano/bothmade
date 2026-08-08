@@ -12,6 +12,8 @@ interface PublicProject {
   estimatedCompletionDate: string | null;
   /** The finished site. Null until there is something to point at. */
   liveUrl: string | null;
+  /** Set only while a presented design is still unapproved. */
+  awaitingYourReview: { presentedAt: string; reviewEndsAt: string | null } | null;
   updates: Array<{ id: string; title: string; description: string; createdAt: string }>;
 }
 
@@ -114,6 +116,51 @@ export default function PublicStatusPage() {
           {project.company} · Read-only status
         </p>
         <h1 className="mb-10 text-3xl font-semibold md:text-4xl">{project.name}</h1>
+
+        {/*
+          The one thing this page never said: that it is waiting on them.
+
+          Everything else here is us reporting on ourselves. This is the state
+          where nothing moves until the client acts, and they were reading
+          "Design · Stage 2 of 5" with no indication that they were the
+          holdup. Above the stage card because it outranks it — where the work
+          has got to matters less than the fact it has stopped.
+        */}
+        {project.awaitingYourReview && (
+          <section
+            className={`${card} mb-5 border-amber-400/25 p-6 md:p-7`}
+            aria-live="polite"
+          >
+            <p className="text-base font-semibold text-amber-200">
+              Your design is waiting for your review.
+            </p>
+            <p className="mt-1.5 text-sm leading-relaxed text-white/55">
+              We sent it{' '}
+              <span data-numeric className="text-white/75">
+                {new Date(project.awaitingYourReview.presentedAt).toLocaleDateString(undefined, {
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </span>
+              . Nothing moves on to the build until you&apos;ve had your say, so it is worth a
+              look whenever you have a moment.
+              {project.awaitingYourReview.reviewEndsAt && (
+                <>
+                  {' '}
+                  If we haven&apos;t heard from you by{' '}
+                  <span data-numeric className="text-white/75">
+                    {new Date(project.awaitingYourReview.reviewEndsAt).toLocaleDateString(undefined, {
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </span>
+                  , we take it as approved and carry on — that is the review window in your
+                  agreement, and we would rather you heard it here than on an invoice.
+                </>
+              )}
+            </p>
+          </section>
+        )}
 
         <section className={`${card} mb-5 p-7 md:p-8`}>
           <div className="mb-1 flex items-baseline justify-between gap-4">

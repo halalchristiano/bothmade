@@ -37,6 +37,9 @@ const PROJECT = {
   statusStage: 4,
   estimatedCompletionDate: new Date('2026-08-28T00:00:00.000Z'),
   liveUrl: 'https://linpotia.example',
+  designPresentedAt: null,
+  designApprovedAt: null,
+  designReviewEndsAt: null,
   client: { company: 'Linpotia Dental' },
   updates: [],
 };
@@ -100,5 +103,52 @@ describe('what the token protects', () => {
     const body = JSON.stringify(await (await GET(request(TOKEN), { params })).json());
 
     expect(body).not.toContain(TOKEN);
+  });
+});
+
+/**
+ * Whether the project is waiting on them.
+ *
+ * A presented, unapproved design is the one state where nothing moves until
+ * the client acts — and this page, the page they actually check, said nothing
+ * about it. The date matters as much as the fact: silence becomes approval
+ * after the window in Section 7, and a term they agreed to should not be met
+ * for the first time on an invoice.
+ */
+describe('waiting on the client', () => {
+  const presented = {
+    ...PROJECT,
+    statusStage: 1,
+    designPresentedAt: new Date('2026-08-01T00:00:00.000Z'),
+    designReviewEndsAt: new Date('2026-08-08T00:00:00.000Z'),
+    designApprovedAt: null,
+  };
+
+  it('says so while a design is presented and unapproved', async () => {
+    projectFindUnique.mockResolvedValue(presented);
+
+    const body = await (await GET(request(TOKEN), { params })).json();
+
+    expect(body.project.awaitingYourReview).not.toBeNull();
+    expect(body.project.awaitingYourReview.reviewEndsAt).toBeTruthy();
+  });
+
+  it('stops the moment they approve, so the page cannot nag about a decision already made', async () => {
+    projectFindUnique.mockResolvedValue({
+      ...presented,
+      designApprovedAt: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    const body = await (await GET(request(TOKEN), { params })).json();
+
+    expect(body.project.awaitingYourReview).toBeNull();
+  });
+
+  it('says nothing before a design has been sent', async () => {
+    projectFindUnique.mockResolvedValue({ ...presented, designPresentedAt: null });
+
+    const body = await (await GET(request(TOKEN), { params })).json();
+
+    expect(body.project.awaitingYourReview).toBeNull();
   });
 });

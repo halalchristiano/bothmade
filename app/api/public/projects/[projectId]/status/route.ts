@@ -67,6 +67,28 @@ export async function GET(
            * promise a link it does not have.
            */
           liveUrl: project.liveUrl || null,
+          /*
+           * Whether the project is waiting on them.
+           *
+           * A design that has been presented and not yet approved is the one
+           * state where nothing moves until the client acts — and this page,
+           * the page they actually check, said nothing about it. They saw
+           * "Design · Stage 2 of 5" and no hint that they were the holdup.
+           *
+           * The date matters as much as the fact. Review is deemed approved
+           * after the window in Section 7, which is a term they agreed to and
+           * should therefore never meet for the first time on an invoice. Sent
+           * only while it is true, so the page cannot nag about a decision
+           * already made.
+           */
+          awaitingYourReview:
+            project.designPresentedAt && !project.designApprovedAt
+              ? {
+                  presentedAt: project.designPresentedAt,
+                  /** When silence starts counting as approval. Null if unset. */
+                  reviewEndsAt: project.designReviewEndsAt,
+                }
+              : null,
           updates: project.updates,
         },
       },
