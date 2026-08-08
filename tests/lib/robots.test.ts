@@ -23,7 +23,16 @@ import robots from '@/app/robots';
  * test below reads the filesystem instead of trusting either.
  */
 
-const rules = robots().rules as { disallow: string[] };
+/*
+ * Both halves of the rule, not just the one this file started with.
+ *
+ * `MetadataRoute.Robots['rules']` is a union — one rule object or an array of
+ * them — so reading it needs a cast. The cast named only `disallow`, and the
+ * assertion further down that the marketing site stays crawlable reads
+ * `rules.allow`: a property the cast had just declared out of existence.
+ * tsconfig includes tests/, so that is a TS2339 in `next build`.
+ */
+const rules = robots().rules as { allow: string; disallow: string[] };
 const DISALLOW = rules.disallow;
 
 /** Does robots.txt tell a crawler to stay out of this path? */
