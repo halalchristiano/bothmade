@@ -143,3 +143,43 @@ export function stateTone(state: InvoiceDisplayState): 'emerald' | 'neutral' | '
 }
 
 export { displayState };
+
+export interface InvoiceLine {
+  label: string;
+  priceCents: number;
+}
+
+/**
+ * `lineItems` comes off the row as `Json`, which is `unknown` as far as the
+ * type system is concerned. Read defensively rather than cast: this reads
+ * rows written months ago, and the two callers fail differently on a
+ * malformed one — the ledger would render `$NaN` beside a client's name,
+ * and the pay-link builder would hand Stripe `unit_amount: undefined` and
+ * fail a whole send over a single bad line.
+ *
+ * Lives here rather than beside the Stripe helpers so the billing page can
+ * import it: lib/invoice-dispatch.ts pulls in Stripe and Vercel Blob, and
+ * neither belongs in a browser bundle.
+ */
+export function readInvoiceLines(value: unknown): InvoiceLine[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const { label, priceCents } = raw as { label?: unknown; priceCents?: unknown };
+    if (typeof label !== 'string' || !label.trim()) return [];
+    if (typeof priceCents !== 'number' || !Number.isSafeInteger(priceCents) || priceCents <= 0) return [];
+    return [{ label: label.trim(), priceCents }];
+  });
+}
+
+/**
+ * Who raised it, in the words that fit on a row.
+ *
+ * `issuedBy` was fetched by the ledger query and rendered nowhere at all —
+ * so with two people raising charges, "who billed this client" was a
+ * question the screen already had the answer to and did not say.
+ */
+export function issuedByLabel(issuedBy: { name: string | null; email: string } | null): string | null {
+  if (!issuedBy) return null;
+  return issuedBy.name || issuedBy.email || null;
+}

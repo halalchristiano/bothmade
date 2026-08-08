@@ -14,7 +14,9 @@ import {
   ageBand,
   chaseLine,
   daysOutstanding,
+  issuedByLabel,
   matchesQuery,
+  readInvoiceLines,
   stateTone,
   type LedgerFilter,
 } from '@/lib/invoice-ledger';
@@ -63,6 +65,8 @@ interface InvoiceRow {
   refundReason: string | null;
   voidReason: string | null;
   createdAt: string;
+  /** [{ label, priceCents }] as stored — read through readInvoiceLines, never cast. */
+  lineItems: unknown;
   client: { id: string; company: string; email: string };
   project: { id: string; name: string };
   issuedBy: { name: string | null; email: string } | null;
@@ -132,6 +136,10 @@ function BillingWorkspace() {
   // Opens on what needs doing rather than on what happened most recently.
   const [filter, setFilter] = useState<LedgerFilter>('chase');
   const [ledgerQuery, setLedgerQuery] = useState('');
+  // One row open at a time. Several breakdowns at once turns a sheet built for
+  // scanning back into a wall, and the question this answers is about one
+  // invoice.
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const loadInvoices = useCallback(async () => {
     try {
@@ -751,6 +759,67 @@ function BillingWorkspace() {
                         : `${invoice.refundMethod === 'credit' ? 'Credited' : 'Refunded'}: ${invoice.refundReason}`}
                     </p>
                   )}
+
+                  {/*
+                    What the money was actually for.
+                    The row carried a heading — "Second round of homepage
+                    design" — and the total, which is not what a client asks.
+                    They ask "what's the twelve hundred for", and answering it
+                    meant opening the PDF, which is a download, a new tab, and
+                    a document written for their accountant rather than for the
+                    person on the phone. The lines were already in the payload
+                    the whole time; nothing rendered them.
+
+                    Behind a toggle rather than always open, because the sheet's
+                    job is to be scanned. Collapsed by default puts the
+                    breakdown one click from every row without making any row
+                    three lines taller.
+                  */}
+                  {(() => {
+                    const itemised = readInvoiceLines(invoice.lineItems);
+                    const raisedBy = issuedByLabel(invoice.issuedBy);
+                    if (itemised.length === 0 && !raisedBy) return null;
+                    const open = expanded === invoice.id;
+
+                    return (
+                      <div className="mt-1">
+                        <button
+                          type="button"
+                          onClick={() => setExpanded(open ? null : invoice.id)}
+                          aria-expanded={open}
+                          className="text-[11px] text-white/35 transition-colors hover:text-white/70"
+                        >
+                          {open
+                            ? 'Hide breakdown'
+                            : itemised.length > 0
+                              ? `${itemised.length} line${itemised.length === 1 ? '' : 's'}`
+                              : 'Details'}
+                        </button>
+                        {open && (
+                          <div className="mt-1.5 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2">
+                            <dl className="space-y-1">
+                              {itemised.map((line, i) => (
+                                <div key={i} className="flex justify-between gap-4 text-[11px]">
+                                  <dt className="min-w-0 truncate text-white/55">{line.label}</dt>
+                                  <dd className="shrink-0 tabular-nums text-white/45">
+                                    {formatCentsExact(line.priceCents)}
+                                  </dd>
+                                </div>
+                              ))}
+                            </dl>
+                            {raisedBy && (
+                              // Two people raise charges here, so "who billed
+                              // this client" is a real question — and one the
+                              // query already had the answer to.
+                              <p className="mt-2 border-t border-white/[0.06] pt-1.5 text-[10px] text-white/30">
+                                Raised by {raisedBy} · {invoice.project.name}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
               {/* Said out loud rather than left to be discovered. A list that

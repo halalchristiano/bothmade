@@ -1,6 +1,12 @@
 import Stripe from 'stripe';
 import { put } from '@vercel/blob';
 import { buildCustomChargeInvoicePdf } from '@/lib/invoice-pdf';
+// Lives in the ledger module because the billing page reads the same lines to
+// show the breakdown on a row, and this file pulls in Stripe and Vercel Blob —
+// neither of which belongs in a browser bundle.
+import { readInvoiceLines, type InvoiceLine } from '@/lib/invoice-ledger';
+
+export { readInvoiceLines, type InvoiceLine };
 
 /**
  * The two artefacts an invoice needs before it can be sent: a PDF to attach
@@ -31,11 +37,6 @@ import { buildCustomChargeInvoicePdf } from '@/lib/invoice-pdf';
  */
 function stripeClient(): Stripe {
   return new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2025-08-27.basil' });
-}
-
-export interface InvoiceLine {
-  label: string;
-  priceCents: number;
 }
 
 export interface StoredPdf {
@@ -206,22 +207,4 @@ export async function restoreInvoicePdfAsPaid(
     .catch((error) => console.error(`Invoice ${invoice.number}: receipt PDF not linked:`, error));
 
   return url;
-}
-
-/**
- * `lineItems` comes back off the row as `Json`, which is `unknown` as far as
- * the type system is concerned. Read defensively rather than cast: a resend
- * reads a row written months ago, and a malformed line would otherwise reach
- * Stripe as `unit_amount: undefined` and fail the whole send rather than the
- * one line.
- */
-export function readInvoiceLines(value: unknown): InvoiceLine[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((raw) => {
-    if (!raw || typeof raw !== 'object') return [];
-    const { label, priceCents } = raw as { label?: unknown; priceCents?: unknown };
-    if (typeof label !== 'string' || !label.trim()) return [];
-    if (typeof priceCents !== 'number' || !Number.isSafeInteger(priceCents) || priceCents <= 0) return [];
-    return [{ label: label.trim(), priceCents }];
-  });
 }

@@ -5,8 +5,10 @@ import {
   ageBand,
   chaseLine,
   daysOutstanding,
+  issuedByLabel,
   matchesFilter,
   matchesQuery,
+  readInvoiceLines,
   stateTone,
 } from '@/lib/invoice-ledger';
 
@@ -142,5 +144,67 @@ describe('badge tones', () => {
     expect(stateTone('refunded')).toBe('purple');
     expect(stateTone('part-refunded')).toBe('purple');
     expect(stateTone('credited')).toBe('purple');
+  });
+});
+
+/**
+ * The row carried a heading and a total, which is not what a client asks.
+ * They ask "what's the twelve hundred for" — and answering it meant opening
+ * a PDF written for their accountant. The lines were in the payload the whole
+ * time; nothing rendered them.
+ */
+describe('what the money was for', () => {
+  it('reads the stored lines', () => {
+    expect(
+      readInvoiceLines([
+        { label: 'Design round', priceCents: 120000 },
+        { label: '  Copywriting  ', priceCents: 45000 },
+      ])
+    ).toEqual([
+      { label: 'Design round', priceCents: 120000 },
+      { label: 'Copywriting', priceCents: 45000 },
+    ]);
+  });
+
+  /*
+   * These rows were written months ago and the column is Json. The two
+   * callers fail differently on a malformed line — the ledger renders $NaN
+   * beside a client's name, the pay-link builder hands Stripe
+   * `unit_amount: undefined` and fails a whole send over one bad row — so a
+   * line that cannot be read is dropped rather than trusted.
+   */
+  it('drops a line it cannot read rather than rendering nonsense', () => {
+    expect(
+      readInvoiceLines([
+        { label: 'Good', priceCents: 100 },
+        { label: '', priceCents: 100 },
+        { label: 'No price' },
+        { label: 'Zero', priceCents: 0 },
+        { label: 'Negative', priceCents: -500 },
+        { label: 'Fractional', priceCents: 12.5 },
+        null,
+        'nonsense',
+      ])
+    ).toEqual([{ label: 'Good', priceCents: 100 }]);
+  });
+
+  it('treats anything that is not a list as no lines at all', () => {
+    expect(readInvoiceLines(null)).toEqual([]);
+    expect(readInvoiceLines(undefined)).toEqual([]);
+    expect(readInvoiceLines('[]')).toEqual([]);
+    expect(readInvoiceLines({ label: 'x', priceCents: 1 })).toEqual([]);
+  });
+});
+
+describe('who raised it', () => {
+  /*
+   * Fetched by the ledger query and rendered nowhere — so with two people
+   * raising charges, "who billed this client" was a question the screen
+   * already had the answer to and did not say.
+   */
+  it('prefers a name, falls back to an email, and says nothing when there is neither', () => {
+    expect(issuedByLabel({ name: 'Evan', email: 'evan@bothmade.studio' })).toBe('Evan');
+    expect(issuedByLabel({ name: null, email: 'evan@bothmade.studio' })).toBe('evan@bothmade.studio');
+    expect(issuedByLabel(null)).toBeNull();
   });
 });
