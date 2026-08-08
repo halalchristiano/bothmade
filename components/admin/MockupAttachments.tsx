@@ -773,7 +773,7 @@ export function MockupsCard({ refreshSignal = 0 }: { refreshSignal?: number } = 
   const totalMockups = leads.reduce((sum, l) => sum + l.mockups.length, 0);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
+    <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
       <div className="mb-1 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-lg font-bold">
           <ImageIcon size={18} /> Mockups

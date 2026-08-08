@@ -2138,7 +2138,7 @@ export default function LeadDetailPage() {
         };
 
         return (
-          <div className="mt-4 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-4 sm:p-6 min-w-0">
+          <div className="relative mt-4 rounded-2xl border border-white/[0.06] bg-surface p-4 sm:p-6 min-w-0 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
             <div className="mb-5">
               <h2 className="text-base font-bold">Your brief for {lead.company}</h2>
 
@@ -2697,7 +2697,7 @@ export default function LeadDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
         {/* LEFT: Lead info */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
             <div className="flex items-start gap-3.5 mb-5">
               <span className="shrink-0 flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-sky-400/25 to-purple-500/25 border border-white/10 text-lg font-bold text-white/90">
                 {lead.company.charAt(0).toUpperCase()}
@@ -3517,7 +3517,7 @@ export default function LeadDetailPage() {
       {tab === 'proposal' && (
       <div
         id="proposal-builder"
-        className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-xl p-6 md:p-8 mt-6 shadow-[0_0_60px_-15px_rgba(56,189,248,0.15)]"
+        className="relative rounded-2xl border border-white/[0.08] bg-surface p-6 md:p-8 mt-6 shadow-[0_0_60px_-15px_rgba(56,189,248,0.18)] before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent"
       >
         <div className="flex items-center gap-3 mb-1">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-sky-400 to-purple-500 text-black text-sm font-bold">

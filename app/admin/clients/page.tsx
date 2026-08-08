@@ -149,7 +149,7 @@ export default function AdminClientsPage() {
               <Link
                 key={client.id}
                 href={`/admin/clients/${client.id}`}
-                className="block rounded-xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl p-4 hover:border-white/20 transition-colors"
+                className="block rounded-xl border border-white/[0.06] bg-surface p-4 shadow-e2 transition-[border-color,box-shadow,transform] duration-200 ease-ui hover:-translate-y-px hover:border-white/12 hover:shadow-e3"
               >
                 <div className="flex justify-between items-start mb-1">
                   <p className={`font-semibold ${client.archivedAt ? 'text-white/40 line-through' : ''}`}>{client.company}</p>

@@ -167,7 +167,7 @@ function NewProjectForm() {
         invoice, cash).
       </p>
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 space-y-6">
+      <div className="relative rounded-2xl border border-white/[0.06] bg-surface p-8 space-y-6 shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent">
         <div>
           <h2 className="text-lg font-bold mb-4">Client</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

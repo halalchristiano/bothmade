@@ -1063,7 +1063,7 @@ export default function AdminProjectDetailPage() {
             />
           </div>
 
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
             <h2 className="text-xl font-bold mb-4">Activity</h2>
             <div className="space-y-4 max-h-[500px] overflow-y-auto mb-6">
               {thread.length === 0 && <p className="text-white/40 text-sm">No activity yet.</p>}
@@ -1166,7 +1166,7 @@ export default function AdminProjectDetailPage() {
           </div>
 
           {/* Internal team notes — never shown to the client */}
-          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 backdrop-blur-xl p-6">
+          <div className="relative rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] shadow-e2 p-6">
             <div className="flex items-center gap-2 mb-1">
               <h2 className="text-xl font-bold">Internal Notes</h2>
               <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300">
@@ -1201,7 +1201,7 @@ export default function AdminProjectDetailPage() {
           </div>
 
           {/* Flag a question for the rest of the team */}
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
             <h2 className="text-lg font-bold mb-1">Flag For The Team</h2>
             <p className="text-xs text-white/40 mb-3">
               Ping the team chat about this project — shows in their notifications until resolved.
@@ -1232,7 +1232,7 @@ export default function AdminProjectDetailPage() {
         {/* RIGHT: Deliverables */}
         <div className="lg:col-span-2 space-y-6">
           {project.contractUrl && (
-            <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+            <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
               <h2 className="text-lg font-bold mb-4">Signed Agreement</h2>
               <a
                 href={project.contractUrl}
@@ -1249,7 +1249,7 @@ export default function AdminProjectDetailPage() {
             </div>
           )}
 
-          <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl p-6">
+          <div className="relative rounded-2xl border border-white/[0.06] bg-surface shadow-e2 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:rounded-t-2xl before:bg-gradient-to-r before:from-transparent before:via-white/[0.09] before:to-transparent p-6">
             <h2 className="text-lg font-bold mb-4">Deliverables</h2>
 
             <div className="space-y-3 mb-6">
