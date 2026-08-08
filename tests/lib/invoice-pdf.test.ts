@@ -167,6 +167,87 @@ describe('buildCustomChargeInvoicePdf', () => {
     }
   });
 
+  /**
+   * The third state this document never learned.
+   *
+   * `paidAt` and `voidedAt` were each added because the stored PDF was
+   * contradicting the client's own bank statement, and theirs is the one
+   * their accountant believes. An invoice part paid by transfer contradicts
+   * it just as squarely: it read "Amount due: $1,650" to somebody who sent
+   * $900 three weeks ago, which is the copy they are holding when they ring
+   * up about it.
+   */
+  describe('when part of it has arrived', () => {
+    const partPaid = { ...CHARGE, receivedCents: 90000 };
+
+    it('asks for what is left rather than for the whole thing', async () => {
+      const drawn = drawnStrings(await PDFDocument.load(await buildCustomChargeInvoicePdf(partPaid)));
+
+      expect(drawn).toContain('Still due');
+      expect(drawn).toContain('$750');
+      expect(drawn).not.toContain('Amount due');
+    });
+
+    /* The two figures have to be reconcilable, or the smaller one reads as a
+       discount somebody granted and nobody recorded. */
+    it('says where the difference went', async () => {
+      const drawn = drawnStrings(await PDFDocument.load(await buildCustomChargeInvoicePdf(partPaid)));
+
+      expect(drawn).toContain('$900 received against this invoice');
+      expect(drawn).toContain('$750 of the $1,650 remains due');
+    });
+
+    it('names a refund separately from money that is still here', async () => {
+      const drawn = drawnStrings(
+        await PDFDocument.load(
+          await buildCustomChargeInvoicePdf({ ...CHARGE, receivedCents: 0, refundedCents: 90000 })
+        )
+      );
+
+      expect(drawn).toContain('$900 refunded');
+      // Nothing is left here, so the whole invoice is due again.
+      expect(drawn).toContain('$1,650 of the $1,650 remains due');
+    });
+
+    /* An overpayment is a conversation, not a negative amount due. */
+    it('never asks for less than nothing', async () => {
+      const drawn = drawnStrings(
+        await PDFDocument.load(await buildCustomChargeInvoicePdf({ ...CHARGE, receivedCents: 300000 }))
+      );
+
+      expect(drawn).toContain('$0');
+      expect(drawn).not.toContain('-$');
+    });
+
+    /* Settled and cancelled still win — they are the whole story about the
+       invoice, and "Still due" underneath either is a contradiction. */
+    it('defers to a settled invoice and a cancelled one', async () => {
+      const paid = drawnStrings(
+        await PDFDocument.load(
+          await buildCustomChargeInvoicePdf({ ...partPaid, paidAt: new Date('2026-08-11T10:00:00Z') })
+        )
+      );
+      expect(paid).toContain('Paid');
+      expect(paid).not.toContain('Still due');
+
+      const cancelled = drawnStrings(
+        await PDFDocument.load(
+          await buildCustomChargeInvoicePdf({ ...partPaid, voidedAt: new Date('2026-08-11T10:00:00Z') })
+        )
+      );
+      expect(cancelled).toContain('Cancelled');
+      expect(cancelled).not.toContain('Still due');
+    });
+
+    it('leaves an untouched invoice exactly as it was', async () => {
+      const drawn = drawnStrings(await PDFDocument.load(await buildCustomChargeInvoicePdf(CHARGE)));
+
+      expect(drawn).toContain('Amount due');
+      expect(drawn).not.toContain('Still due');
+      expect(drawn).not.toContain('remains due');
+    });
+  });
+
   /*
    * The stored PDF is what a client's bookkeeper files, and it said "Amount
    * due" forever — including on the copy they download from their own

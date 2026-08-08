@@ -298,6 +298,22 @@ export interface CustomChargeInvoiceInput {
   voidedAt?: Date | null;
   /** Why, in the words the client was already given in the email. */
   voidReason?: string | null;
+
+  /**
+   * Money against it that has not settled it.
+   *
+   * The third state this document never learned. `paidAt` and `voidedAt`
+   * were each added because the stored PDF is what a client's bookkeeper
+   * files and it was contradicting their bank statement — and an invoice
+   * part paid by transfer contradicts it just as squarely. It reads "Amount
+   * due: $1,800" to somebody who sent $900 three weeks ago, which is the
+   * document they will be holding when they ring up about it.
+   *
+   * Net of anything refunded, because that is what is actually still here.
+   */
+  receivedCents?: number;
+  /** What has gone back, if any — named separately so the note can say so. */
+  refundedCents?: number;
 }
 
 /**
@@ -313,6 +329,11 @@ export interface CustomChargeInvoiceInput {
 export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInput): Promise<Uint8Array> {
   const total = input.lineItems.reduce((sum, item) => sum + item.priceCents, 0);
   const issuedAt = input.issuedAt ?? new Date();
+  // What is actually still here, and never more than the invoice — an
+  // overpayment is a conversation, not a negative amount due.
+  const received = Math.max(0, input.receivedCents ?? 0);
+  const refunded = Math.max(0, input.refundedCents ?? 0);
+  const held = Math.min(total, received);
 
   return buildInvoicePdf({
     invoiceNumber: input.invoiceNumber,
@@ -326,20 +347,41 @@ export async function buildCustomChargeInvoicePdf(input: CustomChargeInvoiceInpu
     adjustments: [],
     subtotal: formatCentsExact(total),
     total: formatCentsExact(total),
-    amountDue: formatCentsExact(total),
-    // "Amount due" on a settled invoice is a document that contradicts the
-    // client's own bank statement, and theirs is the one their accountant
-    // believes.
+    // The figure, and what to call it.
+    //
     // Cancelled first: an invoice that was voided is not owed whether or not
     // anything was ever paid against it, and "Amount due" on it is the worst
-    // of the three things this line can say.
-    amountDueLabel: input.voidedAt ? 'Cancelled' : input.paidAt ? 'Paid' : undefined,
+    // of the four things this line can say. Then settled — "Amount due" on a
+    // paid invoice is a document that contradicts the client's own bank
+    // statement, and theirs is the one their accountant believes.
+    //
+    // Then part paid, which contradicts it the same way and was reading the
+    // full amount: what is due is what is LEFT, and the note below says where
+    // the difference went so the two figures cannot be mistaken for a
+    // discount or a mistake.
+    amountDue: formatCentsExact(
+      input.voidedAt || input.paidAt ? total : Math.max(0, total - held)
+    ),
+    amountDueLabel: input.voidedAt
+      ? 'Cancelled'
+      : input.paidAt
+      ? 'Paid'
+      : held > 0
+      ? 'Still due'
+      : undefined,
     footerNote: input.voidedAt
       ? `Cancelled on ${invoiceDate(input.voidedAt)} — there is nothing to pay.${
           input.voidReason ? ` ${input.voidReason}` : ''
         } This invoice has been withdrawn and replaces no other.`
       : input.paidAt
       ? `Paid in full on ${invoiceDate(input.paidAt)}. Thank you. This invoice covered work agreed with Bothmade outside the original project scope.`
+      : held > 0 || refunded > 0
+      ? `${[
+          received > 0 ? `${formatCentsExact(received)} received against this invoice` : null,
+          refunded > 0 ? `${formatCentsExact(refunded)} refunded` : null,
+        ]
+          .filter(Boolean)
+          .join(', ')}. ${formatCentsExact(Math.max(0, total - held))} of the ${formatCentsExact(total)} remains due. This invoice covered work agreed with Bothmade outside the original project scope.`
       : 'This invoice covers work agreed with Bothmade outside the original project scope. Payment is processed securely by Stripe.',
   });
 }

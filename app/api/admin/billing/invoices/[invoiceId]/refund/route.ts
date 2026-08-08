@@ -3,7 +3,8 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireStaff, unauthorizedResponse } from '@/lib/middleware';
 import { readRefundRequest, settlement, type SettlementLine } from '@/lib/invoice-lifecycle';
-import { grossReceivedCents } from '@/lib/invoice-settlement';
+import { grossReceivedCents, receivedCents } from '@/lib/invoice-settlement';
+import { restoreInvoicePdfAsPartPaid } from '@/lib/invoice-dispatch';
 import { sendInvoiceRefundedEmail } from '@/lib/email';
 import { formatCentsExact } from '@/lib/pricing';
 
@@ -287,6 +288,34 @@ export async function POST(
         userId: session.userId,
       },
     }).catch((error) => console.error(`Refund ${invoice.number}: timeline entry failed:`, error));
+
+    /*
+     * The document catches up.
+     *
+     * A refund on an OPEN invoice leaves it open — it moves `refundedCents`,
+     * not `status` — so nothing here rebuilds it as paid or as cancelled, and
+     * the stored file went on reading "Amount due: $1,800" to somebody we had
+     * just sent $900 back to. That is the copy their bookkeeper has.
+     *
+     * Only the open case: a settled invoice's PDF says "Paid", which is still
+     * true after a refund, and the refund email carries the settlement in the
+     * shape Section 8(l) requires. Rewriting a receipt into something else is
+     * a different document, not a corrected one.
+     *
+     * Best-effort and last, like every other rebuild: the money has moved and
+     * a refund is not undone because a PDF would not render.
+     */
+    if (invoice.status === 'open') {
+      const stillHere = receivedCents(invoice.payments) - statement.returnedToClientCents;
+      await restoreInvoicePdfAsPartPaid(
+        prisma,
+        { ...invoice, client: invoice.client },
+        {
+          receivedCents: Math.max(0, stillHere),
+          refundedCents: invoice.refundedCents + amountCents,
+        }
+      ).catch((error) => console.error(`Refund ${invoice.number}: PDF not rebuilt:`, error));
+    }
 
     return NextResponse.json(
       { success: true, invoice: updated, settlement: statement, clientNotified },

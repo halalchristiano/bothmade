@@ -68,6 +68,9 @@ export async function buildAndStoreInvoicePdf(input: {
   /** Set when the invoice has been voided — see restoreInvoicePdfAsCancelled. */
   voidedAt?: Date | null;
   voidReason?: string | null;
+  /** Money on it that has not settled it — see restoreInvoicePdfAsPartPaid. */
+  receivedCents?: number;
+  refundedCents?: number;
 }): Promise<StoredPdf> {
   let buffer: Buffer | null = null;
   try {
@@ -81,6 +84,8 @@ export async function buildAndStoreInvoicePdf(input: {
       paidAt: input.paidAt,
       voidedAt: input.voidedAt,
       voidReason: input.voidReason,
+      receivedCents: input.receivedCents,
+      refundedCents: input.refundedCents,
     });
     buffer = Buffer.from(bytes);
   } catch (error) {
@@ -266,6 +271,64 @@ export async function restoreInvoicePdfAsPaid(
   await db.invoice
     .update({ where: { id: invoice.id }, data: { pdfUrl: url } })
     .catch((error) => console.error(`Invoice ${invoice.number}: receipt PDF not linked:`, error));
+
+  return url;
+}
+
+
+/**
+ * The document, once part of the money has arrived — or gone back.
+ *
+ * The third sibling of restoreInvoicePdfAsPaid and ...AsCancelled, and it
+ * exists for the reason they both do: the stored PDF is what leaves the app
+ * and what a client's bookkeeper files. Both of those were written because a
+ * file reading "Amount due: $1,200" contradicted the client's own bank
+ * statement, and theirs is the one their accountant believes.
+ *
+ * An invoice part paid by transfer contradicts it just as squarely and had no
+ * sibling at all: nothing regenerated the file, so it went on asking for the
+ * full $1,800 from somebody who sent $900 three weeks ago. That is the
+ * document they are holding when they ring up about it.
+ *
+ * Best-effort and after the money has committed, exactly like the other two.
+ * A payment that was recorded must not be unwound because a PDF would not
+ * render — the ledger is the fact, the document is the courtesy.
+ */
+export async function restoreInvoicePdfAsPartPaid(
+  db: {
+    invoice: {
+      update(args: unknown): Promise<unknown>;
+    };
+  },
+  invoice: {
+    id: string;
+    number: string;
+    description: string;
+    lineItems: unknown;
+    createdAt: Date;
+    client: { company: string; contactName: string | null };
+  },
+  money: { receivedCents: number; refundedCents: number }
+): Promise<string | null> {
+  const lineItems = readInvoiceLines(invoice.lineItems);
+  if (lineItems.length === 0) return null;
+
+  const { url } = await buildAndStoreInvoicePdf({
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.number,
+    company: invoice.client.company,
+    contactName: invoice.client.contactName,
+    description: invoice.description,
+    lineItems,
+    issuedAt: invoice.createdAt,
+    receivedCents: money.receivedCents,
+    refundedCents: money.refundedCents,
+  });
+  if (!url) return null;
+
+  await db.invoice
+    .update({ where: { id: invoice.id }, data: { pdfUrl: url } })
+    .catch((error) => console.error(`Invoice ${invoice.number}: part-paid PDF not linked:`, error));
 
   return url;
 }

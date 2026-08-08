@@ -33,6 +33,7 @@ vi.mock('@/lib/middleware', () => ({
 }));
 vi.mock('@/lib/invoice-dispatch', () => ({
   restoreInvoicePdfAsPaid: vi.fn(async () => 'https://blob.test/BM-2026-0007-paid.pdf'),
+  restoreInvoicePdfAsPartPaid: vi.fn(async () => 'https://blob.test/BM-2026-0007-part.pdf'),
 }));
 vi.mock('@/lib/email', () => ({
   sendPaymentReceiptEmail: vi.fn(async () => ({ sent: true })),
@@ -49,7 +50,7 @@ vi.mock('stripe', () => ({
 }));
 
 const { POST } = await import('@/app/api/admin/billing/invoices/[invoiceId]/mark-paid/route');
-const { restoreInvoicePdfAsPaid } = await import('@/lib/invoice-dispatch');
+const { restoreInvoicePdfAsPaid, restoreInvoicePdfAsPartPaid } = await import('@/lib/invoice-dispatch');
 const { sendPaymentReceiptEmail } = await import('@/lib/email');
 
 function call(body: unknown = { method: 'Bank transfer, ref ACME0312' }, invoiceId = 'inv_1') {
@@ -392,6 +393,37 @@ describe('money that only covers part of it', () => {
     expect(body.settled).toBe(false);
     expect(body.remainingCents).toBe(60000);
     expect(body.warnings.join(' ')).toContain('$600 is still owed');
+  });
+
+  /*
+   * The document still catches up, just not as a receipt.
+   *
+   * "Paid in full" would contradict the money, which is why the two are
+   * separated at all — but the file on the dashboard went on reading "Amount
+   * due: $1,200" to somebody who had just sent $600, and that is the copy
+   * their bookkeeper has.
+   */
+  it('rebuilds the PDF as part paid, with what has actually arrived', async () => {
+    await call({ method: 'Transfer', amountCents: 60000 });
+
+    expect(restoreInvoicePdfAsPartPaid).toHaveBeenCalledOnce();
+    expect(vi.mocked(restoreInvoicePdfAsPartPaid).mock.calls[0][2]).toEqual({
+      receivedCents: 60000,
+      refundedCents: 0,
+    });
+  });
+
+  it('counts money already in when it rebuilds', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({
+      ...OPEN_INVOICE,
+      payments: [{ amount: 30000 }],
+    });
+
+    await call({ method: 'Transfer', amountCents: 30000 });
+
+    expect(vi.mocked(restoreInvoicePdfAsPartPaid).mock.calls[0][2]).toMatchObject({
+      receivedCents: 60000,
+    });
   });
 
   it('measures a second payment against what is left, not the total', async () => {

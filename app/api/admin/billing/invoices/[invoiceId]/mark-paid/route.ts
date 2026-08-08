@@ -9,7 +9,7 @@ import {
   readManualPayment,
   receivedCents,
 } from '@/lib/invoice-settlement';
-import { restoreInvoicePdfAsPaid } from '@/lib/invoice-dispatch';
+import { restoreInvoicePdfAsPaid, restoreInvoicePdfAsPartPaid } from '@/lib/invoice-dispatch';
 import { sendPaymentReceiptEmail } from '@/lib/email';
 import { projectStanding } from '@/lib/project-standing';
 import { invoiceDate } from '@/lib/money-dates';
@@ -298,7 +298,23 @@ export async function POST(
           console.error(`Invoice ${invoice.number}: receipt PDF not rebuilt:`, error);
           return null;
         })
-      : null;
+      : /*
+         * The document catches up on a part payment too.
+         *
+         * No receipt and no "Paid in full" — those would contradict the money,
+         * which is why the two halves are separated here at all. But the file
+         * on the dashboard went on reading "Amount due: $1,800" to somebody
+         * who had just sent $900, and that is the copy they are holding when
+         * they ring up about it. It reads "Still due: $900" now, with a line
+         * saying where the difference went.
+         */
+        await restoreInvoicePdfAsPartPaid(prisma, settled, {
+          receivedCents: alreadyIn + amountCents,
+          refundedCents: invoice.refundedCents ?? 0,
+        }).catch((error) => {
+          console.error(`Invoice ${invoice.number}: part-paid PDF not rebuilt:`, error);
+          return null;
+        });
 
     let receiptSent = false;
     if (settles && settled.client.email) {
