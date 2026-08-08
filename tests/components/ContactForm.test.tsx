@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ContactForm } from '@/components/ContactForm';
 import { track } from '@vercel/analytics';
@@ -33,12 +33,37 @@ const company = () => screen.getByLabelText('Company (optional)');
 const message = () => screen.getByLabelText('Anything else we should know?');
 const send = () => screen.getByRole('button', { name: 'Send' });
 
-/** Fills every required field with something valid. Company is the only one it skips. */
+/**
+ * Sets a field in one event instead of one per character.
+ *
+ * `user.type` is the right tool when the typing IS the subject — the field
+ * that reformats as you go, the complaint that appears on the third
+ * character. It is the wrong tool for the three fields a test fills only so
+ * that submit gets past them: fifty-odd keystrokes, each a render of a form
+ * that validates on change, to arrive at a value the test never looks at.
+ *
+ * That cost is invisible until the suite runs shuffled and in parallel, where
+ * it showed up as one test tipping over the 5s limit on roughly a quarter of
+ * runs — a red CI with nothing wrong in the diff, which is worse than a slow
+ * test because somebody has to go and find out.
+ */
+function fill(field: HTMLElement, value: string) {
+  fireEvent.change(field, { target: { value } });
+}
+
+/**
+ * Fills every required field with something valid. Company is the only one it
+ * skips.
+ *
+ * Phone still goes through `user.type`, because that field reformats what it
+ * is given and setting its value directly would skip the behaviour every
+ * other assertion in this file is standing on.
+ */
 async function fillValid(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(name(), 'Kiana Arabpour');
-  await user.type(email(), 'kiana@example.com');
+  fill(name(), 'Kiana Arabpour');
+  fill(email(), 'kiana@example.com');
   await user.type(phone(), '(555) 000-0000');
-  await user.type(message(), 'I want an app built.');
+  fill(message(), 'I want an app built.');
 }
 
 beforeEach(() => {
@@ -183,9 +208,9 @@ describe('the country dial code', () => {
     const fetchMock = mockFetch();
     render(<ContactForm />);
 
-    await user.type(name(), 'Kiana Arabpour');
-    await user.type(email(), 'kiana@example.com');
-    await user.type(message(), 'I want an app built.');
+    fill(name(), 'Kiana Arabpour');
+    fill(email(), 'kiana@example.com');
+    fill(message(), 'I want an app built.');
     await user.selectOptions(country(), 'GB');
     await user.type(phone(), '7700 900123');
     await user.click(send());
@@ -210,9 +235,9 @@ describe('the country dial code', () => {
     mockFetch();
     render(<ContactForm />);
 
-    await user.type(name(), 'Kiana Arabpour');
-    await user.type(email(), 'kiana@example.com');
-    await user.type(message(), 'I want an app built.');
+    fill(name(), 'Kiana Arabpour');
+    fill(email(), 'kiana@example.com');
+    fill(message(), 'I want an app built.');
     await user.type(phone(), '123456');
     await user.click(send());
     expect(screen.getByText(/valid phone number/i)).toBeInTheDocument();
@@ -228,9 +253,9 @@ describe('the country dial code', () => {
     mockFetch();
     render(<ContactForm />);
 
-    await user.type(name(), 'Kiana Arabpour');
-    await user.type(email(), 'kiana@example.com');
-    await user.type(message(), 'I want an app built.');
+    fill(name(), 'Kiana Arabpour');
+    fill(email(), 'kiana@example.com');
+    fill(message(), 'I want an app built.');
     await user.selectOptions(country(), 'GB');
     await user.type(phone(), '7700 900123');
     await user.click(send());
