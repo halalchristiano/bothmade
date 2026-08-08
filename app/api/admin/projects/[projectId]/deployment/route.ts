@@ -41,7 +41,16 @@ export async function PATCH(
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, launchChecklist: true, readyForLaunchAt: true, handoverAt: true },
+      select: {
+        id: true,
+        launchChecklist: true,
+        readyForLaunchAt: true,
+        handoverAt: true,
+        // Section 7's gate on the handover below. By index rather than array
+        // position — see finalInstalment() for what the positional read did
+        // to this same gate on the launch board.
+        instalments: { select: { index: true, status: true, label: true } },
+      },
     });
     if (!project) {
       return NextResponse.json({ error: 'That project no longer exists.' }, { status: 404 });
@@ -118,9 +127,40 @@ export async function PATCH(
       data.readyForLaunchAt = body.readyForLaunch === true ? new Date() : null;
     }
 
-    // Exhibit A: handover of credentials, source and documentation is part of
-    // the Launch phase. Section 7 holds the transfer itself until the final
-    // instalment clears; this records the moment it actually happened.
+    /*
+     * Exhibit A: handover of credentials, source and documentation is part of
+     * the Launch phase. This records the moment it actually happened.
+     *
+     * And Section 7 is checked here rather than only described on the page.
+     * "Nothing goes live, no files or source transfer, no credentials hand
+     * over, and no intellectual property assigns until it has cleared" is the
+     * one clause in the agreement that names the handover specifically, and
+     * marking it done writes a line onto the CLIENT's own timeline saying the
+     * accounts and the intellectual property have transferred to them in
+     * full. That sentence is the thing a client would later rely on, and it
+     * could be published while their final invoice was still outstanding.
+     *
+     * The page did warn — a paragraph of grey text under the button — but a
+     * warning next to a control is not the same as a check inside the thing
+     * that acts. Named rather than forbidden, as everywhere else here: a
+     * handover that genuinely has to happen early still happens, on a second
+     * deliberate press rather than the one that records a routine one.
+     */
+    if (body.handedOver === true && project.handoverAt === null) {
+      const live = project.instalments.filter((i) => i.status !== 'void');
+      const finalRow = live.length
+        ? live.reduce((latest, row) => (row.index > latest.index ? row : latest))
+        : null;
+      if (finalRow && finalRow.status !== 'paid' && body.acknowledgeUnpaid !== true) {
+        return NextResponse.json(
+          {
+            error: `${finalRow.label} has not cleared. Section 7 holds the transfer of files, credentials and intellectual property until it does — and marking this done tells the client on their own timeline that all three are theirs.`,
+            finalInstalmentUnpaid: true,
+          },
+          { status: 409 }
+        );
+      }
+    }
     if (body.handedOver !== undefined) {
       data.handoverAt = body.handedOver === true ? new Date() : null;
     }

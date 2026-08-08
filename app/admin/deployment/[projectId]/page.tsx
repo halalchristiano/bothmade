@@ -67,7 +67,21 @@ export default function DeploymentDetailPage() {
   const [project, setProject] = useState<DeploymentProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  /*
+   * Which control failed, not just what it said.
+   *
+   * This was one string rendered near the top of the page, and this page is
+   * long: the domain form, thirteen launch checks, then the two contractual
+   * records. Every one of those posts through patch(), and every failure
+   * announced itself hundreds of pixels above whatever you were looking at.
+   *
+   * So pressing "Mark it handed over" at the bottom and having it refuse
+   * looked exactly like the button not working — the label went from
+   * "Recording…" back to "Mark it handed over" and nothing else moved. Same
+   * for ticking a launch check: the tick reverts (load() never runs), the
+   * reason sits off-screen, and the natural read is that the click missed.
+   */
+  const [error, setError] = useState<{ key: string; message: string } | null>(null);
 
   // Domain fields are a form, not a live field — typing a hostname one
   // character at a time should not be twelve writes.
@@ -152,7 +166,7 @@ export default function DeploymentDetailPage() {
 
   const patch = async (body: Record<string, unknown>, busyKey: string) => {
     setSaving(busyKey);
-    setError('');
+    setError(null);
     try {
       const res = await fetch(`/api/admin/projects/${projectId}/deployment`, {
         method: 'PATCH',
@@ -161,16 +175,24 @@ export default function DeploymentDetailPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(data?.error ?? 'Could not save that.');
+        setError({ key: busyKey, message: data?.error ?? 'Could not save that.' });
         return;
       }
       await load();
     } catch {
-      setError('Could not reach the server — try again.');
+      setError({ key: busyKey, message: 'Could not reach the server — try again.' });
     } finally {
       setSaving(null);
     }
   };
+
+  /** The message for one control, rendered where that control is. */
+  const Refusal = ({ forKey }: { forKey: string }) =>
+    error?.key === forKey ? (
+      <p role="alert" className="mt-2 text-xs leading-relaxed text-red-300">
+        {error.message}
+      </p>
+    ) : null;
 
   if (loading) {
     return (
@@ -314,7 +336,9 @@ export default function DeploymentDetailPage() {
         </div>
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+      {/* The message now lives beside whichever control refused — see
+          <Refusal>. A single banner up here is what put every failure on this
+          long page out of sight of the button that caused it. */}
 
       {/* --- The domain ----------------------------------------------------- */}
       <section className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
@@ -413,6 +437,7 @@ export default function DeploymentDetailPage() {
             <BrandButton onClick={() => patch(domain, 'domain')} disabled={saving === 'domain'}>
               {saving === 'domain' ? 'Saving…' : 'Save'}
             </BrandButton>
+            <Refusal forKey="domain" />
             {/* A button appearing is a weak signal for "you have unsaved work" —
                 it reads as an affordance, not a warning. Everything else here
                 writes on click, so this block is the only place on the page
@@ -444,8 +469,8 @@ export default function DeploymentDetailPage() {
                   const state = checklist[check.key];
                   const done = Boolean(state?.done);
                   return (
+                    <div key={check.key}>
                     <button
-                      key={check.key}
                       type="button"
                       onClick={() => patch({ check: check.key, done: !done }, check.key)}
                       disabled={saving === check.key}
@@ -488,6 +513,11 @@ export default function DeploymentDetailPage() {
                         )}
                       </span>
                     </button>
+                    {/* The tick reverts when a save fails, because load() never
+                        runs — so without a reason right here the click simply
+                        looks like it missed. */}
+                    <Refusal forKey={check.key} />
+                    </div>
                   );
                 })}
               </div>
@@ -530,6 +560,7 @@ export default function DeploymentDetailPage() {
                 <BrandButton onClick={() => patch({ readyForLaunch: true }, 'ready')} disabled={saving === 'ready'}>
                   {saving === 'ready' ? 'Recording…' : 'Confirm ready for launch'}
                 </BrandButton>
+                <Refusal forKey="ready" />
                 {!readiness.ready && (
                   <p className="mt-2 text-[11px] text-amber-200/70">
                     {readiness.blockers.length} thing
@@ -571,6 +602,7 @@ export default function DeploymentDetailPage() {
                 >
                   {saving === 'handover' ? 'Recording…' : 'Mark it handed over'}
                 </BrandButton>
+                <Refusal forKey="handover" />
                 {finalRow && finalRow.status !== 'paid' && (
                   <p className="mt-2 text-[11px] text-amber-200/70">
                     {finalRow.label} has not cleared. Section 7 holds the transfer until it
