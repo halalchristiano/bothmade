@@ -1249,10 +1249,16 @@ export function ListView({ refreshToken = 0 }: { refreshToken?: number }) {
                 key={lead.id}
                 role="link"
                 {...clickableRowProps(() => router.push(`/admin/leads/${lead.id}`), `Open ${lead.company}`)}
-                className={`rounded-xl border backdrop-blur-xl p-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 ${
+                // The last of the frosted panels, left out of the sweep because
+                // the blur sat on the base class while the ternary swapped
+                // border and background — a blind replace could have taken the
+                // wrong branch with it. By hand: the blur goes, both branches
+                // become real surfaces, and the bounced-email row keeps its red
+                // so the one thing this list is shouting about still shouts.
+                className={`cursor-pointer rounded-xl border p-4 shadow-e2 transition-[border-color,box-shadow,transform] duration-200 ease-ui hover:-translate-y-px hover:shadow-e3 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 ${
                   lead.emailDeliveryFailedAt
-                    ? 'border-red-400/40 bg-red-400/[0.06] hover:border-red-400/60'
-                    : 'border-white/[0.08] bg-white/[0.04] hover:border-white/20'
+                    ? 'border-red-400/35 bg-red-400/[0.06] hover:border-red-400/60'
+                    : 'border-white/[0.06] bg-surface hover:border-white/12'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2 gap-2">
