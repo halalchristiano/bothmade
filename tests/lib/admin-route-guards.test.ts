@@ -151,16 +151,30 @@ describe('the routes that cannot use a session', () => {
    * parameter somebody can type. If `verifyOAuthState` ever stops verifying,
    * the allowlist above is quietly pointing at an open door.
    */
+  /**
+   * Bounded by the next declaration rather than by a byte count.
+   *
+   * Both halves were originally sliced with `at + 400`, which is a guess about
+   * how long somebody else's function is. Adding a comment to `createOAuthState`
+   * pushed `expiresIn` past the window and failed this test for a change that
+   * did not touch what it is about — a false alarm on the one test whose job is
+   * to be believed when it fires.
+   */
+  const declaration = (src: string, name: string): string => {
+    const at = src.indexOf(`export function ${name}`);
+    expect(at, `${name} is gone — the gmail callback has no guard left`).toBeGreaterThan(-1);
+    const next = src.indexOf('\nexport ', at + 1);
+    return src.slice(at, next === -1 ? src.length : next);
+  };
+
   it('signs and expires the OAuth state it trusts instead of a session', () => {
     const auth = readFileSync('lib/auth.ts', 'utf8');
-    const at = auth.indexOf('export function verifyOAuthState');
-    expect(at, 'verifyOAuthState is gone — the gmail callback has no guard left').toBeGreaterThan(-1);
 
-    const body = auth.slice(at, at + 500);
-    expect(body, 'the state is no longer signature-checked').toMatch(/jwt\.verify/);
-    expect(body, 'a state for another purpose would be accepted').toMatch(/purpose/);
+    const verify = declaration(auth, 'verifyOAuthState');
+    expect(verify, 'the state is no longer signature-checked').toMatch(/jwt\.verify/);
+    expect(verify, 'a state for another purpose would be accepted').toMatch(/purpose/);
 
-    const mint = auth.slice(auth.indexOf('export function createOAuthState'));
-    expect(mint.slice(0, 400), 'the state no longer expires').toMatch(/expiresIn/);
+    const mint = declaration(auth, 'createOAuthState');
+    expect(mint, 'the state no longer expires').toMatch(/expiresIn/);
   });
 });

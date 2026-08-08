@@ -21,10 +21,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(settingsUrl({ gmailOauth: 'error', reason: googleError }));
   }
 
-  const userId = state ? verifyOAuthState(state) : null;
-  if (!userId || !code) {
+  const claims = state ? verifyOAuthState(state) : null;
+  if (!claims || !code) {
     return NextResponse.redirect(settingsUrl({ gmailOauth: 'error', reason: 'invalid-state' }));
   }
+  const userId = claims.userId;
 
   try {
     const { refreshToken, email } = await exchangeGoogleAuthCode(code);
@@ -53,7 +54,20 @@ export async function GET(request: NextRequest) {
       bounceFolderSet = false;
     }
 
-    return NextResponse.redirect(settingsUrl({ gmailOauth: 'success', bounceFolder: bounceFolderSet ? 'ok' : 'failed' }));
+    // An owner who connected a teammate's mailbox goes back to Team, not to
+    // their own Settings — that page still shows *their* mailbox, unchanged,
+    // which is the one thing guaranteed to read as "it didn't work". The
+    // connected address goes in the query so the page can name what landed
+    // rather than just claiming success.
+    const done = claims.delegated
+      ? `${SITE_URL}/admin/team?${new URLSearchParams({
+          gmailOauth: 'success',
+          connected: email,
+          bounceFolder: bounceFolderSet ? 'ok' : 'failed',
+        }).toString()}`
+      : settingsUrl({ gmailOauth: 'success', bounceFolder: bounceFolderSet ? 'ok' : 'failed' });
+
+    return NextResponse.redirect(done);
   } catch (error) {
     console.error('Gmail OAuth callback error:', error);
     const reason = error instanceof Error ? error.message : 'unknown';

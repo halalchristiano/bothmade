@@ -79,7 +79,7 @@ export function autoFollowUpBlocker(
       label: 'Automated follow-ups are not sending',
       // Names the address, because the whole difficulty is that it is not the
       // one anybody would guess — it is on the secondary sending domain.
-      detail: `No team account has ${senderEmail}. Add it under Team, then connect its Gmail.`,
+      detail: `No team account has ${senderEmail}. Add it under Team, then use Connect Gmail on its row and sign into Google as that mailbox.`,
       href: '/admin/team',
     };
   }
@@ -88,8 +88,17 @@ export function autoFollowUpBlocker(
     return {
       reason: 'no-gmail',
       label: 'Automated follow-ups are not sending',
-      detail: `${senderEmail} exists but its Gmail is not connected. Connect it under Settings.`,
-      href: '/admin/settings',
+      // Points at Team, not Settings.
+      //
+      // Settings only ever connects the mailbox of whoever is signed in, so
+      // for any address that is not yours this instruction was not merely
+      // vague — it was a dead end, and following it landed you on a page
+      // showing your own mailbox, already connected, with nothing to do.
+      // Getting there meant signing out and signing in as that account, which
+      // nothing said and which is why this warning could stand for weeks with
+      // somebody reading it.
+      detail: `${senderEmail} exists but its Gmail is not connected. Open Team and use Connect Gmail on its row — you stay signed in as yourself.`,
+      href: '/admin/team',
     };
   }
 

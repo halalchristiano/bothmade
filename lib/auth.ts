@@ -150,14 +150,36 @@ export function verifyToken(
  * connecting without relying on session cookies surviving the trip to
  * Google and back.
  */
-export function createOAuthState(userId: string): string {
-  return jwt.sign({ userId, purpose: 'gmail-oauth' }, jwtSecret(), { expiresIn: '10m' });
+export function createOAuthState(userId: string, opts: { delegated?: boolean } = {}): string {
+  return jwt.sign(
+    // `delegated` says an owner is connecting a mailbox that is not their own,
+    // which the callback needs purely to know where to send them afterwards:
+    // landing back on your own Settings, which still shows your own mailbox
+    // unchanged, reads as "it didn't work". It is signed with everything else
+    // rather than passed as a query parameter because it is a statement about
+    // what this round-trip is, and the round-trip is the thing being signed.
+    { userId, purpose: 'gmail-oauth', ...(opts.delegated ? { delegated: true } : {}) },
+    jwtSecret(),
+    { expiresIn: '10m' }
+  );
 }
 
-export function verifyOAuthState(state: string): string | null {
+export interface OAuthStateClaims {
+  /** Whose row the callback will write the connection to. */
+  userId: string;
+  /** True when an owner is connecting somebody else's mailbox. */
+  delegated: boolean;
+}
+
+export function verifyOAuthState(state: string): OAuthStateClaims | null {
   try {
-    const decoded = jwt.verify(state, jwtSecret()) as { userId: string; purpose: string };
-    return decoded.purpose === 'gmail-oauth' ? decoded.userId : null;
+    const decoded = jwt.verify(state, jwtSecret()) as {
+      userId: string;
+      purpose: string;
+      delegated?: boolean;
+    };
+    if (decoded.purpose !== 'gmail-oauth') return null;
+    return { userId: decoded.userId, delegated: decoded.delegated === true };
   } catch {
     return null;
   }

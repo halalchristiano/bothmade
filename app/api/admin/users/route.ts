@@ -23,11 +23,38 @@ export async function GET() {
         role: true,
         title: true,
         createdAt: true,
+        // Which mailbox this account sends from, and whether it still can.
+        // The team list is where somebody asks "why aren't the automated
+        // follow-ups going out" — and until now the answer lived on a
+        // different page that only ever showed your own mailbox.
+        gmailAddress: true,
+        gmailConnectedAt: true,
+        gmailNeedsReconnect: true,
+        // Never the secret itself — only whether one is there. Both columns
+        // hold encrypted values and neither has any business leaving the
+        // server.
+        gmailAppPassword: true,
+        googleRefreshToken: true,
       },
       orderBy: { name: 'asc' },
     });
 
-    return NextResponse.json({ success: true, users }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        users: users.map(({ gmailAppPassword, googleRefreshToken, ...user }) => ({
+          ...user,
+          mailbox: {
+            address: user.gmailAddress,
+            connectedAt: user.gmailConnectedAt,
+            needsReconnect: user.gmailNeedsReconnect,
+            /** Same predicate lib/outreach-health.ts sends by. */
+            canSend: Boolean(gmailAppPassword || googleRefreshToken),
+          },
+        })),
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('List users error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

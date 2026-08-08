@@ -20,6 +20,17 @@ interface TeamMember {
   role: string;
   title: string | null;
   createdAt: string;
+  /**
+   * The mailbox this account sends from. Shown here because the team list is
+   * where somebody asks "why aren't the automated follow-ups going out" — and
+   * the answer used to live on a page that only ever showed your own.
+   */
+  mailbox?: {
+    address: string | null;
+    connectedAt: string | null;
+    needsReconnect: boolean;
+    canSend: boolean;
+  };
 }
 
 function roleTone(role: string): 'purple' | 'sky' | 'neutral' {
@@ -402,6 +413,42 @@ export default function TeamPage() {
                     {member.id === myId && <span className="text-white/30"> — you</span>}
                   </p>
                   <p className="truncate text-[13px] text-white/40">{member.email}</p>
+
+                  {/*
+                    Whether this account can actually send, and a way to fix it
+                    without signing out.
+
+                    Connecting Google used to be reachable only from Settings,
+                    which mints the consent for whoever is signed in — so
+                    attaching a mailbox to a *different* account meant creating
+                    the teammate, noting the one-time password, signing out,
+                    signing in as them, connecting, and signing back in.
+                    Nothing said so. That is why the outreach mailbox the
+                    follow-up cron sends from sat unconnected for weeks while
+                    the cron declined every weekday into a log nobody opens.
+                  */}
+                  {member.mailbox && (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+                      {member.mailbox.canSend && !member.mailbox.needsReconnect ? (
+                        <span className="text-emerald-300/80">
+                          Sends from {member.mailbox.address || member.email}
+                        </span>
+                      ) : member.mailbox.needsReconnect ? (
+                        <span className="text-amber-300/90">Email disconnected — needs reconnecting</span>
+                      ) : (
+                        <span className="text-white/35">No mailbox connected</span>
+                      )}
+
+                      {canManage && (
+                        <a
+                          href={`/api/admin/settings/gmail-oauth/start?userId=${encodeURIComponent(member.id)}`}
+                          className="rounded py-1 text-sky-300/90 underline-offset-2 hover:underline"
+                        >
+                          {member.mailbox.canSend ? 'Reconnect' : 'Connect Gmail'}
+                        </a>
+                      )}
+                    </p>
+                  )}
                   {/* Said on the page, not in a tooltip.
                       This was a `title` on the disabled dropdown, which needs a
                       mouse pointer to hover — so on a phone the control was

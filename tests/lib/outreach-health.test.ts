@@ -57,13 +57,31 @@ describe('when no account holds the outreach mailbox', () => {
 });
 
 describe('when the account exists but cannot send', () => {
-  it('says that instead, and points at Settings', () => {
-    // A different problem with a different fix. Sending somebody to Team to
-    // create an account that already exists is how a setup task gets abandoned.
+  /**
+   * This used to point at Settings, and the reasoning was right but the
+   * destination was not: it is a different problem with a different fix, and
+   * sending somebody to Team to create an account that already exists is how
+   * a setup task gets abandoned.
+   *
+   * Settings only ever connects the mailbox of whoever is signed in. For any
+   * address that is not yours — and the outreach sender is deliberately not
+   * anybody's, it is its own account on the secondary sending domain — that
+   * link was a dead end: you arrived at a page showing your own mailbox,
+   * already connected, with nothing on it to do. The only route through was to
+   * sign out and sign back in as that account, which nothing said anywhere.
+   *
+   * Team now carries a Connect Gmail control per row, so the fix and the place
+   * you are sent are the same place.
+   */
+  it('says that instead, and points at Team, where the control now is', () => {
     const blocked = autoFollowUpBlocker(SENDER, ACCOUNT_NO_GMAIL);
 
     expect(blocked?.reason).toBe('no-gmail');
-    expect(blocked?.href).toBe('/admin/settings');
+    expect(blocked?.href).toBe('/admin/team');
+    expect(blocked?.detail).toMatch(/Connect Gmail/);
+    // And says you do not have to become somebody else to do it — the part
+    // that was missing for weeks.
+    expect(blocked?.detail).toMatch(/signed in as yourself/);
     expect(blocked?.detail).toContain(SENDER);
   });
 });
