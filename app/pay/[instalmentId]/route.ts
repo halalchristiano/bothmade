@@ -73,12 +73,22 @@ export async function GET(
         .catch(() => null);
 
       /*
-       * Only an instalment still owed gets a checkout. 'paid' is obvious;
-       * 'void' matters just as much — a cancelled invoice must not be
-       * payable, and this route minting a fresh session for one would hand
-       * back the very link the void was supposed to destroy.
+       * Only an instalment that has actually been invoiced gets a checkout.
+       *
+       * 'due' is precisely that state. 'scheduled' is not — it is money the
+       * schedule has not asked for yet, and there is nothing for a client to
+       * pay against it.
+       *
+       * That distinction is load-bearing rather than tidy. Voiding an invoice
+       * resets its instalment to 'scheduled' and clears its invoice number,
+       * so allowing 'scheduled' here meant: the void expired the emailed
+       * Stripe session, and then this route handed the client a brand-new
+       * working one the moment they clicked the link in the original email.
+       * The invoice lookup below could not save it either — the void had
+       * already nulled the number, so there was no invoice left to find and
+       * be refused by.
        */
-      if (inst.status === 'due' || inst.status === 'scheduled') {
+      if (inst.status === 'due') {
         // The ledger invoice, so the webhook settles the same row the emailed
         // link would have rather than leaving a paid instalment beside an
         // open invoice.

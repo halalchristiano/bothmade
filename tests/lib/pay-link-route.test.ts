@@ -76,6 +76,26 @@ describe('a link clicked while the session is still alive', () => {
   });
 });
 
+/**
+ * Only an `open` session may be handed back.
+ *
+ * A mutation proved this was documented and unheld: relaxing the check to
+ * "anything not expired" passed all 2368 tests, because the suite only ever
+ * fed it 'open' and 'expired'. A `complete` session belongs to a payment that
+ * already happened, and sending a client back to one is how a settled invoice
+ * gets presented for payment a second time.
+ */
+describe('a session Stripe no longer considers payable', () => {
+  it.each(['complete', 'expired'])('mints a fresh one rather than reusing a %s session', async (status) => {
+    sessionsRetrieve.mockResolvedValue({ status });
+
+    const res = await go();
+
+    expect(sessionsCreate).toHaveBeenCalledOnce();
+    expect(res.headers.get('location')).toBe('https://stripe.test/cs_new');
+  });
+});
+
 describe('a link clicked after the session has expired', () => {
   beforeEach(() => sessionsRetrieve.mockResolvedValue({ status: 'expired' }));
 
@@ -106,6 +126,25 @@ describe('a link clicked after the session has expired', () => {
         data: { paymentUrl: 'https://stripe.test/cs_new', stripeSessionId: 'cs_new' },
       })
     );
+  });
+
+  /**
+   * The webhook reads paymentType to decide the Payment row's type, which
+   * decides whether it counts toward the contracted price and what the
+   * receipt calls it. Index 1 is the deposit; nothing else is.
+   */
+  it('labels the first instalment a deposit and the rest a balance', async () => {
+    await go();
+    expect((sessionsCreate.mock.calls[0]![0] as { metadata: Record<string, string> }).metadata.paymentType)
+      .toBe('balance');
+
+    vi.clearAllMocks();
+    sessionsRetrieve.mockResolvedValue({ status: 'expired' });
+    prisma.instalment.findUnique.mockResolvedValue({ ...INSTALMENT, index: 1 });
+    prisma.invoice.findUnique.mockResolvedValue({ id: 'invoice_1', status: 'open' });
+    await go();
+    expect((sessionsCreate.mock.calls[0]![0] as { metadata: Record<string, string> }).metadata.paymentType)
+      .toBe('deposit');
   });
 
   it('charges what the instalment says, not what the old session said', async () => {
@@ -144,6 +183,46 @@ describe('a link that should no longer take money', () => {
 
   it('sends a voided instalment to their dashboard', async () => {
     prisma.instalment.findUnique.mockResolvedValue({ ...INSTALMENT, status: 'void' });
+
+    const res = await go();
+
+    expect(sessionsCreate).not.toHaveBeenCalled();
+    expect(res.headers.get('location')).toBe('https://bothmade.test/client/proj_1');
+  });
+});
+
+/**
+ * The hole between two fixes, which neither one's tests could see.
+ *
+ * Voiding an instalment invoice resets the row to 'scheduled' and clears its
+ * invoice number — that is how the money stays owed without the cancelled
+ * bill being re-sendable. This route used to accept 'scheduled' as payable,
+ * and with the number already nulled there was no invoice left for its
+ * void-check to find. So the void expired the emailed Stripe session, and
+ * then the client clicking the link in that same original email was handed a
+ * brand-new working checkout for the bill we had just told them was
+ * cancelled.
+ *
+ * 'due' is the only state that means "invoiced and owed". Nothing else may
+ * mint.
+ */
+describe('after the invoice behind it was voided', () => {
+  it('refuses the reset row, which is what a void leaves behind', async () => {
+    prisma.instalment.findUnique.mockResolvedValue({
+      ...INSTALMENT,
+      status: 'scheduled',
+      invoiceNumber: null,
+    });
+
+    const res = await go();
+
+    expect(sessionsCreate).not.toHaveBeenCalled();
+    expect(res.headers.get('location')).toBe('https://bothmade.test/client/proj_1');
+  });
+
+  /** And the same for a row simply not invoiced yet — nothing is owed on it. */
+  it('refuses an instalment the schedule has not asked for yet', async () => {
+    prisma.instalment.findUnique.mockResolvedValue({ ...INSTALMENT, status: 'scheduled' });
 
     const res = await go();
 

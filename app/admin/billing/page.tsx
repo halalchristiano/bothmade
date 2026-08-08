@@ -332,7 +332,17 @@ function BillingWorkspace() {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
+      {/*
+        `grid-cols-1` is load-bearing, not tidiness.
+        A `grid` with no column definition at this breakpoint gets one implicit
+        column sized `auto`, which is max-content — so the column grew to fit
+        the widest thing in it (686px, set by an invoice description) inside a
+        358px phone. The page does not scroll horizontally, so everything past
+        the fold was simply cut off and unreachable: the Charge button, every
+        input, and Mark paid on each invoice row. The `lg:` columns already say
+        minmax(0,1fr) for exactly this reason; the mobile one never did.
+      */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
         <Card className="p-6">
           <CardHeader icon={Plus} title="New custom charge" tone="emerald" />
 
