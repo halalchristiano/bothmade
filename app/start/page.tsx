@@ -52,13 +52,44 @@ function FaqAccordion() {
           >
             <button
               type="button"
+              id={`faq-q-${i}`}
+              // Without these the button is announced as a plain button: no
+              // indication it reveals anything, and no announcement when it
+              // does. The rotating "+" is a visual affordance only.
+              aria-expanded={open}
+              aria-controls={`faq-a-${i}`}
               onClick={() => setOpenIndex(open ? null : i)}
               className="w-full text-left px-5 py-4 flex justify-between items-center gap-4"
             >
               <span className="font-medium">{item.q}</span>
               <span className={`text-white/40 shrink-0 transition-transform ${open ? 'rotate-45' : ''}`}>+</span>
             </button>
-            {open && <p className="px-5 pb-4 text-sm text-white/55 leading-relaxed">{item.a}</p>}
+            {/*
+              Always rendered, hidden when closed — it used to be
+              `{open && <p>…}`, so a collapsed answer did not exist in the
+              document at all.
+
+              app/start/layout.tsx publishes all twelve of these as FAQPage
+              structured data. `openIndex` starts at null, so the page Google
+              fetches contained twelve questions, twelve answers in the JSON-LD
+              — and not one answer anywhere in the page. Structured data has to
+              describe content the page actually has; answers hidden behind an
+              accordion are explicitly fine, answers that are absent are not.
+
+              `hidden` rather than a CSS class: it is what conveys the state to
+              assistive technology, and it pairs with aria-expanded above. No
+              Tailwind class here sets `display`, so the UA rule applies
+              cleanly.
+            */}
+            <p
+              id={`faq-a-${i}`}
+              role="region"
+              aria-labelledby={`faq-q-${i}`}
+              hidden={!open}
+              className="px-5 pb-4 text-sm text-white/55 leading-relaxed"
+            >
+              {item.a}
+            </p>
           </div>
         );
       })}
