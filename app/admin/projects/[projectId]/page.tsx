@@ -83,6 +83,8 @@ interface ProjectDetail {
     sendCount?: number;
     lastSentAt?: string | null;
     paidMethod?: string | null;
+    /** How much has arrived against it — an invoice can be part paid. */
+    receivedCents?: number;
   }>;
   deliverables: Deliverable[];
   createdAt: string;
@@ -883,7 +885,15 @@ export default function AdminProjectDetailPage() {
                             {formatCentsExact(invoice.amountCents)}
                           </p>
                           {(() => {
-                            const state = displayState({ ...invoice, refundedCents: invoice.refundedCents ?? 0 });
+                            // receivedCents is what turns "Open" into "Part
+                            // paid" — the same reading as the billing ledger,
+                            // so the two screens cannot disagree about an
+                            // invoice a client has half settled.
+                            const state = displayState({
+                              ...invoice,
+                              refundedCents: invoice.refundedCents ?? 0,
+                              receivedCents: invoice.receivedCents ?? 0,
+                            });
                             return (
                               <span
                                 className={`text-[10px] uppercase tracking-wider font-semibold ${
@@ -893,13 +903,23 @@ export default function AdminProjectDetailPage() {
                                       ? 'text-white/30'
                                       : state === 'open'
                                         ? 'text-amber-300'
-                                        : 'text-purple-300'
+                                        : state === 'part-paid'
+                                          ? 'text-sky-300'
+                                          : 'text-purple-300'
                                 }`}
                               >
                                 {DISPLAY_STATE_LABELS[state]}
                               </span>
                             );
                           })()}
+                          {/* What is LEFT, which is the figure that decides
+                              what happens next. Same line as the ledger. */}
+                          {invoice.status === 'open' && (invoice.receivedCents ?? 0) > 0 && (
+                            <p className="mt-0.5 text-[10px] tabular-nums text-sky-300/80">
+                              {formatCentsExact(invoice.amountCents - (invoice.receivedCents ?? 0))}{' '}
+                              left of {formatCentsExact(invoice.amountCents)}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px]">
@@ -921,6 +941,11 @@ export default function AdminProjectDetailPage() {
                             ...invoice,
                             refundedCents: invoice.refundedCents ?? 0,
                             sentToEmail: invoice.sentToEmail ?? null,
+                            // Without this the row offers Cancel on an invoice
+                            // carrying a client's money, and the route refuses
+                            // it after two clicks.
+                            receivedCents: invoice.receivedCents ?? 0,
+                            projectId,
                           }}
                           onDone={loadProject}
                         />

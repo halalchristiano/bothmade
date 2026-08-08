@@ -250,7 +250,8 @@ describe('an invoice with part of the money already in', () => {
     expect(row.paymentUrl).toBeNull();
   });
 
-  /* The studio sees it too — it decides which figure to chase. */
+  /* The studio sees it too — it decides which figure to chase, which badge
+     the project page draws, and whether Cancel is offered on the row. */
   it('tells the studio the same number', async () => {
     principal.type = 'user';
 
