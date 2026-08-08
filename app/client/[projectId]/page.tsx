@@ -207,6 +207,28 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'messages' | 'onboarding'>('overview');
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  /*
+   * Arrows move focus between the tabs, Enter or Space selects.
+   *
+   * Manual activation rather than automatic: Messages and Onboarding each
+   * fetch when they open, and arrowing across the row would fire all of them
+   * to look at one. Same choice, same reason, as the admin sales tabs.
+   */
+  const onTabKeyDown = (e: React.KeyboardEvent) => {
+    const current = tabRefs.current.findIndex((el) => el === document.activeElement);
+    if (current === -1) return;
+    const last = tabRefs.current.length - 1;
+    let next: number | null = null;
+    if (e.key === 'ArrowRight') next = current === last ? 0 : current + 1;
+    else if (e.key === 'ArrowLeft') next = current === 0 ? last : current - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = last;
+    if (next === null) return;
+    e.preventDefault();
+    tabRefs.current[next]?.focus();
+  };
   const [messageContent, setMessageContent] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sendingMessage, setSendingMessage] = useState(false);
@@ -609,11 +631,55 @@ export default function ClientDashboard() {
         </div>
 
         <div className="max-w-6xl mx-auto px-6 py-8">
-          {/* Tabs */}
-          <div className="flex gap-1 mb-8 p-1 rounded-full border border-white/10 bg-white/5 w-fit">
-            {(['overview', 'timeline', 'messages', 'onboarding'] as const).map((tab) => (
+          {/*
+            Which tab you are on was conveyed by colour and nothing else.
+            
+            Four plain buttons, the active one filled with a gradient and its
+            label turned black. Nothing in the markup said which was current,
+            so a screen reader read four identical buttons; forced-colours and
+            high-contrast modes drop the gradient and lose it for sighted
+            people too.
+
+            The badges had the same problem in a sharper form. "3 unread
+            messages", "new updates since you last looked" and "2 questions
+            still to answer" were a red pill, a green dot and an amber pill —
+            the only three things on this page telling a client something
+            needs them, and none of them said so in words. They are part of
+            each tab's name now.
+
+            The pattern matches /admin/sales: roving tabindex, arrows to move,
+            manual activation, and a real panel. Same behaviour on both sides
+            of the product.
+          */}
+          <div
+            role="tablist"
+            aria-label="Project sections"
+            onKeyDown={onTabKeyDown}
+            className="flex gap-1 mb-8 p-1 rounded-full border border-white/10 bg-white/5 w-fit"
+          >
+            {(['overview', 'timeline', 'messages', 'onboarding'] as const).map((tab, i) => {
+              const unanswered = questions.filter((q) => !q.response).length;
+              const badge =
+                tab === 'messages' && unreadCount > 0
+                  ? `${unreadCount} unread`
+                  : tab === 'timeline' && project.updates.some((u) => isNew(u.createdAt))
+                    ? 'new updates'
+                    : tab === 'onboarding' && unanswered > 0
+                      ? `${unanswered} still to answer`
+                      : null;
+              const label = tab.charAt(0).toUpperCase() + tab.slice(1);
+              return (
               <button
                 key={tab}
+                ref={(el) => {
+                  tabRefs.current[i] = el;
+                }}
+                id={`client-tab-${tab}`}
+                role="tab"
+                aria-selected={activeTab === tab}
+                aria-controls="client-tab-panel"
+                aria-label={badge ? `${label}, ${badge}` : undefined}
+                tabIndex={activeTab === tab ? 0 : -1}
                 onClick={() => setActiveTab(tab)}
                 className={`relative px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   activeTab === tab ? 'text-black' : 'text-white/50 hover:text-white'
@@ -626,24 +692,26 @@ export default function ClientDashboard() {
                     className="absolute inset-0 rounded-full bg-gradient-to-r from-sky-400 to-purple-500"
                   />
                 )}
-                <span className="relative">{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
+                <span className="relative">{label}</span>
                 {tab === 'messages' && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                  <span aria-hidden="true" className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
                     {unreadCount}
                   </span>
                 )}
                 {tab === 'timeline' && project.updates.some((u) => isNew(u.createdAt)) && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-400 border border-[#05030a]" />
+                  <span aria-hidden="true" className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-400 border border-[#05030a]" />
                 )}
                 {tab === 'onboarding' && questions.some((q) => !q.response) && (
-                  <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-black text-[10px] font-bold">
+                  <span aria-hidden="true" className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-black text-[10px] font-bold">
                     {questions.filter((q) => !q.response).length}
                   </span>
                 )}
               </button>
-            ))}
+              );
+            })}
           </div>
 
+        <div id="client-tab-panel" role="tabpanel" aria-labelledby={`client-tab-${activeTab}`} tabIndex={0} className="outline-none">
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
@@ -1733,6 +1801,7 @@ export default function ClientDashboard() {
             <OnboardingAnswers projectId={projectId} questions={questions} onSaved={loadOnboarding} />
           </motion.div>
         )}
+        </div>
         </div>
       </div>
     </main>
