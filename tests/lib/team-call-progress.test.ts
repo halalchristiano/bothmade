@@ -53,8 +53,37 @@ vi.mock('@/lib/design-stages', () => ({ nextDesignStage: () => null }));
 
 const { GET } = await import('@/app/api/admin/today/route');
 
+/*
+ * The day these fixtures live in, stated rather than guessed at.
+ *
+ * TODAY used to be "three hours ago", and the route counts a mockup only when
+ * `mockupRequestedAt >= startOfDay`. Between midnight and 03:00 local, three
+ * hours ago is yesterday — so the mockup fell outside the window, the count
+ * came back 0, and two tests failed. Not flakily: reliably, for three hours
+ * every night, and green for the other twenty-one. It went red on `main` at
+ * midnight.
+ *
+ * The route takes the day boundary from the caller (see lib/day-window.ts),
+ * so the test hands it one instead of hoping the wall clock is somewhere
+ * convenient, and places its fixture just inside it.
+ *
+ * Derived from the current day rather than pinned to a literal date, because
+ * `resolveDayStart` refuses a boundary more than 36 hours behind now — a
+ * hard-coded one fixes today and breaks the day after tomorrow, which is the
+ * same bug with a longer fuse.
+ */
 const NOW = new Date();
-const TODAY = new Date(NOW.getTime() - 3 * 60 * 60 * 1000);
+const DAY_START = (() => {
+  const d = new Date(NOW);
+  d.setHours(0, 0, 0, 0);
+  return d;
+})();
+/*
+ * Inside the window by construction, rather than by arithmetic that happens
+ * to land there. A minute past the boundary is today at every hour of the
+ * day, including the first three.
+ */
+const TODAY = new Date(DAY_START.getTime() + 60_000);
 
 const EVAN = { name: 'Evan Buoncristiano', email: 'evan@bothmade.studio' };
 const KIANA = { name: 'Kiana Arabpour', email: 'kiana@bothmadestudio.com' };
@@ -87,7 +116,9 @@ const dialled = (by: { name: string; email: string }, byId: string) =>
   call(by, byId, {}, 'dial');
 
 const run = async () => {
-  const res = await GET(new Request('https://x/api/admin/today') as never);
+  const res = await GET(
+    new Request(`https://x/api/admin/today?dayStart=${DAY_START.toISOString()}`) as never
+  );
   return (await res.json()).sell.team as Array<{
     userId: string;
     name: string;
