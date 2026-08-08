@@ -927,3 +927,76 @@ describe('downloading the ledger', () => {
     await waitFor(() => expect(href()).toBe('/api/admin/billing/charges/export'));
   });
 });
+
+
+/**
+ * How the ledger reads to somebody not looking at it.
+ *
+ * Which bucket is selected was said in exactly one way: a slightly lighter
+ * pill. A screen reader heard four buttons and no answer to "which of these
+ * am I on", and the search box's only name was a placeholder — which is gone
+ * the moment anybody types in it, so a half-typed search reads out as "edit
+ * text, northgate" and nothing about what it searches.
+ */
+describe('the ledger controls, read rather than looked at', () => {
+  beforeEach(() => {
+    invoices = [CHASED];
+    stubFetch();
+  });
+
+  it('says which bucket is on', async () => {
+    render(<BillingPage />);
+
+    const chase = await screen.findByRole('button', { name: 'Needs chasing' });
+    expect(chase).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Paid' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('moves that answer when the bucket changes', async () => {
+    const user = userEvent.setup();
+    render(<BillingPage />);
+    await screen.findByText('open 31 days · sent 3×');
+
+    await user.click(screen.getByRole('button', { name: 'Paid' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Paid' })).toHaveAttribute('aria-pressed', 'true')
+    );
+    expect(screen.getByRole('button', { name: 'Needs chasing' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+  });
+
+  it('names the group the chips belong to', async () => {
+    render(<BillingPage />);
+
+    expect(await screen.findByRole('group', { name: 'Which invoices to show' })).toBeTruthy();
+  });
+
+  /* The name has to survive the placeholder disappearing, which is exactly
+     when somebody needs it. */
+  it('gives the search box a name that outlives the placeholder', async () => {
+    const user = userEvent.setup();
+    render(<BillingPage />);
+
+    const box = await screen.findByRole('searchbox', {
+      name: /Find an invoice by company, invoice number or what it was for/i,
+    });
+    await user.type(box, 'northgate');
+
+    expect(
+      screen.getByRole('searchbox', { name: /Find an invoice by company/i })
+    ).toHaveValue('northgate');
+  });
+
+  /* Not a submit: these sit on a page whose other card is a real form, and a
+     bare button inside one is a submit button. */
+  it('keeps the chips as buttons that do not submit anything', async () => {
+    render(<BillingPage />);
+
+    for (const name of ['Needs chasing', 'Paid', 'Cancelled', 'All']) {
+      expect(await screen.findByRole('button', { name })).toHaveAttribute('type', 'button');
+    }
+  });
+});

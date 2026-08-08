@@ -906,14 +906,33 @@ function BillingWorkspace() {
           */}
           {totals && totals.count > 0 && (
             <div className="mb-4 space-y-2">
-              <div className="flex flex-wrap gap-1.5">
+              {/*
+                Which bucket is selected was said in one way: a slightly
+                lighter pill. A screen reader heard four buttons and no
+                answer to "which of these am I looking at" — and the same
+                thing is thin for everyone, since the difference between
+                selected and not is a few percent of white.
+
+                A group with a name, and each chip saying whether it is the
+                one that is on. `aria-pressed` rather than a tab set: these
+                do not switch between panels, they change what one list is
+                showing, and calling them tabs would promise arrow-key
+                navigation that isn't there.
+              */}
+              <div
+                role="group"
+                aria-label="Which invoices to show"
+                className="flex flex-wrap gap-1.5"
+              >
                 {(Object.keys(LEDGER_FILTER_LABELS) as LedgerFilter[]).map((key) => (
                   <button
                     key={key}
+                    type="button"
+                    aria-pressed={filter === key}
                     onClick={() => setFilter(key)}
                     className={`rounded-full px-3 py-1 text-xs transition-colors ${
                       filter === key
-                        ? 'bg-white/[0.12] text-white'
+                        ? 'bg-white/[0.12] text-white ring-1 ring-inset ring-white/25'
                         : 'bg-white/[0.03] text-white/45 hover:bg-white/[0.06] hover:text-white/70'
                     }`}
                   >
@@ -921,7 +940,20 @@ function BillingWorkspace() {
                   </button>
                 ))}
               </div>
+              {/*
+                The placeholder was the only name this box had, and a
+                placeholder is gone the moment somebody types — so anyone
+                coming back to a half-typed search, or hearing the field read
+                out, gets "edit text, northgate" and nothing about what it
+                searches. The visible label is the placeholder's own sentence,
+                so nothing is lost when it disappears.
+              */}
+              <label htmlFor="ledger-search" className="sr-only">
+                Find an invoice by company, invoice number or what it was for
+              </label>
               <input
+                id="ledger-search"
+                type="search"
                 value={ledgerQuery}
                 onChange={(e) => setLedgerQuery(e.target.value)}
                 placeholder="Find by company, invoice number or what it was for"
