@@ -865,3 +865,65 @@ describe('a load that comes back after the question changed', () => {
     expect(screen.queryByText('Settled work')).toBeNull();
   });
 });
+
+
+/**
+ * The file an accountant asks for.
+ *
+ * The link has to carry the same question the list is asking, or the download
+ * quietly covers a different set than the screen — which is worse than no
+ * download, because the file looks complete and the person checking it
+ * against a bank statement is checking the bank statement.
+ */
+describe('downloading the ledger', () => {
+  const href = () =>
+    (screen.getByRole('link', { name: /Download .* as CSV/ }) as HTMLAnchorElement).getAttribute('href') || '';
+
+  it('offers every matching invoice, not the page on screen', async () => {
+    invoices = [CHASED];
+    stubFetch();
+    render(<BillingPage />);
+
+    // TOTALS.count is the whole book; `matching` is what the filter selects.
+    expect(await screen.findByRole('link', { name: /Download 1 invoice as CSV/ })).toBeTruthy();
+  });
+
+  it('carries the bucket the chips are on', async () => {
+    const user = userEvent.setup();
+    invoices = [CHASED];
+    stubFetch();
+    render(<BillingPage />);
+    await screen.findByText('open 31 days · sent 3×');
+
+    await user.click(screen.getByRole('button', { name: 'Paid' }));
+
+    await waitFor(() => expect(href()).toContain('status=paid'));
+  });
+
+  it('carries what was typed in the search box', async () => {
+    const user = userEvent.setup();
+    invoices = [CHASED];
+    stubFetch();
+    render(<BillingPage />);
+    await screen.findByText('open 31 days · sent 3×');
+
+    await user.type(
+      screen.getByPlaceholderText('Find by company, invoice number or what it was for'),
+      'northgate'
+    );
+
+    await waitFor(() => expect(href()).toContain('q=northgate'));
+  });
+
+  it('asks for everything when nothing is selected', async () => {
+    const user = userEvent.setup();
+    invoices = [CHASED];
+    stubFetch();
+    render(<BillingPage />);
+    await screen.findByText('open 31 days · sent 3×');
+
+    await user.click(screen.getByRole('button', { name: 'All' }));
+
+    await waitFor(() => expect(href()).toBe('/api/admin/billing/charges/export'));
+  });
+});

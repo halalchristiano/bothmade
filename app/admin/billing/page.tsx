@@ -380,6 +380,22 @@ function BillingWorkspace() {
     setNeedsConfirmation(false);
   };
 
+  /*
+   * The same question the list is asking, for the export link.
+   *
+   * Built here rather than inside the link so it cannot fall out of step with
+   * what loadInvoices sends: a download that quietly covers a different set
+   * than the screen is worse than no download, because the file looks
+   * complete.
+   */
+  const exportQuery = (() => {
+    const params = new URLSearchParams();
+    const status = FILTER_STATUS[filter];
+    if (status) params.set('status', status);
+    if (ledgerSearch) params.set('q', ledgerSearch);
+    return params.toString();
+  })();
+
   // Both halves of the filter now happen in the query, so what comes back is
   // already what to show.
   const visible = invoices;
@@ -911,6 +927,20 @@ function BillingWorkspace() {
                 placeholder="Find by company, invoice number or what it was for"
                 className={inputClass}
               />
+              {/*
+                The file an accountant asks for, and the reason it sits under
+                the chips rather than at the top: it downloads exactly what
+                they select, every matching row rather than the hundred on
+                screen. A plain link so the browser does the download — a
+                fetch would have to hold the whole file in memory to hand it
+                back to the browser anyway.
+              */}
+              <a
+                href={`/api/admin/billing/charges/export${exportQuery ? `?${exportQuery}` : ''}`}
+                className="-my-1 inline-block py-1 text-[11px] text-sky-300 transition-colors hover:text-sky-200"
+              >
+                Download {matching} {matching === 1 ? 'invoice' : 'invoices'} as CSV
+              </a>
             </div>
           )}
 

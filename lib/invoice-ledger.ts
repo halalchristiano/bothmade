@@ -189,3 +189,37 @@ export function issuedByLabel(issuedBy: { name: string | null; email: string } |
   if (!issuedBy) return null;
   return issuedBy.name || issuedBy.email || null;
 }
+
+/**
+ * The rows a ledger question is about, as a Prisma `where`.
+ *
+ * Shared rather than written twice on purpose. Every widening of this has
+ * gone wrong the same way: the filter moved into the query and the search did
+ * not, so searching answered about the hundred rows already on screen. A
+ * second copy of these clauses in the export would be that failure again in
+ * its worst form — an accountant handed a file that is confidently missing
+ * rows, with the filename saying which rows it should have had.
+ */
+export function ledgerWhere(input: {
+  projectId?: string | null;
+  status?: string | null;
+  q?: string | null;
+}): Record<string, unknown> {
+  const q = (input.q || '').trim().slice(0, 100);
+  return {
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    ...(input.status === 'open' || input.status === 'paid' || input.status === 'void'
+      ? { status: input.status }
+      : {}),
+    ...(q
+      ? {
+          OR: [
+            { number: { contains: q, mode: 'insensitive' as const } },
+            { description: { contains: q, mode: 'insensitive' as const } },
+            { client: { company: { contains: q, mode: 'insensitive' as const } } },
+            { project: { name: { contains: q, mode: 'insensitive' as const } } },
+          ],
+        }
+      : {}),
+  };
+}

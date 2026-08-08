@@ -12,6 +12,7 @@ import {
 } from '@/lib/billing';
 import { formatCentsExact } from '@/lib/pricing';
 import { grossReceivedCents, hasCardPayment, receivedCents } from '@/lib/invoice-settlement';
+import { ledgerWhere } from '@/lib/invoice-ledger';
 
 /**
  * Raise a one-off charge against an existing customer.
@@ -390,11 +391,9 @@ export async function GET(request: NextRequest) {
      */
     const oldestFirst = status === 'open';
 
-    const listWhere = {
-      ...(where ?? {}),
-      ...(status === 'open' || status === 'paid' || status === 'void' ? { status } : {}),
-      ...(search ?? {}),
-    };
+    // Built by the shared helper, so the export cannot answer a different
+    // question to the list it is exporting.
+    const listWhere = ledgerWhere({ projectId, status, q });
     const pageWhere = cursor
       ? {
           ...listWhere,
